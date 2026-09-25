@@ -15,6 +15,47 @@ from .bakalari_common import (
 )
 
 
+#: A permanent-view atom's IdentCode has a blank date part
+#: ("1       003T2RD…"); an actual week's carries the date ("12026092103T2RD…").
+_PERM_IDENT_RE = re.compile(r"^\S\s{4}")
+
+_PERM_VIEW_JS = """() => {
+    const rows = [...document.querySelectorAll('[data-detail]')];
+    let perm = 0;
+    for (const el of rows) {
+        let d;
+        try { d = JSON.parse(el.getAttribute('data-detail')); } catch (e) { continue; }
+        const code = String((d && d.IdentCode) || '');
+        if (!code) continue;
+        if (/^\\S\\s{4}/.test(code)) perm++; else return false;
+    }
+    return perm > 0;
+}"""
+
+
+def is_perm_view(html_string: str) -> bool:
+    """True when the page shows the permanent ("Stálý") timetable.
+
+    Every lesson with an IdentCode must have the blank date part; one
+    dated IdentCode means an actual week is (still) rendered.
+    """
+    import html
+
+    perm = 0
+    for m in _DETAIL_ATTR_RE.finditer(html_string or ""):
+        try:
+            detail = json.loads(html.unescape(m.group(2)))
+        except (json.JSONDecodeError, TypeError):
+            continue
+        code = str((detail or {}).get("IdentCode") or "") if isinstance(detail, dict) else ""
+        if not code:
+            continue
+        if not _PERM_IDENT_RE.match(code):
+            return False
+        perm += 1
+    return perm > 0
+
+
 class TimetableMixin:
     """Mixin of :class:`~.bakalari_client.BakalariClient`; uses its session state."""
 
@@ -184,28 +225,6 @@ class TimetableMixin:
                 if lesson not in dest[day]:
                     dest[day].append(lesson)
 
-    def _stable_is_actual_week(self) -> bool:
-        """True when the "stable" scrape is really a loaded actual week.
-
-        The permanent view has no dates; a scrape whose every day is a
-        date already captured with the very same lessons is the previous
-        week's markup, not the template.
-        """
-        from .models import parse_cz_date
-
-        stable = self.stableTimetableData or {}
-        actual = getattr(self, "timetableData", None) or {}
-        if not stable:
-            return False
-        for day_key, lessons in stable.items():
-            if parse_cz_date(day_key) is None:
-                return False
-            if day_key not in actual:
-                return False
-            if any(lesson not in actual[day_key] for lesson in lessons or []):
-                return False
-        return True
-
     def _open_stable_view(self) -> str:
         """Opens the 'Stálý' (stable timetable) mode if present.
 
@@ -270,22 +289,13 @@ class TimetableMixin:
 
         Runs after the actual weeks were captured (same module, no extra
         login). Returns True when the stable view opened and yielded
-        lessons; False when the button wasn't found or the view was empty
-        (callers fall back to the learned baseline). Never raises except
+        lessons; False when the button wasn't found or the view never
+        loaded (the run then has no stable baseline). Never raises except
         on user cancel.
         """
         if self._cancelled():
             raise InterruptedError("Cancelled by user.")
         self.stableTimetableData = {}
-        # The actual week stays rendered until the perm view's reply lands:
-        # its data-detail rows would otherwise be scraped as "stable" (a
-        # real week's substitutions and free slots flagged forever).
-        try:
-            before = str(self.page.content())
-        except InterruptedError:
-            raise
-        except Exception:
-            before = ""
         try:
             strategy = self._open_stable_view()
         except InterruptedError:
@@ -294,43 +304,32 @@ class TimetableMixin:
             self.log(f"Warning: stable timetable button search failed: {e}")
             return False
         if not strategy:
-            self.log("Stable timetable button not found — "
-                     "baseline will be learned from actual weeks.")
+            self.log("Stable timetable button not found — no stable timetable this run.")
             return False
         self.log(f"Stable view opened ({strategy}).")
+        # The actual week stays rendered until the perm reply lands, and
+        # the perm view still carries this week's dates — only IdentCode
+        # tells them apart (blank date part in the permanent view).
         settle_ms = self._settle_ms()
         if settle_ms > 0:
             try:
-                self.page.wait_for_function(
-                    "() => document.body && document.body.innerHTML.includes('data-detail')",
-                    timeout=settle_ms,
-                )
+                self.page.wait_for_function(_PERM_VIEW_JS, timeout=settle_ms)
             except Exception:
                 pass
         self._sleep_s(0.2)
         html = str(self.page.content())
-        if "data-detail" not in html or (before and html == before):
-            self.log("Warning: stable timetable view looks empty, waiting a bit longer.")
+        if not is_perm_view(html):
+            self.log("Warning: stable timetable view not loaded yet, waiting a bit longer.")
             self._sleep_s(self._week_settle_s)
             html = str(self.page.content())
-        if "data-detail" not in html:
-            self.log("Warning: stable timetable view is empty — "
-                     "baseline will be learned from actual weeks.")
-            return False
-        if before and html == before:
-            self.log("Warning: stable timetable view did not load (page unchanged) — "
-                     "baseline will be learned from actual weeks.")
+        if not is_perm_view(html):
+            self.log("Warning: stable timetable view did not load — "
+                     "no stable timetable this run.")
             return False
         self.extract_timetable_data(html, target=self.stableTimetableData)
         n_lessons = sum(len(v) for v in self.stableTimetableData.values())
         if not n_lessons:
-            self.log("Warning: no stable lessons parsed — "
-                     "baseline will be learned from actual weeks.")
-            return False
-        if self._stable_is_actual_week():
-            self.log("Warning: stable view still showed an actual week — "
-                     "baseline will be learned from actual weeks.")
-            self.stableTimetableData = {}
+            self.log("Warning: no stable lessons parsed — no stable timetable this run.")
             return False
         self.log(f"Stable timetable scraped: {n_lessons} lessons "
                  f"in {len(self.stableTimetableData)} days.")

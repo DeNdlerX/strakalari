@@ -199,7 +199,7 @@ def forecast_all(
     each subject's *planning* limit to ``limit - reserve`` — the planner
     stops recommending a subject earlier while the school truth
     (``limit_pct`` / ``safe_hours_left``) stays untouched.
-    When ``stable_baseline`` (see ``schedule.learn_stable_schedule``) is
+    When ``stable_baseline`` (the scraped "Stálý" view) is
     given, weekly hours come from the stable timetable — cancellations,
     substitutions and one-off events in the raw weeks don't inflate or
     shrink a subject's hours. Absence entries for subjects the baseline

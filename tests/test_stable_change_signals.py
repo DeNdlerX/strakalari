@@ -508,23 +508,19 @@ def test_split_slot_matches_any_variant():
                            baseline=baseline).is_change is True
 
 
-def test_learned_fallback_never_reports_added_or_missing():
+def test_no_stable_view_never_reports_added_or_missing():
     client = _client()
     client.timetableData = {
         "07.09.2026": [{"subject": "M", "teacher": "Novák", "room": "I",
                         "time": "1 (8:00 - 8:45)"}],
     }
-    baseline = client.update_stable_baseline()
-    assert baseline
+    assert client.update_stable_baseline() == {}
     assert client.stable_complete is False
-    # A lesson on a day the fallback never saw stays quiet.
+    # Without a scraped template nothing is guessed: a plain lesson stays quiet.
     unseen = {"subject": "Třídnická hodina", "teacher": "Picka",
               "room": "VIII", "time": "1 (8:00 - 8:45)", "notice": ""}
-    diff = classify_lesson(unseen, day="09.09.2026", baseline=baseline)
-    assert diff.is_change is False
-    timetable = dict(client.timetableData,
-                     **{"09.09.2026": [unseen]})
-    assert iter_changes(timetable, baseline) == []
+    timetable = dict(client.timetableData, **{"09.09.2026": [unseen]})
+    assert iter_changes(timetable, {}) == []
 
 
 def test_update_stable_baseline_tracks_completeness():
@@ -534,7 +530,7 @@ def test_update_stable_baseline_tracks_completeness():
                         "room": "I", "time": "3 (10:05 - 10:50)"}],
     }
     client.stableTimetableData = {}
-    assert client.update_stable_baseline()
+    assert client.update_stable_baseline() == {}
     assert client.stable_complete is False
     client.stableTimetableData = _stable()
     assert client.update_stable_baseline()

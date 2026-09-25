@@ -119,45 +119,32 @@ def test_go_forward_weeks_config_parsing():
     assert client.go_forward_weeks == 1
 
 
-def test_update_stable_baseline_learns_and_diffs():
+def test_no_stable_view_means_no_baseline():
+    """Nothing is learned from actual weeks: Bakaláři's own flags decide."""
     from strakalari.core.bakalari_client import BakalariClient
 
     dummy_bm = type("DummyBM", (), {"page": None})()
     client = BakalariClient(dummy_bm, {}, logger=None)
+    week = lambda teacher, **extra: [  # noqa: E731
+        {"teacher": "Novák", "subject": "M", "room": "U12", "time": "1 (8:00 - 8:45)"},
+        {"teacher": teacher, "subject": "F", "room": "F11", "time": "2 (8:55 - 9:40)", **extra},
+    ]
     client.timetableData = {
-        "31.08.2026": [
-            {"teacher": "Novák", "subject": "M", "room": "U12",
-             "time": "1 (8:00 - 8:45)"},
-            {"teacher": "Dvořák", "subject": "F", "room": "F11",
-             "time": "2 (8:55 - 9:40)"},
-        ],
-        "07.09.2026": [
-            {"teacher": "Novák", "subject": "M", "room": "U12",
-             "time": "1 (8:00 - 8:45)"},
-            {"teacher": "Dvořák", "subject": "F", "room": "F11",
-             "time": "2 (8:55 - 9:40)"},
-        ],
-        # Next week (forward fetch): same slots, one substitution.
-        "14.09.2026": [
-            {"teacher": "Novák", "subject": "M", "room": "U12",
-             "time": "1 (8:00 - 8:45)"},
-            {"teacher": "Král", "subject": "F", "room": "F11",
-             "time": "2 (8:55 - 9:40)", "notice": "Suplování (Král)"},
-        ],
+        "31.08.2026": week("Dvořák"),
+        "07.09.2026": week("Dvořák"),
+        "14.09.2026": week("Král", infoChangeCode="Substitution"),
     }
-    baseline = client.update_stable_baseline()
-    assert baseline[(0, 2)].teacher == "Dvořák"
-    assert len(client.weekChanges) == 1
-    assert client.weekChanges[0]["day_key"] == "14.09.2026"
-    assert "teacher" in client.weekChanges[0]["diff"].changed
+    assert client.update_stable_baseline() == {}
+    assert client.stable_complete is False
+    assert [c["day_key"] for c in client.weekChanges] == ["14.09.2026"]
 
 
-def test_scraped_stable_beats_learned_baseline():
+def test_scraped_stable_is_the_baseline():
     from strakalari.core.bakalari_client import BakalariClient
 
     dummy_bm = type("DummyBM", (), {"page": None})()
     client = BakalariClient(dummy_bm, {}, logger=None)
-    # Actual weeks all agree on Král — learning alone would call that stable.
+    # Actual weeks all agree on Král...
     week = lambda: [  # noqa: E731
         {"teacher": "Král", "subject": "F", "room": "F11",
          "time": "2 (8:55 - 9:40)"},
@@ -266,16 +253,14 @@ def test_open_stable_view_targets_perm_exactly():
     assert page.clicked == []
 
 
-def test_extract_stable_timetable_scrapes_perm_view():
+_FIXTURES = __import__("pathlib").Path(__file__).parent / "fixtures"
+
+
+def _stable_client(pages):
+    """Client whose page shows ``pages[0]`` until the perm switch is clicked."""
     from strakalari.core.bakalari_client import BakalariClient
 
-    html = (
-        "<div data-detail='{\"teacher\":\"Dvořák\","
-        "\"subjecttext\":\"F\",\"room\":\"F11\",\"day\":\"Pondělí\","
-        "\"time\":\"2 (8:55 - 9:40)\"}'></div>"
-    )
-
-    class MockLabel:
+    class MockLoc:
         def __init__(self, page):
             self._page = page
 
@@ -287,92 +272,59 @@ def test_extract_stable_timetable_scrapes_perm_view():
             pass
 
         def click(self, **kwargs):
-            self._page.clicked.append(True)
+            self._page.clicked = True
 
     class MockPage:
-        clicked: list = []
+        clicked = False
 
         def locator(self, selector):
-            return MockLabel(self)
+            return MockLoc(self)
 
         def get_by_text(self, *args, **kwargs):
-            return MockLabel(self)
+            return MockLoc(self)
 
         def wait_for_function(self, *args, **kwargs):
             pass
 
-        def wait_for_load_state(self, *args, **kwargs):
-            pass
-
-        def wait_for_timeout(self, *args, **kwargs):
-            pass
-
         def content(self):
-            # The actual week until the perm switch was clicked.
-            return html if self.clicked else "<div>actual week</div>"
-
-    page = MockPage()
-    page.clicked = []
-    bm = type("MockBM", (), {"page": page})()
-    client = BakalariClient(bm, {}, logger=None)
-    assert client.extract_stable_timetable() is True
-    # Stable rows land in their own dict, actual weeks untouched.
-    assert client.timetableData == {}
-    assert "Pondělí" in client.stableTimetableData
-    lesson = client.stableTimetableData["Pondělí"][0]
-    assert lesson["subject"] == "F"
-    assert lesson["teacher"] == "Dvořák"
-    # ... and the scraped view feeds the baseline with weekday names.
-    baseline = client.update_stable_baseline()
-    assert baseline[(0, 2)].teacher == "Dvořák"
-
-
-def test_extract_stable_timetable_rejects_stale_actual_week():
-    """The perm reply not landing yet must not turn a real week into "stable"."""
-    from strakalari.core.bakalari_client import BakalariClient
-
-    week_html = (
-        "<div data-detail='{\"teacher\":\"Dvořák\","
-        "\"subjecttext\":\"F\",\"room\":\"F11\",\"day\":\"21.09.2026\","
-        "\"time\":\"2 (8:55 - 9:40)\"}'></div>"
-    )
-
-    class MockLoc:
-        first = property(lambda self: self)
-
-        def wait_for(self, **kwargs):
-            pass
-
-        def click(self, **kwargs):
-            pass
-
-    class MockPage:
-        def locator(self, selector):
-            return MockLoc()
-
-        def get_by_text(self, *args, **kwargs):
-            return MockLoc()
-
-        def wait_for_function(self, *args, **kwargs):
-            pass
-
-        def wait_for_timeout(self, *args, **kwargs):
-            pass
-
-        def content(self):
-            return week_html
+            return pages[1] if self.clicked else pages[0]
 
     bm = type("MockBM", (), {"page": MockPage()})()
     client = BakalariClient(bm, {}, logger=None)
     client._sleep_s = lambda s: None
-    client.extract_timetable_data(week_html)
-    # Page never changed after the click: no stable data at all.
+    return client
+
+
+def test_perm_view_is_told_apart_by_ident_code():
+    from strakalari.core.bakalari_timetable import is_perm_view
+
+    perm = (_FIXTURES / "timetable_perm_view.html").read_text(encoding="utf-8")
+    actual = (_FIXTURES / "timetable_actual_week.html").read_text(encoding="utf-8")
+    assert is_perm_view(perm) is True
+    assert is_perm_view(actual) is False
+    assert is_perm_view(perm + actual) is False  # half-rendered switch
+    assert is_perm_view("") is False
+
+
+def test_extract_stable_timetable_scrapes_perm_view():
+    perm = (_FIXTURES / "timetable_perm_view.html").read_text(encoding="utf-8")
+    actual = (_FIXTURES / "timetable_actual_week.html").read_text(encoding="utf-8")
+    client = _stable_client([actual, perm])
+    assert client.extract_stable_timetable() is True
+    # Stable rows land in their own dict, actual weeks untouched.
+    assert client.timetableData == {}
+    baseline = client.update_stable_baseline()
+    assert client.stable_complete is True
+    assert baseline[(0, 1)].subject == "Seminář z matematiky S"
+    assert baseline[(4, 7)].subject == "Finanční gramotnost"
+    # Odd/even-week PE (two gyms) keeps both variants in one slot.
+    assert {v.room.split()[0] for v in baseline[(2, 5)]} == {"TSOU", "TSM"}
+
+
+def test_extract_stable_timetable_rejects_stale_actual_week():
+    """The perm reply never landing must not turn a real week into "stable"."""
+    actual = (_FIXTURES / "timetable_actual_week.html").read_text(encoding="utf-8")
+    client = _stable_client([actual, actual])
     assert client.extract_stable_timetable() is False
     assert client.stableTimetableData == {}
-
-    # Page changed, but still only the already-captured actual week.
-    client.stableTimetableData = {}
-    client.extract_timetable_data(week_html, target=client.stableTimetableData)
-    assert client._stable_is_actual_week() is True
-    client.stableTimetableData = {"Pondělí": client.timetableData["21.09.2026"]}
-    assert client._stable_is_actual_week() is False
+    assert client.update_stable_baseline() == {}

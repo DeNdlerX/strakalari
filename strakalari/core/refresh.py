@@ -191,10 +191,11 @@ def _bakalari_payload(app: Any) -> dict:
         baseline = baseline_to_dict(app.stableBaseline)
     except Exception:
         baseline = {}
-    if baseline:
+    # Only a scraped "Stálý" view is ever stored; a failed scrape keeps
+    # the last scraped baseline in the cache.
+    if baseline and getattr(app, "stable_complete", False):
         payload["stable_baseline"] = baseline
-        payload["stable_baseline_source"] = (
-            "scraped" if getattr(app, "stable_complete", False) else "learned")
+        payload["stable_baseline_source"] = "scraped"
     return payload
 
 

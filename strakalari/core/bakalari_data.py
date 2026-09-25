@@ -452,45 +452,34 @@ class DataMixin:
     def update_stable_baseline(self):
         """Builds the stable baseline and diffs the loaded weeks against it.
 
-        Prefers the scraped "Stálý rozvrh" view (exact, no voting needed);
-        falls back to learning from the actual weeks when the button wasn't
-        found. Stores the baseline on ``self.stableBaseline`` and the
-        actual-vs-stable diffs on ``self.weekChanges``, logs a short
-        summary, and returns the baseline. Never raises.
+        The baseline comes only from the scraped "Stálý rozvrh" view. When
+        that scrape failed there is no baseline at all: guessing a template
+        from actual weeks flagged real lessons as changes, so Bakaláři's
+        own change flags decide instead. Stores the baseline on
+        ``self.stableBaseline`` and the diffs on ``self.weekChanges``, logs
+        a short summary, and returns the baseline. Never raises.
         """
         from .schedule import (
             apply_substitution_feed,
             backfill_stable_facts,
             baseline_from_stable_timetable,
             iter_changes,
-            learn_stable_schedule,
         )
 
         baseline = {}
-        source = ""
-        used_scraped = False
         if self.stableTimetableData:
             try:
                 baseline = baseline_from_stable_timetable(self.stableTimetableData)
-                source = "scraped stable timetable (Stálý rozvrh)"
-                used_scraped = bool(baseline)
             except Exception as e:
                 self.log(f"Warning: could not use scraped stable timetable: {e}")
                 baseline = {}
+        used_scraped = bool(baseline)
+        source = "scraped stable timetable (Stálý rozvrh)"
         if not baseline:
-            try:
-                baseline = learn_stable_schedule(self.timetableData)
-                source = "learned from actual weeks (stable view not scraped)"
-            except Exception as e:
-                self.log(f"Warning: could not learn the stable timetable: {e}")
-                self.stableBaseline = {}
-                self.stable_complete = False
-                self.weekChanges = []
-                return self.stableBaseline
+            self.log("No stable timetable this run — changes come from Bakaláři's own flags.")
         self.stableBaseline = baseline
-        # Only the scraped template week is complete (empty slot = free
-        # period); the learned fallback must not invent added/missing
-        # changes from slots it simply never saw.
+        # The scraped template week is complete: an empty slot is a free
+        # period, so added/missing lessons are real changes.
         self.stable_complete = used_scraped
         try:
             feed = getattr(self, "substitutions", None)
@@ -512,8 +501,8 @@ class DataMixin:
         except Exception as e:
             self.log(f"Warning: could not compare weeks against stable: {e}")
             self.weekChanges = []
-        self.log(f"Stable timetable learned: {len(baseline)} slots "
-                 f"from {len(self.timetableData)} days ({source}).")
+        if baseline:
+            self.log(f"Stable timetable: {len(baseline)} slots ({source}).")
         if self.weekChanges:
             self.log(f"Schedule changes vs stable: {len(self.weekChanges)}.")
             for item in self.weekChanges[:5]:
@@ -573,7 +562,7 @@ class DataMixin:
             raise
         except Exception as e:
             self.log(f"Warning: stable timetable scrape failed ({e}), "
-                     "baseline will be learned from actual weeks.")
+                     "no stable timetable this run.")
         # Personal substitution feed rides along the same loop so the
         # authoritative change list is available when the baseline is
         # built below. Best effort only — it must never fail the run.
@@ -620,8 +609,7 @@ class DataMixin:
             "absence": self.absencePercentages,
             "grades": self.grades,
             "stable_baseline": serializable_baseline,
-            "stable_baseline_source": (
-                "scraped" if getattr(self, "stable_complete", False) else "learned"),
+            "stable_baseline_source": "scraped" if serializable_baseline else "",
             "changes": self.weekChanges,
             "substitutions": self.substitutions,
             "absence_details": self.absenceDetails,

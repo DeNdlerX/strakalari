@@ -39,14 +39,14 @@ class TestWarnThreshold:
 
 def test_nonstable_absence_subjects_are_free():
     from strakalari.core.forecast import forecast_all
-    from strakalari.core.schedule import learn_stable_schedule
+    from strakalari.core.schedule import baseline_from_stable_timetable
     from datetime import date
 
     timetable = {
         "01.09.2026": [{"subject": "M", "time": "1 (8:00 - 8:45)"}],
         "08.09.2026": [{"subject": "M", "time": "1 (8:00 - 8:45)"}],
     }
-    baseline = learn_stable_schedule(timetable)
+    baseline = baseline_from_stable_timetable(timetable)
     states, days = forecast_all({"M": 10.0, "OneOff": 50.0}, timetable,
                                 today=date(2026, 9, 7), stable_baseline=baseline)
     assert {s.name for s in states} == {"M"}  # OneOff: free, unbudgeted

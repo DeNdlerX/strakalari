@@ -59,8 +59,7 @@ class PlannerMixin:
 
     def subject_states(self) -> tuple[list[SubjectState], list[date]]:
         # No timetable, no planner: without lessons there is nothing to
-        # budget (the baseline is learned from the timetable, so it is
-        # missing too). Callers show a "refresh first" hint instead.
+        # budget. Callers show a "refresh first" hint instead.
         if not self.timetable():
             return [], []
         default_limit = 25.0
@@ -433,22 +432,24 @@ class PlannerMixin:
         return out
 
     def stable_baseline(self) -> dict:
-        """The stable timetable: scraped 'Stálý' view when cached, else learned."""
-        from strakalari.core.schedule import baseline_from_dict, learn_stable_schedule
+        """The stable timetable: the cached scraped 'Stálý' view, else {}.
+
+        Never learned from actual weeks — old caches holding a learned
+        baseline are ignored until the next successful scrape.
+        """
+        from strakalari.core.schedule import baseline_from_dict
 
         # Cached per data revision: views ask for it per lesson / per cell.
         key = (getattr(self, "data_rev", 0), id(self.data))
         if getattr(self, "_baseline_key", None) == key:
             return self._baseline
-        baseline = None
+        baseline = {}
         stored = self.data.get("stable_baseline")
-        if isinstance(stored, dict) and stored:
+        if self.stable_complete() and isinstance(stored, dict) and stored:
             try:
-                baseline = baseline_from_dict(stored) or None
+                baseline = baseline_from_dict(stored) or {}
             except Exception:
-                baseline = None
-        if baseline is None:
-            baseline = learn_stable_schedule(self.timetable())
+                baseline = {}
         self._baseline = baseline
         self._baseline_key = key
         return baseline
@@ -457,8 +458,8 @@ class PlannerMixin:
         """True when the cached baseline is the scraped template week.
 
         Only then is an empty slot a free period (added/missing detection
-        applies). Missing key (old caches) or the learned fallback means
-        "no data" — callers must use the notice heuristic instead.
+        applies). Missing key (old caches) or an old learned baseline means
+        "no data" — callers use Bakaláři's change flags instead.
         """
         try:
             return str(self.data.get("stable_baseline_source", "") or "") == "scraped"
