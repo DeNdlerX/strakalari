@@ -218,3 +218,16 @@ def test_history_quarantine(tmp_path, monkeypatch):
     mgr.get = lambda k, d=None: str(bad) if k == "already_excused_file" else d
     assert mgr.get_excuse_history() == []
     assert list(tmp_path.glob("hist.json.corrupt*")) or list(tmp_path.glob("hist*"))
+
+
+def test_history_entries_store_every_hour_shape():
+    from strakalari.core.excuse_history import history_entries
+
+    sent = {"type": "soon", "starting_day": "3.9.2026", "ending_day": "3.9.2026",
+            "starting_lesson": 5, "ending_lesson": 5, "templates": ["ui-only"]}
+    rows = history_entries(sent)
+    assert [r["type"] for r in rows] == ["income", "soon", "days and hours"]
+    assert all(r["starting_day"] == "03.09.2026" and "templates" not in r for r in rows)
+    whole = {"type": "pure days", "starting_day": "1.9.2026", "ending_day": "2.9.2026"}
+    assert history_entries(whole) == [
+        {"type": "pure days", "starting_day": "01.09.2026", "ending_day": "02.09.2026"}]

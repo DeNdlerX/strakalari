@@ -34,6 +34,15 @@ class TimetableMixin:
 
         current_week = datetime.today().date()
         offsets = week_offsets(self.go_back_weeks, self.go_forward_weeks)
+        # Timetable history: older school-year weeks the cache still lacks
+        # (all of them on the first run, none afterwards). Fetched after
+        # the regular window so a slow backfill never delays fresh data.
+        this_monday = current_week - timedelta(days=current_week.weekday())
+        for monday in sorted(getattr(self, "history_weeks", None) or (), reverse=True):
+            off = (monday - this_monday).days // 7
+            if off < 0 and off not in offsets:
+                offsets.append(off)
+        self.timetable_loaded_weeks = set()
         if not offsets:
             self.log("Warning: no timetable weeks to fetch (go_back_weeks=0, go_forward_weeks=0).")
         for off in offsets:
@@ -113,6 +122,7 @@ class TimetableMixin:
                          f"{min(shown):%d.%m.}–{max(shown):%d.%m.}), skipping it this run.")
                 continue
             self.timetable_sources.append(html)
+            self.timetable_loaded_weeks.add(monday)
 
     def extract_timetable_data(self, html_file_string: str, target: dict = None):
         """Parses a captured timetable page's ``data-detail`` lessons.

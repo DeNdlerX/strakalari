@@ -5,20 +5,49 @@ import json
 from typing import Union
 
 
-# Tags, whitespace and &nbsp; between a label and its value.
-_GAP = r'(?:\s|&nbsp;|<[^>]*>)*'
-_DATE = r'(\d{1,2}\s*\.\s*\d{1,2}\s*\.\s*\d{4})'
-# The lesson hour must follow its date directly (only tags/space between):
-# the old lazy ``.*?`` let "(3. hod.)" come from anywhere later on the
-# page (the message body, another row), turning a whole-day excuse into
-# a bogus multi-day hour range.
-_HOUR = r'(?:' + _GAP + r'\(\s*(\d+)\s*\.\s*hod\.?\s*\))?'
-_SENT_EXCUSE_RE = re.compile(
-    r'data-testid\s*=\s*["\']komens-message-detail-header["\'][^>]*>'
-    r'.{0,2000}?Od\s*:' + _GAP + _DATE + _HOUR
-    + r'.{0,300}?Do\s*:' + _GAP + _DATE + _HOUR,
-    re.DOTALL | re.I,
+# Sent-excuse detail (Komens -> Odeslané). The real page renders the
+# range across ~800 chars of nested markup, with the clock time between
+# a date and its lesson ("Od: 3.9.2026 10:05 (3. hod.)"), so the parser
+# works on the *visible text* of the excuse block, not on raw HTML.
+_EXCUSE_ANCHORS = (
+    "komens-message-detail-excuse-wrapper",  # the Od/Do row itself
+    "komens-message-detail-header",          # older layouts / fallback
 )
+_TAG_RE = re.compile(r"<[^>]+>")
+_DATE_TXT = r"(\d{1,2}\s*\.\s*\d{1,2}\s*\.\s*\d{4})"
+_TIME_TXT = r"(\d{1,2}:\d{2})"
+# The lesson must follow its date directly (only the clock time may sit
+# between): a looser match let "(3. hod.)" come from the message body,
+# turning a whole-day excuse into a bogus hour range.
+_HOUR_TXT = r"\(\s*(\d+)\s*\.\s*hod\.?\s*\)"
+_SENT_EXCUSE_TEXT_RE = re.compile(
+    r"Od\s*:\s*" + _DATE_TXT + r"\s*(?:" + _TIME_TXT + r")?\s*(?:" + _HOUR_TXT + r")?"
+    r"\s*Do\s*:\s*" + _DATE_TXT + r"\s*(?:" + _TIME_TXT + r")?\s*(?:" + _HOUR_TXT + r")?",
+    re.I,
+)
+
+
+def _html_to_text(fragment: str) -> str:
+    return re.sub(r"\s+", " ", html.unescape(_TAG_RE.sub(" ", fragment)))
+
+
+def _find_excuse_range(html_string: str):
+    """Text-regex match of the first rendered excuse block, or None.
+
+    The page also carries the jsrender template (``{{:DateFrom}}``) with
+    the same testids; its text never holds a date, so it never matches.
+    """
+    for anchor in _EXCUSE_ANCHORS:
+        start = html_string.find(anchor)
+        while start != -1:
+            end = html_string.find("</tr>", start) if "wrapper" in anchor else -1
+            if end == -1:
+                end = start + 10000
+            match = _SENT_EXCUSE_TEXT_RE.search(_html_to_text(html_string[start:end]))
+            if match is not None:
+                return match
+            start = html_string.find(anchor, start + len(anchor))
+    return None
 
 
 def _zero_pad_day(date_str: str) -> str:
@@ -48,31 +77,30 @@ def _parse_sent_excuse_html(html_string: str) -> list:
     """
     if not html_string:
         return []
-    match = _SENT_EXCUSE_RE.search(html_string)
+    match = _find_excuse_range(html_string)
     if match is None:
         return []
     try:
         start_day = _zero_pad_day(match.group(1))
-        end_day = _zero_pad_day(match.group(3))
+        end_day = _zero_pad_day(match.group(4))
     except (AttributeError, ValueError):
         return []
-    start_lesson_raw = match.group(2)
-    end_lesson_raw = match.group(4)
+    has_time = bool(match.group(2) or match.group(5))
+    start_lesson_raw = match.group(3)
+    end_lesson_raw = match.group(6)
     if not start_lesson_raw or not end_lesson_raw:
+        if has_time:
+            # Clock times without lesson numbers: the covered lessons are
+            # unknown. Recording a whole day would silently swallow real
+            # absences, so learn nothing instead.
+            return []
         return [{
             "type": "pure days",
             "starting_day": start_day,
             "ending_day": end_day,
         }]
-    try:
-        start_lesson = int(start_lesson_raw)
-        end_lesson = int(end_lesson_raw)
-    except (TypeError, ValueError):
-        return [{
-            "type": "pure days",
-            "starting_day": start_day,
-            "ending_day": end_day,
-        }]
+    start_lesson = int(start_lesson_raw)
+    end_lesson = int(end_lesson_raw)
     base = {
         "starting_day": start_day,
         "ending_day": end_day,
