@@ -203,7 +203,7 @@ class LunchMixin:
                             busy = True
                             self._worker_log(S("session_busy"))
                         else:
-                            app = Strakalari(on_log=self._worker_log, start_browser=True)
+                            app = Strakalari(on_log=self._core_log, start_browser=True)
                             try:
                                 app.cancel_requested = False
                                 dry = (getattr(app, "strava_order_mode", "") == "dry_run")

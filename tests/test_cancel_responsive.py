@@ -360,3 +360,35 @@ class TestSingleAttemptClicks:
     def test_docstring_matches_goto_slice(self):
         import strakalari.core.cancel as cancel_mod
         assert "10 s" in (cancel_mod.__doc__ or "")
+
+
+def test_core_log_never_reaches_the_status_bar(monkeypatch):
+    """English core diagnostics go to the activity log, not the status bar."""
+    import strakalari.flet_ui.state as state_mod
+    from strakalari.flet_ui.state import AppState
+
+    monkeypatch.setattr(state_mod, "load_data_cache", lambda: {})
+    state = AppState()
+    state._worker_log("Stahuji data z Bakalářů…")
+    state._core_log("Stable view opened (testid:timetable-permanent-link).")
+    assert state.current_step == "Stahuji data z Bakalářů…"
+    assert "Stable view opened" in state.log_lines[-1]
+
+
+def test_flet_locale_follows_app_language():
+    """Flutter's own texts (dialogs, pickers) must not follow the OS locale."""
+    import flet as ft
+
+    from strakalari.core import i18n
+    from strakalari.flet_ui.app import _apply_locale
+
+    page = type("Page", (), {"locale_configuration": None})()
+    try:
+        i18n.set_language("cs")
+        _apply_locale(page)
+        assert page.locale_configuration.current_locale == ft.Locale("cs", "CZ")
+        i18n.set_language("en")
+        _apply_locale(page)
+        assert page.locale_configuration.current_locale == ft.Locale("en", "US")
+    finally:
+        i18n.set_language("cs")

@@ -255,7 +255,7 @@ class ActivityMixin:
         # refresh_running already claimed atomically above.
         self.cancel_requested = False
         self.status = "working"
-        self.current_step = scope
+        self.current_step = ""
         self._emit()
 
         self._spawn(self._refresh_work, (scope,), name="strakalari-refresh")
@@ -274,14 +274,20 @@ class ActivityMixin:
         self._worker_log(S("cancel_refresh_log"))
         self._emit_progress()
 
-    def _worker_log(self, message: str) -> None:
+    def _worker_log(self, message: str, *, step: bool = True) -> None:
+        """Adds a log line; ``step`` also shows it in the status bar.
+
+        Only translated progress messages are steps. The core's own log
+        lines are English diagnostics (``_core_log``): shown in the status
+        bar they flashed English through a Czech UI during every refresh.
+        """
         import time
 
         stamp = datetime.now().strftime("%H:%M:%S")
         self.log_lines.append(f"[{stamp}] {str(message).strip()}")
         self.log_lines = self.log_lines[-300:]
         text = str(message).strip()
-        if text:
+        if text and step:
             self.current_step = text.splitlines()[0][:120]
         # A refresh emits dozens of log lines — re-rendering the whole UI
         # per line flickers, burns CPU and resets scroll positions and
@@ -294,6 +300,10 @@ class ActivityMixin:
             return
         self._last_log_emit = now
         self._emit_progress()
+
+    def _core_log(self, message: str) -> None:
+        """Core (English diagnostic) log line: activity log only."""
+        self._worker_log(message, step=False)
 
     def _refresh_work(self, scope: str) -> None:
         """Background refresh: the shared core pipeline + UI bookkeeping."""
@@ -341,7 +351,7 @@ class ActivityMixin:
                 # Browser setup (first-run download) is not preemptible —
                 # abort here instead of fetching right after it.
                 raise InterruptedError("cancelled")
-            app = Strakalari(on_log=self._worker_log, start_browser=True)
+            app = Strakalari(on_log=self._core_log, start_browser=True)
             try:
                 app.cancel_callback = lambda: self.cancel_requested
                 result = run_refresh(
