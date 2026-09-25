@@ -1,0 +1,45 @@
+# Packaging metadata: enforces the interpreter floor (requires-python)
+# that requirements.txt can only state as a comment. `pip install .`
+# refuses Python < 3.11 because of it. Runtime pins stay in
+# requirements.txt (the frozen build installs from there); this file
+# carries no dependency list on purpose so the two can never drift.
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "strakalari"
+version = "0.1.0b3"  # keep in sync with strakalari/__init__.py::__version__ (PEP 440 spelling of 0.1.0-beta.3)
+description = "Strakalari - automated school absence excusing and food ordering (Flet desktop UI)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+classifiers = [
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+]
+
+[tool.setuptools.packages.find]
+include = ["strakalari*"]
+
+# Top-level main.py (the frozen-build entry point) is part of the source
+# tree, so `from main import main` in strakalari/__main__.py also works
+# for an installed copy, not just from a repo checkout.
+[tool.setuptools]
+py-modules = ["main"]
+
+# Lint: bug-finding rules only (pyflakes + bugbear), no style rules — the
+# codebase keeps its own formatting. CI runs `ruff check .`; run it
+# locally before pushing (pin in requirements-dev.txt).
+[tool.ruff]
+target-version = "py311"
+extend-exclude = [".venv-build", "build", "dist"]
+
+[tool.ruff.lint]
+select = ["F", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests may assert "some failure" when only the side effect is checked.
+"tests/**" = ["B017"]

@@ -1,0 +1,8 @@
+# Dev-only test dependency (kept out of requirements.txt so end-user
+# installs stay lean). CI installs this file (it pulls requirements.txt
+# transitively, so pins stay in one place);
+# local runs: python3 -m pip install -r requirements-dev.txt
+-r requirements.txt
+pytest==9.1.1
+# Lint (bug-finding rules; config in pyproject.toml [tool.ruff]).
+ruff==0.16.9

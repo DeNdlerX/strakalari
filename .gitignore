@@ -1,0 +1,58 @@
+# Virtual Environments
+.venv/
+.venv-build/
+venv/
+ENV/
+
+# Python byte-code and cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# User configurations, active credentials & secret keys
+secret.key
+*.key
+config.json
+config.json.bak
+*.bak
+strava_blacklist.json
+
+# Runtime tracking & log files
+*.log
+log.txt
+already_excused_lessons.json
+data_cache.json
+update_cache.json
+automation_history.jsonl
+automation_history.jsonl.old
+*.lock
+
+# Local scraped Bakalari pages (personal data, never commit)
+htmls/
+
+# Build and distribution outputs
+dist/
+build/
+browsers/
+output/
+deb_pkg/
+*.spec.bak
+*.zip
+*.tar.gz
+*.deb
+*.dmg
+
+# Environment variables
+.env
+.env.*
+
+# IDE / OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
+

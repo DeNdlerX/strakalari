@@ -1,0 +1,339 @@
+name: Build & Release Strakalari
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Tag to release, e.g. v0.2.0 or v0.2.0-beta.1 (created on the selected commit). Leave empty for a build-only run.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  # Single source of truth for the version and release kind:
+  #   tag v1.2.3        -> version 1.2.3, full release (published as a draft to review)
+  #   tag v1.2.3-beta.1 -> version 1.2.3-beta.1, pre-release (published at once;
+  #                        the in-app "beta" update channel picks it up)
+  #   no tag            -> strakalari.__version__, build-only (artifacts, no release)
+  meta:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+      release: ${{ steps.v.outputs.release }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Resolve version
+        id: v
+        env:
+          INPUT_TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          TAG=""
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          elif [[ -n "${INPUT_TAG// /}" ]]; then
+            TAG="${INPUT_TAG// /}"
+            [[ "$TAG" == v* ]] || TAG="v$TAG"
+          fi
+          if [[ -n "$TAG" ]]; then
+            if ! [[ "$TAG" =~ ^v[0-9]+(\.[0-9]+)*(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::Invalid release tag '$TAG' (expected v1.2.3 or v1.2.3-beta.1)"
+              exit 1
+            fi
+            VER="${TAG#v}"
+            RELEASE=true
+          else
+            VER=$(python3 -c "import re; print(re.search(r'__version__\s*=\s*\"([^\"]+)\"', open('strakalari/__init__.py').read()).group(1))")
+            RELEASE=false
+          fi
+          # Anything after '-' (beta.1, rc.2, ...) marks a pre-release.
+          if [[ "$VER" == *-* ]]; then PRE=true; else PRE=false; fi
+          {
+            echo "version=$VER"
+            echo "tag=$TAG"
+            echo "release=$RELEASE"
+            echo "prerelease=$PRE"
+          } >> "$GITHUB_OUTPUT"
+          echo "Version: $VER | tag: ${TAG:-<none>} | release: $RELEASE | prerelease: $PRE"
+
+  build-windows:
+    name: Build Windows (Installer)
+    needs: meta
+    runs-on: windows-latest
+    env:
+      STRAKALARI_VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Stamp version into app
+        shell: python
+        run: |
+          import os, re
+          ver = os.environ.get("STRAKALARI_VERSION", "0.0.1")
+          p = "strakalari/__init__.py"
+          s = open(p, encoding="utf-8").read()
+          s = re.sub(r'__version__\s*=\s*"[^"]+"', f'__version__ = "{ver}"', s)
+          open(p, "w", encoding="utf-8").write(s)
+          print("stamped:", ver)
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller==6.22.2 pytest==9.1.1
+
+      - name: Run automated test suite
+        run: |
+          python -m pytest tests/ -v
+
+      - name: Install Inno Setup compiler
+        run: |
+          choco install innosetup --no-progress
+
+      - name: Build binaries with PyInstaller
+        run: |
+          pyinstaller strakalari.spec
+
+      - name: Compile Windows Installer with Inno Setup
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion="${{ needs.meta.outputs.version }}" installer.iss
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-binaries
+          path: |
+            output/Strakalari-Setup-*.exe
+          retention-days: 14
+
+  build-linux:
+    name: Build Linux (AppImage)
+    needs: meta
+    runs-on: ubuntu-latest
+    env:
+      STRAKALARI_VERSION: ${{ needs.meta.outputs.version }}
+      VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Stamp version into app
+        shell: python
+        run: |
+          import os, re
+          ver = os.environ.get("STRAKALARI_VERSION", "0.0.1")
+          p = "strakalari/__init__.py"
+          s = open(p, encoding="utf-8").read()
+          s = re.sub(r'__version__\s*=\s*"[^"]+"', f'__version__ = "{ver}"', s)
+          open(p, "w", encoding="utf-8").write(s)
+          print("stamped:", ver)
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller==6.22.2 pytest==9.1.1
+
+      - name: Run automated test suite
+        run: |
+          python -m pytest tests/ -v
+
+      - name: Build binaries with PyInstaller
+        run: |
+          pyinstaller strakalari.spec
+
+      - name: Build AppImage
+        run: |
+          set -e
+          VERSION="${VERSION:-0.0.1}"
+          echo "Building AppImage version $VERSION"
+          APPDIR=Strakalari.AppDir
+          rm -rf "$APPDIR"
+          mkdir -p "$APPDIR/usr/bin"
+          mkdir -p "$APPDIR/usr/share/applications"
+          mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+
+          cp dist/Strakalari "$APPDIR/usr/bin/strakalari"
+          chmod +x "$APPDIR/usr/bin/strakalari"
+          cp assets/logo-256.png "$APPDIR/strakalari.png"
+          cp assets/logo-256.png "$APPDIR/.DirIcon"
+          cp assets/logo-256.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/strakalari.png"
+
+          cat << 'EOF' > "$APPDIR/strakalari.desktop"
+          [Desktop Entry]
+          Type=Application
+          Name=Strakalari
+          Comment=Automated school absence excusing and food ordering
+          Exec=strakalari
+          Icon=strakalari
+          Terminal=false
+          Categories=Utility;Education;
+          EOF
+
+          cat << 'EOF' > "$APPDIR/AppRun"
+          #!/bin/sh
+          SELF=$(readlink -f "$0")
+          HERE=${SELF%/*}
+          exec "$HERE/usr/bin/strakalari" "$@"
+          EOF
+          chmod +x "$APPDIR/AppRun"
+
+          wget -q -O appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run "$APPDIR" "Strakalari-${VERSION}-x86_64.AppImage"
+          chmod +x Strakalari-*.AppImage
+          ls -lh Strakalari-*.AppImage
+
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: linux-binaries
+          path: |
+            Strakalari-*-x86_64.AppImage
+          retention-days: 14
+
+  build-macos:
+    name: Build macOS (.dmg)
+    needs: meta
+    runs-on: macos-latest
+    env:
+      STRAKALARI_VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Stamp version into app
+        shell: python
+        run: |
+          import os, re
+          ver = os.environ.get("STRAKALARI_VERSION", "0.0.1")
+          p = "strakalari/__init__.py"
+          s = open(p, encoding="utf-8").read()
+          s = re.sub(r'__version__\s*=\s*"[^"]+"', f'__version__ = "{ver}"', s)
+          open(p, "w", encoding="utf-8").write(s)
+          print("stamped:", ver)
+
+      - name: Free disk space (macOS runners are nearly full)
+        run: |
+          df -h /
+          # Biggest safe hogs: Android SDK (~10 GB), simulator data, caches.
+          # Xcode.app itself is left alone (codesign/hdiutil live with it).
+          sudo rm -rf /Users/runner/Library/Android || true
+          sudo rm -rf /Library/Developer/CoreSimulator/Caches || true
+          rm -rf ~/Library/Caches/* ~/.cache/pip || true
+          df -h /
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller==6.22.2 pytest==9.1.1
+
+      - name: Run automated test suite
+        run: |
+          python -m pytest tests/ -v
+
+      - name: Build binaries with PyInstaller
+        run: |
+          pyinstaller strakalari.spec
+
+      - name: Ad-hoc sign and create macOS .dmg Installer
+        run: |
+          # Drop PyInstaller intermediates (~0.5 GB, two analyses) — dist/ is complete.
+          rm -rf build
+          # Onedir build: dist/Strakalari/ is the COLLECT staging copy of
+          # what dist/Strakalari.app already contains.
+          rm -rf dist/Strakalari
+          # Ad-hoc sign bundle
+          codesign --force --deep --sign - dist/Strakalari.app
+
+          # Build .dmg disk image with Applications shortcut.
+          # mv, not cp: Strakalari.app ships only inside the dmg, no second copy needed.
+          mkdir -p dist/dmg
+          mv dist/Strakalari.app dist/dmg/
+          ln -s /Applications dist/dmg/Applications
+          df -h /
+          echo "--- staging content (diagnosing hdiutil ENOSPC) ---"
+          du -sh dist/dmg
+          du -sh dist/dmg/* | head
+          # Explicit image size: hdiutil's auto-sizing underestimates this payload
+          # and the copy then dies with ENOSPC *inside* the image. Measured staging
+          # size + 512 MB margin.
+          APP_MB=$(du -sm dist/dmg | cut -f1)
+          SIZE_MB=$((APP_MB + 512))
+          echo "Creating ${SIZE_MB}m image for ${APP_MB}m of staging"
+          hdiutil create -volname "Strakalari" -srcfolder dist/dmg -ov -format UDZO -size ${SIZE_MB}m "Strakalari-${STRAKALARI_VERSION}.dmg"
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: macos-binaries
+          path: |
+            Strakalari-*.dmg
+          retention-days: 14
+
+  # One job publishes all assets together: three parallel build jobs each
+  # creating/updating the release raced into duplicate drafts.
+  release:
+    name: Publish GitHub Release
+    needs: [meta, build-windows, build-linux, build-macos]
+    if: needs.meta.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: List release assets
+        run: ls -lh release-assets
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.meta.outputs.tag }}
+          # Only used when the tag does not exist yet (manual run with release_tag).
+          target_commitish: ${{ github.sha }}
+          name: ${{ needs.meta.outputs.prerelease == 'true' && format('Strakaláři {0} (beta)', needs.meta.outputs.version) || format('Strakaláři {0}', needs.meta.outputs.version) }}
+          prerelease: ${{ needs.meta.outputs.prerelease == 'true' }}
+          # Betas go out at once (opt-in channel); stable releases wait as a
+          # draft until published by hand.
+          draft: ${{ needs.meta.outputs.prerelease != 'true' }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            release-assets/Strakalari-Setup-*.exe
+            release-assets/Strakalari-*-x86_64.AppImage
+            release-assets/Strakalari-*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

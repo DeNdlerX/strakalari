@@ -1,0 +1,38 @@
+# Pinned exactly (CI resolves fresh on every run — a floating range can ship
+# an untested combo that breaks the frozen build). Versions below are the
+# set the suite passes on; bump them deliberately, then re-run tests + a
+# local frozen smoke test before committing.
+# Supported interpreters: 3.11–3.12 (see .github/workflows: tests run
+# 3.11/3.12, builds pin 3.11). Floor is enforced by pyproject.toml
+# (requires-python >=3.11); this comment is only the human pointer:
+# do NOT run on <3.11.
+playwright==1.62.0
+cryptography==50.0.1
+# Keeps the password-encryption key in the OS credential store (Windows
+# Credential Manager / macOS Keychain / Secret Service) instead of a
+# secret.key file next to config.json. Falls back to the file when no
+# store is available.
+keyring==25.7.0
+# Explicit (not just transitive via requests): the frozen Windows build
+# bundles certifi's CA store and the runtime hook points SSL_CERT_FILE at
+# it — without this, stdlib urllib HTTPS fails with CERTIFICATE_VERIFY_FAILED.
+certifi==2026.6.17
+Pillow==12.3.0
+# New Flet UI (strakalari/flet_ui) additionally needs:
+# Pinned exactly: flet + flet-desktop + flet-web must share one version
+# (runtime enforces the match) and CI resolves fresh on every run, so a
+# floating range can ship a mismatched trio that crashes on launch.
+flet==0.86.5
+# Must stay in lockstep with flet (exact version match is enforced at
+# runtime). flet-desktop is the desktop-window runtime required by
+# ft.app(view=FLET_APP); flet-web backs --view web. Both must be installed
+# where the PyInstaller bundle is built, or the frozen app crashes on
+# launch trying to pip-install them (no pip inside the bundle).
+flet-desktop==0.86.5
+flet-web==0.86.5
+pystray==0.19.5
+plyer==2.1.0
+# Packaging / bundling additionally needs:
+pyinstaller==6.22.2
+# Test suite additionally needs pytest (single pin source:
+# requirements-dev.txt; CI installs it, which pulls this file too).

@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Stín symbolů -->
+    <filter id="icon-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+
+    <!-- Hluboký stín pod inkoustovou kaluží -->
+    <filter id="ink-shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+
+    <!-- Přechod pro tekutý inkoust s fialovým podtónem -->
+    <linearGradient id="ink-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#240738"/>
+      <stop offset="40%" stop-color="#12031c"/>
+      <stop offset="100%" stop-color="#05010a"/>
+    </linearGradient>
+
+    <!-- Jemný odlesk mokrého inkoustu -->
+    <linearGradient id="ink-gloss" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.05"/>
+    </linearGradient>
+  </defs>
+
+  <!-- PŮVODNÍ ŠESTIÚHELNÍK -->
+  <g id="hexagon">
+    <polygon points="256,256 56.8,141 256,26" fill="#E40078"/>
+    <polygon points="256,256 256,26 455.2,141" fill="#740094"/>
+    <polygon points="256,256 455.2,141 455.2,371" fill="#009FE3"/>
+    <polygon points="256,256 455.2,371 256,486" fill="#35A935"/>
+    <polygon points="256,256 256,486 56.8,371" fill="#F58220"/>
+    <polygon points="256,256 56.8,371 56.8,141" fill="#E51D24"/>
+  </g>
+
+  <!-- SYMBOLY -->
+  <g id="symbols" filter="url(#icon-shadow)">
+    <!-- Vidlička (vlevo) - zcela čistá a nepoškozená -->
+    <path fill="#FFFFFF" d="
+      M 205,395 C 196,395 194,386 194,374 L 198,272 C 198,250 174,240 174,216 L 174,142
+      A 6,6 0 0 1 186,142 L 186,210 A 6,6 0 0 0 198,210 L 198,138
+      A 6,6 0 0 1 210,138 L 210,210 A 6,6 0 0 0 222,210 L 222,142
+      A 6,6 0 0 1 234,142 L 234,216 C 234,240 210,250 210,272 L 214,374
+      C 214,386 212,395 205,395 Z"/>
+
+    <!-- Tužka (vpravo) -->
+    <path fill="#FFFFFF" d="M 285,160 L 325,160 L 325,345 L 285,345 Z"/>
+    <polygon points="285,345 325,345 305,395" fill="#FFFFFF"/>
+    <line x1="305" y1="168" x2="305" y2="335" stroke="#740094" stroke-width="3" stroke-linecap="round" opacity="0.4"/>
+    <rect x="285" y="136" width="40" height="16" rx="4" fill="#FFFFFF"/>
+  </g>
+
+  <!-- ======================= INKOUSTOVÝ EFEKT ======================= -->
+  <g id="ink-effect">
+    <!-- Inkoust pokrývající hrot tužky a vzlínající nahoru po drážce -->
+    <path d="M 285,346 C 295,342 315,350 325,345 L 305,395 Z" fill="#0d0317"/>
+
+    <!-- HLAVNÍ KALUŽ – posunutá nahoru, rozlévá se po spodku loga a nepřesahuje dolů -->
+    <path filter="url(#ink-shadow)" fill="url(#ink-gradient)" d="
+      M 305,395
+      C 320,392 338,400 354,395
+      C 372,389 388,401 405,412
+      C 420,422 422,438 410,450
+      C 396,462 376,454 360,464
+      C 346,473 334,482 318,478
+      C 304,474 294,463 280,467
+      C 268,471 262,482 254,482
+      C 246,482 238,473 226,470
+      C 212,467 200,477 186,470
+      C 172,463 166,448 172,434
+      C 178,419 196,418 208,412
+      C 224,404 238,410 252,404
+      C 266,398 280,404 296,398
+      Z
+    "/>
+
+    <!-- Pár přirozených drobných kapek kolem kaluže přímo na ploše -->
+    <circle cx="426" cy="420" r="4.5" fill="#0d0317"/>
+    <circle cx="434" cy="412" r="2.5" fill="#0d0317"/>
+    <circle cx="162" cy="442" r="4" fill="#0d0317"/>
+    <circle cx="256" cy="488" r="3" fill="#05010a"/>
+
+    <!-- Měkké odlesky na povrchu kaluže (efekt tekutiny) -->
+    <path d="M 312,402 C 335,398 370,402 396,416" stroke="url(#ink-gloss)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <path d="M 185,438 C 178,450 192,460 210,460" stroke="#ffffff" stroke-opacity="0.25" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <path d="M 360,458 C 348,468 335,472 320,470" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <ellipse cx="304" cy="393" rx="2" ry="3.5" transform="rotate(-15 304 393)" fill="#ffffff" opacity="0.45"/>
+  </g>
+</svg>

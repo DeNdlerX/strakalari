@@ -1,0 +1,1 @@
+# Strakalari automated test suite
