@@ -57,6 +57,41 @@ def base_excuse(excuse: dict | None) -> dict:
     return {k: v for k, v in (excuse or {}).items() if k in STORED_KEYS}
 
 
+#: Only absences this recent are ever excused. Komens → Odeslané lists the
+#: last month of sent messages by default, so older excuses cannot be
+#: checked for duplicates — older absences are history, not tasks.
+EXCUSE_WINDOW_DAYS = 30
+
+
+def excuse_window_start(today: date, outbox_from: date | None = None) -> date:
+    """First day an absence may still be excused.
+
+    ``outbox_from`` is the start of the range Odeslané actually showed;
+    when it is later than the default month, the narrower range wins.
+    """
+    start = today - timedelta(days=EXCUSE_WINDOW_DAYS)
+    if isinstance(outbox_from, date) and start < outbox_from <= today:
+        return outbox_from
+    return start
+
+
+HOUR_TYPES = ("income", "soon", "days and hours")
+
+
+def history_entries(excuse: dict | None) -> list[dict]:
+    """History rows recording one sent excuse.
+
+    Bakaláři renders late arrivals, early leaves and short absences as
+    the same hour-range message, so the web sync can never tell them
+    apart: an hour-based excuse is stored in all three shapes, locally
+    exactly as the web sync stores it, so both sides always agree.
+    """
+    entry = base_excuse(normalize_history_item(excuse))
+    if str(entry.get("type", "")).lower() not in HOUR_TYPES:
+        return [entry]
+    return [{**entry, "type": kind} for kind in HOUR_TYPES]
+
+
 def merge_sent_excuses(history: list, discovered: list) -> tuple[list, int]:
     """Merges web-scraped sent excuses into a history list.
 

@@ -308,9 +308,11 @@ def test_extract_stable_timetable_scrapes_perm_view():
             pass
 
         def content(self):
-            return html
+            # The actual week until the perm switch was clicked.
+            return html if self.clicked else "<div>actual week</div>"
 
     page = MockPage()
+    page.clicked = []
     bm = type("MockBM", (), {"page": page})()
     client = BakalariClient(bm, {}, logger=None)
     assert client.extract_stable_timetable() is True
@@ -323,3 +325,54 @@ def test_extract_stable_timetable_scrapes_perm_view():
     # ... and the scraped view feeds the baseline with weekday names.
     baseline = client.update_stable_baseline()
     assert baseline[(0, 2)].teacher == "Dvořák"
+
+
+def test_extract_stable_timetable_rejects_stale_actual_week():
+    """The perm reply not landing yet must not turn a real week into "stable"."""
+    from strakalari.core.bakalari_client import BakalariClient
+
+    week_html = (
+        "<div data-detail='{\"teacher\":\"Dvořák\","
+        "\"subjecttext\":\"F\",\"room\":\"F11\",\"day\":\"21.09.2026\","
+        "\"time\":\"2 (8:55 - 9:40)\"}'></div>"
+    )
+
+    class MockLoc:
+        first = property(lambda self: self)
+
+        def wait_for(self, **kwargs):
+            pass
+
+        def click(self, **kwargs):
+            pass
+
+    class MockPage:
+        def locator(self, selector):
+            return MockLoc()
+
+        def get_by_text(self, *args, **kwargs):
+            return MockLoc()
+
+        def wait_for_function(self, *args, **kwargs):
+            pass
+
+        def wait_for_timeout(self, *args, **kwargs):
+            pass
+
+        def content(self):
+            return week_html
+
+    bm = type("MockBM", (), {"page": MockPage()})()
+    client = BakalariClient(bm, {}, logger=None)
+    client._sleep_s = lambda s: None
+    client.extract_timetable_data(week_html)
+    # Page never changed after the click: no stable data at all.
+    assert client.extract_stable_timetable() is False
+    assert client.stableTimetableData == {}
+
+    # Page changed, but still only the already-captured actual week.
+    client.stableTimetableData = {}
+    client.extract_timetable_data(week_html, target=client.stableTimetableData)
+    assert client._stable_is_actual_week() is True
+    client.stableTimetableData = {"Pondělí": client.timetableData["21.09.2026"]}
+    assert client._stable_is_actual_week() is False

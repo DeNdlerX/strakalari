@@ -8,8 +8,9 @@ import random
 from .config import _is_demo_history_item
 from .excuse_history import (
     STORED_KEYS,
-    base_excuse,
     excuse_covered,
+    excuse_window_start,
+    history_entries,
     history_lock,
     merge_sent_excuses,
     normalize_history_item,
@@ -766,7 +767,8 @@ class Strakalari:
             if not success:
                 self.writeLog(f"Warning: excuse NOT sent (the form did not confirm): {excuse}")
                 return "failed"
-            history.append(base_excuse(normalize_history_item(excuse)))
+            history.extend(e for e in history_entries(excuse)
+                           if e not in history)
             try:
                 atomic_write_json(history_filepath, history, encoding=self.encoding)
                 self.writeLog("Successfully excused and saved to disk.")
@@ -792,9 +794,12 @@ class Strakalari:
         # Lessons the user ignored in the UI ("excused elsewhere") must
         # never be auto-sent: a second excuse cannot be taken back.
         ignored = (getattr(self, "config_data", None) or {}).get("ignored_excuses", [])
+        client = getattr(self, "bakalari_client", None)
         pending = Strakalari.generate_excuses(
             self.timetableData, delay_days=self.excuse_delay_days,
-            ignored=ignored if isinstance(ignored, list) else [])
+            ignored=ignored if isinstance(ignored, list) else [],
+            not_before=excuse_window_start(
+                datetime.now().date(), getattr(client, "sentExcuses_from", None)))
         for excuse in pending:
             if self._is_cancelled():
                 self.writeLog("Excusing cancelled by the user.")
@@ -844,8 +849,12 @@ class Strakalari:
         return Strakalari._pick_template(templates, self.default_excuse_selection)
 
     @staticmethod
-    def generate_excuses(raw_data, delay_days=2, override_today=None, ignored=None):
+    def generate_excuses(raw_data, delay_days=2, override_today=None, ignored=None,
+                         not_before=None):
         """Pending excuses for unexcused absences older than ``delay_days``.
+
+        ``not_before`` (a date) drops older days entirely: they lie outside
+        the excuse window (see ``excuse_history.excuse_window_start``).
 
         ``ignored`` holds UI ignore keys (``YYYY-MM-DD|period|subject``)
         or ``(date, period)`` tuples: those lessons count as excused
@@ -870,6 +879,8 @@ class Strakalari:
                 continue
             parsed_day = parsed_date.date() if isinstance(parsed_date, datetime) else parsed_date
             if parsed_day > cutoff_date:
+                continue
+            if not_before is not None and parsed_day < not_before:
                 continue
 
             day_lessons = {}

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Callable, Iterable, Iterator
 
 from .error_report import UserError
@@ -206,6 +206,77 @@ def _go_back_weeks(app: Any, config_data: dict) -> int:
         return 4
 
 
+#: Data-cache key of the timetable history: which past weeks of the running
+#: school year were fetched once ({"school_year_start": iso, "weeks": [iso
+#: Mondays]}). Those weeks are history — never re-fetched, never excused.
+TIMETABLE_HISTORY_KEY = "timetable_history"
+
+#: Data-cache key: first day of the range Komens → Odeslané listed on the
+#: last sync (ISO date) — bounds the excuse window in the UI.
+SENT_EXCUSES_FROM_KEY = "sent_excuses_from"
+
+
+def _school_year_start(today: date) -> date:
+    from .planner import school_year_terms
+
+    return school_year_terms(today)[0][1]
+
+
+def _history_done_weeks(year_start: date) -> set:
+    """Mondays already in the timetable history of this school year."""
+    from .cache import load_data_cache
+
+    try:
+        stored = load_data_cache().get(TIMETABLE_HISTORY_KEY) or {}
+    except Exception:
+        stored = {}
+    if not isinstance(stored, dict) or stored.get("school_year_start") != year_start.isoformat():
+        return set()  # first run, or a new school year
+    done = set()
+    for raw in stored.get("weeks") or []:
+        try:
+            done.add(date.fromisoformat(str(raw)))
+        except ValueError:
+            continue
+    return done
+
+
+def _missing_history_weeks(app: Any, cfg: dict, today: date, done: set) -> list:
+    """Past school-year Mondays neither in the history nor in the regular window."""
+    from .bakalari_common import week_offsets
+
+    year_start = _school_year_start(today)
+    this_monday = today - timedelta(days=today.weekday())
+    forward = getattr(app, "go_forward_weeks", None)
+    try:
+        forward = int(cfg.get("go_forward_weeks", 1) if forward is None else forward)
+    except (TypeError, ValueError):
+        forward = 1
+    regular = {this_monday + timedelta(weeks=off)
+               for off in week_offsets(_go_back_weeks(app, cfg), forward)}
+    monday = year_start - timedelta(days=year_start.weekday())
+    missing = []
+    while monday < this_monday:
+        if monday not in regular and monday not in done:
+            missing.append(monday)
+        monday += timedelta(weeks=1)
+    return missing
+
+
+def _record_history_weeks(app: Any, fresh: dict, today: date, done: set) -> None:
+    """Adds the past weeks this run loaded to the stored timetable history."""
+    client = getattr(app, "bakalari_client", None)
+    year_start = _school_year_start(today)
+    first_monday = year_start - timedelta(days=year_start.weekday())
+    this_monday = today - timedelta(days=today.weekday())
+    loaded = {m for m in (getattr(client, "timetable_loaded_weeks", None) or ())
+              if isinstance(m, date) and first_monday <= m < this_monday}
+    fresh[TIMETABLE_HISTORY_KEY] = {
+        "school_year_start": year_start.isoformat(),
+        "weeks": sorted(m.isoformat() for m in done | loaded),
+    }
+
+
 def run_refresh(
     app: Any,
     config_data: dict | None,
@@ -278,7 +349,10 @@ def _persist(app: Any, cfg: dict, fresh: dict, started: datetime) -> None:
             previous = load_data_cache().get("timetable")
         except Exception:
             previous = None
-        window_start = started.date() - timedelta(days=_go_back_weeks(app, cfg) * 7 + 7)
+        window_start = min(
+            started.date() - timedelta(days=_go_back_weeks(app, cfg) * 7 + 7),
+            # The running school year stays: it is the timetable history.
+            _school_year_start(started.date()))
         fresh["timetable"] = merge_timetable_days(previous, fresh["timetable"], window_start)
     if fresh:
         save_data_cache(fresh)
@@ -291,6 +365,16 @@ def _fetch_phases(app, scope, has_bak, has_strava, fresh, result, _emit, _check_
             _emit("bakalari_skipped_log")
         else:
             _check_cancel()
+            today = datetime.now().date()
+            year_start = _school_year_start(today)
+            done = _history_done_weeks(year_start)
+            missing = _missing_history_weeks(app, getattr(app, "config_data", None) or {},
+                                             today, done)
+            client = getattr(app, "bakalari_client", None)
+            if client is not None:
+                client.history_weeks = missing
+            if missing:
+                _emit("timetable_history_log", n=len(missing))
             _emit("fetching_bakalari")
             app.fetchBakalariData()
             payload = _bakalari_payload(app)
@@ -301,6 +385,7 @@ def _fetch_phases(app, scope, has_bak, has_strava, fresh, result, _emit, _check_
                 fresh.update(payload)
                 result.bakalari_fetched = True
                 result.subjects = len(payload.get("absence") or {})
+                _record_history_weeks(app, fresh, today, done)
                 _emit("bakalari_done_log", n=result.subjects)
             else:
                 _emit("refresh_empty_warn")
@@ -310,6 +395,9 @@ def _fetch_phases(app, scope, has_bak, has_strava, fresh, result, _emit, _check_
                 raise
             except Exception as exc:
                 _emit("excuse_sync_failed", err=_first_line(exc))
+            outbox_from = getattr(client, "sentExcuses_from", None)
+            if isinstance(outbox_from, date):
+                fresh[SENT_EXCUSES_FROM_KEY] = outbox_from.isoformat()
 
     # -- 2. Strava --------------------------------------------------------
     if scope in ("all", "strava"):

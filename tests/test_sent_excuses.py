@@ -150,3 +150,49 @@ def test_sync_treats_none_as_unknown():
     app.config_data = {}
     app._load_history = lambda: ([], "nowhere.json")
     assert app.sync_web_excuses_to_history() == 0
+
+
+# -- real Bakaláři markup (Komens → Odeslané detail, anonymized) ---------------
+
+from pathlib import Path
+
+_FIXTURE = Path(__file__).parent / "fixtures" / "komens_sent_detail_hours.html"
+
+
+def _real_detail() -> str:
+    return _FIXTURE.read_text(encoding="utf-8")
+
+
+class TestRealDetailMarkup:
+    def test_hour_excuse_with_clock_times(self):
+        # "Od: 3.9.2026 10:05 (3. hod.)" spread over ~800 chars of markup,
+        # ~2500 chars after the header — the old HTML regex found nothing.
+        assert extract_sent_excuses(_real_detail()) == [
+            {"type": t, "starting_day": "03.09.2026", "ending_day": "03.09.2026",
+             "starting_lesson": 3, "ending_lesson": 3}
+            for t in ("income", "soon", "days and hours")
+        ]
+
+    def test_whole_day_excuse(self):
+        html = _real_detail()
+        for time in ("10:05", "10:50"):
+            html = html.replace(f'<i class="ico20-data-hodiny bk-font-20"></i>{time}', "")
+        html = html.replace('<span class="margin-left-5">(3. hod.)</span>', "")
+        html = html.replace("3.9.2026 </span>", "25.9.2026 </span>")
+        assert extract_sent_excuses(html) == [{
+            "type": "pure days", "starting_day": "25.09.2026", "ending_day": "25.09.2026"}]
+
+    def test_clock_times_without_lessons_learn_nothing(self):
+        # Unknown lessons must never be recorded as a whole excused day.
+        html = _real_detail().replace('<span class="margin-left-5">(3. hod.)</span>', "")
+        assert extract_sent_excuses(html) == []
+
+    def test_template_alone_is_not_an_excuse(self):
+        template = ('<table data-testid="komens-message-detail-header"><tr '
+                    'data-testid="komens-message-detail-excuse-wrapper"><td>'
+                    'Od:<span> {{:DateFrom}} </span>{{:TimeFrom}}'
+                    '<span>({{:HourFrom.Caption}}. hod.)</span>'
+                    'Do:<span> {{:DateTo}} </span></td></tr></table>')
+        assert extract_sent_excuses(template) == []
+        # ...and never hides the rendered detail that follows it.
+        assert extract_sent_excuses(template + _real_detail())[0]["starting_lesson"] == 3

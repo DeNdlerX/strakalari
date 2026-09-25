@@ -90,6 +90,14 @@ class BakalariClient(TimetableMixin, DataMixin, ExcuseFormMixin):
         self.sentExcuses = []
         # Last sent-excuse sync failure ("") = fresh/OK; non-empty = unknown.
         self.sentExcuses_error = ""
+        # First day of the range Odeslané showed on the last sync (the
+        # web defaults to one month) — bounds the excuse window. None = unknown.
+        self.sentExcuses_from = None
+        # Past school-year weeks (Mondays) to backfill into the timetable
+        # history on top of the regular window — set by the refresh.
+        self.history_weeks = []
+        # Mondays of the weeks the last timetable scrape really loaded.
+        self.timetable_loaded_weeks = set()
         # Learned stable timetable (SlotBaseline per slot) + actual-vs-stable
         # diffs for the loaded weeks — filled by update_stable_baseline()
         # during fetch_data() so the run itself compares against stable.

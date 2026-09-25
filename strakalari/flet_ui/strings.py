@@ -975,6 +975,11 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Stable timetable: {slots} slots, {changes} changes vs stable.",
     },
     "bakalari_done_log": {"cs": "Bakaláři hotovi ({n} předmětů).", "en": "Bakalari done ({n} subjects)."},
+    "planner_suggestion": {"cs": "Tip plánovače", "en": "Planner suggestion"},
+    "timetable_history_log": {
+        "cs": "Dohledávám historii rozvrhu tohoto školního roku ({n} týdnů)…",
+        "en": "Backfilling this school year's timetable history ({n} weeks)…",
+    },
     "bakalari_skipped_log": {
         "cs": "Bakaláři přeskočeni — není vyplněné přihlášení.",
         "en": "Bakalari skipped — no login configured.",

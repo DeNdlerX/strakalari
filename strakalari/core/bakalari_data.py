@@ -1,5 +1,7 @@
 """Bakaláři data fetching: marks, absence, sent excuses, subjects, substitutions, stable baseline."""
 
+import re
+
 from .extractors.bakalari import (
     extract_absence_details,
     extract_absence_percentages,
@@ -232,6 +234,7 @@ class DataMixin:
                 total = rows.count()
             except Exception:
                 total = 0
+            self.sentExcuses_from = self._outbox_period_start()
             if not total:
                 # Slow link: the list may simply not have arrived yet.
                 # Wait out the same page once more and recount — never
@@ -268,20 +271,27 @@ class DataMixin:
                 if self._cancelled():
                     raise InterruptedError("Cancelled by user.")
                 try:
+                    row = rows.nth(idx)
+                    msg_id = row.get_attribute("data-idmsg")
+                    if not msg_id:
+                        self.log(f"Warning: sent excuse #{idx + 1} has no message id, skipped.")
+                        continue
                     # Single attempt: opening the detail IS a navigation —
                     # retrying a dispatched-but-slow click would reopen the
                     # same message again (visible refresh loop on one row).
-                    rows.nth(idx).click(timeout=self._nav_ms, once=True)
-                    try:
-                        self.page.wait_for_function(
-                            "() => document.body && document.body.innerHTML.includes("
-                            "'komens-message-detail-header')",
-                            timeout=self._nav_ms,
-                        )
-                    except Exception:
-                        pass
+                    row.click(timeout=self._nav_ms, once=True)
+                    # Wait for THIS message's detail: the page always holds
+                    # the detail template (same testids), and the previous
+                    # message stays rendered until the AJAX reply lands —
+                    # a generic wait would read a stale or empty detail.
+                    self.page.locator(
+                        f'#message_detail #komens_bar_message[data-idmsg="{msg_id}"]'
+                    ).first.wait_for(state="attached", timeout=self._nav_ms)
                     self._sleep_s(0.2)
-                    sources.append(str(self.page.content()))
+                    sources.append(str(
+                        self.page.locator("#message_detail").first.inner_html()))
+                except InterruptedError:
+                    raise
                 except Exception as e:
                     self.log(f"Warning: could not open sent excuse #{idx + 1}: {e}")
                     continue
@@ -316,6 +326,28 @@ class DataMixin:
             self.sentExcuses_error = f"{type(e).__name__}: {e}".splitlines()[0][:200]
             self.log(f"Could not sync sent excuses: {e} — will retry next time.")
             return None
+
+    def _outbox_period_start(self):
+        """First day of the period Odeslané lists ("26.8.2026 - 25.9.2026"), or None."""
+        from .models import parse_cz_date
+
+        try:
+            label = str(self.page.locator("#cphmain_obdobiLabel").first.inner_text(
+                timeout=self._element_ms))
+        except InterruptedError:
+            raise
+        except Exception:
+            return None
+        found = re.findall(r"\d{1,2}\s*\.\s*\d{1,2}\s*\.\s*\d{4}", label)
+        if not found:
+            return None
+        try:
+            start = parse_cz_date(re.sub(r"\s+", "", found[0]))
+        except Exception:
+            return None
+        if start is not None:
+            self.log(f"Komens → Odeslané lists {label.strip()}.")
+        return start
 
     def fetch_subject_directory(self) -> dict:
         """Fetches the school-official subject directory.

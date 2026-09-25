@@ -34,6 +34,15 @@ class TimetableMixin:
 
         current_week = datetime.today().date()
         offsets = week_offsets(self.go_back_weeks, self.go_forward_weeks)
+        # Timetable history: older school-year weeks the cache still lacks
+        # (all of them on the first run, none afterwards). Fetched after
+        # the regular window so a slow backfill never delays fresh data.
+        this_monday = current_week - timedelta(days=current_week.weekday())
+        for monday in sorted(getattr(self, "history_weeks", None) or (), reverse=True):
+            off = (monday - this_monday).days // 7
+            if off < 0 and off not in offsets:
+                offsets.append(off)
+        self.timetable_loaded_weeks = set()
         if not offsets:
             self.log("Warning: no timetable weeks to fetch (go_back_weeks=0, go_forward_weeks=0).")
         for off in offsets:
@@ -113,6 +122,7 @@ class TimetableMixin:
                          f"{min(shown):%d.%m.}–{max(shown):%d.%m.}), skipping it this run.")
                 continue
             self.timetable_sources.append(html)
+            self.timetable_loaded_weeks.add(monday)
 
     def extract_timetable_data(self, html_file_string: str, target: dict = None):
         """Parses a captured timetable page's ``data-detail`` lessons.
@@ -173,6 +183,28 @@ class TimetableMixin:
             for lesson in sorted(lessons, key=lesson_sort_key):
                 if lesson not in dest[day]:
                     dest[day].append(lesson)
+
+    def _stable_is_actual_week(self) -> bool:
+        """True when the "stable" scrape is really a loaded actual week.
+
+        The permanent view has no dates; a scrape whose every day is a
+        date already captured with the very same lessons is the previous
+        week's markup, not the template.
+        """
+        from .models import parse_cz_date
+
+        stable = self.stableTimetableData or {}
+        actual = getattr(self, "timetableData", None) or {}
+        if not stable:
+            return False
+        for day_key, lessons in stable.items():
+            if parse_cz_date(day_key) is None:
+                return False
+            if day_key not in actual:
+                return False
+            if any(lesson not in actual[day_key] for lesson in lessons or []):
+                return False
+        return True
 
     def _open_stable_view(self) -> str:
         """Opens the 'Stálý' (stable timetable) mode if present.
@@ -245,6 +277,15 @@ class TimetableMixin:
         if self._cancelled():
             raise InterruptedError("Cancelled by user.")
         self.stableTimetableData = {}
+        # The actual week stays rendered until the perm view's reply lands:
+        # its data-detail rows would otherwise be scraped as "stable" (a
+        # real week's substitutions and free slots flagged forever).
+        try:
+            before = str(self.page.content())
+        except InterruptedError:
+            raise
+        except Exception:
+            before = ""
         try:
             strategy = self._open_stable_view()
         except InterruptedError:
@@ -268,7 +309,7 @@ class TimetableMixin:
                 pass
         self._sleep_s(0.2)
         html = str(self.page.content())
-        if "data-detail" not in html:
+        if "data-detail" not in html or (before and html == before):
             self.log("Warning: stable timetable view looks empty, waiting a bit longer.")
             self._sleep_s(self._week_settle_s)
             html = str(self.page.content())
@@ -276,11 +317,20 @@ class TimetableMixin:
             self.log("Warning: stable timetable view is empty — "
                      "baseline will be learned from actual weeks.")
             return False
+        if before and html == before:
+            self.log("Warning: stable timetable view did not load (page unchanged) — "
+                     "baseline will be learned from actual weeks.")
+            return False
         self.extract_timetable_data(html, target=self.stableTimetableData)
         n_lessons = sum(len(v) for v in self.stableTimetableData.values())
         if not n_lessons:
             self.log("Warning: no stable lessons parsed — "
                      "baseline will be learned from actual weeks.")
+            return False
+        if self._stable_is_actual_week():
+            self.log("Warning: stable view still showed an actual week — "
+                     "baseline will be learned from actual weeks.")
+            self.stableTimetableData = {}
             return False
         self.log(f"Stable timetable scraped: {n_lessons} lessons "
                  f"in {len(self.stableTimetableData)} days.")
