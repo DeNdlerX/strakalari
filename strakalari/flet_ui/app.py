@@ -128,6 +128,7 @@ class Shell:
             ft.ThemeMode.LIGHT if tok.mode == "light" else ft.ThemeMode.DARK
         )
         self.rail.bgcolor = tok.surface
+        _apply_locale(self.page)
         try:
             pending = int(getattr(self.state, "pending_lunch_count", 0) or 0)
         except (TypeError, ValueError):
@@ -903,6 +904,28 @@ def _tolerate_stale_method_results(page: ft.Page) -> None:
     _handle._stale_tolerant = True  # type: ignore[attr-defined]
     try:
         session.handle_invoke_method_results = _handle
+    except Exception:
+        pass
+
+
+def _apply_locale(page: ft.Page) -> None:
+    """Pins Flutter's own texts (dialog buttons, tooltips, pickers) to the app language.
+
+    Left unset they follow the OS locale — English on a typical Linux
+    install even when the app itself is set to Czech.
+    """
+    from strakalari.core.i18n import get_language
+
+    lang = get_language()
+    current = ft.Locale("en", "US") if lang == "en" else ft.Locale("cs", "CZ")
+    cfg = getattr(page, "locale_configuration", None)
+    if cfg is not None and getattr(cfg, "current_locale", None) == current:
+        return
+    try:
+        page.locale_configuration = ft.LocaleConfiguration(
+            supported_locales=[ft.Locale("cs", "CZ"), ft.Locale("en", "US")],
+            current_locale=current,
+        )
     except Exception:
         pass
 

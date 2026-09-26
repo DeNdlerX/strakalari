@@ -168,6 +168,13 @@ def absence_kind(absence_type: Any, absence_text: Any) -> str:
     abs_type = _str(absence_type).lower()
     abs_text = _str(absence_text).lower()
     combined = f"{abs_text} {abs_type}"
+    # "Nezapočtená absence" (NotCounted) and "Školní akce" (School) are
+    # absences on paper only — never a task, never excused. Checked
+    # first: "nezapočtená absence" embeds the "absence" marker.
+    if (any(k in combined for k in ("nezapoč", "nezapoc", "notcounted", "not counted",
+                                    "školní akce", "skolni akce"))
+            or abs_type == "school"):
+        return ""
     # "Neomluveno"/"Unexcused" embed "omluv"/"excus" but mean the
     # opposite — is_excused_marker() handles the negations.
     excused = is_excused_marker(combined)

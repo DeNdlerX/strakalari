@@ -141,7 +141,7 @@ def test_timetable_build_reuses_body_across_renders(state):
 
 
 def _seed_week(state):
-    from datetime import timedelta
+    from datetime import datetime, timedelta
 
     base = __import__("datetime").date(2026, 9, 7)
     days = {}
@@ -152,7 +152,13 @@ def _seed_week(state):
                 {"subject": "Matematika", "time": "1 (8:00 - 8:45)",
                  "room": "U12", "teacher": "Novak"},
             ]
-    state.data = {"absence": {"Matematika": 5.0}, "timetable": days}
+    from strakalari.core.schedule import baseline_from_stable_timetable, baseline_to_dict
+
+    first = min(days, key=lambda k: datetime.strptime(k, "%d.%m.%Y"))
+    state.data = {"absence": {"Matematika": 5.0}, "timetable": days,
+                  "stable_baseline": baseline_to_dict(
+                      baseline_from_stable_timetable({first: days[first]})),
+                  "stable_baseline_source": "scraped"}
     state.demo_mode = False
 
 
@@ -171,7 +177,7 @@ def test_timetable_stable_view_builds(state):
     from strakalari.flet_ui.views import timetable as tt
 
     _seed_week(state)
-    assert state.stable_baseline(), "seed must learn a baseline for this test"
+    assert state.stable_baseline(), "seed must carry a scraped baseline"
     state.set_show_stable(True)
     try:
         assert tt.build(state, None) is not None

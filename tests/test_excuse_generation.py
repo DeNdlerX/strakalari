@@ -426,3 +426,20 @@ def test_generic_early_leave_is_auto_excused_like_ui():
     assert absence_kind("AbsentEarly", "Předčasný odchod") == "early"
     excuses = generate_excuses(raw, delay_days=1, override_today=datetime(2026, 9, 15))
     assert [(e["type"], e["starting_lesson"]) for e in excuses] == [("soon", 2)]
+
+
+def test_not_counted_absence_is_never_excused():
+    """"Nezapočtená absence" is an absence on paper only — ignore it."""
+    from strakalari.core.models import absence_kind
+
+    assert absence_kind("NotCounted", "Nezapočtená absence") == ""
+    assert absence_kind("", "Nezapočtená absence") == ""
+    assert absence_kind("School", "Školní akce") == ""
+    assert absence_kind("Absent", "Absence") == "absent"
+    raw = {"10.09.2026": [
+        {"teacher": "T", "subject": "M", "time": "1", "absencetext": "Nezapočtená absence",
+         "absenceType": "NotCounted"},
+        {"teacher": "T", "subject": "F", "time": "2", "absencetext": "Nezapočtená absence",
+         "absenceType": "NotCounted"},
+    ]}
+    assert generate_excuses(raw, delay_days=1, override_today=datetime(2026, 9, 15)) == []

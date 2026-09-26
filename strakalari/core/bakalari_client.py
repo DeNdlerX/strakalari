@@ -90,21 +90,29 @@ class BakalariClient(TimetableMixin, DataMixin, ExcuseFormMixin):
         self.sentExcuses = []
         # Last sent-excuse sync failure ("") = fresh/OK; non-empty = unknown.
         self.sentExcuses_error = ""
+        # First day of the range Odeslané showed on the last sync (the
+        # web defaults to one month) — bounds the excuse window. None = unknown.
+        self.sentExcuses_from = None
+        # Past school-year weeks (Mondays) to backfill into the timetable
+        # history on top of the regular window — set by the refresh.
+        self.history_weeks = []
+        # Mondays of the weeks the last timetable scrape really loaded.
+        self.timetable_loaded_weeks = set()
         # Learned stable timetable (SlotBaseline per slot) + actual-vs-stable
         # diffs for the loaded weeks — filled by update_stable_baseline()
         # during fetch_data() so the run itself compares against stable.
         self.stableBaseline = {}
         # True when the baseline is the scraped "Stálý" template week
-        # (complete: empty slots are free periods). False for the learned
-        # fallback, where an empty slot only means "no data".
+        # (complete: empty slots are free periods). False when the view
+        # was not scraped — there is then no baseline at all.
         self.stable_complete = False
         # Last absence-scrape failure ("") when fresh; non-empty means the
         # displayed percentages are last-known/stale, not freshly scraped.
         self.absence_error = ""
         self.weekChanges = []
         # Raw scraped "Stálý rozvrh" (stable timetable) view, keyed by day
-        # like timetableData. Empty when the button wasn't found — the
-        # baseline is then learned from the actual weeks instead.
+        # like timetableData. Empty when the view could not be scraped —
+        # the run then has no stable baseline.
         self.stableTimetableData = {}
         # Personal substitution feed (Výuka → Suplování), tri-state like
         # sentExcuses: a list (possibly empty) = the feed was actually

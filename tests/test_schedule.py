@@ -1,4 +1,4 @@
-"""Tests for core/schedule.py: baseline learning, change-vs-note, lesson clock."""
+"""Tests for core/schedule.py: stable baseline, change-vs-note, lesson clock."""
 
 from datetime import date, datetime
 
@@ -11,7 +11,6 @@ from strakalari.core.schedule import (
     future_lessons,
     iter_changes,
     iter_notes,
-    learn_stable_schedule,
     parse_time_range,
     resolve_day_lessons,
     stable_template_week,
@@ -64,7 +63,7 @@ def test_parse_time_range_formats():
 
 def test_description_only_is_note_not_change():
     tt = _two_weeks(patch=[(1, 1, {"notice": "Písemka z minulé látky"})])
-    baseline = learn_stable_schedule(tt)
+    baseline = baseline_from_stable_timetable(tt)
     diff = classify_lesson(tt["14.09.2026"][1], day="14.09.2026",
                            baseline=baseline)
     assert diff.is_change is False
@@ -84,10 +83,14 @@ def test_substitute_teacher_is_change():
     assert changes[0]["diff"].note == "Suplování (Král)"
 
 
-def test_majority_baseline_gives_field_diffs():
-    # Two stable weeks outvote the exception: the diff names the field.
+def _stable_of(tt, day_key):
+    """Baseline as the scraped "Stálý" view would give it: one clean week."""
+    return baseline_from_stable_timetable({day_key: tt[day_key]})
+
+
+def test_stable_baseline_gives_field_diffs():
     tt = _three_weeks(patch=[(2, 1, {"teacher": "Král", "notice": "Suplování"})])
-    baseline = learn_stable_schedule(tt)
+    baseline = _stable_of(tt, "31.08.2026")
     assert baseline[(0, 2)].teacher == "Dvořák"
     changes = iter_changes(tt, baseline)
     assert len(changes) == 1
@@ -97,11 +100,11 @@ def test_majority_baseline_gives_field_diffs():
 
 def test_room_move_and_cancelled_are_changes():
     tt = _three_weeks(patch=[(2, 0, {"room": "U99"})])
-    changes = iter_changes(tt)
+    baseline = _stable_of(tt, "31.08.2026")
+    changes = iter_changes(tt, baseline)
     assert len(changes) == 1
     assert "room" in changes[0]["diff"].changed
 
-    baseline = learn_stable_schedule(tt)
     diff = classify_lesson(
         {"subject": "M", "teacher": "Novák", "room": "U12",
          "time": "1 (8:00 - 8:45)", "status": "cancelled"},
@@ -111,7 +114,7 @@ def test_room_move_and_cancelled_are_changes():
 
 def test_absent_status_is_not_a_schedule_change():
     tt = _two_weeks()
-    baseline = learn_stable_schedule(tt)
+    baseline = baseline_from_stable_timetable(tt)
     diff = classify_lesson(
         {"subject": "M", "teacher": "Novák", "room": "U12",
          "time": "1 (8:00 - 8:45)", "status": "absent"},
@@ -119,9 +122,9 @@ def test_absent_status_is_not_a_schedule_change():
     assert diff.is_change is False
 
 
-def test_tie_without_baseline_falls_back_to_keywords():
-    # 1:1 tie -> no baseline: the annotated lesson counts via its
-    # substitution keyword, the plain one stays quiet.
+def test_without_baseline_keywords_decide():
+    # No stable view: the annotated lesson counts via its substitution
+    # keyword, the plain one stays quiet — nothing is learned from weeks.
     tt = {
         "08.09.2026": [{"subject": "F", "teacher": "Dvořák", "room": "F11",
                         "time": "2 (8:55 - 9:40)"}],
@@ -129,9 +132,7 @@ def test_tie_without_baseline_falls_back_to_keywords():
                         "time": "2 (8:55 - 9:40)",
                         "notice": "Suplování (Král)"}],
     }
-    baseline = learn_stable_schedule(tt)
-    assert baseline == {}
-    changes = iter_changes(tt, baseline)
+    changes = iter_changes(tt)
     assert len(changes) == 1
     assert changes[0]["day_key"] == "15.09.2026"
 
@@ -178,7 +179,7 @@ def test_future_lessons_drops_started():
 
 def test_stable_weekly_hours_counts_baseline_slots():
     tt = _three_weeks()
-    baseline = learn_stable_schedule(tt)
+    baseline = baseline_from_stable_timetable(tt)
     assert stable_weekly_hours(baseline) == {"M": 1, "F": 1}
     assert stable_weekly_hours({}) == {}
     assert stable_weekly_hours(None) == {}
@@ -186,7 +187,7 @@ def test_stable_weekly_hours_counts_baseline_slots():
 
 def test_baseline_serialization_roundtrip():
     tt = _three_weeks()
-    baseline = learn_stable_schedule(tt)
+    baseline = baseline_from_stable_timetable(tt)
     data = baseline_to_dict(baseline)
     assert set(data) == {"0|1", "0|2"}
     restored = baseline_from_dict(data)
@@ -212,7 +213,7 @@ def test_forecast_prefers_stable_hours_over_raw_weeks():
                        {"subject": "F", "time": "2 (8:55 - 9:40)"},
                        {"subject": "F"}],
     }
-    baseline = learn_stable_schedule(timetable)
+    baseline = baseline_from_stable_timetable(timetable)
     assert stable_weekly_hours(baseline) == {"M": 1, "F": 1}
     absence = {"M": 10.0, "F": 10.0}
     plain, _ = fc.forecast_all(absence, timetable, today=date(2026, 9, 7))

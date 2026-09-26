@@ -1,5 +1,7 @@
 """Bakaláři data fetching: marks, absence, sent excuses, subjects, substitutions, stable baseline."""
 
+import re
+
 from .extractors.bakalari import (
     extract_absence_details,
     extract_absence_percentages,
@@ -232,6 +234,7 @@ class DataMixin:
                 total = rows.count()
             except Exception:
                 total = 0
+            self.sentExcuses_from = self._outbox_period_start()
             if not total:
                 # Slow link: the list may simply not have arrived yet.
                 # Wait out the same page once more and recount — never
@@ -268,20 +271,27 @@ class DataMixin:
                 if self._cancelled():
                     raise InterruptedError("Cancelled by user.")
                 try:
+                    row = rows.nth(idx)
+                    msg_id = row.get_attribute("data-idmsg")
+                    if not msg_id:
+                        self.log(f"Warning: sent excuse #{idx + 1} has no message id, skipped.")
+                        continue
                     # Single attempt: opening the detail IS a navigation —
                     # retrying a dispatched-but-slow click would reopen the
                     # same message again (visible refresh loop on one row).
-                    rows.nth(idx).click(timeout=self._nav_ms, once=True)
-                    try:
-                        self.page.wait_for_function(
-                            "() => document.body && document.body.innerHTML.includes("
-                            "'komens-message-detail-header')",
-                            timeout=self._nav_ms,
-                        )
-                    except Exception:
-                        pass
+                    row.click(timeout=self._nav_ms, once=True)
+                    # Wait for THIS message's detail: the page always holds
+                    # the detail template (same testids), and the previous
+                    # message stays rendered until the AJAX reply lands —
+                    # a generic wait would read a stale or empty detail.
+                    self.page.locator(
+                        f'#message_detail #komens_bar_message[data-idmsg="{msg_id}"]'
+                    ).first.wait_for(state="attached", timeout=self._nav_ms)
                     self._sleep_s(0.2)
-                    sources.append(str(self.page.content()))
+                    sources.append(str(
+                        self.page.locator("#message_detail").first.inner_html()))
+                except InterruptedError:
+                    raise
                 except Exception as e:
                     self.log(f"Warning: could not open sent excuse #{idx + 1}: {e}")
                     continue
@@ -316,6 +326,28 @@ class DataMixin:
             self.sentExcuses_error = f"{type(e).__name__}: {e}".splitlines()[0][:200]
             self.log(f"Could not sync sent excuses: {e} — will retry next time.")
             return None
+
+    def _outbox_period_start(self):
+        """First day of the period Odeslané lists ("26.8.2026 - 25.9.2026"), or None."""
+        from .models import parse_cz_date
+
+        try:
+            label = str(self.page.locator("#cphmain_obdobiLabel").first.inner_text(
+                timeout=self._element_ms))
+        except InterruptedError:
+            raise
+        except Exception:
+            return None
+        found = re.findall(r"\d{1,2}\s*\.\s*\d{1,2}\s*\.\s*\d{4}", label)
+        if not found:
+            return None
+        try:
+            start = parse_cz_date(re.sub(r"\s+", "", found[0]))
+        except Exception:
+            return None
+        if start is not None:
+            self.log(f"Komens → Odeslané lists {label.strip()}.")
+        return start
 
     def fetch_subject_directory(self) -> dict:
         """Fetches the school-official subject directory.
@@ -420,45 +452,34 @@ class DataMixin:
     def update_stable_baseline(self):
         """Builds the stable baseline and diffs the loaded weeks against it.
 
-        Prefers the scraped "Stálý rozvrh" view (exact, no voting needed);
-        falls back to learning from the actual weeks when the button wasn't
-        found. Stores the baseline on ``self.stableBaseline`` and the
-        actual-vs-stable diffs on ``self.weekChanges``, logs a short
-        summary, and returns the baseline. Never raises.
+        The baseline comes only from the scraped "Stálý rozvrh" view. When
+        that scrape failed there is no baseline at all: guessing a template
+        from actual weeks flagged real lessons as changes, so Bakaláři's
+        own change flags decide instead. Stores the baseline on
+        ``self.stableBaseline`` and the diffs on ``self.weekChanges``, logs
+        a short summary, and returns the baseline. Never raises.
         """
         from .schedule import (
             apply_substitution_feed,
             backfill_stable_facts,
             baseline_from_stable_timetable,
             iter_changes,
-            learn_stable_schedule,
         )
 
         baseline = {}
-        source = ""
-        used_scraped = False
         if self.stableTimetableData:
             try:
                 baseline = baseline_from_stable_timetable(self.stableTimetableData)
-                source = "scraped stable timetable (Stálý rozvrh)"
-                used_scraped = bool(baseline)
             except Exception as e:
                 self.log(f"Warning: could not use scraped stable timetable: {e}")
                 baseline = {}
+        used_scraped = bool(baseline)
+        source = "scraped stable timetable (Stálý rozvrh)"
         if not baseline:
-            try:
-                baseline = learn_stable_schedule(self.timetableData)
-                source = "learned from actual weeks (stable view not scraped)"
-            except Exception as e:
-                self.log(f"Warning: could not learn the stable timetable: {e}")
-                self.stableBaseline = {}
-                self.stable_complete = False
-                self.weekChanges = []
-                return self.stableBaseline
+            self.log("No stable timetable this run — changes come from Bakaláři's own flags.")
         self.stableBaseline = baseline
-        # Only the scraped template week is complete (empty slot = free
-        # period); the learned fallback must not invent added/missing
-        # changes from slots it simply never saw.
+        # The scraped template week is complete: an empty slot is a free
+        # period, so added/missing lessons are real changes.
         self.stable_complete = used_scraped
         try:
             feed = getattr(self, "substitutions", None)
@@ -480,8 +501,8 @@ class DataMixin:
         except Exception as e:
             self.log(f"Warning: could not compare weeks against stable: {e}")
             self.weekChanges = []
-        self.log(f"Stable timetable learned: {len(baseline)} slots "
-                 f"from {len(self.timetableData)} days ({source}).")
+        if baseline:
+            self.log(f"Stable timetable: {len(baseline)} slots ({source}).")
         if self.weekChanges:
             self.log(f"Schedule changes vs stable: {len(self.weekChanges)}.")
             for item in self.weekChanges[:5]:
@@ -541,7 +562,7 @@ class DataMixin:
             raise
         except Exception as e:
             self.log(f"Warning: stable timetable scrape failed ({e}), "
-                     "baseline will be learned from actual weeks.")
+                     "no stable timetable this run.")
         # Personal substitution feed rides along the same loop so the
         # authoritative change list is available when the baseline is
         # built below. Best effort only — it must never fail the run.
@@ -588,8 +609,7 @@ class DataMixin:
             "absence": self.absencePercentages,
             "grades": self.grades,
             "stable_baseline": serializable_baseline,
-            "stable_baseline_source": (
-                "scraped" if getattr(self, "stable_complete", False) else "learned"),
+            "stable_baseline_source": "scraped" if serializable_baseline else "",
             "changes": self.weekChanges,
             "substitutions": self.substitutions,
             "absence_details": self.absenceDetails,

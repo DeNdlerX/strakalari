@@ -37,12 +37,15 @@ def _options_for(state: AppState, kind: str) -> list[str]:
     return _templates(state, kind=kind)
 
 
+def _one_line(tpl: str) -> str:
+    return " ".join(str(tpl or "").split())
+
+
 def _option_items(options: list[str]) -> list[tuple[str, str]]:
-    items = []
-    for i, tpl in enumerate(options):
-        first_line = str(tpl or "").strip().split("\n")[0][:60]
-        items.append((str(i), first_line or f"{S('choose_template')} {i + 1}"))
-    return items
+    # The whole text, never a clipped prefix: templates often share their
+    # opening words and differ only further on.
+    return [(str(i), _one_line(tpl) or f"{S('choose_template')} {i + 1}")
+            for i, tpl in enumerate(options)]
 
 
 def _choose(state: AppState, key: str, value: str | None, n: int) -> None:
@@ -53,16 +56,34 @@ def _choose(state: AppState, key: str, value: str | None, n: int) -> None:
 
 
 def _template_dropdown(state: AppState, key: str, options: list[str]):
+    """Template dropdown + a full-text preview of the picked template.
+
+    The closed dropdown field clips long texts to one line, so the whole
+    picked text is shown under it as well.
+    """
+    tok = state.tok
+    preview = C.txt(_picked_option(state, key, options), tok, size=tok.fs_small, muted=True)
+
+    def _on_change(e, k=key):
+        _choose(state, k, e.control.value, len(options))
+        preview.value = _picked_option(state, k, options)
+        try:
+            preview.update()
+        except Exception:
+            pass
+
     dd = C.dropdown(
-        state.tok, S("choose_template"), _option_items(options),
+        tok, S("choose_template"), _option_items(options),
         str(state.picked_templates.get(key, 0)),
-        on_change=lambda e, k=key: _choose(state, k, e.control.value, len(options)),
+        on_change=_on_change,
     )
     dd.expand = True  # expand on the control itself, not a wrapper
-    return dd
+    return dd, preview
 
 
 def _picked_option(state: AppState, key: str, options: list[str]) -> str:
+    if not options:
+        return ""
     idx = state.picked_templates.get(key, 0)
     try:
         return options[max(0, min(len(options) - 1, int(idx)))]
@@ -166,6 +187,7 @@ def _excuse_cards(state: AppState, page: ft.Page, tasks: list[dict]) -> list[ft.
                 elif state.last_ignore_error:
                     _snack(page, state.last_ignore_error)
 
+            picker, preview = _template_dropdown(state, key, options)
             blocks.append(T.anchor(state, "excuse_card",
                 C.card(
                     ft.Row(
@@ -178,7 +200,7 @@ def _excuse_cards(state: AppState, page: ft.Page, tasks: list[dict]) -> list[ft.
                     ),
                     ft.Row(
                         [
-                            _template_dropdown(state, key, options),
+                            picker,
                             C.primary_button(S("excuse_day") if whole_day else S("excuse_all"),
                                              tok, on_click=_send_day),
                             C.ghost_button(S("ignore_day"), tok, on_click=_ignore_day),
@@ -186,6 +208,7 @@ def _excuse_cards(state: AppState, page: ft.Page, tasks: list[dict]) -> list[ft.
                         spacing=8,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
+                    preview,
                     tok=tok,
                 )
             ))
@@ -215,6 +238,7 @@ def _excuse_cards(state: AppState, page: ft.Page, tasks: list[dict]) -> list[ft.
                 elif state.last_ignore_error:
                     _snack(page, state.last_ignore_error)
 
+            picker, preview = _template_dropdown(state, key, options)
             blocks.append(T.anchor(state, "excuse_card",
                 C.card(
                     ft.Row(
@@ -234,13 +258,14 @@ def _excuse_cards(state: AppState, page: ft.Page, tasks: list[dict]) -> list[ft.
                     ),
                     ft.Row(
                         [
-                            _template_dropdown(state, key, options),
+                            picker,
                             C.primary_button(S("excused_btn"), tok, on_click=_send),
                             C.ghost_button(S("ignore_btn"), tok, on_click=_ignore),
                         ],
                         spacing=8,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
+                    preview,
                     tok=tok,
                 )
             ))

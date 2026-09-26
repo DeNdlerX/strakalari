@@ -11,14 +11,9 @@ The baseline prefers the scraped "Stálý rozvrh" view (the exact template
 week, see ``BakalariClient.extract_stable_timetable``): with such a
 *complete* baseline an empty slot is a free period, so an actual lesson
 there is an ``added`` change and a stable slot with no actual lesson is a
-``missing`` change. Only when the stable view cannot be scraped is the
-baseline *learned* from the actual weeks (majority vote per
-(weekday, period) slot) — an empty learned slot only means "no data", so
-added/missing detection stays off and classification falls back to the
-notice-keyword heuristic instead of attributing the change to the wrong
-day. A lone single sighting still seeds the learned baseline (there is
-nothing better to compare against), so single-week caches report no
-phantom changes instead of flagging every annotated lesson.
+``missing`` change. The baseline is never guessed from the actual weeks:
+when the stable view cannot be scraped there is no baseline, and
+Bakaláři's own change flags plus the notice-keyword heuristic decide.
 
 Lesson-clock helpers in this module are the single place that reasons
 about "what time is it during the school day" — the Today view and the
@@ -175,7 +170,7 @@ def future_lessons(
 
 @dataclass
 class SlotBaseline:
-    """The learned stable lesson for one (weekday, period) slot."""
+    """The stable lesson for one (weekday, period) slot."""
 
     weekday: int
     period: int
@@ -223,86 +218,6 @@ def _period_of(raw: dict, day: Any) -> int | None:
         return None
 
 
-def learn_stable_schedule(
-    timetable: dict,
-    recent_weeks: int = 3,
-) -> dict[tuple[int, int], SlotBaseline]:
-    """Learns the stable timetable from the most recent loaded weeks.
-
-    For every (weekday, period) the most common (subject, teacher, room,
-    start-time) fingerprint wins — but only with a strict majority. A
-    1:1 tie yields NO baseline for the slot: with no trustworthy pattern,
-    classification falls back to the notice-keyword heuristic instead of
-    attributing the change to the wrong day. A lone single sighting DOES
-    seed the baseline (there is nothing better to compare against), so
-    single-week caches report no phantom changes instead of flagging
-    every annotated lesson.
-
-    Only the ``recent_weeks`` newest weeks vote, so a permanent mid-year
-    schedule change is adopted instead of being flagged forever.
-    """
-    votes: dict[tuple[int, int], Counter] = {}
-    exemplars: dict[tuple[int, int], dict] = {}
-    # Newest weeks first — only the recent window votes.
-    dated: list[tuple[date, Any, list]] = []
-    for day_key, lessons in (timetable or {}).items():
-        day = parse_cz_date(day_key)
-        if day is None:
-            continue
-        dated.append((day, day_key, lessons or []))
-    dated.sort(key=lambda item: item[0], reverse=True)
-    seen_mondays: list[date] = []
-    for day, _day_key, lessons in dated:
-        monday = day - timedelta(days=day.weekday())
-        if monday not in seen_mondays:
-            seen_mondays.append(monday)
-        if len(seen_mondays) > max(1, recent_weeks):
-            continue
-        for raw in lessons:
-            if not isinstance(raw, dict):
-                continue
-            period = _period_of(raw, day)
-            if period is None:
-                continue
-            parsed = Lesson.from_legacy(raw, day=day)
-            clock = lesson_clock(raw, day=day)
-            fingerprint = (
-                _norm_text(parsed.subject),
-                _surname(parsed.teacher),
-                _norm_text(parsed.room),
-                clock[0] if clock else -1,
-            )
-            slot = (day.weekday(), period)
-            votes.setdefault(slot, Counter())[fingerprint] += 1
-            exemplars.setdefault(slot, {})\
-                .setdefault(fingerprint, {
-                    "subject": parsed.subject or "",
-                    "teacher": parsed.teacher or "",
-                    "room": parsed.room or "",
-                    "start_min": clock[0] if clock else None,
-                })
-    baseline: dict[tuple[int, int], SlotBaseline] = {}
-    for slot, counter in votes.items():
-        (weekday, period) = slot
-        total = sum(counter.values())
-        fingerprint, support = counter.most_common(1)[0]
-        if support * 2 <= total:
-            # No strict majority (a 1:1 tie): no trustworthy stable
-            # lesson. The slot gets no baseline and classification falls
-            # back to the notice-keyword heuristic. (A lone single
-            # sighting counts as a majority of one and DOES seed the
-            # baseline — see the docstring.)
-            continue
-        exemplar = exemplars[slot][fingerprint]
-        baseline[slot] = SlotBaseline(
-            weekday=weekday, period=period,
-            subject=exemplar["subject"], teacher=exemplar["teacher"],
-            room=exemplar["room"], start_min=exemplar["start_min"],
-            support=support,
-        )
-    return baseline
-
-
 def stable_weekly_hours(baseline: dict | None) -> dict[str, int]:
     """Weekly lesson counts per subject from the stable baseline.
 
@@ -333,7 +248,7 @@ def stable_weekly_hours(baseline: dict | None) -> dict[str, int]:
 
 
 def baseline_to_dict(baseline: dict | None) -> dict[str, dict | list]:
-    """Serializes a learned baseline to JSON-safe plain dicts.
+    """Serializes a stable baseline to JSON-safe plain dicts.
 
     Split-group slots (variant lists) serialize to a list of dicts.
     """
@@ -485,7 +400,7 @@ def baseline_from_stable_timetable(
                 support=counter[fingerprint],
             ))
         # One lesson per slot is the common case — keep it unwrapped so
-        # the shape matches learn_stable_schedule(). Split-group slots
+        # lookups stay simple. Split-group slots
         # keep every variant.
         baseline[slot] = variants[0] if len(variants) == 1 else variants
     return baseline
@@ -841,9 +756,9 @@ def classify_lesson(
 
     ``complete`` marks a complete template-week baseline (scraped "Stálý"
     view): an actual lesson in a slot the template leaves empty is an
-    ``added`` change even without signals. With a learned fallback
-    baseline an empty slot only means "no data", so the notice-keyword
-    heuristic decides instead.
+    ``added`` change even without signals. Without a complete baseline an
+    empty slot only means "no data", so the notice-keyword heuristic
+    decides instead.
     """
     parsed = Lesson.from_legacy(raw or {}, day=day)
     note = parsed.change or ""
@@ -982,14 +897,12 @@ def iter_changes(
 ) -> list[dict[str, Any]]:
     """Real schedule changes across the timetable (notes excluded).
 
-    Each item holds day_key, day, lesson and diff. When ``baseline``
-    is None it is learned from ``timetable`` first (then it cannot be
-    complete). With ``complete=True`` (scraped template week) an actual
+    Each item holds day_key, day, lesson and diff. Without a ``baseline``
+    Bakaláři's own change flags and notices decide. With ``complete=True`` (scraped template week) an actual
     lesson in a free slot is an ``added`` change and a stable slot with no
     actual lesson on a fetched day is a ``missing`` change.
     """
-    if baseline is None:
-        baseline = learn_stable_schedule(timetable)
+    baseline = baseline or {}
     out: list[dict[str, Any]] = []
     for day_key, lessons in (timetable or {}).items():
         day = parse_cz_date(day_key)
@@ -1015,8 +928,7 @@ def iter_notes(
     complete: bool = False,
 ) -> list[dict[str, Any]]:
     """Lessons carrying a teacher note that is NOT a schedule change."""
-    if baseline is None:
-        baseline = learn_stable_schedule(timetable)
+    baseline = baseline or {}
     out: list[dict[str, Any]] = []
     for day_key, lessons in (timetable or {}).items():
         day = parse_cz_date(day_key)

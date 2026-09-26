@@ -363,7 +363,7 @@ class ExcuseTasksMixin:
         try:
             from strakalari.core.automation import Strakalari
 
-            app = Strakalari(on_log=self._worker_log, start_browser=True)
+            app = Strakalari(on_log=self._core_log, start_browser=True)
             try:
                 dry = (getattr(app, "excuse_mode", "") == "dry_run")
                 send = getattr(app, "send_excuse_outcome", None)
