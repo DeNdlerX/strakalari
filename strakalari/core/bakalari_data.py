@@ -80,8 +80,8 @@ class DataMixin:
                     timeout=settle_ms,
                 )
                 _marks_loaded = True
-            except Exception:
-                pass
+            except Exception as e:
+                self._debug("grades: marks grid wait timed out", e)
             self._sleep_s(0.5)
 
             grades = extract_grades(self.page.content())
@@ -143,8 +143,8 @@ class DataMixin:
                     _grid_loaded = True
                 except InterruptedError:
                     raise
-                except Exception:
-                    pass
+                except Exception as e:
+                    self._debug("absence: grid wait timed out", e)
             self._sleep_s(0.2)
             content = self.page.content()
             self.absencePercentages = extract_absence_percentages(content)
@@ -226,8 +226,8 @@ class DataMixin:
                     state="attached",
                     timeout=self._settle_ms(),
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                self._debug("outbox: rows wait timed out", e)
             self._sleep_s(0.2)
 
             try:
@@ -244,15 +244,15 @@ class DataMixin:
                     self._wait_for_page_settled(self._settle_ms())
                 except InterruptedError:
                     raise
-                except Exception:
-                    pass
+                except Exception as e:
+                    self._debug("outbox: page settle wait failed", e)
                 try:
                     rows.first.wait_for(
                         state="attached",
                         timeout=self._settle_ms(),
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    self._debug("outbox: rows wait timed out", e)
                 try:
                     total = rows.count()
                 except Exception:
@@ -373,8 +373,8 @@ class DataMixin:
                         "() => document.body && document.body.innerHTML.includes('<td')",
                         timeout=settle_ms,
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    self._debug("subject directory: table wait timed out", e)
             self._sleep_s(0.2)
             directory = parse_subject_directory(self.page.content())
             self.subjectDirectory = directory
@@ -421,8 +421,8 @@ class DataMixin:
                         ")",
                         timeout=settle_ms,
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    self._debug("substitutions: feed wait timed out", e)
             self._sleep_s(0.2)
             html = str(self.page.content())
             if ("substitutions-entry" not in html

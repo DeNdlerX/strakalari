@@ -224,10 +224,17 @@ def meter(value_pct: float, tok: Tokens, kind: str = "ok", width: int = 140) -> 
         width=width,
         padding=pad_all(0),
     )
+    # Fixed-width, right-aligned label ("100.0 %" fits) so the track stays put
+    # whatever the number's width.
+    label = ft.Container(
+        content=ft.Row([txt(f"{value_pct:.1f} %", tok, size=tok.fs_small, muted=True)],
+                       alignment=ft.MainAxisAlignment.END),
+        width=tok.fs_small * 4.5,
+    )
     return ft.Row(
         [
             track,
-            txt(f"{value_pct:.1f} %", tok, size=tok.fs_small, muted=True),
+            label,
         ],
         spacing=8,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,

@@ -64,7 +64,7 @@ class AutomationMixin:
                         except Exception:
                             pass  # re-rendered from config on the next emit
 
-                from ..safety import confirm_auto_mode
+                from ...safety import confirm_auto_mode
 
                 confirm_auto_mode(
                     page, ckey,

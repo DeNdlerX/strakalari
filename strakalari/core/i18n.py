@@ -90,6 +90,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "cs": "{n} omluvenek se nepodařilo odeslat",
         "en": "{n} excuse(s) could not be sent",
     },
+    "auto_excuse_outbox_unknown": {
+        "cs": "Automatické omlouvání přeskočeno — Komens → Odeslané se nepodařilo načíst",
+        "en": "Auto-excuse skipped — Komens → Sent could not be read",
+    },
     "auto_orders_failed": {
         "cs": "{n} z {total} objednávek obědů neprošlo (podrobnosti v protokolu)",
         "en": "{n} of {total} lunch order(s) did not go through (details in the log)",

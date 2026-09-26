@@ -131,3 +131,12 @@ def test_no_backend_falls_back_to_file(monkeypatch):
 
 def test_entry_is_bound_to_the_data_dir(tmp_path):
     assert secret_store._entry_name(str(tmp_path / "a")) != secret_store._entry_name(str(tmp_path / "b"))
+
+
+def test_forget_key_removes_file_key(tmp_path):
+    from strakalari.core.secret_store import KEY_FILE, forget_key, get_key
+
+    get_key(str(tmp_path))
+    assert (tmp_path / KEY_FILE).exists()
+    assert forget_key(str(tmp_path)) is True
+    assert not (tmp_path / KEY_FILE).exists()

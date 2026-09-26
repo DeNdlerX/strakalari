@@ -427,17 +427,25 @@ def _bands_card(state: AppState, page) -> ft.Control:
     tok = state.tok
     bands, source = state.marks_bands_source()
     fields: list[ft.TextField] = []
+    cells: list[ft.Control] = []
     for grade, bound in enumerate(bands, start=1):
         key = f"marks:band:{grade}"
         f = ft.TextField(
             value=state.draft(key, f"{bound:g}"),
-            label=S("marks_band_label").format(grade=grade + 1),
             suffix=ft.Text("%", size=tok.fs_small, color=tok.faint),
             on_change=lambda e, k=key: state.set_draft(k, e.control.value),
-            text_size=tok.fs_body, dense=True, expand=True,
+            text_size=tok.fs_body, dense=True,
             fill_color=tok.surface, border_color=tok.border, focused_border_color=tok.accent,
         )
         fields.append(f)
+        # The caption sits above the input: the four fields are too narrow for
+        # a floating label, which wrapped onto two lines over the hint text.
+        cells.append(ft.Column(
+            [ft.Text(S("marks_band_label").format(grade=grade + 1), size=tok.fs_tiny,
+                     color=tok.muted, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+             f],
+            spacing=4, tight=True, expand=True,
+        ))
 
     def _save(e) -> None:
         try:
@@ -477,7 +485,7 @@ def _bands_card(state: AppState, page) -> ft.Control:
             ),
             C.txt(_bands_ranges(bands), tok, size=tok.fs_small, muted=True),
             C.hint_text(S("marks_bands_hint"), tok),
-            ft.Row(fields, spacing=6),
+            ft.Container(content=ft.Row(cells, spacing=8), padding=pad_sym(vertical=4)),
             ft.Row(buttons, spacing=8),
         ],
         icon=ft.Icons.PERCENT,

@@ -9,10 +9,19 @@ second process, it cannot tell the first one to show its window — and a
 crashed process leaves a stale lock behind, while the OS always reclaims
 a dead process's bound port. Loopback traffic needs no firewall exception
 and behaves identically on Windows, Linux and macOS (stdlib only).
+
+Loopback ports are shared by every user of the machine, so each OS user
+gets its own port pair (derived from the user name), and every message
+carries a per-user secret token (a file in the user's data dir that other
+users cannot read). A second user's launch therefore never wakes — or
+closes — the first user's window, and never exits because of it.
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import os
 import re
 import socket
 import sys
@@ -20,23 +29,119 @@ import threading
 import time
 
 HOST = "127.0.0.1"
-# Source runs (run.bat / python main.py) use their own port pair: the
+
+
+def _os_user() -> str:
+    try:
+        import getpass
+
+        user = getpass.getuser()
+    except Exception:  # noqa: BLE001 - no user name: the home dir still differs
+        user = ""
+    return f"{user}|{os.path.normcase(os.path.expanduser('~'))}"
+
+
+def _user_slot(identity: str, slots: int = 300) -> int:
+    return int(hashlib.sha256(identity.encode("utf-8")).hexdigest()[:8], 16) % slots
+
+
+# Ports 42000-47999: one 20-port slot per OS user (a collision between two
+# users only degrades to "no duplicate protection", see
+# ensure_single_primary). Kept below the Windows ephemeral range (49152+)
+# so an outgoing connection never happens to hold the port. Source runs
+# (run.bat / python main.py) use their own pair within the slot: the
 # installed build autostarts into the tray and holds the release ports,
 # so sharing them would make every dev launch just show the installed
 # app's window and exit.
-_PORT_BASE = 48231 if getattr(sys, "frozen", False) else 48241
+_PORT_BASE = 42000 + 20 * _user_slot(_os_user()) + (0 if getattr(sys, "frozen", False) else 10)
 #: Port owned by the first main process (standalone UI or tray background).
 MAIN_PORT = _PORT_BASE
 #: Port owned by a Flet UI child spawned by the tray process, so the tray
 #: parent can forward "show" requests to the process that owns the page.
 UI_PORT = _PORT_BASE + 1
 
-_MAGIC_SHOW = b"STRAKALARI-SHOW-v1\n"
-_MAGIC_PING = b"STRAKALARI-PING-v1\n"  # acknowledged, but shows nothing
+_MAGIC_SHOW = b"STRAKALARI-SHOW-v2"
+_MAGIC_PING = b"STRAKALARI-PING-v2"  # acknowledged, but shows nothing
 #: Tray -> its UI child: close the window cleanly. Acknowledged only when
 #: an on_quit handler is set, so the sender knows to fall back to a kill.
-_MAGIC_QUIT = b"STRAKALARI-QUIT-v1\n"
-_REPLY_OK = b"STRAKALARI-OK-v1\n"
+_MAGIC_QUIT = b"STRAKALARI-QUIT-v2"
+_REPLY_OK = b"STRAKALARI-OK-v2\n"
+_MAX_LINE = 128
+
+#: Per-user secret proving a message comes from the same user's install.
+TOKEN_FILE = "instance.token"
+_TOKENS: dict[str, bytes] = {}
+_TOKEN_LOCK = threading.Lock()
+
+
+def _valid_token(raw: bytes) -> bool:
+    return len(raw) == 32 and all(c in b"0123456789abcdef" for c in raw)
+
+
+def instance_token() -> bytes:
+    """This user's handshake token (32 hex bytes), created on first use.
+
+    Lives in the per-user data dir, so another OS user cannot read it.
+    When the file cannot be created (read-only dir), a token derived from
+    the user and data dir is used instead: not secret, but still per user.
+    """
+    try:
+        from strakalari.core.helpers import get_user_data_dir
+
+        data_dir = get_user_data_dir()
+    except Exception:  # noqa: BLE001 - fall back to the home dir
+        data_dir = os.path.expanduser("~")
+    with _TOKEN_LOCK:
+        cached = _TOKENS.get(data_dir)
+        if cached:
+            return cached
+        token = _load_or_create_token(os.path.join(data_dir, TOKEN_FILE))
+        if token is None:
+            token = hashlib.sha256(
+                f"{_os_user()}|{data_dir}".encode("utf-8")).hexdigest()[:32].encode("ascii")
+        _TOKENS[data_dir] = token
+        return token
+
+
+def _load_or_create_token(path: str) -> bytes | None:
+    import secrets
+
+    for _ in range(20):
+        try:
+            with open(path, "rb") as f:
+                raw = f.read().strip()
+            if _valid_token(raw):
+                return raw
+            time.sleep(0.05)  # another process may be mid-write
+            continue
+        except FileNotFoundError:
+            pass
+        except OSError:
+            return None
+        token = secrets.token_hex(16).encode("ascii")
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            continue  # lost the race: read the winner's token
+        except OSError:
+            return None
+        with os.fdopen(fd, "wb") as f:
+            f.write(token)
+        return token
+    # Still unreadable garbage (e.g. a truncated write): replace it.
+    try:
+        token = secrets.token_hex(16).encode("ascii")
+        tmp = f"{path}.tmp-{os.getpid()}"
+        with open(tmp, "wb") as f:
+            f.write(token)
+        os.replace(tmp, path)
+        return token
+    except OSError:
+        return None
+
+
+def _message(magic: bytes, token: bytes) -> bytes:
+    return magic + b" " + token + b"\n"
 
 _IO_TIMEOUT_S = 2.0
 _ACCEPT_TIMEOUT_S = 0.5
@@ -59,6 +164,9 @@ class SingleInstance:
 
     def __init__(self, port: int = MAIN_PORT, on_show=None, on_quit=None) -> None:
         self._port = port
+        # Fixed per instance: the listener answers with the token of the
+        # install that started it, whatever the process does later.
+        self._token = instance_token()
         self._on_show = on_show
         self.on_quit = on_quit
         self._pending = 0
@@ -150,6 +258,7 @@ class SingleInstance:
             magic = _MAGIC_QUIT
         else:
             raise ValueError(f"unknown signal kind: {kind!r}")
+        magic = _message(magic, self._token)
         try:
             with socket.create_connection((HOST, self._port), timeout=timeout) as conn:
                 conn.settimeout(timeout)
@@ -203,14 +312,19 @@ class SingleInstance:
         try:
             conn.settimeout(_IO_TIMEOUT_S)
             data = b""
-            # Both magic lines end with \n; read one line at most.
-            while len(data) < 64 and not data.endswith(b"\n"):
-                chunk = conn.recv(64 - len(data))
+            # Every message is one line; read one line at most.
+            while len(data) < _MAX_LINE and not data.endswith(b"\n"):
+                chunk = conn.recv(_MAX_LINE - len(data))
                 if not chunk:
                     break
                 data += chunk
-            if data not in (_MAGIC_SHOW, _MAGIC_PING, _MAGIC_QUIT):
-                return  # unrelated prober or version mismatch: stay silent
+            kind = next((m for m in (_MAGIC_SHOW, _MAGIC_PING, _MAGIC_QUIT)
+                         if hmac.compare_digest(data, _message(m, self._token))), None)
+            if kind is None:
+                # Unrelated prober, version mismatch or ANOTHER USER's
+                # launch: stay silent (it then runs on its own).
+                return
+            data = kind
             on_quit = self.on_quit
             if data == _MAGIC_QUIT and on_quit is None:
                 return  # nothing here can close the window: sender kills instead

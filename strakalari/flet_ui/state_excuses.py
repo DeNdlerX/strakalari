@@ -399,6 +399,12 @@ class ExcuseTasksMixin:
                    else S("excuse_sent"))
         elif crashed:
             msg = S("excuse_failed")
+        elif "unconfirmed" in outcomes:
+            # May have gone out: never offer it as a plain failure to retry.
+            msg = S("excuse_unconfirmed")
+            self._notify("automation_failed", f"{msg}: {label}")
+        elif "skipped" in outcomes:
+            msg = S("excuse_blocked_unconfirmed")
         else:
             msg = S("excuse_failed")
             if total > 1 and done:

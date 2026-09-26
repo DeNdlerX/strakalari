@@ -30,7 +30,7 @@ class TestHistoryQuarantine:
         app = Strakalari.__new__(Strakalari)
         app.already_excused_file = history_file
         app.encoding = "utf-8"
-        app.writeLog = lambda m: None
+        app.write_log = lambda m: None
         return app
 
     def test_corrupt_history_backed_up(self, tmp_path):
@@ -110,6 +110,6 @@ def test_write_log_lines_are_timestamped(tmp_path):
     app.logFile = str(tmp_path / "log.txt")
     app.encoding = "utf-8"
     app.on_log = None
-    app.writeLog("hello")
+    app.write_log("hello")
     text = (tmp_path / "log.txt").read_text(encoding="utf-8")
     assert re.match(r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] hello\n", text)

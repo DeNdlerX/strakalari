@@ -7,7 +7,7 @@ and ``bakalari_excuse`` (the excuse form). Pure parsing helpers live in
 ``bakalari_common`` and are re-exported here for existing imports.
 """
 
-from .helpers import clear_input, decrypt_strict, is_encrypted_flag
+from .helpers import clear_input, decrypt_strict, is_encrypted_flag, template_texts
 from .i18n import t
 from .error_report import (
     UserError,
@@ -55,15 +55,15 @@ class BakalariClient(TimetableMixin, DataMixin, ExcuseFormMixin):
             self.go_forward_weeks = 1
         self.signature = self.config.get("your_signature", "")
 
-        self.late_income_excuses = self.config.get("late_income_excuses", [])
-        self.left_soon_excuses = self.config.get("left_soon_excuses", [])
-        self.long_absence_excuses = self.config.get("long_absence_excuses", [])
-        self.short_absence_excuses = self.config.get("short_absence_excuses", [])
+        self.late_income_excuses = template_texts(self.config.get("late_income_excuses", []))
+        self.left_soon_excuses = template_texts(self.config.get("left_soon_excuses", []))
+        self.long_absence_excuses = template_texts(self.config.get("long_absence_excuses", []))
+        self.short_absence_excuses = template_texts(self.config.get("short_absence_excuses", []))
 
         self.logger = logger
         self.logged_in = False
         # Cooperative cancellation (mirrors StravaClient.cancel_requested;
-        # set from Strakalari.fetchBakalariData before each fetch).
+        # set from Strakalari.fetch_bakalari_data before each fetch).
         self.cancel_requested = False
         # Optional live predicate (e.g. GUI state) polled alongside the flag
         # so a cancel issued mid-fetch is honored without re-setting flags.
@@ -93,6 +93,9 @@ class BakalariClient(TimetableMixin, DataMixin, ExcuseFormMixin):
         # First day of the range Odeslané showed on the last sync (the
         # web defaults to one month) — bounds the excuse window. None = unknown.
         self.sentExcuses_from = None
+        # True after a send click the site never confirmed (see
+        # ExcuseFormMixin._verify_submission): it may have gone out.
+        self.last_submit_uncertain = False
         # Past school-year weeks (Mondays) to backfill into the timetable
         # history on top of the regular window — set by the refresh.
         self.history_weeks = []
@@ -123,6 +126,12 @@ class BakalariClient(TimetableMixin, DataMixin, ExcuseFormMixin):
     def log(self, msg):
         if self.logger:
             self.logger(msg)
+
+    def _debug(self, what: str, exc: BaseException) -> None:
+        """Logs a deliberately tolerated failure (see ``describe_swallowed``)."""
+        from .helpers import describe_swallowed
+
+        self.log(describe_swallowed(what, exc))
 
     def _cancelled(self) -> bool:
         if getattr(self, "cancel_requested", False):

@@ -24,6 +24,8 @@ strava_blacklist.json
 *.log
 log.txt
 already_excused_lessons.json
+already_excused_lessons.unconfirmed.json
+instance.token
 data_cache.json
 update_cache.json
 automation_history.jsonl

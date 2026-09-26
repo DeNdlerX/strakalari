@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta
 
 import flet as ft
 
+from strakalari.core.helpers import template_name, template_text
 from strakalari.core.models import Lesson, parse_cz_date
 from strakalari.core.planned_skips import entry_end_iso, entry_start_iso, normalize_planned_entry
 from strakalari.core.schedule import future_lessons
@@ -28,12 +29,26 @@ from ..theme import border_all, radius_all, tint
 
 
 def _templates(state: AppState, kind: str | None = None) -> list[str]:
-    """Excuse templates, optionally filtered to the task kind.
+    """Excuse template texts, optionally filtered to the task kind."""
+    return [text for _name, text in _template_options(state, kind)]
+
+
+def _template_labels(options: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Dropdown items for template options: the user's name for each one,
+    "Šablona N" for unnamed ones (the full text is shown under the
+    dropdown, so repeating it in the field is just noise)."""
+    return [(str(i), name or f"{S('template_n')} {i + 1}")
+            for i, (name, _text) in enumerate(options)]
+
+
+def _template_options(state: AppState, kind: str | None = None) -> list[tuple[str, str]]:
+    """Excuse templates as ``(name, text)``, optionally filtered to the task kind.
 
     kind: "late" -> late_income_excuses, "soon"/"early" ->
     left_soon_excuses, "short" -> short_absence,
     "long"/"day" -> long_absence. Falls back to all templates when the
     kind-specific list is empty, so there is always something to pick.
+    The name is "" for unnamed templates.
     """
     kind = str(kind or "").lower()
     keys: tuple[str, ...]
@@ -48,24 +63,27 @@ def _templates(state: AppState, kind: str | None = None) -> list[str]:
     else:
         keys = ("long_absence_excuses", "short_absence_excuses",
                 "late_income_excuses", "left_soon_excuses")
-    found: list[str] = []
-    for key in keys:
-        values = state.get(key, [])
-        if isinstance(values, list):
-            found.extend(str(v) for v in values if str(v).strip())
-    if not found and len(keys) == 1:
-        for key in ("long_absence_excuses", "short_absence_excuses",
-                    "late_income_excuses", "left_soon_excuses"):
+    def _collect(list_keys) -> list[tuple[str, str]]:
+        out: list[tuple[str, str]] = []
+        for key in list_keys:
             values = state.get(key, [])
             if isinstance(values, list):
-                found.extend(str(v) for v in values if str(v).strip())
+                out.extend((template_name(v), template_text(v)) for v in values
+                           if template_text(v).strip())
+        return out
+
+    found = _collect(keys)
+    if not found and len(keys) == 1:
+        found = _collect(("long_absence_excuses", "short_absence_excuses",
+                          "late_income_excuses", "left_soon_excuses"))
     signature = str(state.get("your_signature", "")).strip()
     if signature:
         # Never duplicate a signature the template already ends with
         # (case-insensitive, mirroring format_excuse_template).
-        found = [tpl if signature.lower() in tpl.lower() else f"{tpl.rstrip()}\n{signature}"
-                 for tpl in found]
-    return found or [S("default_excuse_template")]
+        found = [(name, tpl if signature.lower() in tpl.lower()
+                  else f"{tpl.rstrip()}\n{signature}")
+                 for name, tpl in found]
+    return found or [("", S("default_excuse_template"))]
 
 
 def _push(page: ft.Page, dlg: ft.AlertDialog | None = None) -> None:
@@ -195,7 +213,8 @@ def _state_impact(state: AppState, start_iso: str, end_iso: str,
 
 def _plan_dialog(state: AppState, page: ft.Page, day_iso: str, day_label: str) -> None:
     tok = state.tok
-    options = _templates(state, kind="day")
+    named = _template_options(state, kind="day")
+    options = [text for _name, text in named]
     picked = {"idx": 0}
     preview = ft.Text(options[0], size=tok.fs_small, color=tok.muted,
                       selectable=True)
@@ -211,7 +230,7 @@ def _plan_dialog(state: AppState, page: ft.Page, day_iso: str, day_label: str) -
 
     choice = C.dropdown(
         tok, S("choose_template"),
-        [(str(i), f"{S('choose_template')} {i + 1}") for i in range(len(options))],
+        _template_labels(named),
         "0",
         on_change=_picked,
     )
@@ -353,7 +372,8 @@ def _entry_label(entry: dict) -> str:
 
 def _custom_plan_dialog(state: AppState, page: ft.Page, now: datetime) -> None:
     tok = state.tok
-    options = _templates(state, kind="day")
+    named = _template_options(state, kind="day")
+    options = [text for _name, text in named]
     picked = {"template": 0, "from": "whole", "to": "whole"}
     default_start = (now.date() + timedelta(days=1)).strftime("%d.%m.%Y")
     try:
@@ -418,7 +438,7 @@ def _custom_plan_dialog(state: AppState, page: ft.Page, now: datetime) -> None:
                        on_change=_on_select("to"))
     choice = C.dropdown(
         tok, S("choose_template"),
-        [(str(i), f"{S('choose_template')} {i + 1}") for i in range(len(options))],
+        _template_labels(named),
         "0",
         on_change=_on_select("template"),
     )
@@ -804,7 +824,8 @@ def _target_dropdown(state: AppState, term) -> ft.Control:
 
 def _plan_all_dialog(state: AppState, page: ft.Page, days: list[date]) -> None:
     tok = state.tok
-    options = _templates(state, kind="day")
+    named = _template_options(state, kind="day")
+    options = [text for _name, text in named]
     picked = {"idx": 0, "cancel": True}
     preview = ft.Text(options[0], size=tok.fs_small, color=tok.muted, selectable=True)
 
@@ -819,7 +840,7 @@ def _plan_all_dialog(state: AppState, page: ft.Page, days: list[date]) -> None:
 
     choice = C.dropdown(
         tok, S("choose_template"),
-        [(str(i), f"{S('choose_template')} {i + 1}") for i in range(len(options))],
+        _template_labels(named),
         "0", on_change=_picked)
     listing = ", ".join(f"{C.day_name(d, short=True)} {C.cz_day(d)}" for d in days)
     rows: list = [C.txt(S("plan_all_body").format(days=listing), tok, size=tok.fs_small),

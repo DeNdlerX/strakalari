@@ -280,3 +280,77 @@ def test_only_playwright_browsers_count_as_ours(monkeypatch):
     other = r'"C:\Tools\puppeteer\chrome.exe" --headless --user-data-dir=C:\Temp\x'
     assert _is_playwright_browser(ours)
     assert not _is_playwright_browser(other)
+
+
+class TestPerUserIsolation:
+    """Loopback ports are machine-wide: another OS user must never reach us."""
+
+    def test_token_is_private_and_stable(self, _isolated_data_dir):
+        import os
+
+        import strakalari.flet_ui.single_instance as si_mod
+
+        si_mod._TOKENS.clear()
+        token = si_mod.instance_token()
+        path = _isolated_data_dir / si_mod.TOKEN_FILE
+        assert path.read_bytes() == token and len(token) == 32
+        si_mod._TOKENS.clear()
+        assert si_mod.instance_token() == token
+        if os.name != "nt":
+            assert (path.stat().st_mode & 0o077) == 0
+
+    def test_other_users_message_is_ignored(self):
+        import strakalari.flet_ui.single_instance as si_mod
+
+        port = _free_port()
+        fired = threading.Event()
+        primary = SingleInstance(port, on_show=fired.set)
+        try:
+            assert primary.acquire() is True
+            with socket.create_connection((HOST, port), timeout=2) as conn:
+                conn.settimeout(2)
+                conn.sendall(si_mod._MAGIC_SHOW + b" " + b"0" * 32 + b"\n")
+                assert conn.recv(32) == b""
+            assert fired.wait(timeout=0.3) is False
+        finally:
+            primary.close()
+
+    def test_other_users_launch_runs_on_its_own(self, monkeypatch, tmp_path):
+        import strakalari.flet_ui.single_instance as si_mod
+
+        port = _free_port()
+        fired = threading.Event()
+        status, guard = ensure_single_primary(port, mode="show")
+        assert status == "primary"
+        try:
+            guard.on_show = fired.set
+            # A second user: different data dir, so a different token.
+            monkeypatch.setenv("STRAKALARI_DATA_DIR", str(tmp_path / "other-user"))
+            (tmp_path / "other-user").mkdir()
+            si_mod._TOKENS.clear()
+            status2, guard2 = ensure_single_primary(port, mode="show", timeout=0.3)
+            assert (status2, guard2) == ("solo", None)
+            assert fired.wait(timeout=0.3) is False
+        finally:
+            guard.close()
+
+    def test_users_get_different_ports(self):
+        import strakalari.flet_ui.single_instance as si_mod
+
+        slots = {si_mod._user_slot(f"user{i}|/home/user{i}") for i in range(20)}
+        assert len(slots) > 10
+        assert 42000 <= si_mod.MAIN_PORT < 48000 and si_mod.UI_PORT == si_mod.MAIN_PORT + 1
+
+
+def test_our_flet_view_attribution(tmp_path):
+    from strakalari.flet_ui.single_instance import _is_our_flet_view
+
+    ours = tmp_path / "assets"
+    ours.mkdir()
+    for name in ("tray-icon.svg", "tray-icon.png"):
+        (ours / name).write_text("x")
+    other = tmp_path / "other"
+    other.mkdir()
+    assert _is_our_flet_view(f'"flet.exe" http://x pid "{ours}"')
+    assert not _is_our_flet_view(f'"flet.exe" http://x pid "{other}"')
+    assert _is_our_flet_view(r'flet.exe http://x pid C:\Programs\Strakalari\assets')

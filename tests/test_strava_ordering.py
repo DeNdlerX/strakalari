@@ -1,4 +1,4 @@
-"""Strakalari.stravaOrderSelected never reports partial success."""
+"""Strakalari.strava_order_selected never reports partial success."""
 from strakalari.core.automation import Strakalari
 from unittest.mock import MagicMock
 
@@ -52,7 +52,7 @@ def _app(client):
     app.strava_order_mode = "auto"
     app.config_data = {}
     app.logs = []
-    app.writeLog = app.logs.append
+    app.write_log = app.logs.append
     return app
 
 
@@ -60,7 +60,7 @@ def test_failed_day_without_clicks_is_not_success():
     # DAY1 already matches (no click), DAY2 never becomes clickable.
     client = _Client({"a&1&0": True}, click_on_order=False)
     app = _app(client)
-    assert app.stravaOrderSelected({DAY1: "a&1&0", DAY2: "b&2&0"}) is False
+    assert app.strava_order_selected({DAY1: "a&1&0", DAY2: "b&2&0"}) is False
     # DAY1 already held the pick: web truth, reported even though DAY2 failed.
     assert app.last_ordered_days == {DAY1}
 
@@ -71,7 +71,7 @@ def test_failed_run_reports_days_saved_by_immediate_frontend():
     client = _Client({"a&2&0": True})
     client._find_save_button = lambda timeout_ms=0: None
     app = _app(client)
-    assert app.stravaOrderSelected({DAY1: "a&2&0", DAY2: "b&2&0"}) is False
+    assert app.strava_order_selected({DAY1: "a&2&0", DAY2: "b&2&0"}) is False
     assert client.restored == [DAY2]  # the failed day is still restored
     assert app.last_ordered_days == {DAY1}
     assert client.orderedDict[DAY1] == "a&2&0"
@@ -83,7 +83,7 @@ def test_failed_run_on_save_button_frontend_reports_nothing_clicked():
     client = _Client({"a&2&0": True})
     client._find_save_button = lambda timeout_ms=0: object()
     app = _app(client)
-    assert app.stravaOrderSelected({DAY1: "a&2&0", DAY2: "b&2&0"}) is False
+    assert app.strava_order_selected({DAY1: "a&2&0", DAY2: "b&2&0"}) is False
     assert client.restored == [DAY2]
     assert app.last_ordered_days == set()
     assert client.orderedDict[DAY1] == "a&1&0"
@@ -92,7 +92,7 @@ def test_failed_run_on_save_button_frontend_reports_nothing_clicked():
 def test_all_failed_after_clicks_restores_originals():
     client = _Client({})
     app = _app(client)
-    assert app.stravaOrderSelected({DAY2: "b&2&0"}) is False
+    assert app.strava_order_selected({DAY2: "b&2&0"}) is False
     assert client.restored == [DAY2]
     assert client.saved is None
 
@@ -100,7 +100,7 @@ def test_all_failed_after_clicks_restores_originals():
 def test_lost_selection_fails_and_restores():
     client = _Client({"a&2&0": True, "b&2&0": True}, verified={"a&2&0"})
     app = _app(client)
-    assert app.stravaOrderSelected({DAY1: "a&2&0", DAY2: "b&2&0"}) is False
+    assert app.strava_order_selected({DAY1: "a&2&0", DAY2: "b&2&0"}) is False
     assert client.restored == [DAY2]
     assert client.saved is None
 
@@ -108,7 +108,7 @@ def test_lost_selection_fails_and_restores():
 def test_meal_not_on_menu_is_reported_but_others_placed():
     client = _Client({"a&2&0": True})
     app = _app(client)
-    assert app.stravaOrderSelected({DAY1: "a&2&0", DAY2: "zzz&9&0"}) is False
+    assert app.strava_order_selected({DAY1: "a&2&0", DAY2: "zzz&9&0"}) is False
     assert app.last_ordered_days == {DAY1}
     assert client.saved == ["a&2&0"]
 
@@ -116,7 +116,7 @@ def test_meal_not_on_menu_is_reported_but_others_placed():
 def test_full_success_submits_and_records():
     client = _Client({"a&2&0": True, "b&2&0": True})
     app = _app(client)
-    assert app.stravaOrderSelected({DAY1: "a&2&0", DAY2: "b&2&0"}) is True
+    assert app.strava_order_selected({DAY1: "a&2&0", DAY2: "b&2&0"}) is True
     assert client.saved == ["a&2&0", "b&2&0"]
     assert client.orderedDict == {DAY1: "a&2&0", DAY2: "b&2&0"}
     assert app.last_ordered_days == {DAY1, DAY2}
@@ -129,7 +129,7 @@ class TestDryRunMenuMiss:
         app.strava_enable = True
         app.cancel_requested = False
         app.strava_order_mode = "dry_run"
-        app.writeLog = lambda m: None
+        app.write_log = lambda m: None
         client = MagicMock()
         client.foodDict = dict(food)
         app.strava_client = client
@@ -137,11 +137,11 @@ class TestDryRunMenuMiss:
 
     def test_menu_miss_returns_false(self):
         app = self._app({"20.09.2030": {"m1": "A"}})
-        assert app.stravaOrderSelected({"20.09.2030": "nope&9&x"}) is False
+        assert app.strava_order_selected({"20.09.2030": "nope&9&x"}) is False
 
     def test_menu_hit_returns_true(self):
         app = self._app({"20.09.2030": {"m1": "A"}})
-        assert app.stravaOrderSelected({"20.09.2030": "m1"}) is True
+        assert app.strava_order_selected({"20.09.2030": "m1"}) is True
 
 
 class TestCutoffUnavailable:
@@ -155,11 +155,11 @@ class TestCutoffUnavailable:
         app.strava_enable = True
         app.cancel_requested = False
         app.config_data = {}
-        app.writeLog = lambda m: None
+        app.write_log = lambda m: None
         client = MagicMock()
         client.foodDict = {"20.09.2030": {"m1": "A"}}
         app.strava_client = client
-        assert app.stravaOrderSelected({"20.09.2030": "m1"}) is False
+        assert app.strava_order_selected({"20.09.2030": "m1"}) is False
         client.order.assert_not_called()
 
 
@@ -194,10 +194,10 @@ def test_partial_order_is_not_success():
     app.strava_enable = True
     app.cancel_requested = False
     app.strava_order_mode = "confirm"
-    app.writeLog = lambda *a: None
+    app.write_log = lambda *a: None
     app.strava_client = _FakeStravaClient(ok_days={"m1"})
     app.strava_client.foodDict = {"d1": {"m1": "A"}, "d2": {"m2": "B"}}
-    assert app.stravaOrderSelected({"d1": "m1", "d2": "m2"}) is False
+    assert app.strava_order_selected({"d1": "m1", "d2": "m2"}) is False
 
 
 def test_dry_run_selects_without_submitting():
@@ -207,7 +207,7 @@ def test_dry_run_selects_without_submitting():
     app.strava_enable = True
     app.cancel_requested = False
     app.strava_order_mode = "dry_run"
-    app.writeLog = lambda *a: None
+    app.write_log = lambda *a: None
 
     class _FakeDryClient:
         foodDict = {"20.09.2030": {"m1": "A"}}
@@ -227,7 +227,7 @@ def test_dry_run_selects_without_submitting():
             raise AssertionError("dry-run must never hit save/submit")
 
     app.strava_client = _FakeDryClient()
-    assert app.stravaOrderSelected({"20.09.2030": "m1"}) is True
+    assert app.strava_order_selected({"20.09.2030": "m1"}) is True
     assert app.strava_client.clicks_made == 0
     assert app.strava_client.orderedDict == {}
 
@@ -241,7 +241,7 @@ class TestOrderSelectedSubmit:
         app.cancel_requested = False
         app.strava_order_mode = "confirm"
         app.config_data = {}
-        app.writeLog = lambda m: None
+        app.write_log = lambda m: None
         client = MagicMock()
         client.foodDict = {"01.01.2030": {"m1": "A"}, "02.01.2030": {"m2": "B"}}
         client.orderedDict = {}
@@ -260,16 +260,16 @@ class TestOrderSelectedSubmit:
 
     def test_success_submits(self):
         app, client = self._app([True])
-        assert app.stravaOrderSelected({"01.01.2030": "m1"}) is True
+        assert app.strava_order_selected({"01.01.2030": "m1"}) is True
         client.save_confirm.assert_called_once()
 
     def test_failed_day_aborts_submit(self):
         app, client = self._app([True, False])
-        assert app.stravaOrderSelected({"01.01.2030": "m1", "02.01.2030": "m2"}) is False
+        assert app.strava_order_selected({"01.01.2030": "m1", "02.01.2030": "m2"}) is False
         client.save_confirm.assert_not_called()
 
     def test_closed_day_is_skipped(self):
         app, client = self._app([True])
         client.foodDict["01.01.2020"] = {"m0": "X"}
-        assert app.stravaOrderSelected({"01.01.2020": "m0"}) is False
+        assert app.strava_order_selected({"01.01.2020": "m0"}) is False
         client.save_confirm.assert_not_called()

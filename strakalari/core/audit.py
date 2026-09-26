@@ -27,8 +27,10 @@ KINDS = ("excuse", "lunch")
 #: ``sent`` = submitted to the site, ``dry_run`` = simulated only,
 #: ``covered`` = not sent because the history already covers it,
 #: ``skipped`` = not attempted (closed day, not on the menu, …),
+#: ``unconfirmed`` = submitted, but the site never confirmed it (it may
+#: have gone out; re-sends stay blocked until the Komens outbox shows),
 #: ``failed`` = attempted and not confirmed by the site.
-OUTCOMES = ("sent", "dry_run", "covered", "skipped", "failed")
+OUTCOMES = ("sent", "dry_run", "covered", "skipped", "unconfirmed", "failed")
 
 _LOCK = threading.Lock()
 

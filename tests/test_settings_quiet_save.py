@@ -85,3 +85,33 @@ def test_autosave_shows_normalized_value_in_place(app_state):
     assert app_state.get("check_interval_minutes") == 1
     # No re-render repaints it, so the field itself shows the stored value.
     assert box.value == "1"
+
+
+def _text_fields(control) -> list:
+    import flet as ft
+
+    found = [control] if isinstance(control, ft.TextField) else []
+    for attr in ("content", "controls"):
+        child = getattr(control, attr, None)
+        for c in (child if isinstance(child, list) else [child] if child else []):
+            found += _text_fields(c)
+    return found
+
+
+def test_template_editor_saves_names(app_state):
+    from strakalari.flet_ui.views.settings.common import _tpl_editor
+
+    app_state.save_quiet({"short_absence_excuses": ["Text A", "Text B"]})
+    card = _tpl_editor(app_state, None, "short_absence_excuses", "tpl_short")
+    name_a, text_a, name_b, text_b = _text_fields(card)
+    assert (name_a.value, text_a.value) == ("", "Text A")
+
+    name_a.value = "  Rodina "
+    name_a.on_blur(SimpleNamespace(control=name_a))
+    # Named entries become dicts; unnamed ones stay plain strings.
+    assert app_state.get("short_absence_excuses") == [
+        {"name": "Rodina", "text": "Text A"}, "Text B"]
+
+    name_a.value = ""
+    name_a.on_blur(SimpleNamespace(control=name_a))
+    assert app_state.get("short_absence_excuses") == ["Text A", "Text B"]

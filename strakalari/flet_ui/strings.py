@@ -25,6 +25,8 @@ STRINGS: dict[str, dict[str, str]] = {
     "refresh_strava": {"cs": "Jen Strava", "en": "Strava only"},
     "refresh_all": {"cs": "Vše", "en": "Everything"},
     "refresh_scope": {"cs": "Rozsah obnovy", "en": "Refresh scope"},
+    "scope_bakalari": {"cs": "Bakaláři", "en": "Bakaláři"},
+    "scope_strava": {"cs": "Strava", "en": "Strava"},
     "nav_activity": {"cs": "Aktivita", "en": "Activity"},
 
     "tray_open": {"cs": "Otevřít Strakaláře", "en": "Open Strakaláři"},
@@ -51,6 +53,18 @@ STRINGS: dict[str, dict[str, str]] = {
     "excuse_dry_run": {"cs": "Nanečisto — nic nebylo odesláno", "en": "Dry run — nothing was sent"},
     "excuse_sending": {"cs": "Omluvenka se odesílá…", "en": "Sending excuse…"},
     "excuse_failed": {"cs": "Omluvenku se nepodařilo odeslat", "en": "Could not send the excuse"},
+    "excuse_unconfirmed": {
+        "cs": "Odeslání se nepotvrdilo — omluvenka možná odešla. Znovu se neodešle, dokud "
+              "další obnovení nezkontroluje Komens → Odeslané.",
+        "en": "The send was not confirmed — the excuse may have gone out. It will not be sent "
+              "again until the next refresh checks Komens → Sent.",
+    },
+    "excuse_blocked_unconfirmed": {
+        "cs": "Předchozí odeslání této absence se nepotvrdilo. Obnovte data — pokud v Komens → "
+              "Odeslané nic není, půjde omluvenku poslat znovu.",
+        "en": "An earlier send of this absence was not confirmed. Refresh — if nothing is in "
+              "Komens → Sent, the excuse can be sent again.",
+    },
     "need_credentials": {
         "cs": "Vyplňte přihlášení v Nastavení a stiskněte Obnovit.",
         "en": "Fill in your logins in Settings and press Refresh.",
@@ -304,6 +318,11 @@ STRINGS: dict[str, dict[str, str]] = {
     "tpl_soon": {"cs": "Předčasné odchody", "en": "Early leaves"},
     "tpl_short": {"cs": "Krátké absence", "en": "Short absences"},
     "tpl_long": {"cs": "Dlouhé absence", "en": "Long absences"},
+    "tpl_name": {"cs": "Název šablony", "en": "Template name"},
+    "tpl_name_hint": {"cs": "Např. Rodinné důvody — zobrazí se v nabídce",
+                      "en": "E.g. Family reasons — shown in the picker"},
+    "tpl_text": {"cs": "Text omluvenky", "en": "Excuse text"},
+    "template_n": {"cs": "Šablona", "en": "Template"},
     "signature": {"cs": "Podpis", "en": "Signature"},
     "add": {"cs": "Přidat", "en": "Add"},
     "delete": {"cs": "Smazat", "en": "Delete"},
@@ -339,6 +358,36 @@ STRINGS: dict[str, dict[str, str]] = {
     "refresh_started": {"cs": "Obnovování spuštěno", "en": "Refresh started"},
     "already_running": {"cs": "Obnovování již běží…", "en": "A refresh is already running…"},
     "cancel_refresh": {"cs": "Zrušit", "en": "Cancel"},
+    "activity_last_ok": {"cs": "Poslední obnova proběhla {when}.", "en": "Last refresh finished {when}."},
+    "activity_last_failed": {"cs": "Poslední obnova selhala {when}.", "en": "The last refresh failed {when}."},
+    "activity_last_cancelled": {"cs": "Poslední obnova byla zrušena {when}.",
+                                "en": "The last refresh was cancelled {when}."},
+    "activity_working_hint": {
+        "cs": "Probíhá obnova — můžete dál pracovat, nic se neztratí.",
+        "en": "Refreshing — keep working, nothing is lost.",
+    },
+    "ago_now": {"cs": "právě teď", "en": "just now"},
+    "ago_min": {"cs": "před {n} min", "en": "{n} min ago"},
+    "ago_hours": {"cs": "před {n} h", "en": "{n} h ago"},
+    "error_details": {"cs": "Zobrazit podrobnosti", "en": "Show details"},
+    "stat_success": {"cs": "Úspěšné běhy", "en": "Successful runs"},
+    "stat_sent_week": {"cs": "Odesláno za 7 dní", "en": "Sent in 7 days"},
+    "run_done": {"cs": "Hotovo", "en": "Done"},
+    "run_failed": {"cs": "Chyba", "en": "Failed"},
+    "run_cancelled": {"cs": "Zrušeno", "en": "Cancelled"},
+    "run_took": {"cs": "trvalo {d}", "en": "took {d}"},
+    "automation_card": {"cs": "Automatizace", "en": "Automation"},
+    "automation_running": {"cs": "Automatizace běží podle nastavení.",
+                           "en": "Automation runs as configured."},
+    "automation_edit": {"cs": "Upravit pravidla", "en": "Edit rules"},
+    "audit_filter_all": {"cs": "Vše", "en": "All"},
+    "audit_filter_excuse": {"cs": "Omluvenky", "en": "Excuses"},
+    "audit_filter_lunch": {"cs": "Obědy", "en": "Lunches"},
+    "audit_lunch_order": {"cs": "objednávka", "en": "order"},
+    "audit_lunch_cancel": {"cs": "odhlášení", "en": "cancellation"},
+    "audit_reason_low_balance": {"cs": "málo peněz na účtu", "en": "not enough money on the account"},
+    "log_copy_tooltip": {"cs": "Zkopírovat protokol (bez hesel)", "en": "Copy the log (passwords removed)"},
+    "log_errors": {"cs": "Chyby: {n}", "en": "Errors: {n}"},
 
     # Settings — new fields -------------------------------------------------------
     "strava_url": {"cs": "URL Stravy", "en": "Strava URL"},
@@ -445,6 +494,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "audit_dry_run": {"cs": "NANEČISTO", "en": "DRY RUN"},
     "audit_covered": {"cs": "UŽ OMLUVENO", "en": "ALREADY DONE"},
     "audit_skipped": {"cs": "PŘESKOČENO", "en": "SKIPPED"},
+    "audit_unconfirmed": {"cs": "NEPOTVRZENO", "en": "UNCONFIRMED"},
     "audit_failed": {"cs": "SELHALO", "en": "FAILED"},
     "gemini_auto_used": {"cs": "AI výběr ({model})", "en": "AI pick ({model})"},
     "filter_auto_used": {"cs": "Výběr filtrem", "en": "Filter pick"},
@@ -987,6 +1037,12 @@ STRINGS: dict[str, dict[str, str]] = {
     "excuse_sync_failed": {
         "cs": "Synchronizace odeslaných omluvenek selhala: {err}",
         "en": "Sent-excuse sync failed: {err}",
+    },
+    "auto_excuse_outbox_unknown": {
+        "cs": "Automatické omlouvání přeskočeno — nepodařilo se načíst Komens → Odeslané, "
+              "takže nejde vyloučit dvojí omluvenku.",
+        "en": "Auto-excuse skipped — Komens → Sent could not be read, so a duplicate excuse "
+              "cannot be ruled out.",
     },
     "fetching_menu": {"cs": "Stahuji jídelníček ze Stravy…", "en": "Fetching the Strava menu…"},
     "strava_done_log": {"cs": "Strava hotová ({n} dní).", "en": "Strava done ({n} days)."},

@@ -103,9 +103,10 @@ class Shell:
 
     def on_resize(self, e=None) -> None:
         """Re-lays out width-sensitive screens (the timetable picks full or
-        short subject names from the window width). Steps of 60 px keep a
-        drag-resize from rebuilding the view on every pixel."""
-        if self.route != "timetable":
+        short subject names from the window width, Activity stacks its two
+        columns when narrow). Steps of 60 px keep a drag-resize from
+        rebuilding the view on every pixel."""
+        if self.route not in ("timetable", "activity"):
             return
         try:
             bucket = int(float(self.page.width or 0) // 60)
@@ -161,21 +162,25 @@ class Shell:
 
     def _build_topbar(self) -> None:
         state, tok = self.state, self.state.tok
-        # The status pill carries the state; its tooltip the refresh
-        # bookkeeping (updated / next run).
+        # The status pill carries the state; its tooltip the full status
+        # text and the refresh bookkeeping (updated / next run). It takes
+        # the free width and clips a long message (an error detail can run
+        # for several lines), so the refresh button always stays visible.
+        status_text = self._status_text()
+        label = C.txt(status_text, tok, size=tok.fs_small, muted=True)
+        label.max_lines = 2
+        label.overflow = ft.TextOverflow.ELLIPSIS
+        label.expand = True
         status_pill = ft.Container(
             content=ft.Row(
-                [
-                    C.status_dot(tok, state.status_kind()),
-                    C.txt(self._status_text(), tok, size=tok.fs_small, muted=True),
-                ],
+                [C.status_dot(tok, state.status_kind()), label],
                 spacing=8,
-                tight=True,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             padding=pad_all(8),
+            expand=True,
             on_click=lambda e: self.go("activity"),
-            tooltip=f"{S('last_updated')}: {state.updated_label}"
+            tooltip=f"{status_text}\n{S('last_updated')}: {state.updated_label}"
                     f"   ·   {S('next_run')}: {state.next_run_label}",
         )
         if state.refresh_running:
@@ -223,7 +228,7 @@ class Shell:
                     on_click=_open_update, icon=ft.Icons.UPGRADE,
                 )
             )
-        controls += [ft.Container(expand=True), action]
+        controls.append(action)
         self.topbar.controls = controls
 
     def refresh_data(self) -> None:

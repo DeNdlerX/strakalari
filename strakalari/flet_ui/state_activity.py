@@ -472,9 +472,14 @@ class ActivityMixin:
 
     def _finish_run(self, started: datetime, scope: str, ok: bool, detail: str,
                     cancelled: bool = False) -> None:
+        finished = datetime.now()
         self.runs.append({
             "started": started.strftime("%H:%M:%S"),
-            "finished": datetime.now().strftime("%d.%m. %H:%M"),
+            "finished": finished.strftime("%d.%m. %H:%M"),
+            # Machine-readable twins of the labels above (Activity shows
+            # "12 min ago" and the run length from these).
+            "at": finished.isoformat(timespec="seconds"),
+            "seconds": max(0, round((finished - started).total_seconds())),
             "ok": ok, "scope": scope, "detail": detail,
             # Callers branch on this, never on the (translated) detail.
             "cancelled": bool(cancelled),
@@ -539,9 +544,9 @@ class ActivityMixin:
                 app = Strakalari(config_data=overrides or None, start_browser=True)
                 try:
                     if service == "bakalari":
-                        ok, message = app.testBakalariLogin()
+                        ok, message = app.check_bakalari_login()
                     else:
-                        ok, message = app.testStravaLogin()
+                        ok, message = app.check_strava_login()
                 finally:
                     try:
                         app.close()

@@ -49,7 +49,7 @@ def test_paused_refresh_never_sends_or_orders():
 
 def test_failed_auto_excuse_is_an_error_but_data_is_fresh():
     class _App(FakeApp):
-        def excuseAbsence(self):
+        def excuse_pending(self):
             self.last_excuse_failures = 2
             return 1
 
@@ -63,7 +63,7 @@ def test_failed_auto_excuse_is_an_error_but_data_is_fresh():
 
 def test_failed_auto_order_is_reported():
     class _App(FakeApp):
-        def stravaOrderSelected(self, orders, source="manual"):
+        def strava_order_selected(self, orders, source="manual"):
             self.last_ordered_days = set()
             return False
 
@@ -75,7 +75,7 @@ def test_failed_auto_order_is_reported():
 def test_order_outcomes_are_recorded_per_day():
     client = _Client({"a&2&0": True, "b&2&0": False})
     app = _app(client)
-    assert app.stravaOrderSelected({DAY1: "a&2&0", DAY2: "b&2&0"}, source="auto") is False
+    assert app.strava_order_selected({DAY1: "a&2&0", DAY2: "b&2&0"}, source="auto") is False
     outcomes = {i["detail"]["day"]: i["outcome"] for i in audit.recent()}
     # Nothing is placed when any day fails (fail-closed, restored).
     assert outcomes == {DAY1: "failed", DAY2: "failed"}
@@ -85,7 +85,7 @@ def test_order_outcomes_are_recorded_per_day():
 def test_successful_order_is_recorded_as_sent():
     client = _Client({"a&2&0": True, "b&2&0": True})
     app = _app(client)
-    assert app.stravaOrderSelected({DAY1: "a&2&0", DAY2: "b&2&0"}) is True
+    assert app.strava_order_selected({DAY1: "a&2&0", DAY2: "b&2&0"}) is True
     assert {i["outcome"] for i in audit.recent()} == {"sent"}
 
 
@@ -93,7 +93,7 @@ def test_dry_run_order_is_recorded_as_dry_run():
     client = _Client({})
     app = _app(client)
     app.strava_order_mode = "dry_run"
-    assert app.stravaOrderSelected({DAY1: "a&2&0"}) is True
+    assert app.strava_order_selected({DAY1: "a&2&0"}) is True
     assert audit.recent()[0]["outcome"] == "dry_run"
     assert audit.has_dry_run("lunch")
 
@@ -127,7 +127,7 @@ def test_auto_excuse_counts_failures(tmp_path):
     app.default_excuse_text = lambda excuse: "x"
     app.cancel_requested = False
     app.cancel_callback = None
-    assert app.excuseAbsence() == 0
+    assert app.excuse_pending() == 0
     assert app.last_excuse_failures == 1
 
 

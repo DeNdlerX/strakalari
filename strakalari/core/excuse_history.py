@@ -178,6 +178,124 @@ def excuse_covered(excuse: dict, history: list) -> bool:
     return all(any(_covers(h, day, lesson) for h in entries) for day, lesson in points)
 
 
+#: Submits whose outcome the site never confirmed (the click may have gone
+#: out, then the page stalled). Kept apart from the history — they may not
+#: have been sent — but they block every re-send until the Komens outbox
+#: settles them: a second excuse cannot be taken back.
+UNCONFIRMED_SUFFIX = ".unconfirmed.json"
+
+#: How long an unconfirmed submit must be absent from a successfully read
+#: outbox before it counts as "not sent" and may be sent again.
+UNCONFIRMED_MIN_AGE = timedelta(minutes=5)
+
+
+def unconfirmed_path(history_path: str) -> str:
+    """Sidecar file next to the history (``…lessons.unconfirmed.json``)."""
+    base = history_path[:-5] if history_path.lower().endswith(".json") else history_path
+    return base + UNCONFIRMED_SUFFIX
+
+
+def load_unconfirmed(history_path: str, encoding: str = "utf-8") -> list[dict]:
+    """Unconfirmed submits. Missing file = none; unreadable raises OSError.
+
+    A corrupt file is quarantined and read as empty (its rows only ever
+    block sends, so losing them is the fail-open the history also has).
+    """
+    import json
+    import os
+
+    path = unconfirmed_path(history_path)
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path, "r", encoding=encoding) as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        from .helpers import quarantine_corrupt_file
+
+        quarantine_corrupt_file(path)
+        return []
+    return [d for d in data if isinstance(d, dict)] if isinstance(data, list) else []
+
+
+def save_unconfirmed(history_path: str, entries: list, encoding: str = "utf-8") -> None:
+    """Writes the sidecar atomically; an empty list removes the file."""
+    import os
+
+    from .helpers import atomic_write_json
+
+    path = unconfirmed_path(history_path)
+    if not entries:
+        if os.path.exists(path):
+            os.remove(path)
+        return
+    atomic_write_json(path, entries, encoding=encoding)
+
+
+def unconfirmed_entry(excuse: dict, now=None) -> dict:
+    """One sidecar row: the storable excuse plus when it was submitted."""
+    from datetime import datetime
+
+    entry = base_excuse(normalize_history_item(excuse))
+    entry["submitted_at"] = (now or datetime.now()).isoformat(timespec="seconds")
+    return entry
+
+
+def _submitted_at(entry: dict):
+    from datetime import datetime
+
+    try:
+        return datetime.fromisoformat(str(entry.get("submitted_at")))
+    except (TypeError, ValueError):
+        return None
+
+
+def unconfirmed_blocks(excuse: dict, unconfirmed: list) -> bool:
+    """True when ``excuse`` overlaps any unconfirmed submit.
+
+    Overlap, not coverage: re-sending even part of a maybe-sent excuse
+    would duplicate that part. Unparseable excuses fall back to equality.
+    """
+    entries = [base_excuse(e) for e in unconfirmed or [] if isinstance(e, dict)]
+    if not entries:
+        return False
+    if base_excuse(normalize_history_item(excuse)) in entries:
+        return True
+    return any(any(_covers(e, day, lesson) for e in entries)
+               for day, lesson in _excuse_points(excuse))
+
+
+def resolve_unconfirmed(unconfirmed: list, history: list, outbox_from: date | None,
+                        now=None) -> tuple[list, list, list]:
+    """Settles unconfirmed submits against a *successfully read* outbox.
+
+    Call only after the outbox was actually read (the web sync merged it
+    into ``history``). Returns ``(still_open, confirmed, not_sent)``:
+
+    - confirmed: the history now covers it — it was sent;
+    - not_sent: older than :data:`UNCONFIRMED_MIN_AGE`, submitted inside
+      the range the outbox showed, and still absent — it never arrived;
+    - still_open: everything else (too fresh, or outside the outbox range).
+    """
+    from datetime import datetime
+
+    now = now or datetime.now()
+    still_open, confirmed, not_sent = [], [], []
+    for entry in unconfirmed or []:
+        if not isinstance(entry, dict):
+            continue
+        if excuse_covered(entry, history):
+            confirmed.append(entry)
+            continue
+        at = _submitted_at(entry)
+        in_range = at is not None and (outbox_from is None or at.date() >= outbox_from)
+        if at is not None and in_range and now - at >= UNCONFIRMED_MIN_AGE:
+            not_sent.append(entry)
+        else:
+            still_open.append(entry)
+    return still_open, confirmed, not_sent
+
+
 def task_covered(day: date, period: int | None, history: list) -> bool:
     """True when a single lesson task (day + period) is already excused."""
     return any(_covers(h, day, period) for h in history or []

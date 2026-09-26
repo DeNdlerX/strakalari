@@ -59,23 +59,23 @@ class FakeApp:
             OTHER_DAY: {"t2&1&0": "Guláš", "t2&-1&0": "x"},
         }
 
-    def fetchBakalariData(self):
+    def fetch_bakalari_data(self):
         self.calls.append("bakalari")
 
     def sync_web_excuses_to_history(self):
         self.calls.append("sync")
 
-    def excuseAbsence(self):
+    def excuse_pending(self):
         self.calls.append("excuse")
         return 1
 
-    def fetchStravaData(self):
+    def fetch_strava_data(self):
         self.calls.append("strava")
         if self._strava_error:
             raise self._strava_error
         self.foodDict = dict(self._menu)
 
-    def stravaOrderSelected(self, orders, source="manual"):
+    def strava_order_selected(self, orders, source="manual"):
         self.calls.append(("order", dict(orders)))
         self.strava_client.orderedDict.update(orders)
         return True

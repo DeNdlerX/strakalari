@@ -323,7 +323,9 @@ def _meta_text(tok, look: _Look, size: int) -> ft.Text:
             spans.append(ft.TextSpan(" · ", ft.TextStyle(color=tok.faint)))
         spans.append(ft.TextSpan(surname, ft.TextStyle(
             color=tok.accent if "teacher" in look.changed else tok.faint)))
-    return ft.Text(spans=spans, size=size, max_lines=1,
+    # no_wrap: a soft-wrapped line breaks before a long surname and pushes it
+    # onto the clipped second line (no ellipsis at all) instead of truncating.
+    return ft.Text(spans=spans, size=size, max_lines=1, no_wrap=True,
                    overflow=ft.TextOverflow.ELLIPSIS)
 
 
@@ -340,6 +342,7 @@ def _subject_text(tok, look: _Look, value: str, size: int) -> ft.Text:
         weight=ft.FontWeight.BOLD,
         color=color,
         max_lines=1,
+        no_wrap=True,
         overflow=ft.TextOverflow.ELLIPSIS,
         style=ft.TextStyle(decoration=ft.TextDecoration.LINE_THROUGH,
                            decoration_color=tok.faint)
@@ -479,7 +482,7 @@ def _grid_cell(
     tag_row: list[ft.Control] = []
     if look.tag:
         tag_row.append(ft.Text(look.tag, size=tok.fs_tiny, color=look.tag_color,
-                               weight=ft.FontWeight.W_600, max_lines=1,
+                               weight=ft.FontWeight.W_600, max_lines=1, no_wrap=True,
                                overflow=ft.TextOverflow.ELLIPSIS, expand=True))
     if look.diff.note and not look.diff.is_change:
         # A change's notice is the change itself; the dot marks plain notes.

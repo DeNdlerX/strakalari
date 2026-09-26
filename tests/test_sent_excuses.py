@@ -138,7 +138,7 @@ def test_sync_treats_none_as_unknown():
 
     app = Strakalari.__new__(Strakalari)
     app.cancel_requested = False
-    app.writeLog = lambda *a: None
+    app.write_log = lambda *a: None
 
     class _Client:
         page = object()

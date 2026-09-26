@@ -157,14 +157,26 @@ def _sensitive_values(config: dict | None) -> set[str]:
     return values
 
 
-def redact_text(text: str, config: dict | None = None) -> str:
-    """Scrubs known secret and personal *values* out of free text (tracebacks, logs)."""
+def secret_values(config: dict | None) -> set[str]:
+    """Only the secrets (passwords, API keys) of ``config``, ciphertext and plaintext.
+
+    For the local ``log.txt``: it stays on the user's machine, so names
+    and usernames may stay in it, but a password must never be written
+    to disk in the clear.
+    """
+    cfg = config or {}
+    return _sensitive_values({k: v for k, v in cfg.items()
+                              if _is_secret_key(k) or k.endswith("_encrypted")})
+
+
+def redact_values(text: str, values: set[str] | frozenset[str]) -> str:
+    """Replaces every value of ``values`` in ``text`` with the redaction marker."""
     import re as _re
 
     out = str(text or "")
     long_secrets: set[str] = set()
     short_secrets: set[str] = set()
-    for secret in _sensitive_values(config):
+    for secret in values:
         if len(secret) >= 4:
             long_secrets.add(secret)
         else:
@@ -181,6 +193,11 @@ def redact_text(text: str, config: dict | None = None) -> str:
         except Exception:
             continue
     return out
+
+
+def redact_text(text: str, config: dict | None = None) -> str:
+    """Scrubs known secret and personal *values* out of free text (tracebacks, logs)."""
+    return redact_values(text, _sensitive_values(config))
 
 
 def redact_with_saved_config(text: str) -> str:

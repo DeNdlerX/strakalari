@@ -31,21 +31,11 @@ def _undo_ignore(page: ft.Page, state: AppState, keys: list[str]) -> None:
         _snack(page, state.last_ignore_error or S("save_failed"))
 
 
-def _options_for(state: AppState, kind: str) -> list[str]:
-    from .planner import _templates
+def _options_for(state: AppState, kind: str) -> list[tuple[str, str]]:
+    """Kind-matched templates as ``(name, text)`` pairs."""
+    from .planner import _template_options
 
-    return _templates(state, kind=kind)
-
-
-def _one_line(tpl: str) -> str:
-    return " ".join(str(tpl or "").split())
-
-
-def _option_items(options: list[str]) -> list[tuple[str, str]]:
-    # The whole text, never a clipped prefix: templates often share their
-    # opening words and differ only further on.
-    return [(str(i), _one_line(tpl) or f"{S('choose_template')} {i + 1}")
-            for i, tpl in enumerate(options)]
+    return _template_options(state, kind=kind)
 
 
 def _choose(state: AppState, key: str, value: str | None, n: int) -> None:
@@ -55,12 +45,10 @@ def _choose(state: AppState, key: str, value: str | None, n: int) -> None:
         state.picked_templates[key] = 0
 
 
-def _template_dropdown(state: AppState, key: str, options: list[str]):
-    """Template dropdown + a full-text preview of the picked template.
+def _template_dropdown(state: AppState, key: str, options: list[tuple[str, str]]):
+    """Template dropdown (by name) + a full-text preview of the picked template."""
+    from .planner import _template_labels
 
-    The closed dropdown field clips long texts to one line, so the whole
-    picked text is shown under it as well.
-    """
     tok = state.tok
     preview = C.txt(_picked_option(state, key, options), tok, size=tok.fs_small, muted=True)
 
@@ -73,7 +61,7 @@ def _template_dropdown(state: AppState, key: str, options: list[str]):
             pass
 
     dd = C.dropdown(
-        tok, S("choose_template"), _option_items(options),
+        tok, S("choose_template"), _template_labels(options),
         str(state.picked_templates.get(key, 0)),
         on_change=_on_change,
     )
@@ -81,14 +69,15 @@ def _template_dropdown(state: AppState, key: str, options: list[str]):
     return dd, preview
 
 
-def _picked_option(state: AppState, key: str, options: list[str]) -> str:
+def _picked_option(state: AppState, key: str, options: list[tuple[str, str]]) -> str:
+    """The excuse text of the template picked for ``key``."""
     if not options:
         return ""
     idx = state.picked_templates.get(key, 0)
     try:
-        return options[max(0, min(len(options) - 1, int(idx)))]
+        return options[max(0, min(len(options) - 1, int(idx)))][1]
     except (TypeError, ValueError):
-        return options[0]
+        return options[0][1]
 
 
 def _ignored_blocks(state: AppState, page: ft.Page) -> list[ft.Control]:

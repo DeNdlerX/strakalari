@@ -100,3 +100,18 @@ def test_corrupt_cache_is_quarantined(monkeypatch, tmp_path):
     assert len(backups) == 1
     with open(os.path.join(str(tmp_path), backups[0]), encoding="utf-8") as f:
         assert f.read() == "{invalid_json_format!!"
+
+
+def test_cache_label_follows_language():
+    from datetime import datetime, timedelta
+
+    from strakalari.core import i18n
+    from strakalari.core.cache import describe_cache
+
+    stamp = (datetime.now() - timedelta(hours=3)).strftime("%d.%m.%Y %H:%M:%S")
+    i18n.set_language("en")
+    try:
+        assert "h ago" in describe_cache({"last_updated": stamp}, 24)
+    finally:
+        i18n.set_language("cs")
+    assert "před" in describe_cache({"last_updated": stamp}, 24)

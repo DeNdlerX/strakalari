@@ -59,7 +59,7 @@ def _app(tmp_path, submit_delay=0.0):
     app.excuse_mode = "auto"
     app.encoding = "utf-8"
     app.already_excused_file = str(tmp_path / "history.json")
-    app.writeLog = lambda m: None
+    app.write_log = lambda m: None
     client = MagicMock()
 
     def _execute(*a, **k):
@@ -133,7 +133,7 @@ class TestExampleHistoryFilter:
         app = Strakalari.__new__(Strakalari)
         app.already_excused_file = hist
         app.encoding = "utf-8"
-        app.writeLog = lambda m: None
+        app.write_log = lambda m: None
         history, _path = app._load_history()
         for item in history:
             assert isinstance(item, dict)
@@ -185,7 +185,7 @@ def test_excuse_dry_run_fills_without_submitting():
 
     app = Strakalari.__new__(Strakalari)
     app.excuse_mode = "dry_run"
-    app.writeLog = lambda *a: None
+    app.write_log = lambda *a: None
     app._load_history = lambda: ([], "nowhere.json")
 
     calls = []

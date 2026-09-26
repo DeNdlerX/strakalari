@@ -112,8 +112,8 @@ class TimetableMixin:
                     self._wait_for_page_settled(_date_ms)
                 except InterruptedError:
                     raise
-                except Exception:
-                    pass
+                except Exception as e:
+                    self._debug("timetable: page settle wait failed", e)
                 try:
                     _echo = input_el.input_value(timeout=_date_ms)
                 except InterruptedError:
@@ -143,8 +143,8 @@ class TimetableMixin:
                         _week_loaded_js(target_days), timeout=settle_ms)
                 except InterruptedError:
                     raise
-                except Exception:
-                    pass
+                except Exception as e:
+                    self._debug("timetable: week content wait timed out", e)
             # Tiny fixed pause for the final JS re-render, then capture.
             self._sleep_s(0.2)
 
@@ -314,8 +314,8 @@ class TimetableMixin:
         if settle_ms > 0:
             try:
                 self.page.wait_for_function(_PERM_VIEW_JS, timeout=settle_ms)
-            except Exception:
-                pass
+            except Exception as e:
+                self._debug("stable timetable: view wait timed out", e)
         self._sleep_s(0.2)
         html = str(self.page.content())
         if not is_perm_view(html):

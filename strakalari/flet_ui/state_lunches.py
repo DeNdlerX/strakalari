@@ -207,7 +207,7 @@ class LunchMixin:
                             try:
                                 app.cancel_requested = False
                                 dry = (getattr(app, "strava_order_mode", "") == "dry_run")
-                                ok = bool(app.stravaOrderSelected(dict(payload)))
+                                ok = bool(app.strava_order_selected(dict(payload)))
                                 if not dry:
                                     # Days that really went through, even when
                                     # another day failed (clicks persist on the web).

@@ -8,14 +8,20 @@ import random
 from .config import _is_demo_history_item
 from .excuse_history import (
     STORED_KEYS,
+    base_excuse,
     excuse_covered,
     excuse_window_start,
     history_entries,
     history_lock,
+    load_unconfirmed,
     merge_sent_excuses,
     normalize_history_item,
+    resolve_unconfirmed,
+    save_unconfirmed,
+    unconfirmed_blocks,
+    unconfirmed_entry,
 )
-from .helpers import _resolve_path, atomic_write_json, parse_date, extract_lesson_num, format_excuse_template, example_path_for
+from .helpers import _resolve_path, atomic_write_json, parse_date, extract_lesson_num, format_excuse_template, example_path_for, template_texts
 from .i18n import t
 from .models import absence_kind, is_cancel_notice
 
@@ -166,7 +172,7 @@ class Strakalari:
         # Same legacy read-aliases as StravaClient (read-only compat:
         # nothing writes strava_id / strava_user / strava_enable anymore).
         # Without them a legacy config passes the client login but fails
-        # this gating and testStravaLogin.
+        # this gating and check_strava_login.
         self.strava_id = str(self.config_data.get("strava_canteen_id", "")
                              or self.config_data.get("strava_id", "") or "").strip()
         self.strava_username = self.config_data.get("strava_username", "") or self.config_data.get("strava_user", "")
@@ -184,10 +190,10 @@ class Strakalari:
         if self.strava_order_mode not in ("auto", "confirm", "dry_run"):
             self.strava_order_mode = "confirm"
 
-        self.late_income_excuses = self.config_data.get("late_income_excuses", [])
-        self.left_soon_excuses = self.config_data.get("left_soon_excuses", [])
-        self.long_absence_excuses = self.config_data.get("long_absence_excuses", [])
-        self.short_absence_excuses = self.config_data.get("short_absence_excuses", [])
+        self.late_income_excuses = template_texts(self.config_data.get("late_income_excuses", []))
+        self.left_soon_excuses = template_texts(self.config_data.get("left_soon_excuses", []))
+        self.long_absence_excuses = template_texts(self.config_data.get("long_absence_excuses", []))
+        self.short_absence_excuses = template_texts(self.config_data.get("short_absence_excuses", []))
         self.signature = self.config_data.get("your_signature", "")
 
         self.already_excused_file = _resolve_path(self.config_data.get("already_excused_file", "./already_excused_lessons.json"))
@@ -207,8 +213,8 @@ class Strakalari:
 
         from .bakalari_client import BakalariClient
         from .strava_client import StravaClient
-        self.bakalari_client = BakalariClient(self.bm if self.bm else type('DummyBM', (), {'page': None})(), self.config_data, logger=self.writeLog)
-        self.strava_client = StravaClient(self.bm if self.bm else type('DummyBM', (), {'page': None})(), self.config_data, logger=self.writeLog)
+        self.bakalari_client = BakalariClient(self.bm if self.bm else type('DummyBM', (), {'page': None})(), self.config_data, logger=self.write_log)
+        self.strava_client = StravaClient(self.bm if self.bm else type('DummyBM', (), {'page': None})(), self.config_data, logger=self.write_log)
 
         self.logged_in = False
         # Cooperative cancellation flag (set by the GUI worker's cancel()).
@@ -216,6 +222,11 @@ class Strakalari:
         # Optional live predicate polled by the Bakalari week loop so a
         # cancel issued mid-fetch is honored (forwarded to the client).
         self.cancel_callback = None
+        # True only after the Komens outbox was actually read this run.
+        # The refresh pipeline never auto-excuses without it: the outbox
+        # is the only record of excuses whose submit went unconfirmed.
+        self.last_outbox_sync_ok = False
+        self.last_excuse_failures = 0
 
     def _is_cancelled(self) -> bool:
         """True when the flag or the live cancel predicate fires."""
@@ -285,7 +296,29 @@ class Strakalari:
             except Exception as e:  # noqa: BLE001 - teardown; orphans are reaped on next start
                 print(f"Warning: browser close failed: {type(e).__name__}: {e}")
 
-    def writeLog(self, message: str):
+    def _redact_log(self, message: str) -> str:
+        """``message`` with stored passwords / API keys scrubbed out.
+
+        Exception texts and Playwright call logs can echo a typed secret;
+        log.txt is plain text on disk. The decrypted values are cached per
+        stored ciphertexts, so a routine line costs a few ``in`` checks.
+        """
+        try:
+            from .error_report import redact_values, secret_values
+
+            cfg = getattr(self, "config_data", None) or {}
+            key = tuple(str(cfg.get(k) or "") for k in
+                        ("bakalari_password", "strava_password", "gemini_api_key"))
+            cached = getattr(self, "_log_secrets", None)
+            if cached is None or cached[0] != key:
+                cached = (key, frozenset(secret_values(cfg)))
+                self._log_secrets = cached
+            return redact_values(message, cached[1]) if cached[1] else str(message)
+        except Exception:  # noqa: BLE001 - fail closed: never write it raw
+            return "(log line withheld: redaction failed)"
+
+    def write_log(self, message: str):
+        message = self._redact_log(message)
         try:
             with _WRITE_LOCK:
                 # Rotation is guarded by an inter-process lock: the tray and
@@ -318,20 +351,20 @@ class Strakalari:
             except Exception:
                 pass
 
-    def fetchBakalariData(self):
+    def fetch_bakalari_data(self):
         if self.bakalari_client:
             self.bakalari_client.cancel_requested = self.cancel_requested
             self.bakalari_client.cancel_callback = self.cancel_callback
             self.bakalari_client.fetch_data()
 
-    def fetchStravaData(self):
+    def fetch_strava_data(self):
         if self.strava_enable and self.strava_client:
             # Forward cancellation so Zrušit preempts the menu fetch mid-wait.
             self.strava_client.cancel_requested = self.cancel_requested
             self.strava_client.cancel_callback = self.cancel_callback
             self.strava_client.fetch_data()
 
-    def stravaOrderSelected(self, orders_dict: dict, source: str = "manual") -> bool:
+    def strava_order_selected(self, orders_dict: dict, source: str = "manual") -> bool:
         """Applies ``{day: meal_id}`` on Strava and records every day's outcome.
 
         True only when every day went through (or, in ``dry_run``, every
@@ -381,23 +414,23 @@ class Strakalari:
                              f"{day}: {'cancel lunch' if deorder else 'order'}",
                              detail=detail)
         except Exception as e:  # noqa: BLE001 - the order result stands
-            self.writeLog(f"Warning: could not record the orders in the history: {e}")
+            self.write_log(f"Warning: could not record the orders in the history: {e}")
 
     def _order_selected(self, orders_dict: dict) -> bool:
         if not self.strava_enable or not orders_dict or not self.strava_client:
             return False
         if self._is_cancelled():
-            self.writeLog("Strava ordering cancelled by user.")
+            self.write_log("Strava ordering cancelled by user.")
             return False
         _is_dry = (getattr(self, "strava_order_mode", "confirm") == "dry_run")
         self.strava_client.login()
         self.strava_client.fetch_data()
         if _is_dry:
-            self.writeLog(f"[Dry-Run] Proposed orders (nothing clicked, page unchanged): {orders_dict}")
+            self.write_log(f"[Dry-Run] Proposed orders (nothing clicked, page unchanged): {orders_dict}")
             _ok = True
             for _day, _meal in orders_dict.items():
                 if self._is_cancelled():
-                    self.writeLog("Strava ordering cancelled by user.")
+                    self.write_log("Strava ordering cancelled by user.")
                     _ok = False
                     break
                 try:
@@ -405,18 +438,18 @@ class Strakalari:
                     if _meal not in _sel:
                         _real = next((mid for mid in _sel if '&-1&' in mid), None)
                         if _real and '&-1&' in str(_meal):
-                            self.writeLog(f"[Dry-Run] {_day}: would use '{_real}'.")
+                            self.write_log(f"[Dry-Run] {_day}: would use '{_real}'.")
                         else:
-                            self.writeLog(f"[Dry-Run] {_day}: '{_meal}' is not on the menu, skipping.")
+                            self.write_log(f"[Dry-Run] {_day}: '{_meal}' is not on the menu, skipping.")
                             _ok = False
                             continue
                     else:
-                        self.writeLog(f"[Dry-Run] {_day}: '{_meal}' is on the menu.")
+                        self.write_log(f"[Dry-Run] {_day}: '{_meal}' is on the menu.")
                 except Exception as _e:
-                    self.writeLog(f"[Dry-Run] {_day}: selection check failed: {type(_e).__name__}: {_e}")
+                    self.write_log(f"[Dry-Run] {_day}: selection check failed: {type(_e).__name__}: {_e}")
                     _ok = False
             if _ok:
-                self.writeLog("[Dry-Run] Proposal ready, nothing was clicked, saved or sent.")
+                self.write_log("[Dry-Run] Proposal ready, nothing was clicked, saved or sent.")
             return _ok
         client = self.strava_client
         client.clicks_made = 0
@@ -431,7 +464,7 @@ class Strakalari:
         except Exception as _e:
             # Fail-closed: without a cutoff check no day is verifiably
             # orderable — ordering blind would only produce rejections.
-            self.writeLog(f"Warning: cutoff check unavailable ({type(_e).__name__}), skipping Strava ordering.")
+            self.write_log(f"Warning: cutoff check unavailable ({type(_e).__name__}), skipping Strava ordering.")
             return False
         skipped: list = self._order_report["skipped"]
         succeeded: list = self._order_report["succeeded"]
@@ -442,29 +475,29 @@ class Strakalari:
         items = sorted(orders_dict.items(), key=lambda kv: "&-1&" not in str(kv[1]))
         for day, meal_identifier in items:
             if self._is_cancelled():
-                self.writeLog("Strava ordering cancelled by user.")
+                self.write_log("Strava ordering cancelled by user.")
                 skipped.append(day)
                 break
             try:
                 _parsed = parse_date(day)
                 _day_date = _parsed.date() if isinstance(_parsed, datetime) else _parsed
             except Exception:
-                self.writeLog(f"Skipping order for {day}: unparseable date.")
+                self.write_log(f"Skipping order for {day}: unparseable date.")
                 skipped.append(day)
                 continue
             if _day_date < datetime.now().date():
-                self.writeLog(f"Skipping {day}: day already passed.")
+                self.write_log(f"Skipping {day}: day already passed.")
                 skipped.append(day)
                 continue
             try:
                 if not _is_open(_day_date, datetime.now(), _cutoff, _free):
-                    self.writeLog(f"Skipping {day}: ordering closed (deadline passed).")
+                    self.write_log(f"Skipping {day}: ordering closed (deadline passed).")
                     skipped.append(day)
                     continue
             except Exception:
                 # Fail-closed: an uncheckable cutoff must skip the day,
                 # never click a meal Strava would reject.
-                self.writeLog(f"Skipping {day}: cutoff check failed.")
+                self.write_log(f"Skipping {day}: cutoff check failed.")
                 skipped.append(day)
                 continue
             selection = _menu_selection(client.foodDict, day)
@@ -476,9 +509,9 @@ class Strakalari:
                     meal_identifier = real_deorder
                 else:
                     if '&-1&' in str(meal_identifier):
-                        self.writeLog(f"Skipping deorder for {day}: no cancel element on the menu, leaving unchanged.")
+                        self.write_log(f"Skipping deorder for {day}: no cancel element on the menu, leaving unchanged.")
                     else:
-                        self.writeLog(f"Skipping order for {day}: '{meal_identifier}' not on the menu.")
+                        self.write_log(f"Skipping order for {day}: '{meal_identifier}' not on the menu.")
                     skipped.append(day)
                     continue
             if getattr(client, "insufficient_balance", False) and "&-1&" not in str(meal_identifier):
@@ -488,7 +521,7 @@ class Strakalari:
                 continue
             pick = {"day": day, "meal_id": meal_identifier,
                     "all_ids": list(selection.keys())}
-            self.writeLog(f"Ordering lunch for {day}: {meal_identifier}")
+            self.write_log(f"Ordering lunch for {day}: {meal_identifier}")
             if client.order(meal_identifier, pick["all_ids"]):
                 succeeded.append(pick)
             elif getattr(client, "insufficient_balance", False):
@@ -500,19 +533,19 @@ class Strakalari:
                     _suffix = client._notice_suffix()
                 except Exception:
                     _suffix = ""
-                self.writeLog(f"Warning: Failed to click meal {meal_identifier} for {day}, not marking as ordered.{_suffix}")
+                self.write_log(f"Warning: Failed to click meal {meal_identifier} for {day}, not marking as ordered.{_suffix}")
                 failed.append(pick)
         if unfunded:
             self.last_order_low_balance = True
             self.last_unfunded_days = [str(d) for d in unfunded]
-            self.writeLog(f"Warning: not enough money on the Strava account — not ordered: "
+            self.write_log(f"Warning: not enough money on the Strava account — not ordered: "
                           f"{', '.join(map(str, unfunded))}. Top up the account and try again.")
         if client.clicks_made:
             # A mid-run page change can silently alter a clicked selection:
             # re-verify every succeeded day. A lost one counts as failed.
             for pick in list(succeeded):
                 if not _selection_holds(client, pick):
-                    self.writeLog(f"Warning: {pick['day']}: the selection changed during ordering.")
+                    self.write_log(f"Warning: {pick['day']}: the selection changed during ordering.")
                     succeeded.remove(pick)
                     failed.append(pick)
         if failed:
@@ -523,28 +556,28 @@ class Strakalari:
                 try:
                     client._restore_original(failed, original_ordered)
                 except Exception as e:  # noqa: BLE001 - best effort, reported
-                    self.writeLog(f"Warning: could not restore the original lunch "
+                    self.write_log(f"Warning: could not restore the original lunch "
                                   f"selection ({type(e).__name__}: {e}) — check Strava.")
             self._record_persisted(client, succeeded, original_ordered)
             failed_days = ", ".join(str(p.get("day", "?")) for p in failed)
-            self.writeLog(f"Warning: Strava order failed for: {failed_days} — order failed, verify state on the web.")
+            self.write_log(f"Warning: Strava order failed for: {failed_days} — order failed, verify state on the web.")
             return False
         if succeeded and client.clicks_made:
             if not client.save_confirm([p["meal_id"] for p in succeeded]):
-                self.writeLog("Warning: Strava save button failed — selections clicked but NOT submitted.")
+                self.write_log("Warning: Strava save button failed — selections clicked but NOT submitted.")
                 return False
         elif succeeded:
-            self.writeLog("Strava: selection already matches the web, nothing submitted.")
+            self.write_log("Strava: selection already matches the web, nothing submitted.")
         for pick in succeeded:
             _store_ordered(client.orderedDict, pick["day"], pick["meal_id"])
             self.last_ordered_days.add(pick["day"])
         if unfunded:
             return False
         if skipped:
-            self.writeLog(f"Warning: Strava days not ordered: {', '.join(map(str, skipped))}.")
+            self.write_log(f"Warning: Strava days not ordered: {', '.join(map(str, skipped))}.")
             return False
         if not succeeded:
-            self.writeLog("Strava: no meal was actually selected, skipping submit (nothing to save).")
+            self.write_log("Strava: no meal was actually selected, skipping submit (nothing to save).")
             return False
         return True
 
@@ -573,7 +606,7 @@ class Strakalari:
                 _store_ordered(client.orderedDict, day, meal)
                 self.last_ordered_days.add(day)
         if self.last_ordered_days:
-            self.writeLog(f"Strava: these days did go through: "
+            self.write_log(f"Strava: these days did go through: "
                           f"{', '.join(map(str, sorted(self.last_ordered_days, key=str)))}.")
 
     def _load_history(self) -> tuple[list, str]:
@@ -603,7 +636,7 @@ class Strakalari:
 
                 backup = quarantine_corrupt_file(read_path) if read_path == history_filepath else ""
                 hint = f" (corrupt file preserved at {backup})" if backup else ""
-                self.writeLog(f"Warning: Could not read excuse history, starting fresh: {e}{hint}")
+                self.write_log(f"Warning: Could not read excuse history, starting fresh: {e}{hint}")
                 history = []
             except OSError as e:
                 # Busy (locked), not corrupt: never quarantine it.
@@ -616,8 +649,11 @@ class Strakalari:
 
         Returns the number of newly added entries. A failed sync (the
         client returns None = unknown) changes nothing and returns 0;
-        ``InterruptedError`` propagates on cancel.
+        ``InterruptedError`` propagates on cancel. ``last_outbox_sync_ok``
+        tells a successful read (even an empty one) from a failed one.
+        A successful read also settles unconfirmed submits.
         """
+        self.last_outbox_sync_ok = False
         if self._is_cancelled():
             return 0
         client = getattr(self, "bakalari_client", None)
@@ -635,35 +671,64 @@ class Strakalari:
         except InterruptedError:
             raise
         except Exception as e:
-            self.writeLog(f"Warning: sent-excuse sync failed: {type(e).__name__}: {e}")
+            self.write_log(f"Warning: sent-excuse sync failed: {type(e).__name__}: {e}")
             return 0
-        if not discovered:
-            return 0
+        if discovered is None:
+            return 0  # unknown, not "nothing sent"
         with history_lock(self.already_excused_file) as locked:
             if not locked:
-                self.writeLog("Warning: excuse history is busy, web sync postponed.")
+                self.write_log("Warning: excuse history is busy, web sync postponed.")
                 return 0
             try:
                 history, history_filepath = self._load_history()
             except Exception as e:
-                self.writeLog(f"Warning: {e} — web sync postponed.")
+                self.write_log(f"Warning: {e} — web sync postponed.")
                 return 0
             merged, added = merge_sent_excuses(history, discovered)
-            if not added:
-                return 0
-            try:
-                atomic_write_json(history_filepath, merged, encoding=self.encoding)
-            except Exception as e:
-                self.writeLog(f"Failed to write history file: {type(e).__name__}: {e}")
-                return 0
+            if added:
+                try:
+                    atomic_write_json(history_filepath, merged, encoding=self.encoding)
+                except Exception as e:
+                    self.write_log(f"Failed to write history file: {type(e).__name__}: {e}")
+                    return 0
+            self.last_outbox_sync_ok = True
+            self._settle_unconfirmed(merged, getattr(client, "sentExcuses_from", None))
+        if not added:
+            return 0
         # One hour-based web message expands to three history entries
         # (income + soon + days and hours); report distinct messages.
         messages = {
             tuple(str(item.get(k)) for k in STORED_KEYS[1:])
             for item in merged[-added:] if isinstance(item, dict)
         }
-        self.writeLog(f"Added {len(messages) or added} excuse(s) already sent on the web to the history.")
+        self.write_log(f"Added {len(messages) or added} excuse(s) already sent on the web to the history.")
         return added
+
+    def _settle_unconfirmed(self, history: list, outbox_from) -> None:
+        """Drops unconfirmed submits the freshly read outbox settled.
+
+        Runs under the history lock, right after a successful outbox read.
+        Never raises: an unsettled row just keeps blocking its re-send.
+        """
+        from datetime import date as _date
+
+        try:
+            pending = load_unconfirmed(self.already_excused_file, self.encoding)
+            if not pending:
+                return
+            still_open, confirmed, not_sent = resolve_unconfirmed(
+                pending, history, outbox_from if isinstance(outbox_from, _date) else None)
+            if not (confirmed or not_sent):
+                return
+            save_unconfirmed(self.already_excused_file, still_open, self.encoding)
+        except Exception as e:  # noqa: BLE001 - keep blocking, retry next sync
+            self.write_log(f"Warning: could not settle unconfirmed excuses: {type(e).__name__}: {e}")
+            return
+        for entry in confirmed:
+            self.write_log(f"Unconfirmed excuse found in the Komens outbox — it was sent: {base_excuse(entry)}")
+        for entry in not_sent:
+            self.write_log(f"Unconfirmed excuse is not in the Komens outbox — it was NOT sent "
+                          f"and may be sent again: {base_excuse(entry)}")
 
     def excuse_single(self, excuse: dict, custom_text: str = None) -> bool:
         """Excuses one absence (the Today one-click flow).
@@ -676,7 +741,9 @@ class Strakalari:
         return self.send_excuse_outcome(excuse, custom_text) in ("sent", "covered", "dry_run")
 
     def send_excuse_outcome(self, excuse: dict, custom_text: str = None) -> str:
-        """Manual send of one excuse: ``sent`` / ``covered`` / ``dry_run`` / ``failed``.
+        """Manual send of one excuse: ``sent`` / ``covered`` / ``dry_run`` /
+        ``unconfirmed`` (submitted, the site never confirmed) / ``skipped``
+        (an earlier unconfirmed submit blocks it) / ``failed``.
 
         Unlike :meth:`excuse_single` the caller can tell "already excused"
         (nothing was sent) apart from a real send.
@@ -701,14 +768,15 @@ class Strakalari:
                           start_lesson=excuse["starting_lesson"],
                           end_lesson=excuse["ending_lesson"],
                           custom_text=custom_text, is_days=False, excuse_type=ex_type)
-        self.writeLog(f"Warning: unknown excuse type {ex_type!r}, skipping (no submit).")
+        self.write_log(f"Warning: unknown excuse type {ex_type!r}, skipping (no submit).")
         return False
 
     def _send_excuse(self, excuse: dict, custom_text: str | None,
                      source: str = "manual") -> str:
         """Sends one excuse unless the history already covers it.
 
-        Returns ``"sent"``, ``"covered"``, ``"dry_run"`` or ``"failed"``;
+        Returns ``"sent"``, ``"covered"``, ``"dry_run"``, ``"unconfirmed"``,
+        ``"skipped"`` or ``"failed"``;
         every outcome is also appended to the automation history. The
         history check, the submit and the history write run under one
         lock, so concurrent senders (UI clicks, auto refresh, tray) can
@@ -721,66 +789,107 @@ class Strakalari:
             audit.record("excuse", outcome, source, audit.describe_excuse(excuse),
                          detail={"type": excuse.get("type"), "mode": self.excuse_mode})
         except Exception as e:  # noqa: BLE001 - the send result stands
-            self.writeLog(f"Warning: could not record the excuse in the history: {e}")
+            self.write_log(f"Warning: could not record the excuse in the history: {e}")
         return outcome
 
     def _send_excuse_inner(self, excuse: dict, custom_text: str | None) -> str:
         if not self.bakalari_client:
-            self.writeLog("Warning: Bakaláři client not available, excuse not sent.")
+            self.write_log("Warning: Bakaláři client not available, excuse not sent.")
             return "failed"
         if self.excuse_mode == "dry_run":
-            self.writeLog(f"[Dry-Run] Filling the excuse form (not sending): {excuse}")
+            self.write_log(f"[Dry-Run] Filling the excuse form (not sending): {excuse}")
             try:
                 filled = self._submit(excuse, custom_text, fill_only=True)
             except InterruptedError:
                 raise
             except Exception as e:
-                self.writeLog(f"[Dry-Run] Filling the form failed: {type(e).__name__}: {e}")
+                self.write_log(f"[Dry-Run] Filling the form failed: {type(e).__name__}: {e}")
                 return "failed"
             if filled:
-                self.writeLog("[Dry-Run] Form filled in the browser, nothing was sent.")
+                self.write_log("[Dry-Run] Form filled in the browser, nothing was sent.")
             return "dry_run" if filled else "failed"
         with history_lock(self.already_excused_file) as locked:
             if not locked:
-                self.writeLog("Warning: another excuse is being sent right now — try again later.")
+                self.write_log("Warning: another excuse is being sent right now — try again later.")
                 return "failed"
             try:
                 history, history_filepath = self._load_history()
             except Exception as e:
-                self.writeLog(f"Warning: {e} — not sending (duplicate check impossible).")
+                self.write_log(f"Warning: {e} — not sending (duplicate check impossible).")
                 return "failed"
             if excuse_covered(excuse, history):
-                self.writeLog(f"Already excused, not sending again: {excuse}")
+                self.write_log(f"Already excused, not sending again: {excuse}")
                 return "covered"
-            self.writeLog(f"Attempting to excuse: {excuse}")
             try:
-                self.bakalari_client.login()
+                unconfirmed = load_unconfirmed(history_filepath, self.encoding)
+            except OSError as e:
+                self.write_log(f"Warning: unconfirmed excuses not readable ({e}) — "
+                              "not sending (duplicate check impossible).")
+                return "failed"
+            if unconfirmed_blocks(excuse, unconfirmed):
+                self.write_log("Not sending: an earlier submit of this absence was never confirmed "
+                              "and may have gone out. The next refresh checks the Komens outbox "
+                              f"and releases it if nothing arrived: {excuse}")
+                return "skipped"
+            self.write_log(f"Attempting to excuse: {excuse}")
+            client = self.bakalari_client
+            client.last_submit_uncertain = False
+            try:
+                client.login()
                 success = self._submit(excuse, custom_text, fill_only=False)
             except InterruptedError:
+                if getattr(client, "last_submit_uncertain", False):
+                    self._record_unconfirmed(history_filepath, unconfirmed, excuse)
                 raise
             except Exception as e:
                 import traceback
 
-                self.writeLog(f"Exception while excusing {excuse}: "
+                self.write_log(f"Exception while excusing {excuse}: "
                               f"{type(e).__name__}: {e}\n{traceback.format_exc()}")
-                return "failed"
+                success = False
             if not success:
-                self.writeLog(f"Warning: excuse NOT sent (the form did not confirm): {excuse}")
+                if getattr(client, "last_submit_uncertain", False) is True:
+                    return self._record_unconfirmed(history_filepath, unconfirmed, excuse)
+                self.write_log(f"Warning: excuse NOT sent (the form did not confirm): {excuse}")
                 return "failed"
             history.extend(e for e in history_entries(excuse)
                            if e not in history)
             try:
                 atomic_write_json(history_filepath, history, encoding=self.encoding)
-                self.writeLog("Successfully excused and saved to disk.")
+                self.write_log("Successfully excused and saved to disk.")
             except Exception as e:
                 # Sent, but the duplicate guard does not know it yet: the
                 # next web sync re-imports it from the Komens outbox.
-                self.writeLog(f"Warning: excuse was SENT but the history file could not be "
+                self.write_log(f"Warning: excuse was SENT but the history file could not be "
                               f"written ({type(e).__name__}: {e}); it will be re-synced "
                               "from the web on the next refresh.")
             return "sent"
 
-    def excuseAbsence(self) -> int:
+    def _record_unconfirmed(self, history_filepath: str, unconfirmed: list, excuse: dict) -> str:
+        """Remembers a submit that may have gone out. Returns ``"unconfirmed"``.
+
+        Called under the history lock. If the sidecar cannot be written
+        the excuse goes into the history instead: never re-sending a real
+        absence is recoverable (the user excuses it by hand), a duplicate
+        excuse is not.
+        """
+        self.write_log(f"Warning: the excuse submit was NOT confirmed — it may or may not have been "
+                      f"sent. It will not be sent again until the Komens outbox shows: {excuse}")
+        try:
+            save_unconfirmed(history_filepath, list(unconfirmed) + [unconfirmed_entry(excuse)],
+                             self.encoding)
+        except Exception as e:  # noqa: BLE001 - fall back to the history
+            self.write_log(f"Warning: could not record the unconfirmed excuse ({type(e).__name__}: "
+                          f"{e}); marking it as sent to rule out a duplicate.")
+            try:
+                history, _ = self._load_history()
+                history.extend(h for h in history_entries(excuse) if h not in history)
+                atomic_write_json(history_filepath, history, encoding=self.encoding)
+            except Exception as e2:  # noqa: BLE001 - logged, nothing else left to try
+                self.write_log(f"Warning: history write failed too ({type(e2).__name__}: {e2}).")
+        return "unconfirmed"
+
+    def excuse_pending(self) -> int:
         """Sends every pending excuse (``auto`` mode). Returns the number sent.
 
         ``confirm`` mode never sends from here — excuses are confirmed one
@@ -788,7 +897,7 @@ class Strakalari:
         """
         self.last_excuse_failures = 0
         if self.excuse_mode == "confirm":
-            self.writeLog("Excuse mode is 'confirm' — automatic sending skipped.")
+            self.write_log("Excuse mode is 'confirm' — automatic sending skipped.")
             return 0
         sent = 0
         # Lessons the user ignored in the UI ("excused elsewhere") must
@@ -802,12 +911,12 @@ class Strakalari:
                 datetime.now().date(), getattr(client, "sentExcuses_from", None)))
         for excuse in pending:
             if self._is_cancelled():
-                self.writeLog("Excusing cancelled by the user.")
+                self.write_log("Excusing cancelled by the user.")
                 break
             outcome = self._send_excuse(excuse, self.default_excuse_text(excuse), source="auto")
             if outcome == "sent":
                 sent += 1
-            elif outcome == "failed":
+            elif outcome in ("failed", "unconfirmed"):
                 self.last_excuse_failures += 1
         return sent
 
@@ -1012,7 +1121,7 @@ class Strakalari:
         flush_full_days()
         return excuses
 
-    def testBakalariLogin(self) -> tuple[bool, str]:
+    def check_bakalari_login(self) -> tuple[bool, str]:
         if not self.bakalari_url or not self.bakalari_username:
             return False, t("test_bak_missing")
         try:
@@ -1022,7 +1131,7 @@ class Strakalari:
         except Exception as e:
             return False, t("test_bak_failed", err=e)
 
-    def testStravaLogin(self) -> tuple[bool, str]:
+    def check_strava_login(self) -> tuple[bool, str]:
         if not self.strava_id or not self.strava_username:
             return False, t("test_strava_missing")
         try:

@@ -95,20 +95,20 @@ CANONICAL_DEFAULTS: Dict[str, Any] = {
     "gemini_interval_days": 2,
     "gemini_last_run": "",
     "late_income_excuses": [
-        "Dobrý den, omluvte prosím pozdní příchod z důvodu dopravních komplikací.\nDěkuji\n",
-        "Dobrý den, omluvte prosím pozdní příchod z důvodu návštěvy lékaře.\nDěkuji\n",
+        {"name": "Dopravní komplikace", "text": "Dobrý den, omluvte prosím pozdní příchod z důvodu dopravních komplikací.\nDěkuji\n"},
+        {"name": "Lékař", "text": "Dobrý den, omluvte prosím pozdní příchod z důvodu návštěvy lékaře.\nDěkuji\n"},
     ],
     "left_soon_excuses": [
-        "Dobrý den, omluvte prosím předčasný odchod z rodinných důvodů.\nDěkuji\n",
-        "Dobrý den, omluvte prosím předčasný odchod z důvodu návštěvy lékaře.\nDěkuji\n",
+        {"name": "Rodinné důvody", "text": "Dobrý den, omluvte prosím předčasný odchod z rodinných důvodů.\nDěkuji\n"},
+        {"name": "Lékař", "text": "Dobrý den, omluvte prosím předčasný odchod z důvodu návštěvy lékaře.\nDěkuji\n"},
     ],
     "short_absence_excuses": [
-        "Dobrý den, omluvte prosím absenci z rodinných důvodů.\nDěkuji\n",
-        "Dobrý den, omluvte prosím absenci z osobních důvodů.\nDěkuji\n",
+        {"name": "Rodinné důvody", "text": "Dobrý den, omluvte prosím absenci z rodinných důvodů.\nDěkuji\n"},
+        {"name": "Osobní důvody", "text": "Dobrý den, omluvte prosím absenci z osobních důvodů.\nDěkuji\n"},
     ],
     "long_absence_excuses": [
-        "Dobrý den, omluvte prosím absenci z důvodu nemoci.\nDěkuji\n",
-        "Dobrý den, omluvte prosím absenci z rodinných důvodů.\nDěkuji\n",
+        {"name": "Nemoc", "text": "Dobrý den, omluvte prosím absenci z důvodu nemoci.\nDěkuji\n"},
+        {"name": "Rodinné důvody", "text": "Dobrý den, omluvte prosím absenci z rodinných důvodů.\nDěkuji\n"},
     ],
     "your_signature": "",
     "go_back_weeks": 4,

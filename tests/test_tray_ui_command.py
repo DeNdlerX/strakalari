@@ -58,7 +58,7 @@ class TestUiCommand:
             foodDict = {}
             orderedDict = {}
 
-            def fetchBakalariData(self):
+            def fetch_bakalari_data(self):
                 pass
 
             def close(self):

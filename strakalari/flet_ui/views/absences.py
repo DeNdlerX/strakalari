@@ -77,10 +77,18 @@ def build(state: AppState, page: ft.Page) -> ft.Control:
                             tight=True,
                         ),
                         C.meter(subject.current_pct, tok, kind=subject.status),
-                        C.badge(
-                            {"ok": S("state_ok"), "warning": S("state_warning"),
-                             "critical": S("state_critical")}[subject.status],
-                            tok, kind=subject.status,
+                        # Fixed slot sized for the longest label, so a shorter
+                        # badge doesn't shift the meter sideways.
+                        ft.Container(
+                            content=ft.Row(
+                                [C.badge(
+                                    {"ok": S("state_ok"), "warning": S("state_warning"),
+                                     "critical": S("state_critical")}[subject.status],
+                                    tok, kind=subject.status,
+                                )],
+                                alignment=ft.MainAxisAlignment.END,
+                            ),
+                            width=tok.fs_tiny * 8,
                         ),
                     ],
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,

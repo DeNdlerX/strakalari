@@ -17,6 +17,56 @@ class TestPlannerSignature:
         assert templates[0].lower().count("jan novák") == 1
 
 
+class TestNamedTemplates:
+    CFG = {
+        "short_absence_excuses": [
+            {"name": "Rodina", "text": "Omluvte, rodina."},
+            "Omluvte, bez jména.",
+            {"name": "Prázdná", "text": "  "},
+        ],
+        "long_absence_excuses": [],
+        "late_income_excuses": [],
+        "left_soon_excuses": [],
+        "your_signature": "",
+    }
+
+    def _state(self):
+        return SimpleNamespace(get=lambda k, d=None: self.CFG.get(k, d))
+
+    def test_helpers_accept_both_shapes(self):
+        from strakalari.core.helpers import template_name, template_text, template_texts
+
+        assert template_text({"name": "A", "text": "T"}) == "T"
+        assert template_name({"name": "  A  B ", "text": "T"}) == "A B"
+        assert template_text("plain") == "plain" and template_name("plain") == ""
+        assert template_texts([{"name": "A", "text": "T"}, "U"]) == ["T", "U"]
+        assert template_texts("junk") == []
+
+    def test_options_carry_names_and_skip_blank(self):
+        from strakalari.flet_ui.views.planner import _template_labels, _template_options
+
+        options = _template_options(self._state(), kind="short")
+        assert options == [("Rodina", "Omluvte, rodina."), ("", "Omluvte, bez jména.")]
+        labels = _template_labels(options)
+        assert labels[0] == ("0", "Rodina")
+        assert labels[1][0] == "1" and labels[1][1].endswith("2")
+
+    def test_today_picks_text_not_name(self):
+        from strakalari.flet_ui.views.today import _picked_option
+
+        options = [("Rodina", "Omluvte, rodina."), ("", "Druhá.")]
+        state = SimpleNamespace(picked_templates={"k": 1})
+        assert _picked_option(state, "k", options) == "Druhá."
+        assert _picked_option(state, "other", options) == "Omluvte, rodina."
+
+    def test_core_picks_text_of_named_template(self):
+        from strakalari.core.automation import Strakalari
+        from strakalari.core.helpers import template_texts
+
+        texts = template_texts(self.CFG["short_absence_excuses"])
+        assert Strakalari._pick_template(texts) == "Omluvte, rodina."
+
+
 def test_timetable_period_helpers():
     from strakalari.flet_ui.views.timetable import _period_of, _period_time
 
@@ -387,3 +437,98 @@ def test_lunch_menu_hides_past_days_until_asked(state):
     assert S("lunch_show_past").format(n=1) in shown
     state.show_past_lunches = True
     assert "Staré jídlo" in texts(lunches.build(state, None))
+
+
+def test_activity_groups_and_translates_automation_history(state):
+    from datetime import datetime
+
+    from strakalari.flet_ui.strings import S
+    from strakalari.flet_ui.views import activity
+
+    low = {"reason": "low_balance"}
+    items = [  # newest first, as audit.recent() returns them
+        {"ts": "2026-09-25T19:29:08", "kind": "lunch", "outcome": "skipped", "source": "auto",
+         "summary": "06.10.2026: order", "detail": {"day": "06.10.2026", "meal": "t6&1&0", **low}},
+        {"ts": "2026-09-25T19:29:08", "kind": "lunch", "outcome": "skipped", "source": "auto",
+         "summary": "05.10.2026: order", "detail": {"day": "05.10.2026", "meal": "t5&1&0", **low}},
+        {"ts": "2026-09-25T19:29:08", "kind": "lunch", "outcome": "sent", "source": "auto",
+         "summary": "07.10.2026: order", "detail": {"day": "07.10.2026", "meal": "t7&1&0"}},
+        {"ts": "2026-09-24T08:00:00", "kind": "excuse", "outcome": "sent", "source": "manual",
+         "summary": "18.09.2026 (6.)"},
+    ]
+    groups = activity._group_audit(items)
+    assert [len(g) for g in groups] == [2, 1, 1]
+
+    def texts(control, out=None):
+        out = [] if out is None else out
+        v = getattr(control, "value", None)
+        if isinstance(v, str):
+            out.append(v)
+        for attr in ("content", "controls"):
+            child = getattr(control, attr, None)
+            for c in (child if isinstance(child, list) else [child]):
+                if c is not None and hasattr(c, "_i"):
+                    texts(c, out)
+        return out
+
+    now = datetime(2026, 9, 26, 12, 0)
+    batch = texts(activity._audit_row(state, groups[0], now))
+    # One row for the batch, in the app language — never the core's English "order".
+    assert f"{S('audit_kind_lunch')} · {S('audit_lunch_order')} ×2" in batch
+    assert "5. 10., 6. 10." in batch and S("audit_reason_low_balance") in batch
+    assert not any("order" == t or t.endswith(": order") for t in batch)
+    assert "18. 9. 2026 (6.)" in texts(activity._audit_row(state, groups[2], now))
+
+
+def test_activity_time_helpers():
+    from datetime import datetime, timedelta
+
+    from strakalari.flet_ui.strings import S
+    from strakalari.flet_ui.views import activity
+
+    now = datetime(2026, 9, 26, 12, 0)
+    assert activity._ago(now - timedelta(seconds=20), now) == S("ago_now")
+    assert activity._ago(now - timedelta(minutes=12), now) == S("ago_min").format(n=12)
+    assert activity._ago(now - timedelta(hours=2), now) == S("ago_hours").format(n=2)
+    assert activity._ago(datetime(2026, 9, 25, 7, 5), now) == "25. 9. 07:05"
+    assert activity._ago(None, now) == "—"
+    assert activity._duration(47) == "47 s"
+    assert activity._duration(84) == "1 min 24 s"
+    # Runs from before the "at" field fall back to the stored label.
+    assert activity._run_when({"finished": "25.09. 10:00"}, now) == "25.09. 10:00"
+
+
+def test_activity_log_counts_a_traceback_as_one_error(state):
+    from strakalari.flet_ui.strings import S
+    from strakalari.flet_ui.views import activity
+
+    state.log_lines = [
+        "[10:00:00] Logging in…",
+        "[10:00:05] Refresh failed: TimeoutError: boom",
+        "[10:00:05] Traceback (most recent call last):",
+        '[10:00:05]   File "x.py", line 1, in f',
+        "[10:00:05] TimeoutError: boom",
+        "[10:01:00] Obnovování spuštěno (all).",
+        "[10:01:30] Warning: could not stamp",
+    ]
+    card = activity._log_card(state, None)
+    head = card.content.controls[0].controls[0]  # card Row -> Column -> header Row
+    labels = [c.content.value for c in head.controls if getattr(c, "content", None) is not None
+              and isinstance(getattr(c.content, "value", None), str)]
+    assert S("log_errors").format(n=1) in labels
+    assert activity._split_log("[10:00:05] hi") == ("10:00:05", "hi")
+    assert activity._split_log("no stamp") == ("", "no stamp")
+
+
+def test_activity_stacks_columns_in_narrow_windows(state):
+    from strakalari.flet_ui.views import activity
+
+    class Page:
+        width = 960
+
+    # The page scroller is reused across builds: count right after each one.
+    narrow = len(activity.build(state, Page()).controls)
+    Page.width = 1400
+    wide = len(activity.build(state, Page()).controls)
+    # Wide: one Row holds both columns; narrow: every card sits in the page column.
+    assert narrow == wide + 3

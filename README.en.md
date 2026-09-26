@@ -24,7 +24,7 @@ A free app for students on Windows, macOS and Linux. No coding: download it and 
 2. Launch Strakaláři. A **setup wizard** walks you through your Bakaláři and Strava logins and the basic settings. Meanwhile the app downloads Chrome once (about 320 MB), which it uses to work with the websites.
 3. Done. The first time you open each screen, a short **interactive tutorial** shows you around.
 
-> **Windows says "Windows protected your PC"?** The app has no paid code-signing certificate. Click *More info → Run anyway*, but only for a file you downloaded from the Releases page above.
+> **Windows says "Windows protected your PC"?** The app has no paid code-signing certificate. Click *More info → Run anyway*, but only for a file you downloaded from the Releases page above. To double-check the download, compare it against `SHA256SUMS.txt` on the release.
 
 ## Updating
 

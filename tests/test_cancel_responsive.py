@@ -287,7 +287,7 @@ def test_strava_client_forwards_cancel_into_fetch(monkeypatch):
     app.strava_client = _Client()
     app.strava_enable = True
     with pytest.raises(InterruptedError):
-        app.fetchStravaData()
+        app.fetch_strava_data()
     assert seen == {"flag": True, "callback": True}
 
 

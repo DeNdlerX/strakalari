@@ -89,7 +89,8 @@ strakalari/core/         # business logic (no UI imports)
   bakalari_data.py       #     marks, absence, sent excuses, substitutions, baseline
   bakalari_excuse.py     #     the excuse form (fill, lesson pickers, verified submit)
   bakalari_common.py     #     pure parsing helpers shared by the above
-  strava_client.py       #   Strava menu scraping + meal clicks
+  strava_client.py       #   Strava session: login, cookie banner, menu scraping
+  strava_ordering.py     #     meal clicks, verification, rollback, save confirm
   automation.py          #   Strakalari: clients + excuse sending + order application
   refresh.py             #   THE refresh pipeline (used by the UI and the tray)
   excuse_history.py      #   already-excused history: coverage checks + send lock
@@ -112,10 +113,10 @@ These rules keep the automation safe:
 
 - **One pipeline.** Anything that refreshes data or runs auto modes goes through `core.refresh.run_refresh` — never a second copy in the UI or the tray.
 - **One session at a time.** The tray and the window are separate processes (on macOS always: every launch runs the tray, which opens the window, because Cocoa needs the main thread — see `flet_ui/macos.py`). Whole refreshes and order submits run under `core.refresh.session_lock()` (an OS file lock); a caller that cannot get it skips with a visible message instead of running in parallel.
-- **One send path.** Excuses are sent only via `Strakalari._send_excuse`, which checks the history for coverage and holds the history lock across check, submit and write. Navigation-triggering clicks use `click(once=True)` and are never retried.
+- **One send path.** Excuses are sent only via `Strakalari._send_excuse`, which checks the history for coverage and holds the history lock across check, submit and write. Navigation-triggering clicks use `click(once=True)` and are never retried. A submit the site never confirmed is `unconfirmed`, not `failed`: it goes to `already_excused_lessons.unconfirmed.json` and blocks every re-send until a successful Komens outbox read settles it — and auto mode never sends when the outbox could not be read.
 - **Everything is recorded.** Every send/order attempt (manual or auto, real or dry run, success or failure) goes to `core.audit`; `automation_paused` must stop every auto phase.
 - **New feature, new tutorial.** Interactive tutorials live in `flet_ui/tutorial.py`: add a `Tour` to `TOURS`, its `tut_*` strings (cs + en), call `tutorial.offer(state, "<id>")` in the view once the feature's content is on screen, wrap the controls it explains in `tutorial.anchor(...)`, and fire `state.tutorial_event("<name>")` where the action succeeds if a step waits for it. The module docstring has the details.
-- **Fail loudly.** In send, order and save code an exception is never swallowed silently: log it (`writeLog` / `self.log`), or `print("Warning: …")` where no logger exists (windowed builds write stdout/stderr to `console.log`). An auto phase that did not do its job is an `AutomationError` in `RefreshResult.errors`, which the UI and tray surface. Silent `except Exception: pass` is fine only for optional probes (is an element visible, cosmetic UI updates).
+- **Fail loudly.** In send, order and save code an exception is never swallowed silently: log it (`write_log` / `self.log`), or `print("Warning: …")` where no logger exists (windowed builds write stdout/stderr to `console.log`). An auto phase that did not do its job is an `AutomationError` in `RefreshResult.errors`, which the UI and tray surface. Silent `except Exception: pass` is fine only for optional probes (is an element visible, cosmetic UI updates); a wait or fallback a scraper deliberately carries on after logs one line via `self._debug(what, exc)`. `write_log` scrubs stored passwords and API keys before anything reaches `log.txt`.
 
 ## 6. Contribution guidelines
 

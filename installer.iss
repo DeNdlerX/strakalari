@@ -187,6 +187,8 @@ begin
       DeleteFile(AppDir + '\*.log');
       DeleteFile(AppDir + '\strava_blacklist.json');
       DeleteFile(AppDir + '\already_excused_lessons.json');
+      DeleteFile(AppDir + '\already_excused_lessons.unconfirmed.json');
+      DeleteFile(AppDir + '\instance.token');
       DeleteFile(AppDir + '\automation_history.jsonl');
       DeleteFile(AppDir + '\automation_history.jsonl.old');
       DeleteFile(AppDir + '\log.txt.old');

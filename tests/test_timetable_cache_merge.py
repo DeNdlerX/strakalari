@@ -115,7 +115,7 @@ class TestDryRunNeverMarksExcused:
         app = Strakalari.__new__(Strakalari)
         app.excuse_mode = "dry_run"
         app.bakalari_client = _FakeBak()
-        app.writeLog = lambda *a: None
+        app.write_log = lambda *a: None
         excuse = {"type": "days and hours", "starting_day": "18.09.2026",
                   "ending_day": "18.09.2026", "starting_lesson": 6,
                   "ending_lesson": 6}
@@ -149,7 +149,7 @@ class TestDryRunNeverMarksExcused:
         app.on_confirm = None
         app.cancel_requested = False
         app.bakalari_client = _FakeBak()
-        app.writeLog = lambda *a: None
+        app.write_log = lambda *a: None
         app.encoding = "utf-8"
         app.long_absence_excuses = []
         app.short_absence_excuses = []
@@ -157,5 +157,5 @@ class TestDryRunNeverMarksExcused:
         app.default_excuse_selection = "first"
         app.signature = ""
         app._load_history = lambda: ([], str(hist))
-        assert app.excuseAbsence() == 0
+        assert app.excuse_pending() == 0
         assert not hist.exists()

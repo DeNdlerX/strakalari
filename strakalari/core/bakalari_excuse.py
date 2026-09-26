@@ -11,6 +11,9 @@ from .bakalari_common import _norm_date_str
 # before reading/retyping Do itself (see fill_excuse_form).
 _DO_COPY_GRACE_MS = 2000
 
+#: Client id of the excuse text editor (DevExpress ASPxHtmlEditor).
+_EDITOR_ID = "cphmain_MessageEditor"
+
 
 class ExcuseFormMixin:
     """Mixin of :class:`~.bakalari_client.BakalariClient`; uses its session state."""
@@ -80,9 +83,13 @@ class ExcuseFormMixin:
         return bool(self._wait_for_date_value(selector, value, timeout_ms=timeout_ms))
 
     def _wait_for_editor_sync(self, text_content: str, timeout_ms: int = 8000) -> bool:
-        # The HtmlEditor syncs typed text back to the form asynchronously:
-        # poll until the text shows up so an empty form is never sent.
-        # The editor surface is an iframe, so iframes are searched too.
+        # Polls until the typed text is in the editor so an empty excuse is
+        # never sent. Source of truth, in order:
+        #  1. the DevExpress client control's GetHtml() — the editor model
+        #     that the form serializes on submit (not merely what a page
+        #     shows somewhere);
+        #  2. only when that API is missing (other frontend build): the
+        #     editor's own design iframe, then any iframe / the page.
         # True when the text surfaced, False on timeout; never raises.
         snippet = "".join(str(text_content or "").split())[:20]
         if not snippet:
@@ -93,57 +100,98 @@ class ExcuseFormMixin:
             "function(c) { return c.trim() !== ''; }).join('');"
             " const target = norm(ARG_SNIPPET);"
             " if (!target) return true;"
-            " if (norm(document.body && document.body.innerText).indexOf(target) !== -1)"
-            " return true;"
-            " var frames = document.querySelectorAll('iframe');"
+            " var ctl = null;"
+            " try {"
+            " var coll = (window.ASPxClientControl && ASPxClientControl.GetControlCollection)"
+            " ? ASPxClientControl.GetControlCollection()"
+            " : ((window.ASPx && ASPx.GetControlCollection) ? ASPx.GetControlCollection() : null);"
+            " if (coll) ctl = coll.Get(ARG_EDITOR_ID);"
+            " } catch (e) { ctl = null; }"
+            " if (ctl && typeof ctl.GetHtml === 'function') {"
+            " var box = document.createElement('div');"
+            " box.innerHTML = ctl.GetHtml() || '';"
+            " return norm(box.textContent).indexOf(target) !== -1; }"
+            " var own = document.getElementById(ARG_IFRAME_ID);"
+            " var frames = own ? [own] : Array.prototype.slice.call(document.querySelectorAll('iframe'));"
             " for (var i = 0; i < frames.length; i++) {"
             " try { var d = frames[i].contentDocument;"
             " if (d && norm(d.body && d.body.innerText).indexOf(target) !== -1)"
             " return true;"
             " } catch (e) {} }"
-            " return false;"
+            " if (own) return false;"
+            " return norm(document.body && document.body.innerText).indexOf(target) !== -1;"
             " } catch (e) { return false; } }"
-        ).replace("ARG_SNIPPET", json.dumps(snippet))
+        ).replace("ARG_SNIPPET", json.dumps(snippet)).replace(
+            "ARG_EDITOR_ID", json.dumps(_EDITOR_ID)).replace(
+            "ARG_IFRAME_ID", json.dumps(_EDITOR_ID + "_DesignIFrame"))
         try:
             self.page.wait_for_function(js_probe, timeout=timeout_ms)
             return True
         except Exception:
             return False
 
-    def _verify_submission(self) -> bool:
-        # Success = the form detaches after the click; an explicit
-        # server-side validation error fails fast.
-        self.log("Excuse form: submitting...")
-        try:
-            send_btn = self.page.locator("#button_poslat").first
-            self._wait_for_module("#button_poslat")
-            # The submit is a server postback — the click itself can stall
-            # behind the triggered navigation on a slow link.
-            send_btn.click(timeout=self._nav_ms, once=True)
-        except Exception as e:
-            # The click itself failed — nothing was sent.
-            self.log(f"Excuse submit click failed: {e}")
-            return False
-        # The submit is a postback: wait for the form to detach with the
-        # navigation budget. Never retry the click — a second click could
-        # send the excuse twice.
-        try:
-            send_btn.wait_for(
-                state="detached",
-                timeout=self._nav_ms)
-            return True
-        except Exception:
-            pass
+    def _submission_error_text(self) -> str:
+        """Visible server-side validation error on the form, or ``""``."""
         try:
             error_loc = self.page.locator(".dxpc-content, .alert-danger, .validation-summary-errors, .dxheErrorText").first
             if error_loc.count() > 0 and error_loc.is_visible():
-                err_text = (error_loc.inner_text() or "").strip()
-                if err_text:
-                    self.log(f"Bakalari submission error: {err_text}")
-                    return False
+                return (error_loc.inner_text() or "").strip()
+        except InterruptedError:
+            raise
+        except Exception as e:
+            self.log(f"Debug: validation-error probe failed: {type(e).__name__}: {e}")
+        return ""
+
+    def _verify_submission(self) -> bool:
+        """Clicks send once. True only when the site confirmed the submit.
+
+        False has two meanings, told apart by ``last_submit_uncertain``:
+        False there = certainly not sent (the button never became
+        clickable, or the server showed a validation error); True = the
+        click may have gone out but nothing confirmed it. The caller must
+        then never re-send until the Komens outbox settles it.
+        """
+        self.last_submit_uncertain = False
+        self.log("Excuse form: submitting...")
+        send_btn = self.page.locator("#button_poslat").first
+        try:
+            self._wait_for_module("#button_poslat")
+        except InterruptedError:
+            raise
+        except Exception as e:
+            self.log(f"Excuse submit button not available, nothing was sent: {e}")
+            return False
+        try:
+            # The submit is a server postback — the click itself can stall
+            # behind the triggered navigation on a slow link. Never retry
+            # it: a second click could send the excuse twice.
+            send_btn.click(timeout=self._nav_ms, once=True)
+        except InterruptedError:
+            # The cancel-aware wrapper raises this only before dispatching.
+            raise
+        except Exception as e:
+            # A dispatched click can time out waiting for its navigation
+            # just like one that never fired: from here on, unknown.
+            self.last_submit_uncertain = True
+            self.log(f"Excuse submit click did not finish ({type(e).__name__}): {e}")
+        # Wait for the form to detach with the navigation budget.
+        try:
+            send_btn.wait_for(state="detached", timeout=self._nav_ms)
+            self.last_submit_uncertain = False
+            return True
+        except InterruptedError:
+            self.last_submit_uncertain = True
+            raise
         except Exception:
             pass
-        self.log("Warning: excuse form still open after submit, NOT treating as sent (will retry).")
+        err_text = self._submission_error_text()
+        if err_text:
+            self.last_submit_uncertain = False
+            self.log(f"Bakalari submission error: {err_text}")
+            return False
+        self.last_submit_uncertain = True
+        self.log("Warning: excuse form still open after submit — the excuse may or may not "
+                 "have been sent; NOT treating it as sent, and NOT sending it again.")
         return False
 
     def _visible_option_index(self, xpath_opt: str) -> int | None:
@@ -224,8 +272,8 @@ class ExcuseFormMixin:
                 self.page.locator(xpath_opt).first.wait_for(
                     state="attached",
                     timeout=self._settle_ms())
-            except Exception:
-                pass
+            except Exception as e:
+                self._debug("excuse form: lesson option wait timed out", e)
             # End lesson below 7: reset to top first; start lesson above 6:
             # reset to bottom first (13 presses cover the whole list).
             if which == 1 and isinstance(period_int, int) and period_int < 7:
@@ -250,16 +298,16 @@ class ExcuseFormMixin:
                         self.page.locator(xpath_opt).first.wait_for(
                             state="attached",
                             timeout=self._settle_ms())
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        self._debug("excuse form: lesson option wait timed out", e)
                     idx = self._visible_option_index(xpath_opt)
                 if idx is None:
                     break
                 opt = self.page.locator(xpath_opt).nth(idx)
                 try:
                     opt.scroll_into_view_if_needed(timeout=self._settle_ms())
-                except Exception:
-                    pass
+                except Exception as e:
+                    self._debug("excuse form: lesson option scroll failed", e)
                 try:
                     if not opt.is_visible():
                         continue
@@ -297,8 +345,8 @@ class ExcuseFormMixin:
         # Opening the form is a navigation: wait for it with that budget.
         try:
             self.page.locator("#cphmain_excuseFromDate_I").first.wait_for(state="visible", timeout=self._nav_ms)
-        except Exception:
-            pass
+        except Exception as e:
+            self._debug("excuse form: form open wait timed out", e)
 
         if is_days:
             self.page.locator("#cphmain_cbExcuseWholeDay_S_D").click()
@@ -356,13 +404,13 @@ class ExcuseFormMixin:
                 except Exception:
                     _to_val = ""
                 if not _to_val:
-                    # Prázdné/nečitelné uprostřed postbacku není neshoda —
-                    # formulář se ještě přenačítá. Počkat na připojení
-                    # a přečíst jednou znovu, nepřepisovat naslepo.
+                    # Empty/unreadable mid-postback is not a mismatch —
+                    # the form is still re-rendering. Wait for it to
+                    # re-attach and read once more; never retype blindly.
                     try:
                         date_to.wait_for(state="attached", timeout=settle_ms)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        self._debug("excuse form: Do field re-attach wait timed out", e)
                     try:
                         _to_val = date_to.input_value(timeout=settle_ms)
                     except InterruptedError:

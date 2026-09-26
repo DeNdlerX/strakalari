@@ -24,7 +24,7 @@ Bezplatná aplikace pro studenty na Windows, macOS a Linux. Nic neprogramujete, 
 2. Spusťte Strakaláře. **Průvodce** vás provede přihlášením do Bakalářů a Stravy a základním nastavením. Mezitím si aplikace jednorázově stáhne Chrome (asi 320 MB), přes který s weby pracuje.
 3. Hotovo. Při prvním pohledu na každou obrazovku vám krátký **interaktivní návod** ukáže, co kde je.
 
-> **Windows hlásí „Systém Windows ochránil váš počítač“?** Aplikace nemá placený podpisový certifikát. Klikněte na *Další informace → Přesto spustit*, ale jen u souboru staženého ze stránky Releases výše.
+> **Windows hlásí „Systém Windows ochránil váš počítač“?** Aplikace nemá placený podpisový certifikát. Klikněte na *Další informace → Přesto spustit*, ale jen u souboru staženého ze stránky Releases výše. Kdo chce, může stažený soubor ověřit proti `SHA256SUMS.txt` u vydání.
 
 ## Aktualizace
 

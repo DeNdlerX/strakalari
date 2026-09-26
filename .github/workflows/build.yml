@@ -30,7 +30,7 @@ jobs:
       prerelease: ${{ steps.v.outputs.prerelease }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
 
       - name: Resolve version
         id: v
@@ -74,7 +74,7 @@ jobs:
       STRAKALARI_VERSION: ${{ needs.meta.outputs.version }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
 
       - name: Stamp version into app
         shell: python
@@ -88,7 +88,7 @@ jobs:
           print("stamped:", ver)
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -96,8 +96,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller==6.22.2 pytest==9.1.1
+          # One pin source: requirements-dev.txt pulls requirements.txt
+          # (which pins pyinstaller) and adds pytest.
+          pip install -r requirements-dev.txt
 
       - name: Run automated test suite
         run: |
@@ -116,7 +117,7 @@ jobs:
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion="${{ needs.meta.outputs.version }}" installer.iss
 
       - name: Upload Windows Artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
         with:
           name: windows-binaries
           path: |
@@ -132,7 +133,7 @@ jobs:
       VERSION: ${{ needs.meta.outputs.version }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
 
       - name: Stamp version into app
         shell: python
@@ -146,7 +147,7 @@ jobs:
           print("stamped:", ver)
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -154,8 +155,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller==6.22.2 pytest==9.1.1
+          # One pin source: requirements-dev.txt pulls requirements.txt
+          # (which pins pyinstaller) and adds pytest.
+          pip install -r requirements-dev.txt
 
       - name: Run automated test suite
         run: |
@@ -208,7 +210,7 @@ jobs:
           ls -lh Strakalari-*.AppImage
 
       - name: Upload Linux Artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
         with:
           name: linux-binaries
           path: |
@@ -223,7 +225,7 @@ jobs:
       STRAKALARI_VERSION: ${{ needs.meta.outputs.version }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
 
       - name: Stamp version into app
         shell: python
@@ -247,7 +249,7 @@ jobs:
           df -h /
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -255,8 +257,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller==6.22.2 pytest==9.1.1
+          # One pin source: requirements-dev.txt pulls requirements.txt
+          # (which pins pyinstaller) and adds pytest.
+          pip install -r requirements-dev.txt
 
       - name: Run automated test suite
         run: |
@@ -294,7 +297,7 @@ jobs:
           hdiutil create -volname "Strakalari" -srcfolder dist/dmg -ov -format UDZO -size ${SIZE_MB}m "Strakalari-${STRAKALARI_VERSION}.dmg"
 
       - name: Upload macOS Artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
         with:
           name: macos-binaries
           path: |
@@ -310,7 +313,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0  # v5.0.0
         with:
           path: release-assets
           merge-multiple: true
@@ -318,8 +321,18 @@ jobs:
       - name: List release assets
         run: ls -lh release-assets
 
+      # The binaries are not code-signed, and the README tells users to
+      # click past the SmartScreen warning: publish checksums so a
+      # download can at least be checked against the release page.
+      - name: Compute SHA-256 checksums
+        working-directory: release-assets
+        run: |
+          set -euo pipefail
+          sha256sum Strakalari-Setup-*.exe Strakalari-*-x86_64.AppImage Strakalari-*.dmg > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
       - name: Publish release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
         with:
           tag_name: ${{ needs.meta.outputs.tag }}
           # Only used when the tag does not exist yet (manual run with release_tag).
@@ -335,5 +348,6 @@ jobs:
             release-assets/Strakalari-Setup-*.exe
             release-assets/Strakalari-*-x86_64.AppImage
             release-assets/Strakalari-*.dmg
+            release-assets/SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

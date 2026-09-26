@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import flet as ft
 
+from strakalari.core.helpers import template_name, template_text
+
 from ... import components as C
 from ...overlays import snack
 from ...state import AppState
@@ -111,34 +113,51 @@ def _show_value(control, value) -> None:
 
 
 def _tpl_editor(state: AppState, page: ft.Page, key: str, title_key: str) -> ft.Control:
-    values = state.get(key, [])
-    if not isinstance(values, list):
-        values = []
-    values = [str(v) for v in values]
+    """Editor of one template list: a short name + the excuse text each.
+
+    The name is what the excuse pickers show; unnamed templates are saved
+    as plain strings (the format older versions read), named ones as
+    ``{"name", "text"}``.
+    """
+    stored = state.get(key, [])
+    if not isinstance(stored, list):
+        stored = []
+    values = [{"name": template_name(v), "text": template_text(v)} for v in stored]
     column = ft.Column(
         spacing=6, tight=True,
         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
     )
 
     def _commit() -> None:
-        cleaned = [str(v) for v in values if str(v or "").strip()]
-        if cleaned == [str(v) for v in (state.get(key, []) or [])]:
+        cleaned = [({"name": v["name"].strip(), "text": v["text"]} if v["name"].strip()
+                    else v["text"])
+                   for v in values if str(v["text"] or "").strip()]
+        if cleaned == list(state.get(key, []) or []):
             return  # focus moved without an edit: nothing to save
         _save_quiet(state, page, {key: cleaned})
 
     def _rebuild():
         column.controls.clear()
-        for idx, text in enumerate(list(values)):
-            def _on_type(e, i=idx):
-                values[i] = e.control.value or ""
+        for idx, entry in enumerate(list(values)):
+            def _typed(field: str, i: int = idx):
+                def _on_type(e):
+                    values[i][field] = e.control.value or ""
+                return _on_type
 
-            def _on_done(e, i=idx):
-                values[i] = e.control.value or ""
-                _commit()
+            def _done(field: str, i: int = idx):
+                def _on_done(e):
+                    values[i][field] = e.control.value or ""
+                    _commit()
+                return _on_done
 
-            box = C.labeled_field(
-                state.tok, f"{S(title_key)} {idx + 1}", value=str(text), multiline=True,
-                on_change=_on_type, on_blur=_on_done, on_submit=_on_done,
+            name_box = C.labeled_field(
+                state.tok, f"{S('tpl_name')} {idx + 1}", value=entry["name"],
+                hint=S("tpl_name_hint"),
+                on_change=_typed("name"), on_blur=_done("name"), on_submit=_done("name"),
+            )
+            text_box = C.labeled_field(
+                state.tok, S("tpl_text"), value=entry["text"], multiline=True,
+                on_change=_typed("text"), on_blur=_done("text"), on_submit=_done("text"),
             )
 
             def _delete(e, i=idx):
@@ -151,7 +170,8 @@ def _tpl_editor(state: AppState, page: ft.Page, key: str, title_key: str) -> ft.
                     pass
 
             column.controls.append(
-                ft.Row([ft.Container(box, expand=True),
+                ft.Row([ft.Column([name_box, text_box], spacing=6, tight=True, expand=True,
+                                  horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
                         ft.IconButton(ft.Icons.DELETE_OUTLINE, tooltip=S("delete"),
                                       on_click=_delete)],
                        vertical_alignment=ft.CrossAxisAlignment.START)
@@ -160,7 +180,7 @@ def _tpl_editor(state: AppState, page: ft.Page, key: str, title_key: str) -> ft.
     _rebuild()
 
     def _add(e):
-        values.append("")
+        values.append({"name": "", "text": ""})
         _rebuild()
         try:
             page.update()

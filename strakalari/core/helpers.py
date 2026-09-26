@@ -70,6 +70,7 @@ _BUNDLE_DATA_ITEMS = (
     "config.json.bak",
     "data_cache.json",
     "already_excused_lessons.json",
+    "already_excused_lessons.unconfirmed.json",
     "strava_blacklist.json",
     "automation_history.jsonl",
     "update_cache.json",
@@ -343,6 +344,23 @@ class InterProcessLock:
         return self._fh is not None
 
 
+def describe_swallowed(what: str, exc: BaseException) -> str:
+    """One log line for an exception a scraper deliberately carries on after.
+
+    Waits that time out and fallbacks that fire are expected on slow
+    links, so they must not fail the run — but a silent ``pass`` makes a
+    changed page look like "no data". The line names the step and the
+    exception type (first message line only: call logs are long).
+    """
+    first = ""
+    try:
+        text = str(exc).strip()
+        first = text.splitlines()[0][:160] if text else ""
+    except Exception:  # noqa: BLE001 - the type alone still helps
+        pass
+    return f"Debug: {what} — {type(exc).__name__}{': ' + first if first else ''}"
+
+
 def clear_input(locator) -> None:
     """Empties a text input before key-by-key typing. Never raises except
     ``InterruptedError`` (cancel).
@@ -560,6 +578,31 @@ def short_room_name(room: str | None) -> str:
     if m and m.group(1).strip():
         return m.group(1).strip()
     return text
+
+
+def template_text(entry) -> str:
+    """The excuse text of a template entry.
+
+    Entries are plain strings (older configs) or ``{"name", "text"}``
+    dicts; anything else reads as an empty template.
+    """
+    if isinstance(entry, dict):
+        return str(entry.get("text", "") or "")
+    return "" if entry is None else str(entry)
+
+
+def template_name(entry) -> str:
+    """The user-given short name of a template entry ("" when unnamed)."""
+    if isinstance(entry, dict):
+        return " ".join(str(entry.get("name", "") or "").split())
+    return ""
+
+
+def template_texts(entries) -> list[str]:
+    """Excuse texts of a configured template list (names dropped)."""
+    if not isinstance(entries, list):
+        return []
+    return [template_text(e) for e in entries]
 
 
 def format_excuse_template(

@@ -377,7 +377,7 @@ def _fetch_phases(app, scope, has_bak, has_strava, fresh, result, _emit, _check_
             if missing:
                 _emit("timetable_history_log", n=len(missing))
             _emit("fetching_bakalari")
-            app.fetchBakalariData()
+            app.fetch_bakalari_data()
             payload = _bakalari_payload(app)
             _emit("baseline_log",
                   slots=len(getattr(app, "stableBaseline", None) or {}),
@@ -410,7 +410,7 @@ def _fetch_phases(app, scope, has_bak, has_strava, fresh, result, _emit, _check_
             _check_cancel()
             _emit("fetching_menu")
             try:
-                app.fetchStravaData()
+                app.fetch_strava_data()
             except InterruptedError:
                 raise
             except Exception as exc:
@@ -441,11 +441,18 @@ def _auto_phases(app, cfg, fresh, result, _emit, is_cancelled,
         _emit("automation_paused_log")
         wants_excuse = wants_lunch = False
 
+    if wants_excuse and getattr(app, "last_outbox_sync_ok", True) is False:
+        # The outbox is the only record of submits the site never
+        # confirmed: without reading it, a re-send could duplicate one.
+        wants_excuse = False
+        result.errors.append(("auto_excuse", AutomationError(t("auto_excuse_outbox_unknown"))))
+        _emit("auto_excuse_outbox_unknown")
+
     if wants_excuse:
         _emit("auto_excuse_log")
         try:
             app.cancel_callback = is_cancelled
-            result.excuses_sent = int(app.excuseAbsence() or 0)
+            result.excuses_sent = int(app.excuse_pending() or 0)
             result.excuses_failed = int(getattr(app, "last_excuse_failures", 0) or 0)
             if result.excuses_sent:
                 _emit("auto_excuses_sent", n=result.excuses_sent)
@@ -487,7 +494,7 @@ def _auto_lunch(app, cfg, fresh, result, _emit, cancelled_lunch_days, lunch_prom
         )
         if not orders:
             _emit("auto_lunch_none")
-        elif app.stravaOrderSelected(dict(orders), source="auto"):
+        elif app.strava_order_selected(dict(orders), source="auto"):
             placed = {str(d) for d in orders}
             fresh["strava_ordered"] = dict(client.orderedDict or {})
             fresh[LOW_BALANCE_KEY] = None  # orders go through again
