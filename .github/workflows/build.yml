@@ -81,11 +81,25 @@ jobs:
         run: |
           import os, re
           ver = os.environ.get("STRAKALARI_VERSION", "0.0.1")
-          p = "strakalari/__init__.py"
-          s = open(p, encoding="utf-8").read()
-          s = re.sub(r'__version__\s*=\s*"[^"]+"', f'__version__ = "{ver}"', s)
-          open(p, "w", encoding="utf-8").write(s)
-          print("stamped:", ver)
+          # All three version spellings move together (tests/test_version_sync.py
+          # checks they agree): pyproject needs the PEP 440 form.
+          m = re.fullmatch(r"(\d+(?:\.\d+)*)(?:-(alpha|beta|rc)\.?(\d+))?(?:-(.+))?", ver)
+          base, kind, num, other = m.groups() if m else (ver, None, None, None)
+          pep = base + ({"alpha": "a", "beta": "b", "rc": "rc"}[kind] + num if kind else "")
+          if other:
+              pep += "+" + re.sub(r"[^0-9A-Za-z]+", ".", other)
+          stamps = [
+              ("strakalari/__init__.py", r'__version__\s*=\s*"[^"]+"', f'__version__ = "{ver}"'),
+              ("pyproject.toml", r'(?m)^version\s*=\s*"[^"]+"', f'version = "{pep}"'),
+              ("installer.iss", r'#define MyAppVersion "[^"]+"', f'#define MyAppVersion "{ver}"'),
+          ]
+          for path, pattern, repl in stamps:
+              s = open(path, encoding="utf-8").read()
+              s, n = re.subn(pattern, repl, s, count=1)
+              if n != 1:
+                  raise SystemExit(f"version stamp not found in {path}")
+              open(path, "w", encoding="utf-8").write(s)
+          print("stamped:", ver, "/", pep)
 
       - name: Set up Python 3.11
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
@@ -140,11 +154,25 @@ jobs:
         run: |
           import os, re
           ver = os.environ.get("STRAKALARI_VERSION", "0.0.1")
-          p = "strakalari/__init__.py"
-          s = open(p, encoding="utf-8").read()
-          s = re.sub(r'__version__\s*=\s*"[^"]+"', f'__version__ = "{ver}"', s)
-          open(p, "w", encoding="utf-8").write(s)
-          print("stamped:", ver)
+          # All three version spellings move together (tests/test_version_sync.py
+          # checks they agree): pyproject needs the PEP 440 form.
+          m = re.fullmatch(r"(\d+(?:\.\d+)*)(?:-(alpha|beta|rc)\.?(\d+))?(?:-(.+))?", ver)
+          base, kind, num, other = m.groups() if m else (ver, None, None, None)
+          pep = base + ({"alpha": "a", "beta": "b", "rc": "rc"}[kind] + num if kind else "")
+          if other:
+              pep += "+" + re.sub(r"[^0-9A-Za-z]+", ".", other)
+          stamps = [
+              ("strakalari/__init__.py", r'__version__\s*=\s*"[^"]+"', f'__version__ = "{ver}"'),
+              ("pyproject.toml", r'(?m)^version\s*=\s*"[^"]+"', f'version = "{pep}"'),
+              ("installer.iss", r'#define MyAppVersion "[^"]+"', f'#define MyAppVersion "{ver}"'),
+          ]
+          for path, pattern, repl in stamps:
+              s = open(path, encoding="utf-8").read()
+              s, n = re.subn(pattern, repl, s, count=1)
+              if n != 1:
+                  raise SystemExit(f"version stamp not found in {path}")
+              open(path, "w", encoding="utf-8").write(s)
+          print("stamped:", ver, "/", pep)
 
       - name: Set up Python 3.11
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
@@ -232,11 +260,25 @@ jobs:
         run: |
           import os, re
           ver = os.environ.get("STRAKALARI_VERSION", "0.0.1")
-          p = "strakalari/__init__.py"
-          s = open(p, encoding="utf-8").read()
-          s = re.sub(r'__version__\s*=\s*"[^"]+"', f'__version__ = "{ver}"', s)
-          open(p, "w", encoding="utf-8").write(s)
-          print("stamped:", ver)
+          # All three version spellings move together (tests/test_version_sync.py
+          # checks they agree): pyproject needs the PEP 440 form.
+          m = re.fullmatch(r"(\d+(?:\.\d+)*)(?:-(alpha|beta|rc)\.?(\d+))?(?:-(.+))?", ver)
+          base, kind, num, other = m.groups() if m else (ver, None, None, None)
+          pep = base + ({"alpha": "a", "beta": "b", "rc": "rc"}[kind] + num if kind else "")
+          if other:
+              pep += "+" + re.sub(r"[^0-9A-Za-z]+", ".", other)
+          stamps = [
+              ("strakalari/__init__.py", r'__version__\s*=\s*"[^"]+"', f'__version__ = "{ver}"'),
+              ("pyproject.toml", r'(?m)^version\s*=\s*"[^"]+"', f'version = "{pep}"'),
+              ("installer.iss", r'#define MyAppVersion "[^"]+"', f'#define MyAppVersion "{ver}"'),
+          ]
+          for path, pattern, repl in stamps:
+              s = open(path, encoding="utf-8").read()
+              s, n = re.subn(pattern, repl, s, count=1)
+              if n != 1:
+                  raise SystemExit(f"version stamp not found in {path}")
+              open(path, "w", encoding="utf-8").write(s)
+          print("stamped:", ver, "/", pep)
 
       - name: Free disk space (macOS runners are nearly full)
         run: |

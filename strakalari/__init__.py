@@ -13,7 +13,7 @@ from .core.helpers import (
 from .core.extractors.strava import extract_food_data, extract_ordered_food, clean_text
 from .core.extractors.bakalari import extract_absence_percentages, extract_grades, extract_sent_excuses
 
-__version__ = "0.1.0-beta.3"
+__version__ = "0.1.0-beta.4"
 
 # Heavy/browser-dependent names are resolved lazily (PEP 562) so that
 # `import strakalari` never requires Playwright to be installed.

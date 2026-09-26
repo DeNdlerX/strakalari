@@ -5,7 +5,7 @@
 ; CI stamps the release version: ISCC /DMyAppVersion=1.2.3 (or 1.2.3-beta.1).
 ; Local builds fall back to the hardcoded version below.
 #ifndef MyAppVersion
-#define MyAppVersion "0.1.0-beta.3"
+#define MyAppVersion "0.1.0-beta.4"
 #endif
 #define MyAppPublisher "Strakalari"
 #define MyAppExeName "Strakalari.exe"
