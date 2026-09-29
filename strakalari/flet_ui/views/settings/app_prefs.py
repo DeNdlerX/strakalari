@@ -184,7 +184,7 @@ class AppPrefsMixin:
                 ft.Row(
                     [
                         C.primary_button(S("download_update"), tok, on_click=_open_releases,
-                                         icon=ft.Icons.UPGRADE),
+                                         icon=ft.Icons.DOWNLOAD),
                         C.ghost_button(S("update_dismiss"), tok,
                                        on_click=lambda e: state.dismiss_update()),
                     ],

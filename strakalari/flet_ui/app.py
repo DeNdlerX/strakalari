@@ -225,7 +225,7 @@ class Shell:
             controls.append(
                 C.ghost_button(
                     S("update_available").format(v=latest), tok,
-                    on_click=_open_update, icon=ft.Icons.UPGRADE,
+                    on_click=_open_update, icon=ft.Icons.NEW_RELEASES_OUTLINED,
                 )
             )
         controls.append(action)

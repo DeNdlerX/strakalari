@@ -183,7 +183,7 @@ def _update_banner(state: AppState, page: ft.Page) -> ft.Control | None:
                     spacing=2, tight=True, expand=True,
                 ),
                 C.primary_button(S("download_update"), tok, on_click=_open,
-                                 icon=ft.Icons.UPGRADE),
+                                 icon=ft.Icons.DOWNLOAD),
                 C.ghost_button(S("update_dismiss"), tok,
                                on_click=lambda e: state.dismiss_update()),
             ],
