@@ -121,3 +121,10 @@ Strakaláři is not affiliated with, endorsed by or supported by the makers of B
 ## For developers
 
 Building from source, tests, the project layout and contribution rules are in **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+
+## Support the project
+
+Strakaláři is free. If it helps you and you'd like to support the project, you can donate:
+
+- **Bitcoin:** `bc1q68x9nnc3m0pjhx5uzdvhlqwejxyzvt74fshprl`
+- **Monero:** `85USJDh9qRz9Ut9WDb6fQy7pe4zJCMime68fhbyxhPMzC17L5C5WPHcVRduun9BLVMAmGAJJUAgt6PLG368s3pV6Tp3Zbvo`

@@ -84,6 +84,24 @@ def _default_browsers_path():
         return ""
 
 
+def _in_msix_package():
+    """True inside the Microsoft Store (MSIX) package, whose install dir
+    is read-only although os.access(dir, W_OK) is always True for
+    directories on Windows. Mirrors strakalari.core.packaging, which
+    can't be imported this early."""
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+
+        length = ctypes.c_uint(0)
+        # 15700 = APPMODEL_ERROR_NO_PACKAGE (unpackaged process).
+        return ctypes.windll.kernel32.GetCurrentPackageFullName(
+            ctypes.byref(length), None) != 15700
+    except Exception:
+        return False
+
+
 def _point_playwright_at_persistent_browsers():
     """Point frozen apps at a persistent Chromium dir (never _MEIPASS).
 
@@ -112,8 +130,10 @@ def _point_playwright_at_persistent_browsers():
                 meipass
                 and exe_dir.startswith(os.path.normpath(str(meipass)))
             ) or "_MEI" in os.path.normcase(exe_dir).upper()
-            # Never inside a macOS .app bundle (see browser.py).
+            # Never inside a macOS .app bundle (see browser.py) or the
+            # read-only Store package dir.
             if (exe_dir and not inside_mei and sys.platform != "darwin"
+                    and not _in_msix_package()
                     and os.access(exe_dir, os.W_OK)):
                 candidate = os.path.join(exe_dir, "browsers")
         except Exception:

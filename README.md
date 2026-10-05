@@ -121,3 +121,10 @@ Strakaláři nejsou spojeni s tvůrci Bakalářů ani Strava.cz, ani jimi schvá
 ## Pro vývojáře
 
 Sestavení ze zdrojáků, testy, struktura projektu a pravidla pro příspěvky jsou v **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+
+## Podpořte projekt
+
+Strakaláři jsou zdarma. Pokud vám pomáhají a chcete projekt podpořit, můžete přispět:
+
+- **Bitcoin:** `bc1q68x9nnc3m0pjhx5uzdvhlqwejxyzvt74fshprl`
+- **Monero:** `85USJDh9qRz9Ut9WDb6fQy7pe4zJCMime68fhbyxhPMzC17L5C5WPHcVRduun9BLVMAmGAJJUAgt6PLG368s3pV6Tp3Zbvo`

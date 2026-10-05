@@ -55,8 +55,27 @@ def _remove_legacy_shortcut() -> None:
         pass
 
 
+def _store_managed() -> bool:
+    """True inside the Store MSIX package, where startup is owned by Windows.
+
+    The HKCU Run value the classic install uses has no effect there: the
+    package declares a StartupTask instead, which the user toggles in
+    Windows Settings (Apps > Startup).
+    """
+    try:
+        from strakalari.core.packaging import is_store_package
+
+        return bool(is_store_package())
+    except Exception:
+        return False
+
+
 def is_autostart_enabled() -> bool:
     """Checks whether autostart on system boot is enabled."""
+    if _store_managed():
+        # StartupTask state is owned by Windows and not readable from
+        # here; the in-app toggle is hidden for Store builds.
+        return False
     if sys.platform == "win32":
         try:
             import winreg
@@ -99,6 +118,8 @@ def is_autostart_enabled() -> bool:
 
 def set_autostart(enabled: bool, minimized: bool = True) -> bool:
     """Enables or disables autostart on system boot."""
+    if _store_managed():
+        return False
     if sys.platform == "win32":
         try:
             import winreg

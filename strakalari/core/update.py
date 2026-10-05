@@ -236,7 +236,12 @@ def _load_cache_file() -> dict | None:
 
 
 def load_cached(channel: str = CHANNEL_STABLE) -> dict | None:
-    """Last known release for ``channel`` (may be stale) or None."""
+    """Last known release for ``channel`` (may be stale) or None.
+
+    Store builds always return None (see :func:`updates_managed_externally`).
+    """
+    if updates_managed_externally():
+        return None
     cache = _load_cache_file()
     if not cache:
         return None
@@ -270,13 +275,31 @@ def should_check(cached: dict | None, now: float | None = None) -> bool:
     return (now if now is not None else time.time()) - checked_at >= CHECK_INTERVAL_S
 
 
+def updates_managed_externally() -> bool:
+    """True when updates come from the Microsoft Store, not GitHub.
+
+    The Store build must never check GitHub releases or offer downloads:
+    updates (including certification) are owned by the Store.
+    """
+    try:
+        from strakalari.core.packaging import is_store_package
+
+        return bool(is_store_package())
+    except Exception:
+        return False
+
+
 def check_for_updates(force: bool = False, channel: str = CHANNEL_STABLE) -> dict | None:
     """Returns cached-or-fresh release info for ``channel``, or None.
 
     With ``force=False`` a fresh cache (< 24 h) is returned without any
     network call. One request refreshes both channels. Failures keep the
     stale cache so the banner can still show a previously seen release.
+
+    Store builds always return None (see :func:`updates_managed_externally`).
     """
+    if updates_managed_externally():
+        return None
     channel = normalize_channel(channel)
     cache = _load_cache_file()
     if not force and cache and not should_check(cache):

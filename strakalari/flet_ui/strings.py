@@ -964,6 +964,18 @@ STRINGS: dict[str, dict[str, str]] = {
         "cs": "Beta upozorní i na testovací verze, které mohou obsahovat chyby.",
         "en": "Beta also notifies about test versions, which may contain bugs.",
     },
+    "update_store_managed": {
+        "cs": "Aktualizace spravuje Microsoft Store.",
+        "en": "Updates are managed by the Microsoft Store.",
+    },
+    "autostart_store_managed": {
+        "cs": "Spouštění po startu spravuje Windows (Nastavení → Aplikace → Po spuštění).",
+        "en": "Startup is managed by Windows (Settings → Apps → Startup).",
+    },
+    "autostart_open_settings": {
+        "cs": "Otevřít nastavení spouštění",
+        "en": "Open startup settings",
+    },
     # Error reporting -------------------------------------------------------
     "error_title": {"cs": "Něco se pokazilo", "en": "Something went wrong"},
     "error_copy_logs": {"cs": "Kopírovat protokol", "en": "Copy log"},

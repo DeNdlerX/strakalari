@@ -138,6 +138,63 @@ jobs:
             output/Strakalari-Setup-*.exe
           retention-days: 14
 
+      # Raw frozen exe for the MSIX job: same binary in Setup and Store.
+      - name: Upload frozen exe for MSIX
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
+        with:
+          name: windows-exe
+          path: |
+            dist/Strakalari.exe
+          retention-days: 3
+
+  build-msix:
+    name: Build MSIX (Microsoft Store)
+    needs: [meta, build-windows]
+    runs-on: windows-latest
+    env:
+      STRAKALARI_VERSION: ${{ needs.meta.outputs.version }}
+      # Partner Center > the app > Product identity. Not secret: every
+      # installed package shows them. Empty = placeholder identity (the
+      # package still builds, but Partner Center refuses to take it).
+      STORE_IDENTITY_NAME: "DeNdler.Strakali"
+      STORE_PUBLISHER: "CN=D57E398C-E1DC-477E-8B3A-EA778AC2EDAC"
+      STORE_PUBLISHER_DISPLAY: "DeNdler"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+
+      - name: Download frozen exe
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0  # v5.0.0
+        with:
+          name: windows-exe
+          path: msix-input
+
+      - name: Pack unsigned MSIX
+        shell: pwsh
+        run: |
+          $identity = $env:STORE_IDENTITY_NAME
+          $publisher = $env:STORE_PUBLISHER
+          $display = $env:STORE_PUBLISHER_DISPLAY
+          if ([string]::IsNullOrWhiteSpace($identity) -or [string]::IsNullOrWhiteSpace($publisher)) {
+            Write-Output "::warning::Store identity not set in build.yml (build-msix env): placeholder MSIX, Partner Center will reject it. See docs/STORE.md."
+            $identity = "Strakalari.Placeholder"
+            $publisher = "CN=Strakalari-Placeholder"
+          }
+          if ([string]::IsNullOrWhiteSpace($display)) { $display = "Strakalari" }
+          python tools/make_msix.py --exe msix-input/Strakalari.exe `
+            --out "Strakalari-$env:STRAKALARI_VERSION.msix" `
+            --version "$env:STRAKALARI_VERSION" `
+            --identity-name "$identity" --publisher "$publisher" `
+            --publisher-display "$display"
+
+      - name: Upload MSIX Artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
+        with:
+          name: msix-package
+          path: |
+            Strakalari-*.msix
+          retention-days: 14
+
   build-linux:
     name: Build Linux (AppImage)
     needs: meta
@@ -346,8 +403,46 @@ jobs:
             Strakalari-*.dmg
           retention-days: 14
 
+  # Stable releases only (Store versions are numeric X.Y.Z with no
+  # pre-release suffix) go to the Microsoft Store; betas stay on GitHub.
+  # The Store signs the package itself, so the unsigned MSIX from
+  # build-msix is uploaded as-is and never appears in GitHub releases.
+  # Optional: without the STORE_* secrets the job only leaves a notice,
+  # and the MSIX artifact is uploaded in Partner Center by hand.
+  publish-store:
+    name: Submit MSIX to Microsoft Store
+    needs: [meta, build-msix]
+    if: needs.meta.outputs.release == 'true' && needs.meta.outputs.prerelease != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+
+      - name: Download MSIX
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0  # v5.0.0
+        with:
+          name: msix-package
+          path: msix-input
+
+      - name: Submit to Store
+        env:
+          STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
+          STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
+          STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
+          STORE_APP_ID: ${{ secrets.STORE_APP_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$STORE_APP_ID$STORE_TENANT_ID$STORE_CLIENT_ID$STORE_CLIENT_SECRET" ]]; then
+            echo "::notice::Automatic Store submission is not set up: upload the msix-package artifact in Partner Center by hand (docs/STORE.md)."
+            exit 0
+          fi
+          ls -lh msix-input
+          python3 tools/store_submit.py msix-input/Strakalari-*.msix --commit
+
   # One job publishes all assets together: three parallel build jobs each
   # creating/updating the release raced into duplicate drafts.
+  # NOTE: the MSIX is deliberately NOT attached here — it goes straight
+  # to the Microsoft Store (publish-store job), which also signs it.
   release:
     name: Publish GitHub Release
     needs: [meta, build-windows, build-linux, build-macos]

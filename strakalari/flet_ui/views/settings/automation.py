@@ -187,12 +187,30 @@ class AutomationMixin:
                              on_change=_commit_max)
         try:
             from strakalari.core.autostart import is_autostart_enabled
+            from strakalari.core.packaging import is_store_package
 
-            autostart_on = bool(is_autostart_enabled())
+            store_managed = bool(is_store_package())
+            autostart_on = False if store_managed else bool(is_autostart_enabled())
         except Exception:
-            autostart_on = False
-        autostart = C.toggle(tok, S("autostart"), autostart_on,
-                             on_change=_commit_auto)
+            store_managed, autostart_on = False, False
+        if store_managed:
+            # StartupTask is owned by Windows (Settings > Apps > Startup);
+            # the HKCU Run toggle has no effect inside the MSIX container.
+            async def _open_startup_settings(e) -> None:
+                await C.open_url(page, "ms-settings:startupapps")
+
+            autostart = ft.Column(
+                [
+                    C.hint_text(S("autostart_store_managed"), tok),
+                    C.ghost_button(S("autostart_open_settings"), tok,
+                                   on_click=_open_startup_settings,
+                                   icon=ft.Icons.OPEN_IN_NEW),
+                ],
+                spacing=8,
+            )
+        else:
+            autostart = C.toggle(tok, S("autostart"), autostart_on,
+                                 on_change=_commit_auto)
         tray = C.toggle(tok, S("minimize_to_tray"),
                         bool(state.get("minimize_to_tray", True)),
                         on_change=_commit_tray)

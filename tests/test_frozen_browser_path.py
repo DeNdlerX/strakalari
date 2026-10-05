@@ -131,6 +131,23 @@ class TestRuntimeHook:
         got = os.environ["PLAYWRIGHT_BROWSERS_PATH"]
         assert got == os.path.join(str(tmp_path), "browsers")
 
+    def test_store_package_uses_shared_cache(self, monkeypatch, tmp_path):
+        # The MSIX install dir is read-only, yet os.access says writable:
+        # Chromium went there and every install failed.
+        hook = load_rthook("rthook_nb_store")
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(
+            sys, "executable", str(tmp_path / "Strakalari.exe"), raising=False
+        )
+        monkeypatch.delattr(sys, "_MEIPASS", raising=False)
+        monkeypatch.delenv("PLAYWRIGHT_BROWSERS_PATH", raising=False)
+        monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "Local"))
+        monkeypatch.setattr(hook, "_in_msix_package", lambda: True)
+        assert hook._point_playwright_at_persistent_browsers() is True
+        assert os.environ["PLAYWRIGHT_BROWSERS_PATH"] == os.path.join(
+            str(tmp_path / "Local"), "ms-playwright")
+
     def test_respects_override(self, monkeypatch, tmp_path):
         hook = load_rthook("rthook_nb_3")
         monkeypatch.setattr(sys, "frozen", True, raising=False)

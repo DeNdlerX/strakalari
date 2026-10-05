@@ -36,6 +36,11 @@ def get_user_data_dir() -> str:
     frozen = getattr(sys, "frozen", False)
     if frozen and sys.platform == "darwin":
         return _macos_app_data_dir()
+    if frozen and _in_store_package():
+        # The MSIX install dir is read-only, yet os.access(dir, W_OK) is
+        # always True for directories on Windows: the check below would
+        # pick it and every write would fail.
+        return _store_app_data_dir()
     # If running from source or portable directory is writable, keep local
     root = _install_dir()
     if not frozen or os.access(root, os.W_OK):
@@ -57,6 +62,41 @@ def _platform_data_dir() -> str:
 
     os.makedirs(data_dir, exist_ok=True)
     return data_dir
+
+
+def _in_store_package() -> bool:
+    try:
+        from .packaging import is_store_package
+
+        return is_store_package()
+    except Exception:
+        return False
+
+
+#: Store data dirs whose first-run migration was already attempted.
+_STORE_DATA_DIRS: set[str] = set()
+
+
+def _store_app_data_dir() -> str:
+    """%LOCALAPPDATA%\\Strakalari for the Store (MSIX) build.
+
+    On the first run, the data of a classic install
+    (``%LOCALAPPDATA%\\Programs\\Strakalari``) is copied over once, with
+    the password key; the classic install keeps its own copy. If that
+    copy fails, the Store build starts with empty settings.
+    """
+    target = _platform_data_dir()
+    if target in _STORE_DATA_DIRS:
+        return target
+    from .packaging import legacy_desktop_data_dir
+
+    legacy = legacy_desktop_data_dir()
+    if (legacy and _needs_bundle_migration(legacy, target)
+            and not _migrate_bundle_data(legacy, target)):
+        print(f"Warning: could not copy the data of the classic install ({legacy}); "
+              "starting with empty settings.")
+    _STORE_DATA_DIRS.add(target)
+    return target
 
 
 #: Resolved macOS data dir per (bundle dir, target dir), fixed for the
@@ -156,7 +196,9 @@ def _copy_missing(src: str, dst: str) -> None:
 def _migrate_bundle_data(bundle: str, target: str) -> bool:
     """Copies the user data from ``bundle`` to ``target``. True when done.
 
-    The bundle copy is left in place (an older build still reads it).
+    ``bundle`` is any old data dir: the macOS .app bundle, or the classic
+    Windows install for the Store build. The old copy is left in place
+    (an older build still reads it).
     Never raises: a failure returns False and nothing is marked done.
     """
     from .secret_store import carry_key
@@ -177,7 +219,7 @@ def _migrate_bundle_data(bundle: str, target: str) -> bool:
         _copy_missing(os.path.join(bundle, "config.json"), os.path.join(target, "config.json"))
         return True
     except Exception as exc:  # noqa: BLE001 - reported by the caller's warning
-        print(f"Warning: moving the data out of the app bundle failed "
+        print(f"Warning: copying the data from {bundle!r} failed "
               f"({type(exc).__name__}: {exc}).")
         return False
     finally:

@@ -115,12 +115,20 @@ def test_excuse_outcomes_are_recorded(tmp_path):
     assert all("x" != i["summary"] for i in items)
 
 
+def _yesterday() -> str:
+    from datetime import date, timedelta
+
+    return (date.today() - timedelta(days=1)).strftime("%d.%m.%Y")
+
+
 def test_auto_excuse_counts_failures(tmp_path):
     from tests.test_excuse_history import _app as _excuse_app
 
     app, client = _excuse_app(tmp_path)
     client.execute_excuse.side_effect = lambda *a, **k: False
-    client.timetableData = {"01.09.2026": [
+    # Relative to the real clock: excuse_pending only sends absences from
+    # the last EXCUSE_WINDOW_DAYS, so a fixed date would age out.
+    client.timetableData = {_yesterday(): [
         {"teacher": "T", "subject": "M", "time": "1 (8:00)", "absenceType": "absent"},
     ]}
     app.excuse_delay_days = 0

@@ -41,6 +41,8 @@ build/
 browsers/
 output/
 deb_pkg/
+msix-layout/
+*.msix
 *.spec.bak
 *.zip
 *.tar.gz

@@ -66,6 +66,14 @@ def _exe_adjacent_browsers_dir() -> str:
         # download each time) and writes break its code-signature seal.
         return ""
     try:
+        from strakalari.core.packaging import is_store_package
+
+        if is_store_package():
+            # Read-only MSIX install dir; os.access below can't tell.
+            return ""
+    except Exception:
+        pass
+    try:
         exe_dir = os.path.normpath(os.path.dirname(sys.executable))
     except Exception:
         return ""

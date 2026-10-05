@@ -204,3 +204,13 @@ def test_failed_autostart_reverts_the_switch(app_state, monkeypatch):
     switch.update = lambda: None
     switch.on_change(SimpleNamespace(control=switch))
     assert switch.value is False
+
+
+def test_store_build_points_autostart_to_windows_settings(app_state, monkeypatch):
+    import strakalari.core.packaging as packaging
+
+    monkeypatch.setattr(packaging, "is_store_package", lambda: True)
+    texts = [t for c in _section(app_state, "browser") for t in _texts(c)]
+    assert S("autostart_store_managed") in texts
+    assert S("autostart_open_settings") in texts
+    assert S("autostart") not in texts  # the Run-key switch does nothing there

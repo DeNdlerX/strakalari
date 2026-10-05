@@ -157,59 +157,71 @@ class AppPrefsMixin:
             pass
         channel = getattr(state, "update_channel", "stable")
 
-        def _on_channel(e):
-            value = (e.control.value if e.control else "") or "stable"
-            if value != channel and not state.set_update_channel(value):
-                try:
-                    snack(page, S("save_failed"))
-                except Exception:
-                    pass
+        try:
+            from strakalari.core.update import updates_managed_externally
 
-        rows.append(
-            C.dropdown(
-                tok, S("update_channel"),
-                [("stable", S("update_channel_stable")), ("beta", S("update_channel_beta"))],
-                channel, on_change=_on_channel,
-            )
-        )
-        rows.append(C.txt(S("update_channel_hint"), tok, size=tok.fs_small, muted=True))
-        info = state.update_banner
-        if info is not None:
-            rows.append(C.kv_row(tok, S("latest_version"), str(info.get("version") or "?")))
-
-            async def _open_releases(e) -> None:
-                await C.open_url(page, str(info.get("url") or ""))
-
-            rows.append(
-                ft.Row(
-                    [
-                        C.primary_button(S("download_update"), tok, on_click=_open_releases,
-                                         icon=ft.Icons.DOWNLOAD),
-                        C.ghost_button(S("update_dismiss"), tok,
-                                       on_click=lambda e: state.dismiss_update()),
-                    ],
-                    spacing=8,
-                )
-            )
-        elif state.update_check_running:
-            rows.append(C.txt(S("checking_updates"), tok, size=tok.fs_small, muted=True))
+            store_managed = bool(updates_managed_externally())
+        except Exception:
+            store_managed = False
+        if store_managed:
+            # Store builds never check GitHub: channel, banner and the
+            # manual check button are all hidden.
+            rows.append(C.txt(S("update_store_managed"), tok, size=tok.fs_small, muted=True))
         else:
-            try:
-                from strakalari.core.update import load_cached
 
-                cached = load_cached(channel)
-            except Exception:
-                cached = None
-            if cached and cached.get("version"):
-                rows.append(C.kv_row(tok, S("latest_version"),
-                                     f"{cached.get('version')} ({S('up_to_date')})"))
+            def _on_channel(e):
+                value = (e.control.value if e.control else "") or "stable"
+                if value != channel and not state.set_update_channel(value):
+                    try:
+                        snack(page, S("save_failed"))
+                    except Exception:
+                        pass
+
             rows.append(
-                ft.Row(
-                    [C.ghost_button(S("check_updates"), tok,
-                                    on_click=lambda e: state.start_update_check(force=True))],
-                    spacing=8,
+                C.dropdown(
+                    tok, S("update_channel"),
+                    [("stable", S("update_channel_stable")), ("beta", S("update_channel_beta"))],
+                    channel, on_change=_on_channel,
                 )
             )
+            rows.append(C.txt(S("update_channel_hint"), tok, size=tok.fs_small, muted=True))
+            info = state.update_banner
+            if info is not None:
+                rows.append(C.kv_row(tok, S("latest_version"), str(info.get("version") or "?")))
+
+                async def _open_releases(e) -> None:
+                    await C.open_url(page, str(info.get("url") or ""))
+
+                rows.append(
+                    ft.Row(
+                        [
+                            C.primary_button(S("download_update"), tok, on_click=_open_releases,
+                                             icon=ft.Icons.DOWNLOAD),
+                            C.ghost_button(S("update_dismiss"), tok,
+                                           on_click=lambda e: state.dismiss_update()),
+                        ],
+                        spacing=8,
+                    )
+                )
+            elif state.update_check_running:
+                rows.append(C.txt(S("checking_updates"), tok, size=tok.fs_small, muted=True))
+            else:
+                try:
+                    from strakalari.core.update import load_cached
+
+                    cached = load_cached(channel)
+                except Exception:
+                    cached = None
+                if cached and cached.get("version"):
+                    rows.append(C.kv_row(tok, S("latest_version"),
+                                         f"{cached.get('version')} ({S('up_to_date')})"))
+                rows.append(
+                    ft.Row(
+                        [C.ghost_button(S("check_updates"), tok,
+                                        on_click=lambda e: state.start_update_check(force=True))],
+                        spacing=8,
+                    )
+                )
         rows.append(C.divider(tok))
         rows.append(C.kv_row(tok, S("cache_info"), state.updated_label))
         rows.append(

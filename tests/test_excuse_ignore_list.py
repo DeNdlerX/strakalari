@@ -1,5 +1,5 @@
 """The UI ignore list: auto mode honors it, and a failed save never leaves a memory-only ignore."""
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -45,7 +45,10 @@ class TestIgnoredExcuses:
             ("07.09.2026", "07.09.2026"), ("09.09.2026", "09.09.2026")]
 
     def test_excuse_absence_passes_config_ignore_list(self, monkeypatch):
-        raw = {"08.09.2026": [_absent("1 (8:00-8:45)")]}
+        # Relative to the real clock: excuse_pending drops absences older
+        # than EXCUSE_WINDOW_DAYS, which would pass this test vacuously.
+        day = (datetime.now() - timedelta(days=1)).strftime("%d.%m.%Y")
+        raw = {day: [_absent("1 (8:00-8:45)")]}
         monkeypatch.setattr(Strakalari, "timetableData", property(lambda self: raw))
         app = Strakalari.__new__(Strakalari)
         app.excuse_mode = "auto"
