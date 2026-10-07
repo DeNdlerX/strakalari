@@ -155,12 +155,8 @@ class BakalariClient(TimetableMixin, DataMixin, ExcuseFormMixin):
             value = float(self.config.get(key, default))
         except (TypeError, ValueError):
             return default
-        # Negative/NaN/inf timeouts come from hand-edited configs; fall back
-        # instead of crashing waits (int(nan * 1000) raises).
-        try:
-            if not _math.isfinite(value) or value < 0:
-                return default
-        except (TypeError, ValueError):
+        # Zero/negative/NaN/inf timeouts come from hand-edited configs.
+        if not _math.isfinite(value) or value <= 0:
             return default
         return value
 
@@ -186,7 +182,7 @@ class BakalariClient(TimetableMixin, DataMixin, ExcuseFormMixin):
                 raise UserError(t("bak_missing_password"))
             self.session = BakalariSession(
                 url, self.username, self._plain_password,
-                timeout_s=self._seconds("page_load_timeout_s", 60.0) or 60.0,
+                timeout_s=self._seconds("page_load_timeout_s", 60.0),
                 user_agent=USER_AGENT, cancelled=self._cancelled,
                 logger=self.log, transport=self._transport,
             )

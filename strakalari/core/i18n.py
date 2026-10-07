@@ -14,16 +14,14 @@ _current_lang = "cs"
 MESSAGES: dict[str, dict[str, str]] = {
     "error_timeout": {
         "cs": (
-            "Stránka se nestihla načíst v časovém limitu — máte nejspíš "
-            "pomalé nebo nestabilní připojení k internetu. Zvyšte limity "
-            "v Nastavení (Timeout načtení stránky / Čekání na prvky), "
-            "nebo se připojte k rychlejší síti."
+            "Server neodpověděl v časovém limitu — připojení k internetu je "
+            "nejspíš pomalé nebo nestabilní. Zkuste to znovu, případně zvyšte "
+            "Časový limit spojení v Nastavení nebo se připojte k rychlejší síti."
         ),
         "en": (
-            "The page did not load within the time limit — your internet "
-            "connection is probably slow or unstable. Raise the limits in "
-            "Settings (page load timeout / element wait), or switch to a "
-            "faster network."
+            "The server did not answer within the time limit — your internet "
+            "connection is probably slow or unstable. Try again, raise the "
+            "connection timeout in Settings, or switch to a faster network."
         ),
     },
     "bak_login_rejected": {
@@ -42,9 +40,21 @@ MESSAGES: dict[str, dict[str, str]] = {
         "cs": "Chybí heslo Bakalářů — doplňte ho v Nastavení.",
         "en": "The Bakaláři password is missing — add it in Settings.",
     },
-    "bak_not_loading": {
-        "cs": "Bakaláři se neotevřeli — stránka se nenačetla ani po {seconds} s. Zkontrolujte připojení, případně zvyšte Timeout načtení stránky v Nastavení.",
-        "en": "Bakaláři did not open — the page did not load within {seconds} s. Check your connection, or raise the page load timeout in Settings.",
+    "bak_unreachable": {
+        "cs": "Nepodařilo se spojit s Bakaláři ({host}). Zkontrolujte připojení k internetu a adresu Bakalářů v Nastavení.",
+        "en": "Could not connect to Bakaláři ({host}). Check your internet connection and the Bakaláři address in Settings.",
+    },
+    "bak_connection_lost": {
+        "cs": "Spojení s Bakaláři se přerušilo. Zkuste to prosím za chvíli znovu.",
+        "en": "The connection to Bakaláři was interrupted. Please try again in a moment.",
+    },
+    "bak_no_login_page": {
+        "cs": "Na adrese {host} se nepodařilo najít přihlášení do Bakalářů. Zkontrolujte adresu Bakalářů v Nastavení.",
+        "en": "No Bakaláři login was found at {host}. Check the Bakaláři address in Settings.",
+    },
+    "bak_server_error": {
+        "cs": "Bakaláři odpověděli chybou (HTTP {status}). Zkuste to prosím později.",
+        "en": "Bakaláři answered with an error (HTTP {status}). Please try again later.",
     },
     "bak_password_undecryptable": {
         "cs": "Heslo k Bakalářům nelze rozšifrovat — zadejte ho znovu v Nastavení.",
@@ -66,13 +76,29 @@ MESSAGES: dict[str, dict[str, str]] = {
         "cs": "Heslo ke Stravě nelze rozšifrovat — zadejte ho znovu v Nastavení.",
         "en": "The stored Strava password cannot be decrypted — enter it again in Settings.",
     },
-    "strava_not_loading": {
-        "cs": "Strava neodpověděla — ani po {seconds} s. Zkontrolujte připojení, případně zvyšte Timeout načtení stránky v Nastavení.",
-        "en": "Strava did not respond within {seconds} s. Check your connection, or raise the page load timeout in Settings.",
+    "strava_unreachable": {
+        "cs": "Nepodařilo se spojit se Stravou. Zkontrolujte připojení k internetu.",
+        "en": "Could not connect to Strava. Check your internet connection.",
+    },
+    "strava_connection_lost": {
+        "cs": "Spojení se Stravou se přerušilo. Zkuste to prosím za chvíli znovu.",
+        "en": "The connection to Strava was interrupted. Please try again in a moment.",
+    },
+    "strava_server_error": {
+        "cs": "Strava odpověděla chybou (HTTP {status}). Zkuste to prosím později.",
+        "en": "Strava answered with an error (HTTP {status}). Please try again later.",
     },
     "strava_login_failed": {
-        "cs": "Přihlášení ke Stravě selhalo — zkontrolujte kód jídelny, uživatelské jméno a heslo v Nastavení.",
+        "cs": "Přihlášení ke Stravě selhalo — zkontrolujte číslo jídelny, uživatelské jméno a heslo v Nastavení.",
         "en": "Strava login failed — check the canteen number, username and password in Settings.",
+    },
+    "strava_login_rejected": {
+        "cs": "Přihlášení ke Stravě selhalo — zkontrolujte číslo jídelny, uživatelské jméno a heslo v Nastavení. (Strava: {detail})",
+        "en": "Strava login failed — check the canteen number, username and password in Settings. (Strava: {detail})",
+    },
+    "strava_menu_failed": {
+        "cs": "Jídelníček ze Stravy se nenačetl. (Strava: {detail})",
+        "en": "The Strava menu did not load. (Strava: {detail})",
     },
     "test_bak_missing": {
         "cs": "Chybí URL nebo uživatelské jméno Bakalářů.",

@@ -56,6 +56,9 @@ class FakeBakalari:
         self.requests.append(request)
         path = request.url.path
         if request.method == "GET" and path == "/login":
+            if self._token and request.headers.get("cookie") == f"BakaAuth={self._token}":
+                # A still-valid session goes straight into the app.
+                return httpx.Response(302, headers={"Location": f"{ROOT}/dashboard"})
             return _reply(LOGIN_PAGE.format(error=""))
         if request.method == "POST" and path == "/Login":
             form = parse_qs(request.content.decode("utf-8"))

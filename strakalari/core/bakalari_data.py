@@ -316,10 +316,10 @@ class DataMixin:
             try:
                 baseline = baseline_from_stable_timetable(self.stableTimetableData)
             except Exception as e:
-                self.log(f"Warning: could not use scraped stable timetable: {e}")
+                self.log(f"Warning: could not use the stable timetable: {e}")
                 baseline = {}
         used_scraped = bool(baseline)
-        source = "scraped stable timetable (Stálý rozvrh)"
+        source = "stable timetable (Stálý rozvrh)"
         if not baseline:
             self.log("No stable timetable this run — changes come from Bakaláři's own flags.")
         self.stableBaseline = baseline
@@ -405,7 +405,7 @@ class DataMixin:
         except InterruptedError:
             raise
         except Exception as e:
-            self.log(f"Warning: stable timetable scrape failed ({e}), "
+            self.log(f"Warning: stable timetable failed to load ({e}), "
                      "no stable timetable this run.")
         # Personal substitution feed rides along the same loop so the
         # authoritative change list is available when the baseline is
@@ -428,7 +428,7 @@ class DataMixin:
         except InterruptedError:
             raise
         except Exception as e:
-            self.log(f"Warning: grades scrape failed ({e}), continuing without fresh grades.")
+            self.log(f"Warning: grades failed to load ({e}), continuing without fresh grades.")
         # Subject directory rides along the same loop (one extra module).
         # Best effort only — an empty directory simply disables the
         # tracked-subject filter downstream.

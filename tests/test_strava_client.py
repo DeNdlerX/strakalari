@@ -131,12 +131,39 @@ def test_login_and_menu_keep_the_ids_and_texts_of_the_web_page():
     assert data["orderedDict"] == {_day(DAY1): "table0&1&0"}
 
 
-def test_wrong_password_is_a_user_error():
+def test_wrong_password_is_a_user_error_with_stravas_reason():
     from strakalari.core.error_report import UserError
 
     client, _ = _client(strava_password="spatne")
-    with pytest.raises(UserError):
+    with pytest.raises(UserError) as exc_info:
         client.login()
+    assert "Chybné heslo" in str(exc_info.value)
+
+
+def test_strava_server_error_is_a_user_error():
+    from strakalari.core.error_report import UserError
+
+    client = StravaClient(CONFIG, transport=httpx.MockTransport(lambda r: httpx.Response(502)))
+    with pytest.raises(UserError) as exc_info:
+        client.login()
+    assert "HTTP 502" in str(exc_info.value)
+
+
+def test_menu_error_shows_stravas_reason():
+    from strakalari.core.error_report import UserError
+
+    server = FakeStrava()
+    real = server.handle
+
+    def handle(request):
+        if request.url.path == "/api/objednavky":
+            return httpx.Response(200, json={"state": "error", "number": 77, "message": "Jídelna je uzavřena"})
+        return real(request)
+
+    client = StravaClient(CONFIG, transport=httpx.MockTransport(handle))
+    with pytest.raises(UserError) as exc_info:
+        client.fetch_data()
+    assert "Jídelna je uzavřena" in str(exc_info.value)
 
 
 def test_dropped_session_logs_in_again_for_reads():

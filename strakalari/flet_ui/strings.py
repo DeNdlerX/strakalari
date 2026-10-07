@@ -520,7 +520,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "pick_first": {"cs": "První", "en": "First"},
     "pick_random": {"cs": "Náhodná", "en": "Random"},
     "cache_ttl": {"cs": "Platnost mezipaměti (hodiny)", "en": "Cache lifetime (hours)"},
-    "timeout_page": {"cs": "Timeout načtení stránky (s)", "en": "Page load timeout (s)"},
+    "timeout_page": {"cs": "Časový limit spojení (s)", "en": "Connection timeout (s)"},
     "log_file": {"cs": "Soubor protokolu", "en": "Log file"},
     "blacklist_file": {"cs": "Soubor blacklistu jídel", "en": "Food blacklist file"},
 

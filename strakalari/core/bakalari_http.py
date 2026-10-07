@@ -18,10 +18,6 @@ from .error_report import UserError, timeout_user_message
 from .i18n import t
 
 
-class SessionExpired(Exception):
-    """The server answered with the login page: the session is gone."""
-
-
 def app_root(url: str) -> str:
     """Web root of the configured Bakaláři URL, without a trailing slash.
 
@@ -311,22 +307,42 @@ class BakalariSession:
             raise UserError(timeout_user_message()) from exc
         except httpx.TransportError as exc:
             self.log(f"Bakaláři request failed: {method} {path}: {type(exc).__name__}: {exc}")
-            raise UserError(t("bak_not_loading", seconds=int(self.timeout_s))) from exc
+            if isinstance(exc, httpx.ConnectError):
+                raise UserError(t("bak_unreachable", host=self.host)) from exc
+            raise UserError(t("bak_connection_lost")) from exc
+
+    @property
+    def host(self) -> str:
+        return urlsplit(self.root).netloc or self.root
+
+    def _check_status(self, resp: httpx.Response) -> httpx.Response:
+        """``resp``, or ``UserError`` when the server answered with an error."""
+        if resp.status_code >= 400 and resp.status_code != 401:
+            self.log(f"Bakaláři answered HTTP {resp.status_code}: {resp.request.method} {resp.url.path}")
+            raise UserError(t("bak_server_error", status=resp.status_code))
+        return resp
 
     def login(self) -> None:
         """Logs in with the login form; ``UserError`` when Bakaláři rejects it."""
         if self.root.startswith("http://"):
             self.log("Warning: Bakaláři URL uses plain http:// — credentials will travel unencrypted.")
         page = self._send("GET", "/login")
-        if not _is_login_page(page):
-            # The session cookie is still valid: /login went straight to the app.
-            self.logged_in = True
-            return
+        if page.status_code == 404:
+            raise UserError(t("bak_no_login_page", host=self.host))
+        self._check_status(page)
+        if 'id="loginButton"' not in page.text:
+            if urlsplit(str(page.url)).path.lower().rstrip("/").endswith("/dashboard"):
+                # The session cookie is still valid: /login went straight to the app.
+                self.logged_in = True
+                return
+            # Neither the login form nor the app: not a Bakaláři address.
+            self.log(f"Bakaláři login page not found: GET /login ended at {page.url}")
+            raise UserError(t("bak_no_login_page", host=self.host))
         fields = dict(form_fields(page.text, "formlogin"))
         fields.update({"username": self.username, "password": self._password(),
                        "returnUrl": fields.get("returnUrl", ""), "login": ""})
         self.log("Logging in to Bakaláři…")
-        resp = self._send("POST", _login_post_url(page), data=fields)
+        resp = self._check_status(self._send("POST", _login_post_url(page), data=fields))
         if _is_login_page(resp):
             self.logged_in = False
             detail = login_error_text(resp) or f"HTTP {resp.status_code}, still on the login page"
@@ -345,9 +361,9 @@ class BakalariSession:
             self.login()
             resp = self._send(method, path, **kwargs)
             if _is_login_page(resp):
-                raise SessionExpired(f"{method} {path}: still on the login page after logging in")
-        resp.raise_for_status()
-        return resp
+                self.logged_in = False
+                raise UserError(t("bak_login_rejected", detail="the session ended right after logging in"))
+        return self._check_status(resp)
 
     def send_once(self, method: str, path: str, **kwargs) -> httpx.Response:
         """One request that must never be repeated (the excuse post).

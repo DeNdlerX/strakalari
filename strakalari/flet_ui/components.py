@@ -126,7 +126,7 @@ def lessons_text(n: int) -> str:
     return S("lessons_many").format(n=n)
 
 
-CZECH_DAY_NAMES =["Pondělí", "Úterý", "Středa", "Čtvrtek", "Pátek", "Sobota", "Neděle"]
+CZECH_DAY_NAMES = ["Pondělí", "Úterý", "Středa", "Čtvrtek", "Pátek", "Sobota", "Neděle"]
 ENGLISH_DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 CZECH_DAY_NAMES_SHORT = ["Po", "Út", "St", "Čt", "Pá", "So", "Ne"]
 ENGLISH_DAY_NAMES_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]

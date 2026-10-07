@@ -228,9 +228,12 @@ class StravaClient(OrderingMixin):
             raise UserError(timeout_user_message()) from exc
         except httpx.TransportError as exc:
             self.log(f"Strava request failed: {path}: {type(exc).__name__}: {exc}")
-            raise UserError(t("strava_not_loading", seconds=timeout_s)) from exc
+            if isinstance(exc, httpx.ConnectError):
+                raise UserError(t("strava_unreachable")) from exc
+            raise UserError(t("strava_connection_lost")) from exc
         if not (resp.is_success or resp.status_code == 555):
-            raise StravaError(resp.status_code, f"HTTP {resp.status_code}")
+            self.log(f"Strava answered HTTP {resp.status_code}: {path}")
+            raise UserError(t("strava_server_error", status=resp.status_code))
         try:
             return resp.json()
         except ValueError as exc:
@@ -282,6 +285,8 @@ class StravaClient(OrderingMixin):
             detail = reply.get("message") if isinstance(reply, dict) else ""
             number = reply.get("number") if isinstance(reply, dict) else ""
             self.log(f"Strava login rejected ({number}): {detail}")
+            if str(detail or "").strip():
+                raise UserError(t("strava_login_rejected", detail=str(detail).strip()[:200]))
             raise UserError(t("strava_login_failed"))
         self.sid = str(reply.get("sid"))
         self.s5url = str(reply.get("s5url") or "")
@@ -301,7 +306,8 @@ class StravaClient(OrderingMixin):
         except (UserError, InterruptedError):
             raise
         except StravaError as e:
-            raise RuntimeError(f"Strava menu did not load: {e}") from e
+            self.log(f"Strava menu did not load: {e}")
+            raise UserError(t("strava_menu_failed", detail=e.message or e.number)) from e
         self.menu = {key: meals for key, meals in menu_tables(reply)}
         self.foodDict, self.orderedDict = menu_from_reply(reply)
         if not self.foodDict:

@@ -61,7 +61,7 @@ def _run_excuse(state, monkeypatch, kind):
     class _StubApp:
         excuse_mode = ""
 
-        def __init__(self, on_log=None, start_browser=True):
+        def __init__(self, on_log=None):
             pass
 
         def excuse_single(self, excuse, custom_text=None):

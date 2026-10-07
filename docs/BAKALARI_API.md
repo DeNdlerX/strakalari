@@ -70,7 +70,10 @@ through a DevExtreme `AspNet.createStore` could also answer a bare list or
 ### `GET /login`
 
 The login page. With a still-valid session cookie it redirects straight to
-`/dashboard` (no form).
+`/dashboard` (no form). The client decides by content: the form
+(`id="loginButton"`) means "log in"; `/dashboard` means "still logged in";
+anything else (a 404, another site) means the configured address is not a
+Bakaláři web, and it says so instead of trying to log in.
 
 ```html
 <form id="formlogin" action="Login">

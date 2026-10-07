@@ -122,7 +122,7 @@ def test_get_grades_failure_keeps_error_without_raising():
 
     client, _ = fake_client({("GET", "/next/prubzna.aspx"): httpx.Response(500)})
     assert client.get_grades() == {}
-    assert "HTTPStatusError" in client.grades_error
+    assert "HTTP 500" in client.grades_error
 
 
 def test_get_grades_empty_other_page_is_an_error_not_no_marks():

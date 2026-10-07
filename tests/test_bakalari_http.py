@@ -115,17 +115,50 @@ def test_cancel_stops_before_any_request():
     assert server.requests == []
 
 
-def test_network_failure_is_a_user_error():
+def _raw_client(handler):
     from strakalari.core.bakalari_client import BakalariClient
-    from strakalari.core.error_report import UserError
     from tests.fake_bakalari import CONFIG
 
-    def down(request):
-        raise httpx.ConnectError("unreachable", request=request)
+    return BakalariClient(dict(CONFIG), transport=httpx.MockTransport(handler))
 
-    bak = BakalariClient(dict(CONFIG), transport=httpx.MockTransport(down))
-    with pytest.raises(UserError):
+
+@pytest.mark.parametrize("error, words", [
+    (httpx.ConnectError("[Errno 11001] getaddrinfo failed"), ("bakalari.example.test",)),
+    (httpx.RemoteProtocolError("Server disconnected"), ("přerušilo", "interrupted")),
+])
+def test_network_failures_explain_themselves(error, words):
+    from strakalari.core.error_report import UserError
+
+    def down(request):
+        error.request = request
+        raise error
+
+    with pytest.raises(UserError) as exc_info:
+        _raw_client(down).login()
+    assert any(w in str(exc_info.value) for w in words)
+    assert "s." not in str(exc_info.value).split("(")[0]  # no "within N s" for an instant failure
+
+
+@pytest.mark.parametrize("reply", [
+    httpx.Response(404, text="Not Found"),
+    httpx.Response(200, text="<html><body>Školní web</body></html>"),
+])
+def test_wrong_address_says_so(reply):
+    from strakalari.core.error_report import UserError
+
+    with pytest.raises(UserError) as exc_info:
+        _raw_client(lambda request: reply).login()
+    assert "bakalari.example.test" in str(exc_info.value)
+
+
+def test_server_error_at_login_is_never_a_login():
+    from strakalari.core.error_report import UserError
+
+    bak = _raw_client(lambda request: httpx.Response(503, text="Probíhá údržba"))
+    with pytest.raises(UserError) as exc_info:
         bak.login()
+    assert "HTTP 503" in str(exc_info.value)
+    assert bak.logged_in is False
 
 
 # -- Komens → Odeslané ------------------------------------------------------------
@@ -268,3 +301,12 @@ def test_dropped_connection_is_retried_once_for_reads():
 
     bak, _ = client({("POST", "/Teaching/Subjects"): subjects})
     assert bak.fetch_subject_directory() == {"Matematika": "Mgr. Jan Novák"}
+
+
+def test_still_valid_session_needs_no_new_login():
+    bak, server = client()
+    bak.login()
+    bak.session.logged_in = False  # e.g. a new run with the same cookies
+    bak.login()
+    assert server.logins == 1
+    assert bak.logged_in is True

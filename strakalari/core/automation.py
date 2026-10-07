@@ -411,7 +411,7 @@ class Strakalari:
         self.strava_client.login()
         self.strava_client.fetch_data()
         if _is_dry:
-            self.write_log(f"[Dry-Run] Proposed orders (nothing clicked, page unchanged): {orders_dict}")
+            self.write_log(f"[Dry-Run] Proposed orders (nothing is sent): {orders_dict}")
             _ok = True
             for _day, _meal in orders_dict.items():
                 if self._is_cancelled():
@@ -434,7 +434,7 @@ class Strakalari:
                     self.write_log(f"[Dry-Run] {_day}: selection check failed: {type(_e).__name__}: {_e}")
                     _ok = False
             if _ok:
-                self.write_log("[Dry-Run] Proposal ready, nothing was clicked, saved or sent.")
+                self.write_log("[Dry-Run] Proposal ready, nothing was saved or sent.")
             return _ok
         client = self.strava_client
         client.clicks_made = 0
@@ -518,7 +518,7 @@ class Strakalari:
                     _suffix = client._notice_suffix()
                 except Exception:
                     _suffix = ""
-                self.write_log(f"Warning: Failed to click meal {meal_identifier} for {day}, not marking as ordered.{_suffix}")
+                self.write_log(f"Warning: could not order {meal_identifier} for {day}, not marking it as ordered.{_suffix}")
                 failed.append(pick)
         if unfunded:
             self.last_order_low_balance = True
@@ -526,8 +526,8 @@ class Strakalari:
             self.write_log(f"Warning: not enough money on the Strava account — not ordered: "
                           f"{', '.join(map(str, unfunded))}. Top up the account and try again.")
         if client.clicks_made:
-            # A mid-run page change can silently alter a clicked selection:
-            # re-verify every succeeded day. A lost one counts as failed.
+            # Re-check every staged day before saving (fail-closed): a lost
+            # one counts as failed.
             for pick in list(succeeded):
                 if not _selection_holds(client, pick):
                     self.write_log(f"Warning: {pick['day']}: the selection changed during ordering.")
@@ -544,14 +544,15 @@ class Strakalari:
                                   f"selection ({type(e).__name__}: {e}) — check Strava.")
             self._record_persisted(client, succeeded, original_ordered)
             failed_days = ", ".join(str(p.get("day", "?")) for p in failed)
-            self.write_log(f"Warning: Strava order failed for: {failed_days} — order failed, verify state on the web.")
+            self.write_log(f"Warning: Strava order failed for: {failed_days} — nothing was saved; "
+                          "check the Strava website if unsure.")
             return False
         if succeeded and client.clicks_made:
             if not client.save_confirm([p["meal_id"] for p in succeeded]):
-                self.write_log("Warning: Strava save button failed — selections clicked but NOT submitted.")
+                self.write_log("Warning: the Strava orders were not confirmed as saved (see above).")
                 return False
         elif succeeded:
-            self.write_log("Strava: selection already matches the web, nothing submitted.")
+            self.write_log("Strava: the selection already matches the web, nothing to save.")
         for pick in succeeded:
             _store_ordered(client.orderedDict, pick["day"], pick["meal_id"])
             self.last_ordered_days.add(pick["day"])
@@ -561,18 +562,16 @@ class Strakalari:
             self.write_log(f"Warning: Strava days not ordered: {', '.join(map(str, skipped))}.")
             return False
         if not succeeded:
-            self.write_log("Strava: no meal was actually selected, skipping submit (nothing to save).")
+            self.write_log("Strava: no meal was selected, nothing to save.")
             return False
         return True
 
     def _record_persisted(self, client, succeeded: list, original_ordered: dict) -> None:
         """Records the succeeded days of a failed run that are web truth.
 
-        The run as a whole failed, but on the current frontend every click
-        saved at once, so those days really changed and must be reported
-        (history, cache, UI) as ordered. On the legacy save-button frontend
-        nothing clicked was saved — only days that already held the pick
-        count. Never raises except ``InterruptedError``.
+        A failed run saves nothing (the staged changes are dropped), so
+        only days that already held the pick before the run count as
+        ordered. Never raises except ``InterruptedError``.
         """
         if not succeeded:
             return
@@ -590,7 +589,7 @@ class Strakalari:
                 _store_ordered(client.orderedDict, day, meal)
                 self.last_ordered_days.add(day)
         if self.last_ordered_days:
-            self.write_log(f"Strava: these days did go through: "
+            self.write_log(f"Strava: these days already held the wanted lunch: "
                           f"{', '.join(map(str, sorted(self.last_ordered_days, key=str)))}.")
 
     def _load_history(self) -> tuple[list, str]:
