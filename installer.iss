@@ -46,10 +46,10 @@ Name: "autostart"; Description: "{cm:AutostartDesc}"; GroupDescription: "{cm:Aut
 [CustomMessages]
 english.AutostartDesc=Start Strakaláři automatically on Windows startup
 english.AutomationGroup=Automation:
-english.RemoveDataMsg=Do you also want to remove all user data (settings, credentials, cache and the downloaded browser)?%n%nChoose Yes for a complete removal, or No to keep your data for a later reinstall (the install folder with your data will remain in place).
+english.RemoveDataMsg=Do you also want to remove all user data (settings, credentials and cache)?%n%nChoose Yes for a complete removal, or No to keep your data for a later reinstall (the install folder with your data will remain in place).
 czech.AutostartDesc=Spustit Strakaláře automaticky při startu Windows
 czech.AutomationGroup=Automatizace:
-czech.RemoveDataMsg=Chcete také odstranit všechna uživatelská data (nastavení, přihlašovací údaje, mezipaměť a stažený prohlížeč)?%n%nZvolte Ano pro úplné odebrání, nebo Ne pro zachování dat pro případnou přeinstalaci (složka s daty zůstane na místě).
+czech.RemoveDataMsg=Chcete také odstranit všechna uživatelská data (nastavení, přihlašovací údaje a mezipaměť)?%n%nZvolte Ano pro úplné odebrání, nebo Ne pro zachování dat pro případnou přeinstalaci (složka s daty zůstane na místě).
 
 [Files]
 Source: "dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
@@ -74,12 +74,6 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyAppName}"; ValueData: """{app}\{#MyAppExeName}"" --minimized"; Tasks: autostart; Flags: uninsdeletevalue
 
 [Run]
-; NOTE: Chromium (~320 MB) is NOT bundled. The app window opens first and
-; Chromium downloads in the background on first refresh/automation
-; (internet required) via ensure_browser() into a persistent per-user
-; location (exe-adjacent browsers/ when writable, else the platform
-; ms-playwright cache) — never the Temp _MEIPASS extraction dir, which
-; is wiped on exit and caused "Executable doesn't exist" launch failures.
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
@@ -198,11 +192,10 @@ begin
       DeleteFile(AppDir + '\*.bak');
       DeleteFile(AppDir + '\*.tmp');
       DeleteFile(AppDir + '\*.lock');
-      { Downloaded Chromium (~320 MB) lives next to the exe when writable. }
+      { Chromium (~320 MB) that older versions downloaded next to the exe. }
       DelTree(AppDir + '\browsers', True, True, True);
       { Fallback data dir used when the install dir is read-only.
-        Fully owned by the app, so the whole tree can go. The shared
-        ms-playwright cache is intentionally left alone (other apps). }
+        Fully owned by the app, so the whole tree can go. }
       FallbackDataDir := ExpandConstant('{localappdata}\Strakalari');
       if CompareText(FallbackDataDir, AppDir) <> 0 then
         DelTree(FallbackDataDir, True, True, True);

@@ -6,7 +6,6 @@
 # 3.11/3.12, builds pin 3.11). Floor is enforced by pyproject.toml
 # (requires-python >=3.11); this comment is only the human pointer:
 # do NOT run on <3.11.
-playwright==1.62.0
 cryptography==50.0.1
 # Keeps the password-encryption key in the OS credential store (Windows
 # Credential Manager / macOS Keychain / Secret Service) instead of a
@@ -17,6 +16,9 @@ keyring==25.7.0
 # bundles certifi's CA store and the runtime hook points SSL_CERT_FILE at
 # it — without this, stdlib urllib HTTPS fails with CERTIFICATE_VERIFY_FAILED.
 certifi==2026.6.17
+# Bakaláři data is read over plain HTTP (also a flet dependency; pinned
+# here because the app imports it directly).
+httpx==0.28.1
 Pillow==12.3.0
 # New Flet UI (strakalari/flet_ui) additionally needs:
 # Pinned exactly: flet + flet-desktop + flet-web must share one version

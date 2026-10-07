@@ -36,7 +36,6 @@ def _patch_launch(monkeypatch, platform, argv=("strakalari",)):
     monkeypatch.setattr(si_mod, "ensure_single_primary",
                         lambda *a, **k: ("solo", None))
     monkeypatch.setattr(si_mod, "kill_orphaned_flet_views", lambda: False)
-    monkeypatch.setattr(si_mod, "kill_orphaned_headless_browsers", lambda: 0)
     return app_mod, calls
 
 

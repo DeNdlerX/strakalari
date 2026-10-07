@@ -289,7 +289,7 @@ class ExcuseTasksMixin:
         return plan
 
     def submit_day_excuse(self, day_iso: str, template: str = "", page=None) -> bool:
-        """Excuses every pending task of one day in one browser session.
+        """Excuses every pending task of one day in one Bakaláři session.
 
         A fully absent day goes out as ONE whole-day request; a partly
         attended day as lesson ranges (see :meth:`day_excuse_plan`) — a
@@ -350,7 +350,7 @@ class ExcuseTasksMixin:
         """Background part of a manual excuse send (one lesson or one day).
 
         ``jobs`` are ``(excuse, custom_text or None)`` pairs sent in one
-        browser session. Every outcome is visible: sent / already excused /
+        Bakaláři session. Every outcome is visible: sent / already excused /
         dry run / failed go to the log and a snackbar, a failure also to a
         notification (the reason is in the log lines above it), a crash to
         the error dialog.
@@ -363,7 +363,8 @@ class ExcuseTasksMixin:
         try:
             from strakalari.core.automation import Strakalari
 
-            app = Strakalari(on_log=self._core_log, start_browser=True)
+            # Excuses go over HTTP: no browser needed.
+            app = Strakalari(on_log=self._core_log)
             try:
                 dry = (getattr(app, "excuse_mode", "") == "dry_run")
                 send = getattr(app, "send_excuse_outcome", None)
@@ -377,7 +378,7 @@ class ExcuseTasksMixin:
                 try:
                     app.close()
                 except Exception as exc:  # noqa: BLE001 - teardown only
-                    print(f"Warning: browser close failed: {exc}")
+                    print(f"Warning: session close failed: {exc}")
         except Exception as exc:  # noqa: BLE001 - report, don't crash
             crashed = True
             self._worker_log(f"{S('excuse_failed')}: {type(exc).__name__}: {exc}".splitlines()[0][:200])

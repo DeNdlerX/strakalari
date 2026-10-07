@@ -1,513 +1,323 @@
-"""Strava ordering: meal clicks, verification, rollback and the save confirm.
+"""Strava ordering over HTTP: staged changes, one save, verified against a fresh menu.
 
-Everything here spends or refunds the student's money, so every click is
-verified against the page and failures roll back to the original state.
+Everything here spends or refunds the student's money. Like the web app,
+:meth:`OrderingMixin.order` only stages a change (with the page's own
+checks: order deadline, cancel deadline, balance); nothing reaches Strava
+until :meth:`OrderingMixin.save_confirm` posts the changes once and
+confirms them by reloading the menu. A failed run never saves anything.
 """
 
 import re
+from datetime import datetime
 
 
-#: A coded Strava rejection: "Warning [5005] You do not have sufficient …".
-_CODED_NOTICE_RE = re.compile(
-    r"(?:Warning|Varování|Upozornění|Chyba|Error)\s*\[\d+\][^\n]*(?:\n[^\n]{0,200})?",
-    re.IGNORECASE,
-)
-
-#: Strava's "not enough money on the account" rejection (code 5005).
+#: Strava's "not enough money on the account" warning (code 5005).
 LOW_BALANCE_CODE = "5005"
-_LOW_BALANCE_HINTS = (
-    "sufficient account balance", "insufficient balance", "not enough money",
-    "nedostatečný zůstatek", "nedostatecny zustatek", "dostatečný zůstatek",
-    "dostatecny zustatek", "nedostatek prostředků", "nedostatek prostredku",
-    "nedostatek peněz", "nedostatek penez",
+
+_MEAL_ID_RE = re.compile(r"^(table\d+)&(-?\d+)&\d+$")
+
+#: The order sheet the web app saves for canteens on the older backend
+#: (``s5url`` empty), entity-encoded exactly as it sends it.
+_ORDER_SHEET_HEAD = (
+    '&lt;?xml version="1.0" encoding="UTF-8"?&gt;\n  &lt;VFPData&gt;\n'
+    '     &lt;xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" '
+    'xmlns:msdata="urn:schemas-microsoft-com:xml-msdata" id="VFPData"&gt;\n'
+    '        &lt;xsd:element name="VFPData" msdata:IsDataSet="true"&gt;\n'
+    '           &lt;xsd:complexType&gt;\n'
+    '              &lt;xsd:choice maxOccurs="unbounded"&gt;\n'
+    '                 &lt;xsd:element name="rozpisobjednavek" minOccurs="0" maxOccurs="unbounded"&gt;\n'
+    '                    &lt;xsd:complexType&gt;\n'
+    '                       &lt;xsd:sequence&gt;\n'
+    '                          &lt;xsd:element name="datum" type="xsd:date" /&gt;\n'
+    '                          &lt;xsd:element name="druh"&gt;\n'
+    '                             &lt;xsd:simpleType&gt;\n'
+    '                                &lt;xsd:restriction base="xsd:string"&gt;\n'
+    '                                   &lt;xsd:maxLength value="1" /&gt;\n'
+    '                                &lt;/xsd:restriction&gt;\n'
+    '                             &lt;/xsd:simpleType&gt;\n'
+    '                          &lt;/xsd:element&gt;\n'
+    '                          &lt;xsd:element name="pocet"&gt;\n'
+    '                             &lt;xsd:simpleType&gt;\n'
+    '                                &lt;xsd:restriction base="xsd:decimal"&gt;\n'
+    '                                   &lt;xsd:totalDigits value="5" /&gt;\n'
+    '                                   &lt;xsd:fractionDigits value="0" /&gt;\n'
+    '                                &lt;/xsd:restriction&gt;\n'
+    '                             &lt;/xsd:simpleType&gt;\n'
+    '                          &lt;/xsd:element&gt;\n'
+    '                       &lt;/xsd:sequence&gt;\n'
+    '                    &lt;/xsd:complexType&gt;\n'
+    '                 &lt;/xsd:element&gt;\n'
+    '              &lt;/xsd:choice&gt;\n'
+    '              &lt;xsd:anyAttribute namespace="http://www.w3.org/XML/1998/namespace" processContents="lax" /&gt;\n'
+    '           &lt;/xsd:complexType&gt;\n'
+    '        &lt;/xsd:element&gt;\n'
+    '     &lt;/xsd:schema&gt;'
 )
 
 
-def is_low_balance_notice(text: str | None) -> bool:
-    """True when a Strava notice says the account has too little money."""
-    low = str(text or "").lower()
-    if not low:
-        return False
-    if f"[{LOW_BALANCE_CODE}]" in low:
-        return True
-    return any(hint in low for hint in _LOW_BALANCE_HINTS)
+def order_sheet(changes: list) -> str:
+    """The ``xml`` of ``/api/saveOrders``: one row (date, meal kind, count) per change."""
+    rows = "".join(
+        f"&lt;rozpisobjednavek&gt;\n&lt;datum&gt;{c['date']}&lt;/datum&gt;\n&lt;druh&gt;{c['druh']}"
+        f"&lt;/druh&gt;\n&lt;pocet&gt;{c['pocet']}&lt;/pocet&gt;\n&lt;/rozpisobjednavek&gt;"
+        for c in changes)
+    return _ORDER_SHEET_HEAD + rows + "\n&lt;/VFPData&gt;"
 
 
-def _is_page_chrome_notice(text: str) -> bool:
-    """Alert-styled page furniture that never explains a rejected click."""
-    low = str(text or "").lower()
-    return any(bit in low for bit in (
-        "nepřečten", "neprecten", "otevřít zprávy", "otevrit zpravy",
-        "unread message", "open messages", "cookie",
-    ))
+def _number(value, default=None):
+    try:
+        return float(str(value).replace(",", "."))
+    except (TypeError, ValueError):
+        return default
+
+
+def _moment(value):
+    try:
+        return datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
 
 
 class OrderingMixin:
     """Mixin of :class:`~.strava_client.StravaClient`; uses its session state."""
 
-    def _reconcile_ordered_live(self) -> None:
-        """Unions static-parse ordered state with live DOM checks.
+    # -- Staged state ---------------------------------------------------------
+    def _locate(self, meal_id):
+        """``(table, index)`` of a menu meal id (``table3&2&0``), or None."""
+        match = _MEAL_ID_RE.match(str(meal_id or ""))
+        if not match:
+            return None
+        table, ident = match.group(1), match.group(2)
+        for index, meal in enumerate((self.menu or {}).get(table) or []):
+            if str(meal.get("id")) == ident:
+                return table, index
+        return None
 
-        The menu page is JS-driven: a selected meal often carries the
-        state only as a live input property, invisible to the static HTML
-        regexes. Re-checks every known meal id on the live page and
-        corrects/adds that day's entry on a hit. Static hits the live
-        check confirms are kept as-is. Never raises.
-        """
+    def _count(self, table, index) -> int:
+        """The meal's count with the staged changes applied."""
+        for change in self._pending:
+            if change["table"] == table and change["index"] == index:
+                return change["pocet"]
         try:
-            days = list((self.foodDict or {}).items())
-            if not days:
+            return int(self.menu[table][index].get("pocet") or 0)
+        except (KeyError, IndexError, TypeError, ValueError):
+            return 0
+
+    def _stage(self, table, index, count) -> None:
+        for change in self._pending:
+            if change["table"] == table and change["index"] == index:
+                change["pocet"] = count
                 return
-            for day, selection in days:
-                try:
-                    current = (self.orderedDict or {}).get(day)
-                    if current and self._verified(current):
-                        continue
-                    for mid in (selection or {}):
-                        if "&-1&" in str(mid):
-                            # Day-header control: always reads ordered,
-                            # never a meal signal.
-                            continue
-                        if self._verified(mid):
-                            if (self.orderedDict or {}).get(day) != mid:
-                                self.log(f"Strava: live check shows {day} ordered as {mid}.")
-                                self.orderedDict[day] = mid
-                            break
-                except Exception:
-                    continue
-            if self.foodDict and not self.orderedDict:
-                self.log("Warning: Strava menu loaded but no ordered meal was detected "
-                         "on any day — if orders exist on the web, their markers "
-                         "use unknown markup.")
-        except Exception as e:
-            self.log(f"Warning: live ordered-state re-check failed: {e}")
+        original = int(self.menu[table][index].get("pocet") or 0)
+        self._pending.append({"table": table, "index": index, "pocet": count, "prev": original})
+
+    def _balance_after_changes(self):
+        """The account balance with the staged changes paid / refunded (None when unknown)."""
+        balance = _number((self.user or {}).get("konto"))
+        if balance is None:
+            return None
+        for change in self._pending:
+            price = _number(self.menu[change["table"]][change["index"]].get("cena"), 0.0)
+            balance -= (change["pocet"] - change["prev"]) * price
+        return balance
 
     def is_food_ordered(self, day_food_identifier):
-        if not day_food_identifier:
+        if not day_food_identifier or "&-1&" in str(day_food_identifier):
+            # The day control never reads ordered; the day's meals tell.
             return False
-        try:
-            loc = self.page.locator(f'[id="{day_food_identifier}"]').first
-            if loc.count() == 0:
-                loc = self.page.locator(f'xpath=//*[@id="{day_food_identifier}"]').first
-                if loc.count() == 0:
-                    return False
-
-            js_checked = loc.evaluate("""
-                el => {
-                    if (!el) return false;
-                    if (el.checked === true) return true;
-                    if (el.getAttribute('checked') !== null && el.getAttribute('checked') !== 'false') return true;
-                    if (el.getAttribute('aria-checked') === 'true') return true;
-                    try {
-                        const lab = el.getAttribute && el.getAttribute('aria-label');
-                        if (lab) {
-                            const t = String(lab).toLowerCase();
-                            if (t.indexOf('objedn') !== -1 && t.indexOf('neobjedn') === -1) return true;
-                        }
-                    } catch (e) {}
-                    if (el.classList && (el.classList.contains('checked') || el.classList.contains('selected') || el.classList.contains('active'))) return true;
-
-                    const id = el.id;
-                    if (id) {
-                        let label = null;
-                        try {
-                            const escaped = (window.CSS && CSS.escape) ? CSS.escape(id) : id.replace(/([ #;&,.+*~':"!^$[\\]()=>|\\/@])/g, '\\\\$1');
-                            label = document.querySelector('label[for="' + escaped + '"]');
-                        } catch(e) {}
-                        if (label) {
-                            if (label.getAttribute('aria-checked') === 'true') return true;
-                            const lcl = label.className || '';
-                            if (/\\b(checked|selected|active)\\b/i.test(lcl)) return true;
-                        }
-                    }
-                    return false;
-                }
-            """)
-            if js_checked:
-                return True
-        except Exception:
-            pass
-        return False
-
-    def _click_meal(self, meal_id) -> bool:
-        """Scrolls to one meal element and clicks it. Counts the click."""
-        try:
-            try:
-                self._dismiss_cookies()
-            except Exception:
-                pass
-            self.bm.scroll_up()
-            element = self.bm.scroll_until_visible("id", meal_id)
-            if element is None:
-                self.log(f"Notice: Food element with ID {meal_id} was not found on screen.")
-                return False
-            if not self.bm.click_element(element, meal_id):
-                return False
-            self.clicks_made += 1
-            return True
-        except Exception as e:
-            self.log(f"Exception during stravaOrder for {meal_id}: {e}")
-            return False
-
-    def _sibling_meal_ids(self, day_food_identifier, all_day_identifiers=None) -> list:
-        """Every other orderable meal of the day (any canteen size)."""
-        others: list[str] = []
-        if all_day_identifiers:
-            others = [str(mid) for mid in all_day_identifiers
-                      if str(mid) != str(day_food_identifier) and "&-1&" not in str(mid)]
-        if not others:
-            # No menu context: derive the two sibling meals from the target
-            # id (3-meal canteens).
-            try:
-                middle = day_food_identifier.rsplit('&')[1][0]
-                placeholder_id = int(middle) if middle in ['1', '2', '3'] else -1
-            except (IndexError, ValueError):
-                placeholder_id = -1
-            if placeholder_id != -1:
-                other_food_id = ((placeholder_id + 1) % 3) + 1
-                others.append(day_food_identifier.rsplit('&')[0] + '&' + str(other_food_id) + '&0')
-                third_food_id = ((other_food_id + 1) % 3) + 1
-                others.append(day_food_identifier.rsplit('&')[0] + '&' + str(third_food_id) + '&0')
-        return others
+        where = self._locate(day_food_identifier)
+        return bool(where) and self._count(*where) > 0
 
     def _verified(self, day_food_identifier) -> bool:
-        """Live re-check of the page state; never raises."""
+        """Staged-state check; never raises."""
         try:
             return bool(self.is_food_ordered(day_food_identifier))
         except Exception:
             return False
 
-    def _order_day_cancel(self, target, all_day_identifiers) -> bool:
-        """Cancels a whole day via its ``&-1&`` control.
-
-        That control's own label always reads ordered, so it can't verify
-        itself: success = no meal button of the day reads ordered anymore.
-        Sibling meals are never clicked (clicking them would order food).
-        """
-        meals = [str(m) for m in (all_day_identifiers or [])
-                 if "&-1&" not in str(m)]
-        if not meals:
-            # No menu context: legacy click-and-assume.
-            return self._click_meal(target)
-        if all(not self._verified(m) for m in meals):
-            return True
-        if not self._click_meal(target):
-            return False
-        if all(not self._verified(m) for m in meals):
-            return True
-        self.log(f"Warning: day cancel for {target} could not be verified.")
+    # -- Order / cancel -------------------------------------------------------
+    def _refuse(self, code: str, text: str) -> bool:
+        self.last_notice = f"Warning [{code}] {text}"
         return False
 
-    def order(self, day_food_identifier, all_day_identifiers=None) -> bool:
-        """Selects one meal, trusting the page state but verifying it.
+    def _supported_backend(self) -> bool:
+        if self.s5url:
+            # Canteens on the newer backend stage every click on the server
+            # (/api/pridejJidloS5); not implemented — never guess with money.
+            self.log("Warning: this canteen uses Strava's newer backend; ordering over HTTP "
+                     "is not supported for it yet — nothing changed.")
+            return False
+        return True
 
-        Returns True when the wanted meal is selected: immediately (with
-        zero clicks) when a live check shows it already ordered, otherwise
-        after clicking + re-checking. The legacy sibling-click forcing
-        sequence only runs when the direct click didn't take. Returns
-        False when the selection could not be verified — callers must not
-        record or submit that as ordered.
+    def _cancel_day(self, table) -> bool:
+        """Stages a whole-day cancel (every ordered meal of the day to 0)."""
+        meals = (self.menu or {}).get(table) or []
+        ordered = [i for i in range(len(meals)) if self._count(table, i) > 0]
+        if not ordered:
+            return True
+        if not self._supported_backend():
+            return False
+        now = datetime.now()
+        for index in ordered:
+            meal = meals[index]
+            deadline = _moment(meal.get("casOdhlaseni"))
+            if deadline is not None and now >= deadline:
+                self.log(f"Warning: {meal.get('datum')}: the cancel deadline has passed, not cancelling.")
+                return self._refuse("5011", f"{meal.get('nazev')}: cancelling is closed.")
+        for index in ordered:
+            self._stage(table, index, 0)
+        self.clicks_made += 1
+        return True
+
+    def order(self, day_food_identifier, all_day_identifiers=None) -> bool:
+        """Stages one meal as the day's order (or, for ``&-1&``, the day's cancel).
+
+        True when the wanted state is staged (or already held, with no
+        change). False — with nothing staged — when the menu does not have
+        the meal, its order window closed, or the account cannot pay it
+        (``insufficient_balance``). Nothing is sent before :meth:`save_confirm`.
         """
         if not day_food_identifier:
             return False
         self.last_notice = ""
-        if "&-1&" in str(day_food_identifier):
-            # Day-level cancel: verified via the day's meals, never via
-            # the control itself (its label always reads ordered).
-            return self._order_day_cancel(day_food_identifier, all_day_identifiers)
-        # Already in the desired state: nothing to cycle through.
-        if self._verified(day_food_identifier):
-            return True
-        # Direct attempt first: one scroll + one click + verify.
-        if self._click_meal(day_food_identifier):
-            if self._verified(day_food_identifier):
-                return True
-            # The rejection toast (e.g. no money) can lag behind the click.
-            notice = self._wait_for_notice()
-            if notice:
-                self.last_notice = notice
-            if is_low_balance_notice(notice):
-                # Each sibling click would be rejected the same way (and on
-                # the current frontend could order a meal if it were not):
-                # no forcing sequence, the caller stops ordering.
-                self.insufficient_balance = True
-                self.log(f"Warning: Strava rejected {day_food_identifier}: not enough money "
-                         f"on the account. — Strava says: {notice}")
-                return False
-            self.log(f"Notice: {day_food_identifier} clicked but selection not confirmed, trying the forcing sequence.")
-        else:
-            self.log(f"Notice: could not click {day_food_identifier} directly, trying the forcing sequence.")
-        try:
-            legacy_frontend = self._find_save_button(timeout_ms=500) is not None
-        except InterruptedError:
-            raise
-        except Exception:
-            legacy_frontend = False
-        if not legacy_frontend:
-            # Current frontend: every click is saved at once, so cycling
-            # sibling meals would really order each of them in turn.
-            self.log(f"Warning: Failed to verify order for {day_food_identifier}, leaving previous state.{self._notice_suffix()}")
+        match = _MEAL_ID_RE.match(str(day_food_identifier))
+        if match and match.group(2) == "-1":
+            return self._cancel_day(match.group(1))
+        where = self._locate(day_food_identifier)
+        if where is None:
+            self.log(f"Notice: {day_food_identifier} is not on the loaded menu.")
             return False
-        # Save-button frontend only: force a known page state via every
-        # sibling first, then the wanted meal last. Missing siblings are
-        # skipped (logged) instead of failing the whole order.
-        for other_id in self._sibling_meal_ids(day_food_identifier, all_day_identifiers):
-            if not self._click_meal(other_id):
-                self.log(f"Notice: sibling click {other_id} failed during forcing sequence.")
-        if self._click_meal(day_food_identifier) and self._verified(day_food_identifier):
+        table, index = where
+        if self._count(table, index) > 0:
             return True
-        self.log(f"Warning: Failed to verify order for {day_food_identifier}, leaving previous state.{self._notice_suffix()}")
-        return False
+        if not self._supported_backend():
+            return False
+        meal = self.menu[table][index]
+        restriction = str(meal.get("omezeni") or "")
+        if meal.get("polevka") == "A" or "B" in restriction or "D" in restriction:
+            self.log(f"Notice: {day_food_identifier} cannot be ordered.")
+            return False
+        now = datetime.now()
+        deadline = _moment(meal.get("casKonec"))
+        if deadline is not None and now >= deadline:
+            return self._refuse("5010", f"{meal.get('nazev')}: ordering is closed.")
+        others = [i for i in range(len(self.menu[table])) if i != index and self._count(table, i) > 0]
+        for other in others:
+            cancel_deadline = _moment(self.menu[table][other].get("casOdhlaseni"))
+            if cancel_deadline is not None and now >= cancel_deadline:
+                return self._refuse("5011", f"{self.menu[table][other].get('nazev')}: changing is closed.")
+        if "E" in restriction:
+            # The web app's own check: after paying, the balance must stay
+            # at or above the lower of the credit limit and the balance.
+            balance = self._balance_after_changes()
+            konto = _number((self.user or {}).get("konto"))
+            limit = _number((self.user or {}).get("limit"))
+            price = _number(meal.get("cena"), 0.0)
+            refund = sum(_number(self.menu[table][o].get("cena"), 0.0) * self._count(table, o) for o in others)
+            floor = None if konto is None or limit is None else min(limit, konto)
+            if balance is None or floor is None or balance + refund - price < floor:
+                self.insufficient_balance = True
+                currency = (self.user or {}).get("mena") or ""
+                self.log(f"Warning: not enough money on the Strava account for {day_food_identifier} "
+                         f"(balance {balance} {currency}, meal {meal.get('cena')} {currency}).")
+                return self._refuse(LOW_BALANCE_CODE, "Not enough money on the account.")
+        self._stage(table, index, 1)
+        for other in others:
+            self._stage(table, other, 0)
+        self.clicks_made += 1
+        return True
 
     def _restore_original(self, failed: list, original_ordered: dict) -> None:
-        """Best-effort restore of pre-order selections after a failure.
+        """Drops every staged change: a failed run never saves anything. Never raises."""
+        dropped = len(self._pending)
+        self._pending = []
+        if dropped:
+            self.log(f"Strava: {dropped} unsaved change(s) dropped, nothing was saved.")
 
-        On the current frontend every click persists immediately, so a
-        failed forcing sequence can leave a wrong sibling meal ordered.
-        Try to click the original meal back; never raises. Callers still
-        return False — a restore attempt is not a success.
-        """
-        for p in failed or []:
-            day = p.get("day")
-            original = (original_ordered or {}).get(day)
-            if original and "&-1&" in str(original):
-                # The pre-order state was "no order" (day-level deorder):
-                # nothing to click back, but say so instead of skipping
-                # silently.
-                self.log(f"{day}: there was no order before — nothing to restore.")
-                continue
-            if not original:
-                continue
-            try:
-                if self._verified(original):
-                    continue
-                if self._click_meal(original) and self._verified(original):
-                    self.log(f"{day}: original selection restored after the failed order.")
-                else:
-                    self.log(f"Warning: {day}: could not restore the original selection — check it on the web.")
-            except Exception as e:  # noqa: BLE001 - best effort, but never silent
-                self.log(f"Warning: {day}: restoring the original selection failed "
-                         f"({type(e).__name__}: {e}) — check it on the web.")
-                continue
-
-    def _probe_visible(self, locator, timeout_ms: int) -> bool:
-        """True when the locator becomes visible within a short probe budget."""
-        try:
-            locator.wait_for(state="visible", timeout=max(0, int(timeout_ms)))
-            return True
-        except InterruptedError:
-            raise
-        except Exception:
-            return False
-
-    def _find_save_button(self, timeout_ms: int = 2000):
-        """First visible save/order button, or None on the immediate-save frontend.
-
-        Probes are deliberately short (not the full element wait): on the
-        current Strava frontend no save button exists at all, so a full
-        wait would burn tens of seconds before every fallback selector.
-        """
-        selectors = [
-            # Base-project selector first: the exact save-button classes
-            # from the original implementation.
-            ".inline-flex.gap-2.items-center.justify-center.no-underline.overflow-hidden.cursor-pointer.transition.duration-300.font-medium.text-primary-content.bg-primary.hover\\:bg-primary-hover.text-base.leading-6.py-3.px-5.rounded-2xl",
-            "xpath=//button[contains(., 'Uložit') or contains(., 'Objednat') or contains(., 'Potvrdit')]",
-            # Text-based fallback restricted to order/save buttons only —
-            # never a generic submit (that could hit a login form).
-            "button:has-text('Uložit'), button:has-text('Objednat'), button:has-text('Potvrdit')",
-        ]
-        for sel in selectors:
-            try:
-                loc = self.page.locator(sel).first
-            except Exception:
-                continue
-            try:
-                if self._probe_visible(loc, timeout_ms):
-                    return loc
-            except InterruptedError:
-                raise
-            except Exception:
-                continue
-        return None
-
-    def _page_notice_text(self) -> str:
-        """Visible server notice (toast/alert/warning) explaining rejected clicks.
-
-        The current frontend saves each meal click immediately and rejects
-        bad ones with an on-page warning (e.g. insufficient account
-        balance) instead of failing the click itself. Returns the notice
-        text ("" when none). A coded warning (``Warning [5005] …``) wins
-        over generic alert elements, and page chrome that uses alert roles
-        (the "Máte 1 nepřečtených zpráv" inbox badge) never counts. Never
-        raises.
-        """
-        try:
-            body = self.page.locator("body").first.inner_text() or ""
-            m = _CODED_NOTICE_RE.search(str(body))
-            if m:
-                return re.sub(r"\s+", " ", m.group(0)).strip()[:300]
-        except Exception:
-            pass
-        try:
-            for sel in ("[role='alert']", ".toast", "[class*='toast']",
-                        "[class*='Toast']", ".alert-danger",
-                        ".validation-summary-errors", ".error"):
-                try:
-                    locs = list(self.page.locator(sel).all())
-                except Exception:
-                    continue
-                for el in locs:
-                    try:
-                        if not el.is_visible():
-                            continue
-                        text = (el.inner_text() or "").strip()
-                    except Exception:
-                        continue
-                    # Decorative matches (separators, icon glyphs like
-                    # "/") carry no words — only real messages count.
-                    if len(text) < 3 or not any(ch.isalnum() for ch in text):
-                        continue
-                    if _is_page_chrome_notice(text):
-                        continue
-                    return re.sub(r"\s+", " ", text).strip()[:300]
-        except Exception:
-            pass
-        return ""
-
-    def _wait_for_notice(self, timeout_ms: int = 2000) -> str:
-        """Polls briefly for a rejection notice after an unconfirmed click.
-
-        Strava shows its warning toast a moment after the click, so an
-        immediate read often finds nothing (or only page chrome). Returns
-        as soon as a coded warning appears, else whatever notice is up at
-        the end of the budget ("" for none). Never raises except on cancel.
-        """
-        import time as _time
-
-        deadline = _time.monotonic() + max(0, int(timeout_ms)) / 1000.0
-        notice = ""
-        while True:
-            try:
-                notice = self._page_notice_text()
-            except Exception:
-                notice = ""
-            if notice and _CODED_NOTICE_RE.search(notice):
-                return notice
-            if _time.monotonic() >= deadline:
-                return notice
-            self._sleep_s(0.25)
+    def _find_save_button(self, timeout_ms: int = 0):
+        """Truthy: changes are staged until :meth:`save_confirm` saves them."""
+        return True
 
     def _notice_suffix(self) -> str:
-        """' — <server notice>' for failure logs ("" when the page is silent)."""
-        try:
-            notice = self._page_notice_text()
-        except Exception:
-            return ""
-        return f" — Strava says: {notice}" if notice else ""
+        """' — <notice>' for failure logs ("" when there is none)."""
+        return f" — Strava says: {self.last_notice}" if self.last_notice else ""
+
+    # -- Save -----------------------------------------------------------------
+    def _wanted(self, verify_ids) -> list:
+        """``[(date, meal id or None for a cancelled day)]`` the save must produce."""
+        wanted = []
+        for meal_id in verify_ids or []:
+            match = _MEAL_ID_RE.match(str(meal_id))
+            if not match or match.group(1) not in (self.menu or {}):
+                continue
+            meals = self.menu[match.group(1)]
+            day = str(meals[0].get("datum"))
+            wanted.append((day, None if match.group(2) == "-1" else match.group(2)))
+        return wanted
+
+    def _holds(self, wanted: list) -> list:
+        """The wanted (date, meal) pairs a fresh menu does NOT show."""
+        by_day = {str(meals[0].get("datum")): meals for meals in (self.menu or {}).values()}
+        lost = []
+        for day, ident in wanted:
+            ordered = {str(m.get("id")) for m in by_day.get(day, []) if int(m.get("pocet") or 0) > 0}
+            if (ident is None and ordered) or (ident is not None and ident not in ordered):
+                lost.append((day, ident))
+        return lost
 
     def save_confirm(self, verify_ids: list = None) -> bool:
-        """
-        Submits meal orders on the legacy frontend; no-op on the current one.
+        """Saves the staged changes once; True only when a fresh menu shows them.
 
-        The current Strava frontend has no save button — every meal click
-        is persisted immediately — so there is nothing to submit and this
-        returns True (callers only reach it after verifying the clicks).
-        Returns False only when a legacy save button exists but clicking
-        it fails. Fail-closed: with no ``verify_ids`` there is nothing to
-        verify, so this returns False instead of claiming success.
-        Never burns the full element wait probing for a button
-        that does not exist. When ``verify_ids`` are given, re-checks that
-        each one still reads ordered after the submit (fail-closed).
+        Fail-closed: nothing to verify, a rejected save, or a menu that
+        does not show the selections afterwards all return False. The save
+        is never repeated.
         """
         if not verify_ids:
-            self.log("Warning: Strava save_confirm called with nothing to verify — nothing submitted.")
+            self.log("Warning: Strava save_confirm called with nothing to verify — nothing saved.")
             return False
+        wanted = self._wanted(verify_ids)
+        if len(wanted) != len(verify_ids):
+            self.log("Warning: Strava save: a selection is not on the loaded menu — nothing saved.")
+            return False
+        changes = [c for c in self._pending if c["pocet"] != c["prev"]]
+        if not changes:
+            self.log("Strava: the selection already matches the web — nothing to save.")
+            return not self._holds(wanted)
+        if not self._supported_backend():
+            return False
+        sheet = order_sheet([
+            {"date": "-".join(reversed(str(self.menu[c["table"]][c["index"]].get("datum")).split("."))),
+             "druh": self.menu[c["table"]][c["index"]].get("druh"), "pocet": c["pocet"]}
+            for c in changes])
+        from .strava_client import StravaError
+
         try:
-            try:
-                confirm_btn = self._find_save_button()
-            except InterruptedError:
-                raise
-            except Exception:
-                confirm_btn = None
-
-            if not confirm_btn:
-                # Current frontend: clicks persist immediately, there is
-                # nothing to submit. Callers verified the clicks already.
-                self.log("Strava: no Save button (clicks are saved immediately) — done.")
-                return True
-            if confirm_btn:
-                try:
-                    self._dismiss_cookies()
-                except Exception:
-                    pass
-                confirm_btn.evaluate("el => el.scrollIntoView({block: 'center'});")
-                # Clicked at most once — a repeated save could submit the
-                # orders twice; the checks below catch a click that never
-                # dispatched.
-                try:
-                    confirm_btn.click(timeout=self._nav_ms, once=True)
-                except InterruptedError:
-                    raise
-                except Exception as e:
-                    self.log(f"Warning: Strava save click failed ({e}) — orders NOT submitted.")
-                    return False
-                # The click alone is not success: fail fast on an explicit
-                # page error (mirrors Bakalari _verify_submission) instead
-                # of reporting ordered lunches for a no-op click.
-                try:
-                    try:
-                        self.page.wait_for_timeout(1500)
-                    except Exception:
-                        import time as _time
-
-                        _time.sleep(1.5)
-                except Exception:
-                    pass
-                try:
-                    _url = self.page.url if isinstance(
-                        getattr(self.page, "url", ""), str) else ""
-                    _low = _url.lower()
-                    if _url and ("login" in _low or "prihlas" in _low or "log-in" in _low):
-                        self.log("Warning: Strava save landed on a login page — orders NOT submitted.")
-                        return False
-                    if _url and ("error" in _low or "chyba" in _low or "exception" in _low):
-                        self.log("Warning: Strava save landed on an error page — orders NOT submitted.")
-                        return False
-                except Exception as e:  # noqa: BLE001 - the checks below still run
-                    self.log(f"Notice: could not read the page address after saving: {e}")
-                try:
-                    try:
-                        _err_all = list(self.page.locator(
-                            ".alert-danger, .validation-summary-errors, .error, [role='alert']"
-                        ).all())
-                    except Exception:
-                        _err_all = []
-                    for _el in _err_all:
-                        try:
-                            if not _el.is_visible():
-                                continue
-                            _text = _el.inner_text()
-                        except Exception:
-                            continue
-                        _t = (_text or "").strip()
-                        # Decorative matches (separators, icon glyphs like
-                        # "/") carry no words — only real messages fail.
-                        if len(_t) >= 3 and any(ch.isalnum() for ch in _t):
-                            self.log(f"Warning: Strava save error: {_t[:200]}")
-                            return False
-                except Exception as e:  # noqa: BLE001 - the re-check below still runs
-                    self.log(f"Notice: could not scan the page for save errors: {e}")
-                if verify_ids:
-                    try:
-                        _lost = [mid for mid in verify_ids if not self._verified(mid)]
-                    except Exception as e:  # noqa: BLE001 - fail closed
-                        self.log(f"Warning: could not re-check the saved selection: {e}")
-                        _lost = list(verify_ids)
-                    if _lost:
-                        self.log(f"Warning: Strava save did not stick for {len(_lost)} selection(s) — orders NOT submitted.")
-                        return False
-                self.log("Strava orders submitted (save button clicked).")
-                return True
-        except Exception as e:
-            self.log(f"Warning: Could not click confirm button: {e}")
+            reply = self._call("/api/saveOrders", {**self._session_body(), "xml": sheet}, relogin=False)
+        except InterruptedError:
+            raise
+        except StravaError as e:
+            self.last_notice = e.message
+            self.log(f"Warning: Strava did not save the orders ({e.number}): {e.message}")
             return False
+        except Exception as e:
+            self.log(f"Warning: Strava save failed ({type(e).__name__}: {e}) — checking what went through…")
+            reply = None
+        if reply is False:
+            self.log("Warning: Strava did not save the orders (it answered 'false').")
+            return False
+        self._pending = []
+        try:
+            self.fetch_data()
+        except InterruptedError:
+            raise
+        except Exception as e:
+            self.log(f"Warning: could not reload the Strava menu after saving ({type(e).__name__}: {e}) — "
+                     "the orders may or may not have been saved; check Strava.")
+            return False
+        lost = self._holds(wanted)
+        if lost:
+            self.log(f"Warning: Strava does not show {len(lost)} saved selection(s) after saving: "
+                     f"{', '.join(day for day, _ in lost)} — check Strava.")
+            return False
+        self.log(f"Strava orders saved ({len(changes)} change(s)) and confirmed on the menu.")
+        return True

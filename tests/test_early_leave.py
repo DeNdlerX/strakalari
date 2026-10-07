@@ -3,7 +3,7 @@ from datetime import datetime
 from types import SimpleNamespace
 
 from strakalari.core.automation import Strakalari
-from strakalari.core.extractors.bakalari import extract_sent_excuses
+from strakalari.core.extractors.bakalari import sent_excuse_entries
 
 
 def _lesson(abs_type="", abs_text="", period="1"):
@@ -108,9 +108,10 @@ class TestSoonTemplates:
         assert _templates(state, kind="late") == ["LATE-TPL"]
 
     def test_web_hour_excuse_dedupes_soon(self):
-        html = ('<div data-testid="komens-message-detail-header">'
-                "Od: 10.9.2026 (2. hod.) Do: 10.9.2026 (2. hod.)</div>")
-        result = extract_sent_excuses(html)
+        detail = {"Kind": "OMLUVENKA", "DateFrom": "10.9.2026", "DateTo": "10.9.2026",
+                  "TimeFrom": "08:55", "TimeTo": "09:40",
+                  "HourFrom": {"Caption": "2"}, "HourTo": {"Caption": "2"}}
+        result = sent_excuse_entries(detail)
         assert {"type": "soon", "starting_day": "10.09.2026",
                 "ending_day": "10.09.2026", "starting_lesson": 2,
                 "ending_lesson": 2} in result

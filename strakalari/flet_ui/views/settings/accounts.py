@@ -8,7 +8,7 @@ from ... import components as C
 from ...overlays import snack
 from ...strings import S
 from .common import (
-    _browser_available, _save_quiet, _same, _show_value, _test_result,
+    _save_quiet, _same, _show_value, _test_result,
 )
 
 
@@ -75,18 +75,12 @@ class AccountsMixin:
             return ov
 
         def _test_bakalari(e):
-            if not _browser_available():
-                snack(page, S("wiz_need_browser_first"))
-                return
             if not state.test_connection("bakalari", _overrides()):
                 snack(page, S("already_running"))
             else:
                 snack(page, S("testing"))
 
         def _test_strava(e):
-            if not _browser_available():
-                snack(page, S("wiz_need_browser_first"))
-                return
             if not state.test_connection("strava", _overrides()):
                 snack(page, S("already_running"))
             else:

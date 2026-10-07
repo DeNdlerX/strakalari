@@ -403,31 +403,6 @@ def describe_swallowed(what: str, exc: BaseException) -> str:
     return f"Debug: {what} — {type(exc).__name__}{': ' + first if first else ''}"
 
 
-def clear_input(locator) -> None:
-    """Empties a text input before key-by-key typing. Never raises except
-    ``InterruptedError`` (cancel).
-
-    ``press_sequentially`` appends to whatever the field holds: a retry
-    after a partially typed value, or a value the site kept after a failed
-    login postback, would otherwise be typed twice. ``fill('')`` first;
-    select-all + Delete for inputs that ignore ``fill()``.
-    """
-    try:
-        locator.fill("")
-        return
-    except InterruptedError:
-        raise
-    except Exception:
-        pass
-    try:
-        locator.press("ControlOrMeta+a")
-        locator.press("Delete")
-    except InterruptedError:
-        raise
-    except Exception:
-        pass
-
-
 def release_file_lock(token) -> None:
     """Releases a lock acquired with :func:`try_file_lock`."""
     if not token:

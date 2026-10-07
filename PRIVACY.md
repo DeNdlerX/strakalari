@@ -33,8 +33,7 @@ Strakaláři only connects to the internet to perform the services you request:
 2. **Strava.cz:** Directly connects to the official Strava.cz portal to retrieve menus and place lunch orders.
 3. **Google Gemini API (Optional):** Only if you explicitly activate AI lunch recommendations and provide an API key, dish names and meal preferences are sent to Google Gemini to generate recommendations.
 4. **GitHub Releases API (installer version only):** Periodically checks `api.github.com` for application updates. No identifying information is transmitted. The Microsoft Store version is updated by the Store and never contacts GitHub.
-5. **Browser download:** On first use, the app downloads the Chromium browser it automates from Playwright's official download servers. No personal data is sent.
-6. **No Telemetry or Tracking:** The application contains **no third-party tracking scripts, advertising SDKs, or remote analytics**.
+5. **No Telemetry or Tracking:** The application contains **no third-party tracking scripts, advertising SDKs, or remote analytics**.
 
 ---
 

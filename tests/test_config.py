@@ -218,8 +218,7 @@ class TestConfigManager:
 class TestPasswordOverridesEncrypted:
     def test_plaintext_override_decrypts(self):
         from strakalari.core.helpers import decrypt_strict
-        app = Strakalari(config_data={"bakalari_password": "tajneheslo123"},
-                         start_browser=False)
+        app = Strakalari(config_data={"bakalari_password": "tajneheslo123"})
         try:
             stored = app.config_manager.data["bakalari_password"]
             assert app.config_manager.data["bakalari_password_encrypted"] is True
@@ -408,7 +407,7 @@ def test_has_valid_credentials_strava_only():
 
 def test_integer_strava_id_handling():
     from strakalari.core.automation import Strakalari
-    bot = Strakalari(config_data={"strava_canteen_id": 9876, "use_strava": False}, start_browser=False)
+    bot = Strakalari(config_data={"strava_canteen_id": 9876, "use_strava": False})
     assert bot.strava_id == "9876"
     assert isinstance(bot.strava_id, str)
 
@@ -420,7 +419,6 @@ class TestStravaEnableDefault:
         app = Strakalari(
             config_file=str(tmp_path / "config.json"),
             config_data={"bakalari_url": "https://example.test"},
-            start_browser=False,
         )
         assert app.strava_enable is True
         assert app.strava_client.strava_enable is True

@@ -400,8 +400,7 @@ def terminate_process_tree(proc, timeout: float = 5.0) -> bool:
     """Stops a spawned UI child including its own subprocesses.
 
     The Flet window runs as a grandchild of the UI child process, so a
-    plain ``terminate()`` would orphan it (and any in-flight browser
-    workers). On Windows ``taskkill /T`` takes the whole tree while the
+    plain ``terminate()`` would orphan it. On Windows ``taskkill /T`` takes the whole tree while the
     parent is still alive; elsewhere terminate/kill plus a reaping wait
     is all there is. Returns True when the process is gone. Never raises.
     """
@@ -496,7 +495,7 @@ def _list_processes_with_cmdline_win32() -> list:
 
     Same stdlib-only PowerShell CIM mechanism as
     :func:`_list_processes_win32`, plus the command line (needed to tell
-    our headless Chromium orphans apart from the user's own browser).
+    our Flet windows apart from other apps').
     Returns [] on any failure — callers sweep nothing rather than
     guessing.
     """
@@ -535,75 +534,6 @@ def _list_processes_with_cmdline_win32() -> list:
         return procs
     except Exception:
         return []
-
-
-_CHROME_EXE_NAMES = frozenset({
-    "chrome.exe", "chromium.exe", "headless_shell.exe",
-})
-
-
-def _is_playwright_browser(cmdline: str | None) -> bool:
-    """True when a browser command line belongs to a Playwright launch."""
-    import os
-
-    low = str(cmdline or "").lower()
-    markers = ["playwright_chromiumdev_profile", "ms-playwright"]
-    custom = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "").strip()
-    if custom and custom != "0":
-        markers.append(os.path.normcase(os.path.normpath(custom)).lower())
-    return any(m in low for m in markers)
-
-
-def kill_orphaned_headless_browsers() -> int:
-    """Kills headless Chromium processes whose parent process is dead.
-
-    Playwright browsers are closed gracefully on a clean exit — but a
-    killed or crashed app (Task Manager End Task, crash, power loss)
-    never runs teardown, leaving headless ``chrome.exe`` trees behind
-    that accumulate across restarts (38 observed after one incident).
-    Only processes whose parent PID is absent from the live snapshot,
-    that are headless, AND that carry a Playwright marker (its temp
-    profile dir or the ms-playwright / bundled browsers location) are
-    touched — so neither the user's own Chrome nor another tool's
-    headless browser is ever killed. Returns the number of processes
-    signalled. Never raises.
-    """
-    import subprocess
-
-    if sys.platform != "win32":
-        return 0
-    try:
-        procs = _list_processes_with_cmdline_win32()
-    except Exception:
-        return 0
-    if not procs:
-        return 0
-    live = {pid for pid, _, _, _ in procs}
-    orphans = sorted({
-        pid for pid, ppid, exe, cmd in procs
-        if ppid not in live
-        and exe.lower() in _CHROME_EXE_NAMES
-        and ("--headless" in (cmd or "").lower()
-             or exe.lower() == "headless_shell.exe")
-        and _is_playwright_browser(cmd)
-    })
-    if not orphans:
-        return 0
-    killed = 0
-    for pid in orphans:
-        try:
-            completed = subprocess.run(
-                ["taskkill.exe", "/F", "/T", "/PID", str(pid)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=15,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
-            if completed.returncode == 0:
-                killed += 1
-        except Exception:
-            continue
-    return killed
 
 
 #: Files only Strakaláři's assets dir holds (the Flet client gets that dir

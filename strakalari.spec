@@ -100,7 +100,7 @@ VERSION_FILE = _write_version_file()
 
 block_cipher = None
 
-# ---- Shared automation payload (Playwright + helpers) ----
+# ---- Shared automation payload (HTTP clients + helpers) ----
 # The frozen GUI bundles this plus the Flet desktop UI below.
 base_datas = [
     ('config.example.json', '.'),
@@ -109,23 +109,13 @@ base_datas = [
 ]
 base_binaries = []
 base_hiddenimports = [
-    'playwright',
-    'playwright.sync_api',
     'cryptography',
     'plyer',
-    # Explicit: nothing in app code imports certifi directly (TLS goes
-    # through stdlib urllib), so without this PyInstaller would not bundle
+    # Explicit: nothing in app code imports certifi directly (httpx and
+    # stdlib urllib load it), so without this PyInstaller would not bundle
     # its CA store and every frozen HTTPS call would fail verification.
     'certifi',
 ]
-
-try:
-    p_datas, p_binaries, p_hiddenimports = collect_all('playwright')
-    base_datas += p_datas
-    base_binaries += p_binaries
-    base_hiddenimports += p_hiddenimports
-except Exception:
-    pass
 
 try:
     c_datas, c_binaries, c_hiddenimports = collect_all('certifi')

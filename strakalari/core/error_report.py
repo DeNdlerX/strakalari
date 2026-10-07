@@ -59,9 +59,8 @@ _TIMEOUT_MESSAGE_HINTS = (
 def is_timeout_error(exc: BaseException | None) -> bool:
     """True when ``exc`` is a load/wait timeout (slow connection), not a bug.
 
-    Covers the builtin ``TimeoutError``, Playwright's timeout (same name,
-    message like ``Timeout 30000ms exceeded``) and anything whose message
-    says the wait ran out. Cancellation (``InterruptedError``) and
+    Covers the builtin ``TimeoutError`` and anything whose message says
+    the wait ran out (``Timeout 30000ms exceeded``, ``timed out``). Cancellation (``InterruptedError``) and
     ``UserError`` are never timeouts — callers branch on those first.
     Never raises.
     """
@@ -128,8 +127,8 @@ def _sensitive_values(config: dict | None) -> set[str]:
     """Every config value that must never appear in a report.
 
     Secrets are stored encrypted, so the ciphertext alone would never
-    match a leaked plaintext password (e.g. echoed in a Playwright call
-    log) — the decrypted value is scrubbed too. The signature (usually
+    match a leaked plaintext password (e.g. echoed in an exception
+    text) — the decrypted value is scrubbed too. The signature (usually
     the student's name) is also scrubbed word by word.
     """
     values: set[str] = set()
@@ -203,8 +202,8 @@ def redact_text(text: str, config: dict | None = None) -> str:
 def redact_with_saved_config(text: str) -> str:
     """``redact_text`` against the config on disk, for code with no config at hand.
 
-    Used before tracebacks go to console.log (the scheduler, tray): a
-    Playwright call log can echo a typed password. Never raises.
+    Used before tracebacks go to console.log (the scheduler, tray): an
+    exception text can echo a password. Never raises.
     """
     try:
         from .config import ConfigManager
@@ -256,7 +255,7 @@ def collect_context() -> dict:
     return {
         "app_version": version,
         # Installer build vs. a source checkout behave differently (paths,
-        # bundled browser, stdio) — the first thing to know about a bug.
+        # stdio) — the first thing to know about a bug.
         "build": "installer" if getattr(sys, "frozen", False) else "source",
         "platform": platform.platform(),
         "python": sys.version.split()[0],

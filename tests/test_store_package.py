@@ -10,7 +10,7 @@ import keyring
 import pytest
 
 import strakalari.core.packaging as packaging
-from strakalari.core import autostart, browser, helpers, secret_store, update
+from strakalari.core import autostart, helpers, secret_store, update
 
 
 @pytest.fixture()
@@ -41,7 +41,6 @@ def store_install(packaged, monkeypatch, tmp_path):
     local = tmp_path / "Local"
     local.mkdir()
     monkeypatch.delenv("STRAKALARI_DATA_DIR", raising=False)
-    monkeypatch.delenv("PLAYWRIGHT_BROWSERS_PATH", raising=False)
     monkeypatch.setenv("LOCALAPPDATA", str(local))
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(package / "Strakalari.exe"))
@@ -137,10 +136,6 @@ class TestStoreDataDir:
         _write(local / "Strakalari" / "config.json", '{"from": "store"}')
         helpers.get_user_data_dir()
         assert json.loads((local / "Strakalari" / "config.json").read_text("utf-8")) == {"from": "store"}
-
-    def test_browsers_not_next_to_the_exe(self, store_install):
-        _package, local = store_install
-        assert _same(browser.get_browsers_dir(), local / "ms-playwright")
 
 
 class TestUpdateGate:

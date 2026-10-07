@@ -58,13 +58,6 @@ def test_log_ring_buffer_caps(state):
     assert state.log_lines[-1].endswith("final")
 
 
-def test_show_browser_mapping(state, monkeypatch):
-    monkeypatch.setitem(state.config.data, "hide_window", True)
-    assert state.show_browser is False
-    monkeypatch.setitem(state.config.data, "hide_window", False)
-    assert state.show_browser is True
-
-
 def test_set_timetable_view_validation(state):
     state.set_timetable_view("nonsense")
     assert state.timetable_view == "table"

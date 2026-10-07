@@ -110,9 +110,7 @@ v tray). Odinstalace: `Get-AppxPackage *Strakalari* | Remove-AppxPackage`.
 - **Data** v `%LOCALAPPDATA%\Strakalari` — fyzicky je Windows drží
   v soukromé složce balíčku
   (`%LOCALAPPDATA%\Packages\<balíček>\LocalCache\Local\…`) a při
-  odinstalaci je smaže. Prohlížeč (Chromium) jde do sdíleného
-  `%LOCALAPPDATA%\ms-playwright` (jako u ostatních Playwright aplikací,
-  odinstalace ho nesmaže). Složka s exe je jen pro čtení, nic se do ní
+  odinstalaci je smaže. Složka s exe je jen pro čtení, nic se do ní
   nezapisuje.
 - **První start** převezme data z klasické instalace
   (`%LOCALAPPDATA%\Programs\Strakalari`) včetně klíče k heslům, pokud

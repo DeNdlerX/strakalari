@@ -39,23 +39,13 @@ SECTION_ICONS: dict[str, str] = {
     "calendar": ft.Icons.CALENDAR_MONTH_OUTLINED,
     "templates": ft.Icons.DESCRIPTION_OUTLINED,
     "rules": ft.Icons.BOLT_OUTLINED,
-    "browser": ft.Icons.WEB_OUTLINED,
+    "browser": ft.Icons.SYNC_OUTLINED,
     "appearance": ft.Icons.PALETTE_OUTLINED,
     "ai": ft.Icons.AUTO_AWESOME_OUTLINED,
     "advanced": ft.Icons.TUNE,
     "notifications": ft.Icons.NOTIFICATIONS_OUTLINED,
     "diagnostics": ft.Icons.BUG_REPORT_OUTLINED,
 }
-
-
-def _browser_available() -> bool:
-    """True when the automation Chromium is installed (login tests need it)."""
-    try:
-        from strakalari.core.browser import is_browser_installed
-
-        return bool(is_browser_installed())
-    except Exception:
-        return False
 
 
 def _save_feedback(state: AppState, page: ft.Page, updates: dict) -> bool:

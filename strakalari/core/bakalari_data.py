@@ -1,90 +1,48 @@
 """Bakaláři data fetching: marks, absence, sent excuses, subjects, substitutions, stable baseline."""
 
+import json
 import re
+from datetime import date, datetime, time, timedelta, timezone
 
 from .extractors.bakalari import (
-    extract_absence_details,
-    extract_absence_percentages,
+    absence_date_range,
+    absence_from_subjects,
     extract_grades,
-    extract_sent_excuses,
-    parse_subject_directory,
+    outbox_excuse_ids,
+    sent_excuse_entries,
+    store_rows,
+    subject_directory_from_rows,
+    substitutions_from_weeks,
 )
+
+#: Komens → Odeslané (the menu's own link), its list callback control and
+#: the list type the page reports for the sent folder.
+_OUTBOX_PATH = "/next/komens.aspx?l=o"
+_OUTBOX_CALLBACK_ID = "ctl00$cphmain$message_list_content"
+_OUTBOX_LIST_TYPE = "odeslane"
+
+
+def _utc_iso(day: date, at: time) -> str:
+    """Local ``day`` + ``at`` as the UTC ISO string the web's scripts send."""
+    return datetime.combine(day, at).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
 class DataMixin:
     """Mixin of :class:`~.bakalari_client.BakalariClient`; uses its session state."""
 
-    def _dismiss_cookies(self) -> bool:
-        """Dismisses the Bakalari cookies banner (``#c-p-bn``).
-
-        The banner overlays the page until accepted and would otherwise
-        intercept module clicks. Fast no-op when absent (a count /
-        visibility probe, no long waits). Returns True when no banner
-        blocks the page. Never raises.
-        """
-        if self.page is None:
-            return True
-        try:
-            btn = self.page.locator("#c-p-bn").first
-        except Exception:
-            return True
-        try:
-            if btn.count() == 0:
-                return True
-            if not btn.is_visible():
-                return True
-        except Exception:
-            return True
-        try:
-            try:
-                btn.click(timeout=3000)
-            except Exception:
-                btn.evaluate("el => el.click()")
-        except Exception:
-            return False
-        try:
-            btn.wait_for(state="detached", timeout=3000)
-            return True
-        except Exception:
-            pass
-        try:
-            return not btn.is_visible()
-        except Exception:
-            return True
-
     def get_grades(self):
         """Fetches průběžná klasifikace (Klasifikace → Průběžná).
 
-        Opens the grades module, parses the ``data-clasif`` marks and
-        stores them on ``self.grades`` grouped per subject, each list
-        sorted by date (oldest first). Returns the dict. Best-effort:
-        failures only log + set ``grades_error`` (mirroring absence
-        handling) so one changed page never breaks the whole Bakalari
-        run. Only raises on user cancel.
+        Parses the ``data-clasif`` marks of the grades page and stores them
+        on ``self.grades`` grouped per subject, each list sorted by date
+        (oldest first). Returns the dict. Best-effort: failures only log +
+        set ``grades_error`` (mirroring absence handling) so one changed
+        page never breaks the whole Bakaláři run. Only raises on user cancel.
         """
-        if self._cancelled():
-            raise InterruptedError("Cancelled by user.")
-        if self.page is None:
-            self.log("Grades sync skipped: no browser attached.")
-            self.grades_error = "no browser attached"
-            return {}
+        self._raise_if_cancelled()
         try:
-            self._open_module(".ico32-modul-klasifikace", ".ico32-modul-klasifikacePrubezna")
-
-            # The grid refreshes via AJAX: wait for the marks themselves.
-            settle_ms = self._settle_ms()
-            _marks_loaded = False
-            try:
-                self.page.wait_for_function(
-                    "() => document.body && document.body.innerHTML.includes('data-clasif')",
-                    timeout=settle_ms,
-                )
-                _marks_loaded = True
-            except Exception as e:
-                self._debug("grades: marks grid wait timed out", e)
-            self._sleep_s(0.5)
-
-            grades = extract_grades(self.page.content())
+            html = self._session().get_html("/next/prubzna.aspx")
+            grades = extract_grades(html)
             self.grades = grades
             if grades:
                 self.grades_error = ""
@@ -92,11 +50,10 @@ class DataMixin:
                 self.log(f"Grades synced: {n_marks} marks in {len(grades)} subjects.")
             else:
                 self.log("Warning: no grades parsed — "
-                         "either no marks recorded or the page markup changed.")
-                # An empty parse with the marks grid never loaded means the
-                # page didn't render (login page / failed load) — flag it so
-                # refresh paths keep the last good cache instead of wiping it.
-                self.grades_error = "" if _marks_loaded else "marks grid did not load (empty parse)"
+                         "either no marks recorded or the page format changed.")
+                # An empty parse of something that is not the grades page
+                # (error page, changed URL) must not wipe the last good cache.
+                self.grades_error = "" if "prubzna.aspx" in html else "grades page did not load (empty parse)"
             return grades
         except InterruptedError:
             raise
@@ -109,59 +66,25 @@ class DataMixin:
             return {}
 
     def obtain_absence_info(self):
-        if self._cancelled():
-            raise InterruptedError("Cancelled by user.")
-        # A standalone call on an expired session would burn the full
-        # element budgets and then scrape the login page as an empty
-        # absence table — login first (fast path no-ops when valid).
-        self.login()
+        self._raise_if_cancelled()
         try:
-            # More robust wait
-            omluvenky_loc = self.page.locator(".ico32-modul-omluvenky").first
-            try:
-                self._wait_for_module(".ico32-modul-omluvenky")
-                omluvenky_loc.click(timeout=self._nav_ms, once=True)
-            except InterruptedError:
-                raise
-            except Exception:
-                vyuka_loc = self.page.locator(".ico32-modul-vyuka").first
-                self._wait_for_module(".ico32-modul-vyuka")
-                vyuka_loc.click(timeout=self._nav_ms, once=True)
-                self._wait_for_module(".ico32-modul-omluvenky")
-                omluvenky_loc.click(timeout=self._nav_ms, once=True)
-
-            # The absence grid is an AJAX refresh: wait on its content
-            # (never networkidle — the SPA's background traffic never idles).
-            settle_ms = self._settle_ms()
-            _grid_loaded = False
-            if settle_ms > 0:
-                try:
-                    self.page.wait_for_function(
-                        "() => document.body && document.body.innerHTML.includes('aria-colindex')",
-                        timeout=settle_ms,
-                    )
-                    _grid_loaded = True
-                except InterruptedError:
-                    raise
-                except Exception as e:
-                    self._debug("absence: grid wait timed out", e)
-            self._sleep_s(0.2)
-            content = self.page.content()
-            self.absencePercentages = extract_absence_percentages(content)
-            try:
-                self.absenceDetails = extract_absence_details(content)
-            except Exception as e:
-                self.log(f"Warning: absence details parse failed ({type(e).__name__}: {e}) — falling back to percentage estimates.")
-                self.absenceDetails = {}
+            session = self._session()
+            page = session.get_html("/Absence/Continuous")
+            dates = absence_date_range(page)
+            if dates is None:
+                raise RuntimeError("absence page without its date range (format changed?)")
+            rows = session.json("GET", "/Absence/Continuous/GetAbsenceBySubjects", params={
+                "dateFrom": dates[0], "dateTo": dates[1], "lateChecked": "false",
+                "schoolChecked": "false", "soonChecked": "false",
+            })
+            if store_rows(rows) is None:
+                # A failed load, not "no absence": the refresh keeps the cache.
+                raise RuntimeError("absence reply without rows (format changed?)")
+            self.absencePercentages, self.absenceDetails = absence_from_subjects(rows)
             self.absence_error = ""
             if not self.absencePercentages:
                 self.log("Warning: no absence percentages parsed — "
-                         "either no absence recorded or the page markup changed.")
-                # Grid never loaded + empty parse = failed load, not "no
-                # absence": flag it so refresh paths keep the last good
-                # cache instead of wiping it with {}.
-                if not _grid_loaded:
-                    self.absence_error = "absence grid did not load (empty parse)"
+                         "either no absence recorded or the format changed.")
 
             try:
                 warn_pct = float(self.config.get("absence_warn_pct", 15.0))
@@ -190,13 +113,15 @@ class DataMixin:
             # empty dict as a failed sync (the refresh keeps the last good
             # cache instead of overwriting it).
             self.absencePercentages = {}
+            self.absenceDetails = {}
 
     def fetch_sent_excuses(self, limit: int = 100) -> list | None:
-        """Scrapes already-sent excuses (Komens → Odeslané → OMLUVENKA).
+        """Reads already-sent excuses (Komens → Odeslané → OMLUVENKA).
 
-        Opens each ``[data-msgtype=\"OMLUVENKA\"]`` row, parses its detail
-        header (Od/Do dates + optional lesson hours) and stores the result
-        on ``self.sentExcuses``. Returns the parsed history-shaped entries.
+        Loads the outbox list the way the page does (its DevExpress list
+        callback), then each excuse's detail (Od/Do dates + optional
+        lessons), and stores the history-shaped entries on
+        ``self.sentExcuses``. Returns them.
 
         Tri-state: a list (possibly empty) = the outbox was actually read
         (empty genuinely means "nothing sent"); None = the sync failed or
@@ -204,121 +129,61 @@ class DataMixin:
         learned", never as "nothing sent". Never raises except on user
         cancel. ``self.sentExcuses_error`` carries the last failure.
         """
-        if self._cancelled():
-            raise InterruptedError("Cancelled by user.")
-        if self.page is None:
-            self.log("Sent-excuse sync skipped: no browser attached.")
-            self.sentExcuses_error = "no browser attached"
-            return None
+        self._raise_if_cancelled()
         try:
             limit = max(1, int(limit))
         except (TypeError, ValueError):
             limit = 100
         try:
-            self._open_module(".ico32-modul-vyuka", ".ico32-modul-komens",
-                              ".ico32-modul-komensOdeslane")
-            # Wait on the outbox rows themselves (never on menu words like
-            # 'Odeslan': the side menu contains them, so such a wait would
-            # succeed while the list is still loading and read as empty).
-            rows = self.page.locator('[data-msgtype="OMLUVENKA"]')
-            try:
-                rows.first.wait_for(
-                    state="attached",
-                    timeout=self._settle_ms(),
-                )
-            except Exception as e:
-                self._debug("outbox: rows wait timed out", e)
-            self._sleep_s(0.2)
-
-            try:
-                total = rows.count()
-            except Exception:
-                total = 0
-            self.sentExcuses_from = self._outbox_period_start()
-            if not total:
-                # Slow link: the list may simply not have arrived yet.
-                # Wait out the same page once more and recount — never
-                # refresh, and never report a still-loading outbox as
-                # empty without a second settled check.
-                try:
-                    self._wait_for_page_settled(self._settle_ms())
-                except InterruptedError:
-                    raise
-                except Exception as e:
-                    self._debug("outbox: page settle wait failed", e)
-                try:
-                    rows.first.wait_for(
-                        state="attached",
-                        timeout=self._settle_ms(),
-                    )
-                except Exception as e:
-                    self._debug("outbox: rows wait timed out", e)
-                try:
-                    total = rows.count()
-                except Exception:
-                    total = 0
-            if not total:
+            session = self._session()
+            page, ids = self._outbox_excuse_ids(session, limit + 1)
+            self.sentExcuses_from = self._outbox_period_start(page)
+            if not ids:
                 self.log("No sent excuses (OMLUVENKA) found in Komens → Odeslané.")
                 self.sentExcuses = []
+                self.sentExcuses_error = ""
                 return []
-            if total > limit:
-                self.log(f"Sent excuses: {total} on the web, reading first {limit}.")
+            if len(ids) > limit:
+                self.log(f"Sent excuses: {len(ids)} on the web, reading first {limit}.")
+                ids = ids[:limit]
             else:
-                self.log(f"Komens → Odeslané: {total} message(s) on the web.")
+                self.log(f"Komens → Odeslané: {len(ids)} excuse(s) on the web.")
 
-            sources = []
-            for idx in range(min(total, limit)):
-                if self._cancelled():
-                    raise InterruptedError("Cancelled by user.")
+            parsed: list = []
+            read = 0
+            for msg_id in ids:
+                self._raise_if_cancelled()
                 try:
-                    row = rows.nth(idx)
-                    msg_id = row.get_attribute("data-idmsg")
-                    if not msg_id:
-                        self.log(f"Warning: sent excuse #{idx + 1} has no message id, skipped.")
-                        continue
-                    # Single attempt: opening the detail IS a navigation —
-                    # retrying a dispatched-but-slow click would reopen the
-                    # same message again (visible refresh loop on one row).
-                    row.click(timeout=self._nav_ms, once=True)
-                    # Wait for THIS message's detail: the page always holds
-                    # the detail template (same testids), and the previous
-                    # message stays rendered until the AJAX reply lands —
-                    # a generic wait would read a stale or empty detail.
-                    self.page.locator(
-                        f'#message_detail #komens_bar_message[data-idmsg="{msg_id}"]'
-                    ).first.wait_for(state="attached", timeout=self._nav_ms)
-                    self._sleep_s(0.2)
-                    sources.append(str(
-                        self.page.locator("#message_detail").first.inner_html()))
+                    detail = self._outbox_detail(session, msg_id)
                 except InterruptedError:
                     raise
                 except Exception as e:
-                    self.log(f"Warning: could not open sent excuse #{idx + 1}: {e}")
+                    self.log(f"Warning: could not read sent excuse {msg_id}: {e}")
                     continue
+                read += 1
+                for entry in sent_excuse_entries(detail):
+                    if entry not in parsed:
+                        parsed.append(entry)
 
-            parsed = extract_sent_excuses(sources)
+            if not read:
+                # Not one detail readable: [] must not read as "nothing
+                # sent" — report unknown (None) so callers keep the last
+                # known state.
+                self.sentExcuses = None
+                self.sentExcuses_error = "outbox details unreadable"
+                self.log("Warning: sent-excuse details unreadable — keeping last known state.")
+                return None
             self.sentExcuses = parsed
             self.sentExcuses_error = ""
-            if sources and not parsed:
-                # Fully unparseable outbox: [] must not read as "nothing
-                # sent" — flag it and report unknown (None), so callers
-                # keep the last known state.
-                self.sentExcuses = None
-                self.sentExcuses_error = "outbox parse failed (unparseable content)"
-                self.log("Warning: sent-excuse outbox unparseable — keeping last known state.")
-                return None
-            n_messages = len(sources)
-            if len(parsed) != n_messages:
+            if len(parsed) != read:
                 # One hour-based web message expands to three history
                 # entries (income + soon + days and hours) for dedupe —
                 # report the web message count so the log never claims more
                 # sent messages than the outbox actually holds.
-                self.log(
-                    f"Sent excuses synced from the web: {n_messages} message(s) "
-                    f"({len(parsed)} history entries)."
-                )
+                self.log(f"Sent excuses synced from the web: {read} message(s) "
+                         f"({len(parsed)} history entries).")
             else:
-                self.log(f"Sent excuses synced from the web: {n_messages} message(s).")
+                self.log(f"Sent excuses synced from the web: {read} message(s).")
             return parsed
         except InterruptedError:
             raise
@@ -327,18 +192,39 @@ class DataMixin:
             self.log(f"Could not sync sent excuses: {e} — will retry next time.")
             return None
 
-    def _outbox_period_start(self):
+    def _outbox_excuse_ids(self, session, page_size: int) -> tuple:
+        """``(page_html, ids)``: Komens → Odeslané and the message ids of its
+        excuse rows, loaded the way the page does (its list callback)."""
+        page = session.get_html(_OUTBOX_PATH)
+        list_type = re.search(r'id="hfListType"[^>]*?value="([^"]*)"', page)
+        if not list_type or list_type.group(1) != _OUTBOX_LIST_TYPE:
+            # Another folder read as the outbox would report "nothing sent".
+            raise RuntimeError("Komens page is not the sent folder (format changed?)")
+        param = json.dumps({
+            "showRepressed": False, "pageNumber": 1, "pageSize": page_size,
+            "reloadMessages": True, "sortOrder": 0, "onlyRating": True,
+            "onlyExcuses": True, "onlySystemMessages": True,
+            "onlyGeneralMessages": True, "onlyUnread": False,
+        }, separators=(",", ":"))
+        listing = session.dx_callback(_OUTBOX_PATH, page, _OUTBOX_CALLBACK_ID, param)
+        if "komens-messages-wrapper" not in listing:
+            raise RuntimeError("outbox list did not load (format changed?)")
+        return page, outbox_excuse_ids(listing)
+
+    @staticmethod
+    def _outbox_detail(session, msg_id: str) -> dict:
+        """The detail of one sent message (``/Komens/GetMessageDataAsync``)."""
+        return session.json("POST", "/Komens/GetMessageDataAsync", json={
+            "idmsg": msg_id, "komensMessageListType": _OUTBOX_LIST_TYPE})
+
+    def _outbox_period_start(self, page_html: str):
         """First day of the period Odeslané lists ("26.8.2026 - 25.9.2026"), or None."""
         from .models import parse_cz_date
 
-        try:
-            label = str(self.page.locator("#cphmain_obdobiLabel").first.inner_text(
-                timeout=self._element_ms))
-        except InterruptedError:
-            raise
-        except Exception:
+        label = re.search(r'id="cphmain_obdobiLabel"[^>]*>([^<]*)<', str(page_html or ""))
+        if not label:
             return None
-        found = re.findall(r"\d{1,2}\s*\.\s*\d{1,2}\s*\.\s*\d{4}", label)
+        found = re.findall(r"\d{1,2}\s*\.\s*\d{1,2}\s*\.\s*\d{4}", label.group(1))
         if not found:
             return None
         try:
@@ -346,37 +232,22 @@ class DataMixin:
         except Exception:
             return None
         if start is not None:
-            self.log(f"Komens → Odeslané lists {label.strip()}.")
+            self.log(f"Komens → Odeslané lists {label.group(1).strip()}.")
         return start
 
     def fetch_subject_directory(self) -> dict:
-        """Fetches the school-official subject directory.
+        """Fetches the school-official subject directory (Výuka → Přehled předmětů).
 
-        Opens Vyuka → Prehled predmetu and parses the subject → teacher
-        table. Only the subject names are used downstream (the canonical
-        absence-tracked set); teachers ride along for display. Returns
-        the dict (possibly empty). Best-effort: failures only log,
-        mirroring the grades handling. Only raises on
-        user cancel.
+        Only the subject names are used downstream (the canonical
+        absence-tracked set); teachers ride along for display. Returns the
+        dict (possibly empty). Best-effort: failures only log, mirroring
+        the grades handling. Only raises on user cancel.
         """
-        if self._cancelled():
-            raise InterruptedError("Cancelled by user.")
-        if self.page is None:
-            self.log("Subject directory skipped: no browser attached.")
-            return {}
+        self._raise_if_cancelled()
         try:
-            self._open_module(".ico32-modul-vyuka", ".ico32-modul-predmetyPrehled")
-            settle_ms = self._settle_ms()
-            if settle_ms > 0:
-                try:
-                    self.page.wait_for_function(
-                        "() => document.body && document.body.innerHTML.includes('<td')",
-                        timeout=settle_ms,
-                    )
-                except Exception as e:
-                    self._debug("subject directory: table wait timed out", e)
-            self._sleep_s(0.2)
-            directory = parse_subject_directory(self.page.content())
+            rows = self._session().json("POST", "/Teaching/Subjects",
+                                        headers={"X-Requested-With": "XMLHttpRequest"})
+            directory = subject_directory_from_rows(rows)
             self.subjectDirectory = directory
             if directory:
                 self.log(f"Subject directory synced: {len(directory)} subjects.")
@@ -388,56 +259,30 @@ class DataMixin:
         except Exception as e:
             self.log(f"Could not sync subject directory: {e} — continuing without it.")
             # Unknown, not stale: clear so consumers fall back to the last
-            # good cache instead of treating old rows as freshly scraped.
+            # good cache instead of treating old rows as freshly fetched.
             self.subjectDirectory = {}
             return {}
 
     def fetch_substitutions(self) -> list | None:
-        """Scrapes the personal substitution feed (Vyuka → Suplovani).
+        """Reads the personal substitution feed (Výuka → Suplování).
 
-        Returns the parsed feed entries (possibly empty = genuinely no
-        changes this week) or None when the sync failed or was skipped
-        (unknown — callers must not treat it as no changes). Only raises
-        on user cancel. Best-effort: failures only log + set
-        substitutions_error, mirroring the grades handling.
+        Same range as the page shows by default: from today's week to the
+        week 14 days ahead. Returns the parsed feed entries (possibly empty
+        = genuinely no changes) or None when the sync failed (unknown —
+        callers must not treat it as no changes). Only raises on user
+        cancel. Best-effort: failures only log + set substitutions_error.
         """
-        from .extractors.bakalari import parse_substitutions
-
-        if self._cancelled():
-            raise InterruptedError("Cancelled by user.")
-        if self.page is None:
-            self.log("Substitution feed skipped: no browser attached.")
-            self.substitutions_error = "no browser attached"
-            return None
+        self._raise_if_cancelled()
+        today = date.today()
+        start = today - timedelta(days=today.weekday())
+        end_day = today + timedelta(days=14)
+        end = end_day - timedelta(days=end_day.weekday()) + timedelta(days=4)
         try:
-            self._open_module(".ico32-modul-vyuka", ".ico32-modul-suplovani")
-            settle_ms = self._settle_ms()
-            if settle_ms > 0:
-                try:
-                    self.page.wait_for_function(
-                        "() => document.body && ("
-                        "document.body.innerHTML.includes('substitutions-entry')"
-                        " || document.body.innerHTML.includes('substitutions-no-substitution')"
-                        ")",
-                        timeout=settle_ms,
-                    )
-                except Exception as e:
-                    self._debug("substitutions: feed wait timed out", e)
-            self._sleep_s(0.2)
-            html = str(self.page.content())
-            if ("substitutions-entry" not in html
-                    and "substitutions-no-substitution" not in html):
-                self.log("Warning: substitution feed did not load — will retry next time.")
-                self.substitutions_error = "feed did not load"
-                return None
-            entries = parse_substitutions(html)
-            if not entries and "substitutions-no-substitution" not in html:
-                # No rows and no empty-state marker: the feed content
-                # itself never rendered (still loading or markup moved) —
-                # unknown, not "no changes".
-                self.log("Warning: substitution feed content missing — will retry next time.")
-                self.substitutions_error = "feed content missing"
-                return None
+            weeks = self._session().json("POST", "/Timetable/substitutions/dates", data={
+                "dateFrom": _utc_iso(start, time(0, 0)),
+                "dateTo": _utc_iso(end, time(0, 0)),
+            })
+            entries = substitutions_from_weeks(weeks)
             self.substitutions = entries
             self.substitutions_error = ""
             self.log(f"Substitution feed synced: {len(entries)} entries.")
@@ -529,8 +374,8 @@ class DataMixin:
         self.timetable_sources = []
         self.timetableData = {}
         self.absencePercentages = {}
-        # Full overview rows from the same page: elapsed hours + school
-        # verdict badges per subject (see extract_absence_details).
+        # Elapsed hours per subject from the same absence data
+        # (see absence_from_subjects).
         self.absenceDetails = {}
         # School-official subject set (Výuka → Přehled předmětů): only
         # these count toward absence limits. Empty until fetched.
@@ -550,12 +395,11 @@ class DataMixin:
         self.substitutions = None
         self.substitutions_error = ""
 
-        if self._cancelled():
-            raise InterruptedError("Cancelled by user.")
+        self._raise_if_cancelled()
         self.login()
-        self.extract_timetable_html()
-        for timetable in self.timetable_sources:
-            self.extract_timetable_data(timetable)
+        self.fetch_timetable_weeks()
+        for details in self.timetable_sources:
+            self.add_timetable_details(details)
         try:
             self.extract_stable_timetable()
         except InterruptedError:

@@ -1,497 +1,282 @@
-"""StravaClient: blacklist loading, meal ordering and restore."""
-from unittest.mock import MagicMock
+"""StravaClient over HTTP, against a fake Strava web app API.
+
+Login and the menu (ids and texts the rest of the app keys on), ordering
+staged with the web app's own checks, and the one save that only counts
+when a fresh menu shows it. All names, numbers and data are made up.
+"""
+
+import html
+import json
+import re
+from datetime import date, datetime, timedelta
+from pathlib import Path
+
+import httpx
+import pytest
 
 from strakalari.core.strava_client import StravaClient
 
-
-class TestPlaceholderFilter:
-    def test_client_drops_example_placeholders(self, tmp_path):
-        from strakalari.core.strava_client import StravaClient
-        bl = tmp_path / "strava_blacklist.json"
-        bl.write_text('["vepro", "VAS_BLACKLIST_X", "your_blacklist_0", '
-                      '"CISLO_JIDELNY", "example dish"]', encoding="utf-8")
-        bm = MagicMock()
-        bm.page = MagicMock()
-        client = StravaClient(
-            bm, {"use_strava": True, "strava_blacklist": str(bl)},
-            logger=lambda m: None)
-        assert client.strava_blacklist_json == ["vepro"]
+CONFIG = {"use_strava": True, "strava_canteen_id": "1234", "strava_username": "novak",
+          "strava_password": "heslo", "strava_blacklist": "./strava_blacklist.json"}
+DAY1 = date.today() + timedelta(days=7)
+DAY2 = DAY1 + timedelta(days=1)
+_WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
 
-class TestRestoreAndForcing:
-    def _client(self):
-        from strakalari.core.strava_client import StravaClient
-        logs = []
-        bm = MagicMock()
-        bm.page = MagicMock()
-        client = StravaClient(
-            bm, {"use_strava": True,
-                 "strava_blacklist": "./strava_blacklist.json"},
-            logger=logs.append)
-        return client, logs
-
-    def test_deorder_original_logs_skip(self):
-        client, logs = self._client()
-        client._restore_original(
-            [{"day": "D", "meal_id": "x&1&0", "all_ids": []}],
-            {"D": "t&-1&0"})
-        assert any("D" in m for m in logs)
-
-    def test_forcing_covers_all_siblings(self):
-        client, _logs = self._client()
-        target = "t&1&0"
-        sibs = ["t&2&0", "t&3&0", "t&4&0"]
-        clicks = []
-        client._click_meal = lambda mid: clicks.append(mid) or True
-        # Direct + final target clicks verify; siblings never do.
-        client._verified = lambda mid: (
-            mid == target and clicks.count(target) >= 2)
-        assert client.order(target, [target] + sibs) is True
-        for s in sibs:
-            assert s in clicks
+def _meal(day: date, ident: int, druh: str, name: str, count: int = 0, **extra) -> dict:
+    meal = {"datum": f"{day:%d.%m.%Y}", "druh": druh, "id": ident, "pocet": count, "cena": "45.00",
+            "omezeni": "5E", "polevka": "N", "zkratkaProduktu": "zkratka", "druh_popis": f"oběd {ident}",
+            "nazev": name, "alergeny": [["01", "Obiloviny"], ["07", "Mléko"]],
+            "casKonec": f"{day - timedelta(days=1):%Y-%m-%d}T14:00:00",
+            "casOdhlaseni": f"{day - timedelta(days=1):%Y-%m-%d}T14:00:00"}
+    meal.update(extra)
+    return meal
 
 
-def test_strava_client_save_confirm_ignores_skip_navigation():
-    """
-    Verify that save_confirm does not attempt to click off-screen skip navigation links.
-    """
-    from unittest.mock import MagicMock
-    from strakalari.core.strava_client import StravaClient
+def _soup(day: date) -> dict:
+    return _meal(day, 0, "P", "polévka", omezeni="B", polevka="A", cena="0",
+                 casKonec="9999-12-31T00:00:00", casOdhlaseni="9999-12-31T00:00:00", alergeny=[])
 
-    mock_bm = MagicMock()
-    mock_page = MagicMock()
-    mock_bm.page = mock_page
 
-    # Mock locators: none of the legitimate save selectors match
-    mock_loc = MagicMock()
-    mock_loc.wait_for.side_effect = Exception("Timeout waiting for element")
-    mock_page.locator.return_value.first = mock_loc
+class FakeStrava:
+    """app.strava.cz: login, the menu, and saving the order sheet."""
 
+    def __init__(self, konto="100", limit="0.00", s5url=""):
+        self.menu = {
+            "table0": [_soup(DAY1), _meal(DAY1, 1, "1", "Guláš", count=1), _meal(DAY1, 2, "2", "Rizoto")],
+            "table1": [_soup(DAY2), _meal(DAY2, 1, "1", "Řízek"), _meal(DAY2, 2, "2", "Těstoviny")],
+        }
+        self.user = {"konto": konto, "limit": limit, "mena": "Kč"}
+        self.s5url = s5url
+        self.requests = []
+        self.saves = []
+        self.logins = 0
+        self.sid = None
+        self.save_reply = None
+        self.apply_saves = True
+
+    def transport(self):
+        return httpx.MockTransport(self.handle)
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content or b"{}")
+        self.requests.append((request.url.path, body))
+        if request.url.path == "/api/login":
+            if (body.get("cislo"), body.get("jmeno"), body.get("heslo")) != ("1234", "novak", "heslo"):
+                return httpx.Response(200, json={"state": "error", "number": 1001, "message": "Chybné heslo"})
+            self.logins += 1
+            self.sid = f"sid{self.logins}"
+            return httpx.Response(200, json={"sid": self.sid, "s5url": self.s5url, "cislo": "1234",
+                                             "ignoreCert": "false", "uzivatel": dict(self.user)})
+        if body.get("sid") != self.sid:
+            return httpx.Response(200, json={"state": "error", "number": 13, "message": "Neplatné SID"})
+        if request.url.path == "/api/objednavky":
+            return httpx.Response(200, json=json.loads(json.dumps(self.menu)))
+        if request.url.path == "/api/saveOrders":
+            self.saves.append(body["xml"])
+            if self.save_reply is not None:
+                return httpx.Response(200, json=self.save_reply)
+            if self.apply_saves:
+                rows = re.findall(r"<datum>([\d-]+)</datum>\s*<druh>(\w)</druh>\s*<pocet>(\d+)</pocet>",
+                                  html.unescape(body["xml"]))
+                for iso, druh, count in rows:
+                    for meals in self.menu.values():
+                        for meal in meals:
+                            if meal["datum"] == datetime.strptime(iso, "%Y-%m-%d").strftime("%d.%m.%Y") \
+                                    and meal["druh"] == druh:
+                                meal["pocet"] = int(count)
+            return httpx.Response(200, json={"konto": "55"})
+        return httpx.Response(404)
+
+    def calls(self, path):
+        return [b for p, b in self.requests if p == path]
+
+
+def _client(server=None, **config):
+    server = server or FakeStrava()
     logs = []
-    client = StravaClient(mock_bm, {"use_strava": True}, logger=logs.append)
-    client.save_confirm()
-
-    # Ensure no click was performed on nonexistent element
-    assert mock_loc.click.call_count == 0
+    client = StravaClient({**CONFIG, **config}, logger=logs.append, transport=server.transport())
+    client.logs = logs
+    return client, server
 
 
-def test_strava_client_save_confirm_clicks_save_button():
-    """
-    Verify that save_confirm finds and clicks the 'Uložit změny' button when present.
-    """
-    from unittest.mock import MagicMock
-    from strakalari.core.strava_client import StravaClient
-
-    mock_bm = MagicMock()
-    mock_page = MagicMock()
-    mock_bm.page = mock_page
-
-    mock_loc = MagicMock()
-    mock_loc.bounding_box.return_value = {"x": 500, "y": 800, "width": 120, "height": 45}
-    mock_page.locator.return_value.first = mock_loc
-
-    logs = []
-    client = StravaClient(mock_bm, {"use_strava": True}, logger=logs.append)
-    client._verified = lambda mid: True
-    client.save_confirm(["table1&1&0"])
-
-    assert mock_loc.click.call_count == 1
+def _day(d: date) -> str:
+    return f"{d:%d.%m.%Y}"
 
 
-def test_order_skips_clicks_when_already_ordered():
-    from strakalari.core.strava_client import StravaClient
+# -- blacklist -------------------------------------------------------------------
 
-    class FakeLoc:
-        def __init__(self, page, selector):
-            self._page = page
-            self._selector = selector
+def test_client_drops_example_placeholders(tmp_path):
+    bl = tmp_path / "strava_blacklist.json"
+    bl.write_text('["vepro", "VAS_BLACKLIST_X", "your_blacklist_0", '
+                  '"CISLO_JIDELNY", "example dish"]', encoding="utf-8")
+    client = StravaClient({"use_strava": True, "strava_blacklist": str(bl)}, logger=lambda m: None)
+    assert client.strava_blacklist_json == ["vepro"]
 
-        @property
-        def first(self):
-            return self
 
-        def count(self):
-            return 1
+# -- login and menu ------------------------------------------------------------------
 
-        def evaluate(self, js):
-            sel = self._selector
-            return (self._page.selected is not None
-                    and self._page.selected in sel)
+def test_login_and_menu_keep_the_ids_and_texts_of_the_web_page():
+    client, server = _client()
+    data = client.fetch_data()
+    login = server.calls("/api/login")[0]
+    assert login["environment"] == "W" and login["zustatPrihlasen"] is False
+    menu = server.calls("/api/objednavky")[0]
+    assert menu["sid"] == "sid1" and menu["s5url"] == "" and menu["konto"] == 0
+    assert data["foodDict"][_day(DAY1)] == {
+        "table0&-1&0": f"{_WEEKDAYS[DAY1.weekday()]} {DAY1:%d/%m/%Y}",
+        "table0&1&0": "oběd 1 - Guláš(01, 07 )",
+        "table0&2&0": "oběd 2 - Rizoto(01, 07 )",
+    }
+    assert data["orderedDict"] == {_day(DAY1): "table0&1&0"}
 
-    class FakePage:
-        def __init__(self):
-            self.selected = None
-            self.requested = []
 
-        def locator(self, selector):
-            return FakeLoc(self, selector)
+def test_wrong_password_is_a_user_error():
+    from strakalari.core.error_report import UserError
 
-    class FakeBM:
-        def __init__(self, page):
-            self.page = page
+    client, _ = _client(strava_password="spatne")
+    with pytest.raises(UserError):
+        client.login()
 
-        def scroll_up(self):
-            pass
 
-        def scroll_until_visible(self, by, identifier):
-            self.page.requested.append(identifier)
-            return object()
+def test_dropped_session_logs_in_again_for_reads():
+    client, server = _client()
+    client.fetch_data()
+    server.sid = "expired"
+    client.fetch_data()
+    assert server.logins == 2
 
-        def click_element(self, el, identifier=None):
-            self.page.selected = identifier
-            return True
 
-        def random_sleep(self, *args):
-            pass
+def test_unreachable_strava_is_a_user_error():
+    from strakalari.core.error_report import UserError
 
-    menu = ["table9&1&0", "table9&2&0", "table9&3&0"]
-    page = FakePage()
-    client = StravaClient(FakeBM(page), {"use_strava": False},
-                          logger=lambda m: None)
-    # Already ordered on the web: True with zero clicks, no sibling cycle.
-    page.selected = "table9&2&0"
-    assert client.order("table9&2&0", menu) is True
+    def down(request):
+        raise httpx.ConnectError("down", request=request)
+
+    client = StravaClient(CONFIG, transport=httpx.MockTransport(down))
+    with pytest.raises(UserError):
+        client.login()
+
+
+# -- ordering --------------------------------------------------------------------------
+
+def test_order_is_staged_and_saved_once_as_the_web_app_does():
+    client, server = _client()
+    client.fetch_data()
+    assert client.order("table1&2&0") is True
+    assert client.order("table0&2&0") is True  # switches the day's meal
+    assert server.saves == []  # nothing sent before the save
+    assert client.save_confirm(["table1&2&0", "table0&2&0"]) is True
+    [sheet] = server.saves
+    rows = re.findall(r"<datum>([\d-]+)</datum>\s*<druh>(\w)</druh>\s*<pocet>(\d+)</pocet>", html.unescape(sheet))
+    assert rows == [(f"{DAY2:%Y-%m-%d}", "2", "1"), (f"{DAY1:%Y-%m-%d}", "2", "1"), (f"{DAY1:%Y-%m-%d}", "1", "0")]
+    assert client.orderedDict == {_day(DAY1): "table0&2&0", _day(DAY2): "table1&2&0"}
+
+
+def test_order_sheet_matches_the_web_app_byte_for_byte():
+    """Captured from the web app's own builder for the same three changes."""
+    from strakalari.core.strava_ordering import order_sheet
+
+    expected = (Path(__file__).parent / "fixtures" / "strava_save_orders.txt").read_text(encoding="utf-8")
+    assert order_sheet([{"date": "2026-10-07", "druh": "2", "pocet": 1},
+                        {"date": "2026-10-07", "druh": "1", "pocet": 0},
+                        {"date": "2026-10-08", "druh": "3", "pocet": 0}]) == expected
+
+
+def test_already_ordered_meal_needs_no_change():
+    client, server = _client()
+    client.fetch_data()
+    assert client.order("table0&1&0") is True
     assert client.clicks_made == 0
-    assert page.requested == []
+    assert client.save_confirm(["table0&1&0"]) is True
+    assert server.saves == []
 
 
-def test_order_clicks_target_directly_and_verifies():
-    from strakalari.core.strava_client import StravaClient
-
-    class FakeLoc:
-        def __init__(self, page, selector):
-            self._page = page
-            self._selector = selector
-
-        @property
-        def first(self):
-            return self
-
-        def count(self):
-            return 1
-
-        def evaluate(self, js):
-            sel = self._selector
-            return (self._page.selected is not None
-                    and self._page.selected in sel)
-
-    class FakePage:
-        def __init__(self):
-            self.selected = None
-            self.requested = []
-
-        def locator(self, selector):
-            return FakeLoc(self, selector)
-
-    class FakeBM:
-        def __init__(self, page):
-            self.page = page
-
-        def scroll_up(self):
-            pass
-
-        def scroll_until_visible(self, by, identifier):
-            self.page.requested.append(identifier)
-            return object()
-
-        def click_element(self, el, identifier=None):
-            self.page.selected = identifier
-            return True
-
-        def random_sleep(self, *args):
-            pass
-
-    menu = ["table9&1&0", "table9&2&0", "table9&3&0"]
-    page = FakePage()
-    page.selected = "table9&1&0"
-    client = StravaClient(FakeBM(page), {"use_strava": False},
-                          logger=lambda m: None)
-    # One direct click on the target, verified — siblings untouched.
-    assert client.order("table9&2&0", menu) is True
-    assert client.clicks_made == 1
-    assert page.requested == ["table9&2&0"]
-    assert page.selected == "table9&2&0"
+def test_day_cancel_zeroes_the_ordered_meal():
+    client, server = _client()
+    client.fetch_data()
+    assert client.order("table0&-1&0") is True
+    assert client.save_confirm(["table0&-1&0"]) is True
+    assert _day(DAY1) not in client.orderedDict
+    assert "&lt;pocet&gt;0&lt;/pocet&gt;" in server.saves[0]
 
 
-def test_order_fails_honestly_when_unverifiable():
-    from strakalari.core.strava_client import StravaClient
-
-    class FakeLoc:
-        def __init__(self, page, selector):
-            self._page = page
-            self._selector = selector
-
-        @property
-        def first(self):
-            return self
-
-        def count(self):
-            return 1
-
-        def evaluate(self, js):
-            # Broken page: clicks never take effect.
-            return False
-
-    class FakePage:
-        def locator(self, selector):
-            return FakeLoc(self, selector)
-
-    class FakeBM:
-        def __init__(self, page):
-            self.page = page
-
-        def scroll_up(self):
-            pass
-
-        def scroll_until_visible(self, by, identifier):
-            return object()
-
-        def click_element(self, el, identifier=None):
-            return True
-
-        def random_sleep(self, *args):
-            pass
-
-    menu = ["table9&1&0", "table9&2&0", "table9&3&0"]
-    page = FakePage()
-    client = StravaClient(FakeBM(page), {"use_strava": False},
-                          logger=lambda m: None)
-    # The direct click happened but never verified. No save button
-    # means the immediate-save frontend, where the sibling forcing
-    # sequence would really order other meals — so it must not run.
-    assert client.order("table9&2&0", menu) is False
-    assert client.clicks_made == 1
-
-
-def test_reconcile_ordered_live_finds_js_only_selection():
-    from strakalari.core.strava_client import StravaClient
-
-    class FakeLoc:
-        def __init__(self, page, selector):
-            self._page = page
-            self._selector = selector
-
-        @property
-        def first(self):
-            return self
-
-        def count(self):
-            return 1
-
-        def evaluate(self, js):
-            sel = self._selector
-            return (self._page.selected is not None
-                    and self._page.selected in sel)
-
-    class FakePage:
-        def __init__(self):
-            self.selected = None
-
-        def locator(self, selector):
-            return FakeLoc(self, selector)
-
-    class FakeBM:
-        def __init__(self, page):
-            self.page = page
-
-    day = "09.09.2026"
-    menu = {"table0&1&0": "A", "table0&2&0": "B", "table0&-1&0": "day"}
-
-    # Static parse blind, live DOM knows: entry is added.
-    page = FakePage()
-    page.selected = "table0&2&0"
-    client = StravaClient(FakeBM(page), {"use_strava": False},
-                          logger=lambda m: None)
-    client.foodDict = {day: dict(menu)}
-    client.orderedDict = {}
-    client._reconcile_ordered_live()
-    assert client.orderedDict == {day: "table0&2&0"}
-
-    # Static stale, live knows better: entry is corrected.
-    page.selected = "table0&1&0"
-    client.orderedDict = {day: "table0&2&0"}
-    client._reconcile_ordered_live()
-    assert client.orderedDict == {day: "table0&1&0"}
-
-    # Static confirmed by live: kept silently.
-    logs = []
-    client2 = StravaClient(FakeBM(page), {"use_strava": False},
-                           logger=logs.append)
-    client2.foodDict = {day: dict(menu)}
-    client2.orderedDict = {day: "table0&1&0"}
-    client2._reconcile_ordered_live()
-    assert client2.orderedDict == {day: "table0&1&0"}
-    assert not any("live check shows" in m for m in logs)
-
-
-def test_reconcile_ordered_live_warns_when_nothing_found():
-    from strakalari.core.strava_client import StravaClient
-
-    class FakeLoc:
-        @property
-        def first(self):
-            return self
-
-        def count(self):
-            return 0
-
-        def evaluate(self, js):
-            return False
-
-    class FakePage:
-        def locator(self, selector):
-            return FakeLoc()
-
-    class FakeBM:
-        def __init__(self, page):
-            self.page = page
-
-    logs = []
-    client = StravaClient(FakeBM(FakePage()), {"use_strava": False},
-                          logger=logs.append)
-    client.foodDict = {"09.09.2026": {"table0&1&0": "A"}}
-    client.orderedDict = {}
-    client._reconcile_ordered_live()
-    assert client.orderedDict == {}
-    assert any("no ordered meal was detected" in m for m in logs)
-
-
-def test_day_cancel_clicks_only_header_and_verifies_meals():
-    from strakalari.core.strava_client import StravaClient
-
-    header, m1, m2 = "table2&-1&0", "table2&1&0", "table2&2&0"
-
-    class FakeLoc:
-        def __init__(self, page, selector):
-            self._page = page
-            self._selector = selector
-
-        @property
-        def first(self):
-            return self
-
-        def count(self):
-            return 1
-
-        def evaluate(self, js):
-            for mid, state in self._page.meals.items():
-                if mid in self._selector:
-                    return state
-            return False
-
-    class FakePage:
-        def __init__(self):
-            self.meals = {}
-            self.requested = []
-
-        def locator(self, selector):
-            return FakeLoc(self, selector)
-
-    class FakeBM:
-        def __init__(self, page):
-            self.page = page
-
-        def scroll_up(self):
-            pass
-
-        def scroll_until_visible(self, by, identifier):
-            self.page.requested.append(identifier)
-            return object()
-
-        def click_element(self, el, identifier=None):
-            # Radio behaviour: header click clears the day's meals.
-            if identifier == header:
-                for mid in self.page.meals:
-                    self.page.meals[mid] = False
-            else:
-                self.page.meals[identifier] = True
-            return True
-
-        def random_sleep(self, *args):
-            pass
-
-    menu = [header, m1, m2]
-    page = FakePage()
-    client = StravaClient(FakeBM(page), {"use_strava": False},
-                          logger=lambda m: None)
-    # Day already fully cancelled: True, zero clicks.
-    page.meals = {m1: False, m2: False}
-    assert client.order(header, menu) is True
+def test_closed_order_window_stages_nothing():
+    server = FakeStrava()
+    server.menu["table1"][2]["casKonec"] = "2000-01-01T00:00:00"
+    client, _ = _client(server)
+    client.fetch_data()
+    assert client.order("table1&2&0") is False
+    assert "[5010]" in client.last_notice
     assert client.clicks_made == 0
-    assert page.requested == []
-    # One meal ordered: only the header is clicked, never a meal.
-    page.meals = {m1: True, m2: False}
-    assert client.order(header, menu) is True
-    assert page.requested == [header]
-    assert page.meals == {m1: False, m2: False}
 
 
-def _client(**kw):
-    bm = MagicMock()
-    bm.page = MagicMock()
-    cfg = {"strava_order_mode": "auto", "use_strava": True,
-           "strava_blacklist": "./strava_blacklist.json"}
-    client = StravaClient(bm, cfg, logger=lambda m: None, **kw)
-    return client
+def test_low_balance_is_refused_before_anything_is_sent():
+    client, server = _client(FakeStrava(konto="50"))
+    client.fetch_data()
+    assert client.order("table1&1&0") is True  # 50 - 45 = 5 stays above the limit 0
+    assert client.order("table1&2&0") is True  # a switch on the same day costs nothing more
+    assert client.order("table0&2&0") is True  # switching a paid day refunds the old meal
+    client2, _ = _client(FakeStrava(konto="40"))
+    client2.fetch_data()
+    assert client2.order("table1&1&0") is False
+    assert client2.insufficient_balance is True
+    assert "[5005]" in client2.last_notice
+    assert server.saves == []
 
 
-class TestSaveConfirmVerify:
-    def _page_ok(self):
-        page = MagicMock()
-        page.url = "https://strava.cz/objednavky"
-        first = MagicMock()
-        first.wait_for.return_value = None
-        loc = MagicMock()
-        loc.first = first
-        # Success-path button locator + error locator share .locator();
-        # error count must read as "no error".
-        err_first = MagicMock()
-        err_first.count.return_value = 0
-        err_loc = MagicMock()
-        err_loc.first = err_first
-        err_loc.all.return_value = []
+def test_failed_run_drops_the_staged_changes():
+    client, server = _client()
+    client.fetch_data()
+    client.order("table1&1&0")
+    client._restore_original([{"day": _day(DAY2)}], {})
+    assert client._verified("table1&1&0") is False
+    assert server.saves == []
 
-        calls = {"n": 0}
 
-        def locator(sel):
-            calls["n"] += 1
-            if "alert" in sel or "error" in sel or "role" in sel:
-                return err_loc
-            return loc
+def test_rejected_save_is_not_success():
+    server = FakeStrava()
+    server.save_reply = {"state": "error", "number": 5005, "message": "Nedostatečný zůstatek"}
+    client, _ = _client(server)
+    client.fetch_data()
+    client.order("table1&1&0")
+    assert client.save_confirm(["table1&1&0"]) is False
+    assert "Nedostatečný" in client.last_notice
+    assert len(server.saves) == 1
 
-        page.locator.side_effect = locator
-        page.wait_for_timeout.return_value = None
-        return page
 
-    def test_click_success_still_true(self):
-        client = _client()
-        client.page = self._page_ok()
-        client._verified = lambda mid: True
-        assert client.save_confirm(["x&1&0"]) is True
+def test_save_not_shown_on_the_menu_is_not_success():
+    server = FakeStrava()
+    server.apply_saves = False
+    client, _ = _client(server)
+    client.fetch_data()
+    client.order("table1&1&0")
+    assert client.save_confirm(["table1&1&0"]) is False
+    assert len(server.saves) == 1  # never repeated
 
-    def test_no_ids_is_false(self):
-        # Fail-closed: nothing to verify means nothing claimed as saved.
-        client = _client()
-        client.page = self._page_ok()
-        assert client.save_confirm() is False
-        assert client.save_confirm([]) is False
 
-    def test_explicit_error_is_false(self):
-        client = _client()
-        page = self._page_ok()
-        err_loc = page.locator(".alert-danger")
-        err_el = MagicMock()
-        err_el.is_visible.return_value = True
-        err_el.inner_text.return_value = "Chyba uložení"
-        err_loc.all.return_value = [err_el]
-        client.page = page
-        client._verified = lambda mid: True
-        assert client.save_confirm(["x&1&0"]) is False
+def test_newer_backend_orders_nothing():
+    client, server = _client(FakeStrava(s5url="https://s5.example.test"))
+    client.fetch_data()
+    assert client.foodDict  # reading works
+    assert client.order("table1&1&0") is False
+    assert server.saves == []
 
-    def test_login_redirect_is_false(self):
-        client = _client()
-        page = self._page_ok()
-        page.url = "https://strava.cz/login?expired=1"
-        client.page = page
-        client._verified = lambda mid: True
-        assert client.save_confirm(["x&1&0"]) is False
+
+def test_dropped_connection_retried_for_reads_never_for_the_save():
+    server = FakeStrava()
+    real = server.handle
+    drops = {"/api/objednavky": 1, "/api/saveOrders": 1}
+
+    def flaky(request):
+        if drops.get(request.url.path):
+            drops[request.url.path] -= 1
+            raise httpx.RemoteProtocolError("Server disconnected", request=request)
+        return real(request)
+
+    client = StravaClient(CONFIG, logger=lambda m: None, transport=httpx.MockTransport(flaky))
+    client.fetch_data()  # the dropped menu read is retried
+    assert client.order("table1&1&0") is True
+    # The dropped save is not repeated; the fresh menu then shows nothing saved.
+    assert client.save_confirm(["table1&1&0"]) is False
+    assert server.saves == []

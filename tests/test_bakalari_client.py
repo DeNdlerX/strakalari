@@ -1,64 +1,41 @@
-"""BakalariClient: parsing, sent-excuse sync, excuse form flow."""
+"""BakalariClient: parsing, sent-excuse sync, stable timetable."""
 from strakalari.core.automation import Strakalari
-from unittest.mock import MagicMock
 
 
 class TestGoBackWeeksRobustness:
     def test_garbage_value_falls_back(self):
-        app = Strakalari(config_data={"go_back_weeks": "nonsense"}, start_browser=False)
+        app = Strakalari(config_data={"go_back_weeks": "nonsense"})
         assert app.go_back_weeks == 4
         app.close()
 
     def test_extreme_value_is_clamped(self):
-        app = Strakalari(config_data={"go_back_weeks": 10 ** 9}, start_browser=False)
+        app = Strakalari(config_data={"go_back_weeks": 10 ** 9})
         assert app.go_back_weeks <= 52
         app.close()
 
 
-def test_execute_excuse_submits_after_fill():
-    from strakalari.core.bakalari_client import BakalariClient
-
-    client = BakalariClient.__new__(BakalariClient)
-    calls = []
-    client.fill_excuse_form = lambda *a, **k: calls.append((a, k)) or True
-    client._verify_submission = lambda: calls.append("submit") or True
-    assert client.execute_excuse("01.09.2026", "01.09.2026", is_days=True) is True
-    assert calls[-1] == "submit"
-
-
 def test_substitutions_init_is_unknown():
     from strakalari.core.bakalari_client import BakalariClient
-    client = BakalariClient(MagicMock(), {}, logger=lambda m: None)
+    client = BakalariClient({}, logger=lambda m: None)
     assert client.substitutions is None
 
 
 def test_unparseable_outbox_is_unknown_not_empty():
-    from strakalari.core.bakalari_client import BakalariClient
+    import httpx
 
-    client = BakalariClient(MagicMock(), {}, logger=lambda m: None)
-    client.login = lambda: True
-    client._sleep_s = lambda s: None
+    from tests.fake_bakalari import client as fake_client
+    from tests.test_bakalari_http import OUTBOX_PAGE, outbox_listing
+
+    client, _ = fake_client({
+        ("GET", "/next/komens.aspx"): OUTBOX_PAGE,
+        ("POST", "/next/komens.aspx"): outbox_listing(["501"]),
+        ("POST", "/Komens/GetMessageDataAsync"): httpx.Response(500),
+    })
     client.sentExcuses = [{"old": 1}]
     client.sentExcuses_error = ""
-    page = MagicMock()
-    page.content.return_value = "<html><body>nečitelné</body></html>"
-    page.locator.return_value.count.return_value = 1
-    client.page = page
     assert client.fetch_sent_excuses() is None
     assert client.sentExcuses is None
     assert client.sentExcuses_error != ""
-
-
-def test_data_detail_with_apostrophe_parses():
-    from strakalari.core.bakalari_client import BakalariClient
-    client = BakalariClient(MagicMock(), {}, logger=lambda m: None)
-    html = (
-        "<div data-detail='{\"teacher\":\"O'Neil\",\"subjecttext\":\"M\","
-        "\"day\":\"07.09.2026\",\"time\":\"1 (8:00 - 8:45)\"}'></div>"
-    )
-    client.extract_timetable_data(html)
-    assert "07.09.2026" in client.timetableData
-    assert client.timetableData["07.09.2026"][0]["teacher"] == "O'Neil"
 
 
 def test_hour_index_fallback_never_invents_period_zero():
@@ -69,17 +46,18 @@ def test_hour_index_fallback_never_invents_period_zero():
     assert parse_timetable_detail({**base, "hourIndex": 3})["period"] == 1
 
 
-def test_extract_timetable_data():
+def test_add_timetable_details():
     from strakalari.core.automation import Strakalari
-    bot = Strakalari(config_data={"strava_enable": False}, start_browser=False)
+    bot = Strakalari(config_data={"strava_enable": False})
 
-    sample_html = """
-    <div data-detail='{"teacher":"Mgr. Jan Novák","subjecttext":"Matematika","subjectshort":"M","room":"U1","day":"10.09.2026","time":"2 (8:55 - 9:40)","absencetext":"Absence","absenceType":"Absent"}'></div>
-    <div data-detail='{"teacher":"Mgr. Eva Bílá","subjecttext":"Fyzika","subjectshort":"FY","room":"L1","day":"10.09.2026","time":"1 (8:00 - 8:45)","absencetext":"","absenceType":""}'></div>
-    <!-- Entry with missing teacher should be skipped -->
-    <div data-detail='{"teacher":"","subjecttext":"Volná hodina","day":"10.09.2026","time":"3"}'></div>
-    """
-    bot.bakalari_client.extract_timetable_data(sample_html)
+    bot.bakalari_client.add_timetable_details([
+        {"teacher": "Mgr. Jan Novák", "subjecttext": "Matematika", "subjectshort": "M", "room": "U1",
+         "day": "10.09.2026", "time": "2 (8:55 - 9:40)", "absencetext": "Absence", "absenceType": "Absent"},
+        {"teacher": "Mgr. Eva Bílá", "subjecttext": "Fyzika", "subjectshort": "FY", "room": "L1",
+         "day": "10.09.2026", "time": "1 (8:00 - 8:45)", "absencetext": "", "absenceType": ""},
+        # Entry with missing teacher should be skipped
+        {"teacher": "", "subjecttext": "Volná hodina", "day": "10.09.2026", "time": "3"},
+    ])
 
     assert "10.09.2026" in bot.timetableData
     lessons = bot.timetableData["10.09.2026"]
@@ -106,16 +84,15 @@ def test_go_forward_weeks_config_parsing():
     from strakalari.core.automation import Strakalari
     from strakalari.core.bakalari_client import BakalariClient
 
-    bot = Strakalari(config_data={"strava_enable": False}, start_browser=False)
+    bot = Strakalari(config_data={"strava_enable": False})
     assert bot.go_forward_weeks == 1
     assert bot.bakalari_client.go_forward_weeks == 1
 
-    dummy_bm = type("DummyBM", (), {"page": None})()
-    client = BakalariClient(dummy_bm, {"go_forward_weeks": 3}, logger=None)
+    client = BakalariClient({"go_forward_weeks": 3}, logger=None)
     assert client.go_forward_weeks == 3
-    client = BakalariClient(dummy_bm, {"go_forward_weeks": 99}, logger=None)
+    client = BakalariClient({"go_forward_weeks": 99}, logger=None)
     assert client.go_forward_weeks <= 8
-    client = BakalariClient(dummy_bm, {"go_forward_weeks": "nonsense"}, logger=None)
+    client = BakalariClient({"go_forward_weeks": "nonsense"}, logger=None)
     assert client.go_forward_weeks == 1
 
 
@@ -123,8 +100,7 @@ def test_no_stable_view_means_no_baseline():
     """Nothing is learned from actual weeks: Bakaláři's own flags decide."""
     from strakalari.core.bakalari_client import BakalariClient
 
-    dummy_bm = type("DummyBM", (), {"page": None})()
-    client = BakalariClient(dummy_bm, {}, logger=None)
+    client = BakalariClient({}, logger=None)
     week = lambda teacher, **extra: [  # noqa: E731
         {"teacher": "Novák", "subject": "M", "room": "U12", "time": "1 (8:00 - 8:45)"},
         {"teacher": teacher, "subject": "F", "room": "F11", "time": "2 (8:55 - 9:40)", **extra},
@@ -142,8 +118,7 @@ def test_no_stable_view_means_no_baseline():
 def test_scraped_stable_is_the_baseline():
     from strakalari.core.bakalari_client import BakalariClient
 
-    dummy_bm = type("DummyBM", (), {"page": None})()
-    client = BakalariClient(dummy_bm, {}, logger=None)
+    client = BakalariClient({}, logger=None)
     # Actual weeks all agree on Král...
     week = lambda: [  # noqa: E731
         {"teacher": "Král", "subject": "F", "room": "F11",
@@ -167,150 +142,61 @@ def test_scraped_stable_is_the_baseline():
                for item in client.weekChanges)
 
 
-def test_extract_timetable_data_into_separate_target():
+def test_add_timetable_details_into_separate_target():
     from strakalari.core.bakalari_client import BakalariClient
 
-    dummy_bm = type("DummyBM", (), {"page": None})()
-    client = BakalariClient(dummy_bm, {}, logger=None)
-    html = (
-        "<div data-detail='{\"teacher\":\"Novák\",\"subjecttext\":\"M\","
-        "\"day\":\"07.09.2026\",\"time\":\"1 (8:00 - 8:45)\"}'></div>"
-    )
+    client = BakalariClient({}, logger=None)
     stable: dict = {}
-    client.extract_timetable_data(html, target=stable)
+    client.add_timetable_details([{"teacher": "Novák", "subjecttext": "M", "day": "07.09.2026",
+                                   "time": "1 (8:00 - 8:45)"}], target=stable)
     assert client.timetableData == {}
     assert "07.09.2026" in stable
     assert stable["07.09.2026"][0]["subject"] == "M"
 
 
-def test_open_stable_view_targets_perm_exactly():
-    from strakalari.core.bakalari_client import BakalariClient
-
-    class MockLocator:
-        def __init__(self, page, selector):
-            self._page = page
-            self._selector = selector
-
-        @property
-        def first(self):
-            return self
-
-        def wait_for(self, **kwargs):
-            if self._selector in self._page.missing:
-                raise Exception(f"not visible: {self._selector}")
-
-        def click(self, **kwargs):
-            self._page.clicked.append(self._selector)
-
-    class MockPage:
-        def __init__(self, html="", missing=()):
-            self._html = html
-            self.missing = set(missing)
-            self.clicked = []
-
-        def locator(self, selector):
-            return MockLocator(self, selector)
-
-        def get_by_text(self, *args, **kwargs):
-            return MockLocator(self, "get_by_text")
-
-        def wait_for_function(self, *args, **kwargs):
-            pass
-
-        def wait_for_load_state(self, *args, **kwargs):
-            pass
-
-        def wait_for_timeout(self, *args, **kwargs):
-            pass
-
-        def content(self):
-            return self._html
-
-    def make_client(**kwargs):
-        page = MockPage(**kwargs)
-        bm = type("MockBM", (), {"page": page})()
-        return BakalariClient(bm, {}, logger=None), page
-
-    # Desktop switcher: clicks ONLY the perm label, nothing else.
-    client, page = make_client()
-    assert client._open_stable_view() == "testid:timetable-permanent-link"
-    assert page.clicked == [
-        'label:has(input[data-testid="timetable-permanent-link"])']
-
-    # Desktop missing: falls back to the small-screen perm variant.
-    client, page = make_client(missing={
-        'label:has(input[data-testid="timetable-permanent-link"])'})
-    assert (client._open_stable_view()
-            == "testid:timetable-small-permanent-link")
-
-    # Nothing found: "" (callers fall back to the learned baseline).
-    client, page = make_client(missing={
-        'label:has(input[data-testid="timetable-permanent-link"])',
-        'label:has(input[data-testid="timetable-small-permanent-link"])',
-        '[data-bind*="SelectedTerm() === \'perm\'"]',
-        "get_by_text"})
-    assert client._open_stable_view() == ""
-    assert page.clicked == []
-
-
 _FIXTURES = __import__("pathlib").Path(__file__).parent / "fixtures"
 
 
-def _stable_client(pages):
-    """Client whose page shows ``pages[0]`` until the perm switch is clicked."""
-    from strakalari.core.bakalari_client import BakalariClient
+def _details(name):
+    """Lesson details of a timetable view (anonymized fixture)."""
+    import json
 
-    class MockLoc:
-        def __init__(self, page):
-            self._page = page
+    return json.loads((_FIXTURES / name).read_text(encoding="utf-8"))
 
-        @property
-        def first(self):
-            return self
 
-        def wait_for(self, **kwargs):
-            pass
+def _stable_client(perm_reply):
+    """Client whose server answers the stable ("perm") view with ``perm_reply``."""
+    import json
 
-        def click(self, **kwargs):
-            self._page.clicked = True
+    from tests.fake_bakalari import client as fake_client, week_content
 
-    class MockPage:
-        clicked = False
+    def content(request):
+        term = json.loads(request.content)["term"]
+        return week_content(perm_reply if term == "perm" else _details("timetable_actual_week.json"))
 
-        def locator(self, selector):
-            return MockLoc(self)
-
-        def get_by_text(self, *args, **kwargs):
-            return MockLoc(self)
-
-        def wait_for_function(self, *args, **kwargs):
-            pass
-
-        def content(self):
-            return pages[1] if self.clicked else pages[0]
-
-    bm = type("MockBM", (), {"page": MockPage()})()
-    client = BakalariClient(bm, {}, logger=None)
-    client._sleep_s = lambda s: None
-    return client
+    client, server = fake_client({("POST", "/Timetable/GetContentData"): content})
+    return client, server
 
 
 def test_perm_view_is_told_apart_by_ident_code():
     from strakalari.core.bakalari_timetable import is_perm_view
 
-    perm = (_FIXTURES / "timetable_perm_view.html").read_text(encoding="utf-8")
-    actual = (_FIXTURES / "timetable_actual_week.html").read_text(encoding="utf-8")
+    perm = _details("timetable_perm_view.json")
+    actual = _details("timetable_actual_week.json")
     assert is_perm_view(perm) is True
     assert is_perm_view(actual) is False
-    assert is_perm_view(perm + actual) is False  # half-rendered switch
-    assert is_perm_view("") is False
+    assert is_perm_view(perm + actual) is False  # mixed reply
+    assert is_perm_view([]) is False
 
 
 def test_extract_stable_timetable_scrapes_perm_view():
-    perm = (_FIXTURES / "timetable_perm_view.html").read_text(encoding="utf-8")
-    actual = (_FIXTURES / "timetable_actual_week.html").read_text(encoding="utf-8")
-    client = _stable_client([actual, perm])
+    import json
+
+    client, server = _stable_client(_details("timetable_perm_view.json"))
     assert client.extract_stable_timetable() is True
+    # Asks for exactly the stable ("perm") view.
+    [request] = server.calls("POST", "/Timetable/GetContentData")
+    assert json.loads(request.content)["term"] == "perm"
     # Stable rows land in their own dict, actual weeks untouched.
     assert client.timetableData == {}
     baseline = client.update_stable_baseline()
@@ -322,9 +208,8 @@ def test_extract_stable_timetable_scrapes_perm_view():
 
 
 def test_extract_stable_timetable_rejects_stale_actual_week():
-    """The perm reply never landing must not turn a real week into "stable"."""
-    actual = (_FIXTURES / "timetable_actual_week.html").read_text(encoding="utf-8")
-    client = _stable_client([actual, actual])
+    """An actual week coming back must not turn into "stable"."""
+    client, _ = _stable_client(_details("timetable_actual_week.json"))
     assert client.extract_stable_timetable() is False
     assert client.stableTimetableData == {}
     assert client.update_stable_baseline() == {}

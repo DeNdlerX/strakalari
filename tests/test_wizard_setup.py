@@ -80,7 +80,7 @@ def test_ai_optional(state):
 
 def test_wizard_goto_clamps_and_finish_clears(state):
     state.wizard_goto(99)
-    assert state.wizard_step == 7
+    assert state.wizard_step == wiz.STEP_DONE
     state.wizard_goto(-3)
     assert state.wizard_step == 0
     state.set_draft("wiz:bakalari_username", "novak")
@@ -90,7 +90,7 @@ def test_wizard_goto_clamps_and_finish_clears(state):
 
 
 def test_wizard_stays_after_bakalari_step(state):
-    """Regression: saving Bakalari creds on step 3 must not eject steps 4-7."""
+    """Regression: saving Bakalari creds must not eject the later steps."""
     from strakalari.flet_ui.app import Shell
 
     class FakePage:
@@ -123,11 +123,8 @@ def test_wizard_stays_after_bakalari_step(state):
     assert shell._wizard_shown is False
 
 
-def test_wizard_builds_headless_all_steps(state, monkeypatch):
-    import strakalari.core.browser as browser_mod
-
-    monkeypatch.setattr(browser_mod, "is_browser_installed", lambda: False)
-    for step in range(8):
+def test_wizard_builds_headless_all_steps(state):
+    for step in range(wiz.STEPS_TOTAL):
         state.wizard_step = step
         view = wiz.build(state, None)
         assert view is not None
@@ -213,9 +210,9 @@ def test_scheduler_skips_refresh_while_setup_pending(state, monkeypatch):
 
 
 def test_refresh_worker_aborts_without_credentials(state):
-    # No browser/fetch may run here: with no credentials the worker
-    # must bail out before ensure_browser(), and crucially without
-    # queueing the missing-URL error popup over the wizard.
+    # No fetch may run here: with no credentials the worker must bail
+    # out before logging in, and crucially without queueing the
+    # missing-URL error popup over the wizard.
     assert state.demo_mode is True
     assert state._has_credentials() is False
     state._refresh_work("all")
@@ -225,47 +222,10 @@ def test_refresh_worker_aborts_without_credentials(state):
     assert state.runs and state.runs[-1]["ok"] is False
 
 
-def test_browser_step_comes_before_credentials():
-    assert wiz.STEP_BROWSER < wiz.STEP_BAKALARI < wiz.STEP_STRAVA < wiz.STEP_AI
+def test_step_order():
+    assert wiz.STEP_DISCLAIMER < wiz.STEP_BAKALARI < wiz.STEP_STRAVA < wiz.STEP_AI
     assert wiz.STEP_AI < wiz.STEP_CALENDAR < wiz.STEP_DONE
-    assert wiz.STEPS_TOTAL == 8
-
-
-def test_browser_step_shows_per_file_progress(state, monkeypatch):
-    """File 1/4 at 50 % → bar 0.5 and a '50 % (1/4)' label."""
-    import strakalari.core.browser as browser_mod
-
-    monkeypatch.setattr(browser_mod, "is_browser_installed", lambda: False)
-    state.wizard_browser_status = "working"
-    state.wizard_browser_label = "Chrome"
-    state.wizard_browser_progress = 0.5
-    state.wizard_browser_pos = (1, 4)
-    for step in (wiz.STEP_BROWSER,):
-        state.wizard_step = step
-        view = wiz.build(state, None)
-        assert view is not None
-    import flet as ft
-
-    bars: list = []
-    texts: list = []
-
-    def _walk(control):
-        if isinstance(control, ft.ProgressBar):
-            bars.append(control)
-        if isinstance(control, ft.Text):
-            texts.append(control.value or "")
-        for child in getattr(control, "controls", None) or []:
-            _walk(child)
-        content = getattr(control, "content", None)
-        if isinstance(control, ft.Container) and content is not None:
-            _walk(content)
-
-    _walk(view)
-    assert bars, "expected a ProgressBar in the working browser step"
-    assert any(b.value == pytest.approx(0.5) for b in bars)
-    # Counter in the title, overall percent beside it.
-    assert any("1/4" in t for t in texts), f"got {texts!r}"
-    assert "50 %" in texts, f"got {texts!r}"
+    assert wiz.STEPS_TOTAL == wiz.STEP_DONE + 1
 
 
 def test_ready_helpers_use_drafts(state):
@@ -290,16 +250,7 @@ def test_fingerprint_changes_on_edit(state):
     assert wiz._fp_for(state, "bakalari") != before
 
 
-def test_begin_test_requires_browser_first(state, monkeypatch):
-    monkeypatch.setattr(wiz, "_browser_ready", lambda _s: False)
-    state.wizard_step = wiz.STEP_BAKALARI
-    assert wiz._begin_wizard_test(state, None, "bakalari", wiz.STEP_BAKALARI) is False
-    assert state.wizard_step == wiz.STEP_BROWSER
-    assert state.testing == ""
-
-
 def test_begin_test_success_saves_and_advances(state, monkeypatch):
-    monkeypatch.setattr(wiz, "_browser_ready", lambda _s: True)
 
     def fake_test(service, overrides, on_done=None):
         assert service == "bakalari"
@@ -319,7 +270,6 @@ def test_begin_test_success_saves_and_advances(state, monkeypatch):
 
 
 def test_begin_test_failure_stays_put(state, monkeypatch):
-    monkeypatch.setattr(wiz, "_browser_ready", lambda _s: True)
 
     def fake_test(service, overrides, on_done=None):
         on_done(False, "bad password")
@@ -364,82 +314,3 @@ def test_disclaimer_must_be_acknowledged(state):
     assert wiz.build(state, None) is not None
 
 
-def test_browser_ready_trusts_status_while_downloading(state, monkeypatch):
-    """Chrome's exe exists mid-install; the wizard must not call it ready."""
-    import strakalari.core.browser as browser_mod
-
-    calls: list = []
-    monkeypatch.setattr(browser_mod, "is_browser_installed",
-                        lambda: calls.append(1) or True)
-    state.wizard_browser_status = "working"
-    assert wiz._browser_ready(state) is False
-    assert calls == []
-    # Idle: probe once, then remember the answer (no driver per render).
-    state.wizard_browser_status = ""
-    assert wiz._browser_ready(state) is True
-    assert wiz._browser_ready(state) is True
-    assert calls == [1]
-    assert state.wizard_browser_status == "ready"
-
-
-def test_continue_while_downloading_queues_test(state, monkeypatch):
-    """Continue mid-download stays on the step and tests once Chrome is in."""
-    started: list = []
-
-    def fake_test(service, overrides, on_done=None):
-        started.append(service)
-        return True
-
-    monkeypatch.setattr(state, "test_connection", fake_test)
-    state.set_draft("wiz:bakalari_url", "https://skola.bakalari.cz")
-    state.set_draft("wiz:bakalari_username", "novak")
-    state.set_draft("wiz:bakalari_password", "secret")
-    state.wizard_step = wiz.STEP_BAKALARI
-    state.wizard_browser_status = "working"
-    assert wiz._begin_wizard_test(state, None, "bakalari", wiz.STEP_BAKALARI) is False
-    assert state.wizard_step == wiz.STEP_BAKALARI  # no jump back
-    assert state.wizard_pending_test == ("bakalari", wiz.STEP_BAKALARI)
-    assert started == []
-    assert wiz.build(state, None) is not None  # waiting row renders
-    state.wizard_browser_status = "done"
-    wiz._browser_finished(state)
-    assert started == ["bakalari"]
-    assert state.wizard_pending_test is None
-
-
-def test_failed_download_drops_queued_test(state, monkeypatch):
-    monkeypatch.setattr(state, "test_connection",
-                        lambda *a, **k: pytest.fail("must not test without Chrome"))
-    state.wizard_step = wiz.STEP_BAKALARI
-    state.wizard_pending_test = ("bakalari", wiz.STEP_BAKALARI)
-    state.wizard_browser_status = "error:network down"
-    wiz._browser_finished(state)
-    assert state.wizard_pending_test is None
-
-
-def test_download_panel_on_later_steps(state):
-    """The background download stays visible after leaving the browser step."""
-    import flet as ft
-
-    state.wizard_browser_status = "working"
-    state.wizard_browser_label = "Chrome"
-    state.wizard_browser_progress = 0.25
-    state.wizard_browser_pos = (1, 4)
-    state.wizard_step = wiz.STEP_AI
-    view = wiz.build(state, None)
-    bars: list = []
-
-    def _walk(control):
-        if isinstance(control, ft.ProgressBar):
-            bars.append(control)
-        for child in getattr(control, "controls", None) or []:
-            _walk(child)
-        content = getattr(control, "content", None)
-        if isinstance(control, ft.Container) and content is not None:
-            _walk(content)
-
-    _walk(view)
-    assert [b.value for b in bars] == [pytest.approx(0.25)]
-    # Same control instance across renders: progress updates in place.
-    assert wiz.build(state, None) is not None
-    assert bars[0] is wiz._dl_widgets(state)["bar"]

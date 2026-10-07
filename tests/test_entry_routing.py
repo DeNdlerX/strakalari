@@ -61,5 +61,4 @@ def test_package_root_exports_legacy_names():
     import strakalari
 
     assert callable(strakalari.extract_grades)
-    assert callable(strakalari.extract_sent_excuses)
     assert "extract_grades" in strakalari.__all__

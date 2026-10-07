@@ -148,15 +148,9 @@ class AutomationMixin:
                            interval, delay, goback, goforward, pick,
                            cutoff, tok=tok)]
 
-    # -- browser & background ----------------------------------------------------
+    # -- background (section id "browser" kept for saved navigation) ------------
     def _browser(self) -> list:
         state, tok, page = self.state, self.state.tok, self.page
-
-        def _commit_show(e):
-            _save_quiet(state, page, {"hide_window": not bool(e.control.value)})
-
-        def _commit_max(e):
-            _save_quiet(state, page, {"maximize_window": bool(e.control.value)})
 
         def _commit_tray(e):
             _save_quiet(state, page, {"minimize_to_tray": bool(e.control.value)})
@@ -180,11 +174,6 @@ class AutomationMixin:
                     pass
                 snack(page, message)
 
-        show = C.toggle(tok, S("show_browser"), state.show_browser,
-                        on_change=_commit_show)
-        maximized = C.toggle(tok, S("maximize_browser"),
-                             bool(state.get("maximize_window", False)),
-                             on_change=_commit_max)
         try:
             from strakalari.core.autostart import is_autostart_enabled
             from strakalari.core.packaging import is_store_package
@@ -214,8 +203,7 @@ class AutomationMixin:
         tray = C.toggle(tok, S("minimize_to_tray"),
                         bool(state.get("minimize_to_tray", True)),
                         on_change=_commit_tray)
-        return [C.form_card(show, C.hint_text(S("show_browser_hint"), tok),
-                           maximized, autostart, tray, tok=tok)]
+        return [C.form_card(autostart, tray, tok=tok)]
     # -- AI ----------------------------------------------------------------------------
     def _ai(self) -> list:
         state, tok, page = self.state, self.state.tok, self.page

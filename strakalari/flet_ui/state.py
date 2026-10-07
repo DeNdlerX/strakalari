@@ -150,14 +150,6 @@ class AppState(ExcuseTasksMixin, LunchMixin, MarksMixin, PlannerMixin, ActivityM
         self.tutorial: tuple[str, int] | None = None  # active (tour id, step), in-memory
         self.wizard_dismissed: bool = False  # "skip for now" for this session
         self.wizard_shown: bool = False  # set once the Shell shows the wizard (gates automation)
-        self.wizard_browser_status: str = ""  # "", "working", "done", "ready", "error:…"
-        self.wizard_browser_progress: float | None = None  # overall 0..1
-        self.wizard_browser_label: str = ""  # current component, e.g. Chrome
-        self.wizard_browser_pos: tuple = (0, 0)  # (current file, total files)
-        self.wizard_browser_phase: str = ""  # "download" / "extract" (current file)
-        # Login test queued on Continue while Chrome was still downloading:
-        # (service, step), run when the download finishes.
-        self.wizard_pending_test: tuple | None = None
         # Fingerprints of wizard step values that already passed a live
         # test (service -> fingerprint). The wizard's Continue re-tests
         # whenever the fields changed since the last pass.
@@ -548,12 +540,6 @@ class AppState(ExcuseTasksMixin, LunchMixin, MarksMixin, PlannerMixin, ActivityM
         self._emit()
 
     # -- activity log ------------------------------------------------------
-    # -- browser visibility (user-facing toggle over ``hide_window``) ------
-    @property
-    def show_browser(self) -> bool:
-        # Default matches the shipped configs (hide_window: true).
-        return not bool(self.get("hide_window", True))
-
     # -- timetable view preference ------------------------------------------
     def set_timetable_view(self, view: str) -> None:
         if view not in ("table", "list"):
@@ -612,7 +598,9 @@ class AppState(ExcuseTasksMixin, LunchMixin, MarksMixin, PlannerMixin, ActivityM
         self._emit()
 
     def wizard_goto(self, step: int) -> None:
-        self.wizard_step = max(0, min(7, int(step)))
+        from .views.wizard import STEP_DONE
+
+        self.wizard_step = max(0, min(STEP_DONE, int(step)))
         self._emit()
 
     def wizard_finished(self) -> None:

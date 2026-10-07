@@ -216,14 +216,13 @@ class TestTemplatePick:
 
 class TestExcuseDelayConfig:
     def test_default_delay(self, tmp_path):
-        bot = Strakalari(config_file=str(tmp_path / "c.json"), start_browser=False)
+        bot = Strakalari(config_file=str(tmp_path / "c.json"))
         assert bot.excuse_delay_days == 2
 
     def test_custom_delay(self, tmp_path):
         bot = Strakalari(
             config_file=str(tmp_path / "c.json"),
             config_data={"excuse_delay_days": 5},
-            start_browser=False,
         )
         assert bot.excuse_delay_days == 5
 

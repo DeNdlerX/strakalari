@@ -92,7 +92,7 @@ class TrayApp:
         self._quitting = False
         self._reopen_delegate = None
         # Re-entrancy guard: the scheduler tick and manual/tray-click
-        # refresh_now() can overlap (each spawns its own browser), so a
+        # refresh_now() can overlap (each logs in on its own), so a
         # second refresh while one runs must skip instead of piling up.
         self._refresh_guard = threading.Lock()
 
@@ -140,7 +140,7 @@ class TrayApp:
 
     def _job_refresh(self) -> str:
         # One refresh at a time per tray process: overlapping runs each
-        # open their own headless browser and fight over the cache.
+        # log in on their own and fight over the cache.
         # getattr-guarded: tests may invoke the job on an uninitialized
         # instance, which simply runs unguarded like before.
         guard = getattr(self, "_refresh_guard", None)
@@ -171,7 +171,7 @@ class TrayApp:
         _apply_language(manager.data)
         if not any(has_valid_credentials(manager.data)):
             return "skipped (no credentials configured)"
-        app = Strakalari(on_log=lambda m: None, start_browser=True)
+        app = Strakalari(on_log=lambda m: None)
         try:
             result = run_refresh(app, manager.data, scope="all")
         finally:
@@ -353,8 +353,8 @@ class TrayApp:
 
         Takes the menu callback args (pystray calls actions as
         ``(icon, item)``) so the bound method can be registered directly.
-        The UI child is a whole tree (Flet window grandchild, browser
-        workers) — plain terminate() would orphan those and keep ghost
+        The UI child is a whole tree (Flet window grandchild) — plain
+        terminate() would orphan it and keep ghost
         processes in Task Manager.
         """
         global _primary_guard
@@ -424,17 +424,13 @@ class TrayApp:
             # onefile's bootloader parent shares our image name, so that
             # sweep kills this process. Stale instances are stopped by the
             # installer (a different process name).
-            # Orphaned viewers / headless browsers (no same-name risk)
-            # from a killed run are reaped: their teardown never ran and
-            # they would otherwise pile up across restarts.
+            # Orphaned viewers (no same-name risk) from a killed run are
+            # reaped: their teardown never ran and they would otherwise
+            # pile up across restarts.
             try:
-                from .single_instance import (
-                    kill_orphaned_flet_views,
-                    kill_orphaned_headless_browsers,
-                )
+                from .single_instance import kill_orphaned_flet_views
 
                 kill_orphaned_flet_views()
-                kill_orphaned_headless_browsers()
             except Exception:
                 pass
 

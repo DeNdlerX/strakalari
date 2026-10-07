@@ -271,17 +271,6 @@ class TestTrayWiring:
             listener.close()
 
 
-def test_only_playwright_browsers_count_as_ours(monkeypatch):
-    from strakalari.flet_ui.single_instance import _is_playwright_browser
-
-    monkeypatch.delenv("PLAYWRIGHT_BROWSERS_PATH", raising=False)
-    ours = (r'"C:\Users\x\AppData\Local\ms-playwright\chromium-1\chrome.exe" '
-            r'--headless --user-data-dir=C:\Temp\playwright_chromiumdev_profile-ab')
-    other = r'"C:\Tools\puppeteer\chrome.exe" --headless --user-data-dir=C:\Temp\x'
-    assert _is_playwright_browser(ours)
-    assert not _is_playwright_browser(other)
-
-
 class TestPerUserIsolation:
     """Loopback ports are machine-wide: another OS user must never reach us."""
 

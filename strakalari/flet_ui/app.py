@@ -446,8 +446,7 @@ _primary_guard = None
 _child_guard = None
 #: Runner started by main() in this process (if any). Flet may invoke
 #: the target again for a new session — the previous scheduler must be
-#: stopped first, otherwise every re-entry leaks a refresh loop (each
-#: with its own headless browser).
+#: stopped first, otherwise every re-entry leaks a refresh loop.
 _active_runner = None
 
 
@@ -1039,16 +1038,12 @@ def run() -> None:
             # the parent, and /T takes the child down with it — the sweep
             # kills this process (instant silent exit 1). Stale instances
             # are stopped by the installer (a different process name).
-            # Orphaned viewers / headless browsers carry no such risk and
-            # are reaped (a killed run never ran their teardown).
+            # Orphaned viewers carry no such risk and are reaped (a
+            # killed run never ran their teardown).
             try:
-                from .single_instance import (
-                    kill_orphaned_flet_views,
-                    kill_orphaned_headless_browsers,
-                )
+                from .single_instance import kill_orphaned_flet_views
 
                 kill_orphaned_flet_views()
-                kill_orphaned_headless_browsers()
             except Exception:
                 pass
     try:

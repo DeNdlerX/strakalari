@@ -120,7 +120,7 @@ class ActivityMixin:
     def sending_label(self) -> str:
         """The label of a manual send in flight ("" when none is).
 
-        Excuse sends and lunch orders run their own browser session; the
+        Excuse sends and lunch orders run their own session; the
         top bar shows them like a refresh (spinner + label) so the user
         sees the app working instead of a silent wait for the snackbar.
         """
@@ -312,7 +312,7 @@ class ActivityMixin:
         started = datetime.now()
         if self.demo_mode and not self._has_any_credentials():
             # No login yet (fresh install / setup not finished): abort
-            # before touching the browser — a login would raise a
+            # before logging in — a login would raise a
             # missing-credentials UserError and pop a modal over the
             # setup wizard. Recorded as a failed run, never a popup.
             self._worker_log(S("missing_credentials_log"))
@@ -343,15 +343,8 @@ class ActivityMixin:
         try:
             self._worker_log(S("refresh_started_log").format(scope=scope))
             from strakalari.core.automation import Strakalari
-            from strakalari.core.browser import ensure_browser
 
-            self._worker_log(S("checking_browser"))
-            ensure_browser(log_callback=lambda m: None)
-            if self.cancel_requested:
-                # Browser setup (first-run download) is not preemptible —
-                # abort here instead of fetching right after it.
-                raise InterruptedError("cancelled")
-            app = Strakalari(on_log=self._core_log, start_browser=True)
+            app = Strakalari(on_log=self._core_log)
             try:
                 app.cancel_callback = lambda: self.cancel_requested
                 result = run_refresh(
@@ -541,7 +534,7 @@ class ActivityMixin:
                 from strakalari.core.automation import Strakalari
 
                 self.log(S("test_login_log").format(service=service))
-                app = Strakalari(config_data=overrides or None, start_browser=True)
+                app = Strakalari(config_data=overrides or None)
                 try:
                     if service == "bakalari":
                         ok, message = app.check_bakalari_login()

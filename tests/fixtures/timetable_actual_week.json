@@ -1,0 +1,42 @@
+[
+ {
+  "type": "atom",
+  "subjecttext": "Seminář z matematiky S",
+  "teacher": "Mgr. Jan Novák",
+  "room": "4A - (104)",
+  "group": "8.1 celá - celá třída",
+  "theme": "Slovní úlohy",
+  "notice": "",
+  "changeinfo": "",
+  "homeworks": [],
+  "absencetext": "",
+  "hasAbsent": false,
+  "day": "21.9.2026 (pondělí)",
+  "time": "1 (8:00 - 8:45)",
+  "IdentCode": "12026092103T2RD63UOBP70480045",
+  "absenceType": "NoAbsent",
+  "changeBadgeChar": "",
+  "infoChangeCode": "NoChange",
+  "hourIndex": 3
+ },
+ {
+  "type": "atom",
+  "subjecttext": "Dějepis",
+  "teacher": "PhDr. Petr Svoboda",
+  "room": "VIII - (114)",
+  "group": "8.1 celá - celá třída",
+  "theme": "Revoluce v Rusku 1917",
+  "notice": "",
+  "changeinfo": "",
+  "homeworks": [],
+  "absencetext": "",
+  "hasAbsent": false,
+  "day": "21.9.2026 (pondělí)",
+  "time": "3 (10:05 - 10:50)",
+  "IdentCode": "12026092105T2SZ 8UMBOV0605045",
+  "absenceType": "NoAbsent",
+  "changeBadgeChar": "",
+  "infoChangeCode": "NoChange",
+  "hourIndex": 5
+ }
+]

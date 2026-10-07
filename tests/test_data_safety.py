@@ -3,7 +3,6 @@
 import glob
 import json
 import os
-from unittest.mock import MagicMock
 
 
 class TestQuarantine:
@@ -50,12 +49,10 @@ class TestBlacklistFailClosed:
     def _client(self, bl_path):
         from strakalari.core.strava_client import StravaClient
 
-        bm = MagicMock()
-        bm.page = MagicMock()
         cfg = {"strava_order_mode": "auto", "use_strava": True,
                "strava_blacklist": bl_path}
         logs = []
-        return StravaClient(bm, cfg, logger=logs.append), logs
+        return StravaClient(cfg, logger=logs.append), logs
 
     def test_corrupt_blacklist_disables_auto_order(self, tmp_path):
         bad = tmp_path / "strava_blacklist.json"

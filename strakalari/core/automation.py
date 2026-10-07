@@ -118,11 +118,9 @@ class Strakalari:
     def __init__(
         self,
         config_file: str = "./config.json",
-        user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
         enc: str = "utf-8",
         on_log=None,
         config_data: dict = None,
-        start_browser: bool = True,
     ):
         self.encoding = enc
         self.on_log = on_log
@@ -199,22 +197,11 @@ class Strakalari:
         self.already_excused_file = _resolve_path(self.config_data.get("already_excused_file", "./already_excused_lessons.json"))
         self.logFile = _resolve_path(self.config_data.get("log_file", "./log.txt"))
 
-        self.bm = None
-        self.bakalari_client = None
-        self.strava_client = None
-        self.page = None
-
-        if start_browser:
-            from .browser_manager import BrowserManager
-            is_maximized = self.config_data.get("maximize_window") in [True, "True", "true"]
-            is_headless = self.config_data.get("hide_window", True) in [True, "True", "true"]
-            self.bm = BrowserManager(user_agent, is_maximized, is_headless)
-            self.page = self.bm.page
-
+        # Both services go over plain HTTP (no browser).
         from .bakalari_client import BakalariClient
         from .strava_client import StravaClient
-        self.bakalari_client = BakalariClient(self.bm if self.bm else type('DummyBM', (), {'page': None})(), self.config_data, logger=self.write_log)
-        self.strava_client = StravaClient(self.bm if self.bm else type('DummyBM', (), {'page': None})(), self.config_data, logger=self.write_log)
+        self.bakalari_client = BakalariClient(self.config_data, logger=self.write_log)
+        self.strava_client = StravaClient(self.config_data, logger=self.write_log)
 
         self.logged_in = False
         # Cooperative cancellation flag (set by the GUI worker's cancel()).
@@ -289,17 +276,15 @@ class Strakalari:
         return self.strava_client.orderedDict if self.strava_client else {}
 
     def close(self):
-        bm = getattr(self, "bm", None)
-        if bm is not None:
-            try:
-                bm.close()
-            except Exception as e:  # noqa: BLE001 - teardown; orphans are reaped on next start
-                print(f"Warning: browser close failed: {type(e).__name__}: {e}")
+        for name in ("bakalari_client", "strava_client"):
+            client = getattr(self, name, None)
+            if client is not None and hasattr(client, "close"):
+                client.close()
 
     def _redact_log(self, message: str) -> str:
         """``message`` with stored passwords / API keys scrubbed out.
 
-        Exception texts and Playwright call logs can echo a typed secret;
+        Exception texts can echo a typed secret;
         log.txt is plain text on disk. The decrypted values are cached per
         stored ciphertexts, so a routine line costs a few ``in`` checks.
         """
@@ -549,9 +534,8 @@ class Strakalari:
                     succeeded.remove(pick)
                     failed.append(pick)
         if failed:
-            # Fail-closed, never partial success. Clicks persist
-            # immediately on the current frontend, so a failed day may
-            # hold a wrong sibling meal: restore originals best-effort.
+            # Fail-closed, never partial success: nothing is saved, the
+            # staged changes are dropped.
             if client.clicks_made:
                 try:
                     client._restore_original(failed, original_ordered)
@@ -657,7 +641,7 @@ class Strakalari:
         if self._is_cancelled():
             return 0
         client = getattr(self, "bakalari_client", None)
-        if client is None or getattr(client, "page", None) is None:
+        if client is None:
             return 0
         if limit is None:
             try:
@@ -797,16 +781,16 @@ class Strakalari:
             self.write_log("Warning: Bakaláři client not available, excuse not sent.")
             return "failed"
         if self.excuse_mode == "dry_run":
-            self.write_log(f"[Dry-Run] Filling the excuse form (not sending): {excuse}")
+            self.write_log(f"[Dry-Run] Preparing the excuse (not sending): {excuse}")
             try:
                 filled = self._submit(excuse, custom_text, fill_only=True)
             except InterruptedError:
                 raise
             except Exception as e:
-                self.write_log(f"[Dry-Run] Filling the form failed: {type(e).__name__}: {e}")
+                self.write_log(f"[Dry-Run] Preparing the excuse failed: {type(e).__name__}: {e}")
                 return "failed"
             if filled:
-                self.write_log("[Dry-Run] Form filled in the browser, nothing was sent.")
+                self.write_log("[Dry-Run] Excuse prepared, nothing was sent.")
             return "dry_run" if filled else "failed"
         with history_lock(self.already_excused_file) as locked:
             if not locked:

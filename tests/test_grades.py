@@ -1,15 +1,14 @@
 """Grades (průběžná klasifikace) extractor + BakalariClient wiring.
 
-Covers the port of the friend's Selenium ``get_grades`` snippet to the
-Playwright client: ``data-clasif`` parsing, per-subject grouping, date
-sorting, and the ``#c-p-bn`` cookies dismissal.
+Covers the port of the friend's Selenium ``get_grades`` snippet:
+``data-clasif`` parsing, per-subject grouping, date sorting, the grades
+page fetched over HTTP.
 """
 import sys
 
 sys.path.insert(0, ".")
 
 from strakalari.core.extractors.bakalari import extract_grades
-from strakalari.core.bakalari_client import BakalariClient
 
 
 def _mark(subject, grade, weight, date):
@@ -94,190 +93,41 @@ class TestExtractGrades:
         assert data["Matematika"] == [{"Grade": "1", "Weight": 10, "Date": "5.9.2026"}]
 
 
-class _Btn:
-    def __init__(self, page, selector):
-        self._page = page
-        self._selector = selector
-
-    @property
-    def first(self):
-        return self
-
-    def wait_for(self, state=None, timeout=None):
-        if state == "visible" and self._selector == "#c-p-bn" and not self._page.banner_visible:
-            raise Exception("timeout")
-        return True
-
-    def click(self, timeout=None, force=False):
-        if self._selector == "#c-p-bn":
-            self._page.banner_visible = False
-            self._page.dismissed.append(self._selector)
-            return True
-        self._page.clicked.append(self._selector)
-        return True
-
-    def evaluate(self, js):
-        if self._selector == "#c-p-bn":
-            self._page.banner_visible = False
-        return True
-
-    def count(self):
-        if self._selector == "#c-p-bn":
-            return 1
-        return 1
-
-    def is_visible(self):
-        if self._selector == "#c-p-bn":
-            return self._page.banner_visible
-        return True
+def _grades_page(marks_html: str) -> str:
+    return ('<html><body><form id="formbaka" method="post" action="./prubzna.aspx">'
+            f"{marks_html}</form></body></html>")
 
 
-class _CookiesPage:
-    def __init__(self, banner_visible=True):
-        self.banner_visible = banner_visible
-        self.dismissed = []
-        self.clicked = []
+def test_get_grades_fetches_parses_and_sorts():
+    from tests.fake_bakalari import client as fake_client
 
-    def locator(self, selector):
-        return _Btn(self, selector)
-
-
-class _CookiesBM:
-    def __init__(self, page):
-        self.page = page
-
-    def random_sleep(self, s):
-        pass
-
-
-def _client(page):
-    return BakalariClient(
-        _CookiesBM(page),
-        {"bakalari_url": "https://example.bakalari.cz", "element_wait_s": 2},
-        logger=lambda m: None,
-    )
-
-
-def test_dismiss_cookies_clicks_banner():
-    page = _CookiesPage(banner_visible=True)
-    assert _client(page)._dismiss_cookies() is True
-    assert page.dismissed == ["#c-p-bn"]
-    assert page.banner_visible is False
-
-
-def test_dismiss_cookies_no_banner_is_noop():
-    page = _CookiesPage(banner_visible=False)
-    assert _client(page)._dismiss_cookies() is True
-    assert page.dismissed == []
-
-
-def test_dismiss_cookies_never_raises_without_browser():
-    client = BakalariClient(
-        type("BM", (), {"page": None})(),
-        {"bakalari_url": "https://example.bakalari.cz"},
-        logger=lambda m: None,
-    )
-    assert client._dismiss_cookies() is True
-
-
-class _GradesLoc:
-    def __init__(self, page, selector):
-        self._page = page
-        self._selector = selector
-
-    @property
-    def first(self):
-        return self
-
-    def wait_for(self, state=None, timeout=None):
-        if self._selector == "#username":
-            raise Exception("no login form")
-        return True
-
-    def click(self, timeout=None, force=False):
-        self._page.clicked.append(self._selector)
-        return True
-
-    def press_sequentially(self, value, delay=10):
-        pass
-
-    def evaluate(self, js):
-        return True
-
-    def count(self):
-        if self._selector == "#c-p-bn":
-            return 0
-        return 1
-
-    def is_visible(self):
-        return self._selector != "#c-p-bn"
-
-
-class _GradesPage:
-    url = "https://example.bakalari.cz"
-
-    def __init__(self, html):
-        self._html = html
-        self.clicked = []
-
-    def goto(self, url, timeout=None, wait_until=None):
-        pass
-
-    def locator(self, selector):
-        return _GradesLoc(self, selector)
-
-    def wait_for_function(self, js, timeout=None):
-        return True
-
-    def wait_for_timeout(self, ms):
-        pass
-
-    def content(self):
-        return self._html
-
-
-class _GradesBM:
-    def __init__(self, page):
-        self.page = page
-
-    def random_sleep(self, s):
-        pass
-
-
-def test_get_grades_navigates_parses_and_sorts():
     html = (
         _mark("Matematika", "3", 10, "12.09.2026")
         + _mark("Matematika", "1", 10, "05.09.2026")
         + _mark("Fyzika", "2", 5, "06.09.2026")
     )
-    page = _GradesPage(html)
-    client = BakalariClient(
-        _GradesBM(page),
-        {"bakalari_url": "https://example.bakalari.cz",
-         "bakalari_username": "user", "bakalari_password": "pw",
-         "element_wait_s": 2},
-        logger=lambda m: None,
-    )
+    client, server = fake_client({("GET", "/next/prubzna.aspx"): _grades_page(html)})
     data = client.get_grades()
     assert [m["Date"] for m in data["Matematika"]] == ["05.09.2026", "12.09.2026"]
     assert data["Fyzika"] == [{"Grade": "2", "Weight": 5, "Date": "06.09.2026"}]
     assert client.grades == data
     assert client.grades_error == ""
-    assert ".ico32-modul-klasifikace" in page.clicked
-    assert ".ico32-modul-klasifikacePrubezna" in page.clicked
+    assert len(server.calls("GET", "/next/prubzna.aspx")) == 1
 
 
 def test_get_grades_failure_keeps_error_without_raising():
-    class _BrokenPage(_GradesPage):
-        def content(self):
-            raise RuntimeError("network down")
+    import httpx
 
-    client = BakalariClient(
-        _GradesBM(_BrokenPage("")),
-        {"bakalari_url": "https://example.bakalari.cz",
-         "bakalari_username": "user", "bakalari_password": "pw",
-         "element_wait_s": 2},
-        logger=lambda m: None,
-    )
+    from tests.fake_bakalari import client as fake_client
+
+    client, _ = fake_client({("GET", "/next/prubzna.aspx"): httpx.Response(500)})
     assert client.get_grades() == {}
-    assert "RuntimeError" in client.grades_error
+    assert "HTTPStatusError" in client.grades_error
+
+
+def test_get_grades_empty_other_page_is_an_error_not_no_marks():
+    from tests.fake_bakalari import client as fake_client
+
+    client, _ = fake_client({("GET", "/next/prubzna.aspx"): "<html>Chyba serveru</html>"})
+    assert client.get_grades() == {}
+    assert client.grades_error

@@ -16,6 +16,18 @@ def _isolated_data_dir(monkeypatch, tmp_path):
     return data_dir
 
 
+@pytest.fixture(autouse=True)
+def _no_real_http(monkeypatch):
+    """The plain-HTTP Bakaláři client never reaches a real server in tests
+    (tests hand it a fake transport, see ``tests/fake_bakalari.py``)."""
+    import httpx
+
+    def _refuse(self, request):
+        raise httpx.ConnectError(f"network disabled in tests: {request.url}", request=request)
+
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", _refuse)
+
+
 @pytest.fixture()
 def state(monkeypatch, tmp_path):
     """AppState with an empty cache and a throwaway config; saves stubbed out.

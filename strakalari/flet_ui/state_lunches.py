@@ -196,21 +196,21 @@ class LunchMixin:
                     from strakalari.core.automation import Strakalari
                     from strakalari.core.refresh import session_lock
 
-                    # The tray (another process) may be mid-refresh with
-                    # its own browser: never order in parallel with it.
+                    # The tray (another process) may be mid-refresh: never
+                    # order in parallel with it.
                     with session_lock() as held:
                         if not held:
                             busy = True
                             self._worker_log(S("session_busy"))
                         else:
-                            app = Strakalari(on_log=self._core_log, start_browser=True)
+                            app = Strakalari(on_log=self._core_log)
                             try:
                                 app.cancel_requested = False
                                 dry = (getattr(app, "strava_order_mode", "") == "dry_run")
                                 ok = bool(app.strava_order_selected(dict(payload)))
                                 if not dry:
                                     # Days that really went through, even when
-                                    # another day failed (clicks persist on the web).
+                                    # another day failed.
                                     done = set(getattr(app, "last_ordered_days", None) or ())
                                     placed = {d: m for d, m in payload.items() if d in done}
                                     if getattr(app, "last_order_low_balance", False):
@@ -219,7 +219,7 @@ class LunchMixin:
                                 try:
                                     app.close()
                                 except Exception as exc:  # noqa: BLE001 - teardown only
-                                    print(f"Warning: browser close failed: {exc}")
+                                    print(f"Warning: session close failed: {exc}")
                     if placed:
                         self._record_web_orders(placed)
                 except Exception as exc:  # noqa: BLE001 - report, don't crash

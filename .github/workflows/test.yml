@@ -34,17 +34,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
-      # tests/test_browser_dom.py drives the scrapers in a real headless
-      # Chromium (it skips itself where no browser is installed).
-      - name: Install headless Chromium
-        shell: bash
-        run: |
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            python -m playwright install --with-deps --only-shell chromium
-          else
-            python -m playwright install --only-shell chromium
-          fi
-
       - name: Lint (ruff)
         run: |
           python -m ruff check .

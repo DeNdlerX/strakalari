@@ -23,74 +23,7 @@ def always_open(monkeypatch):
     monkeypatch.setattr(la, "order_window_predicate", lambda cfg, now=None: (lambda d: True))
 
 
-# -- low balance (Strava Warning [5005]) --------------------------------------
-
-LOW_BALANCE_TEXT = ("Warning [5005]\nYou do not have sufficient account balance to make "
-                    "these changes. The canteen has an ordering limit E Account check.")
-
-
-def test_low_balance_notice_detection():
-    from strakalari.core.strava_client import _is_page_chrome_notice, is_low_balance_notice
-
-    assert is_low_balance_notice(LOW_BALANCE_TEXT)
-    assert is_low_balance_notice("Upozornění [5005] Nemáte dostatečný zůstatek na účtu.")
-    assert not is_low_balance_notice("Máte 1 nepřečtených zpráv Otevřít zprávy")
-    assert not is_low_balance_notice("")
-    assert _is_page_chrome_notice("Máte 1 nepřečtených zpráv\nOtevřít zprávy")
-
-
-class _Loc:
-    def __init__(self, text="", visible=True):
-        self._text, self._visible = text, visible
-        self.first = self
-
-    def inner_text(self):
-        return self._text
-
-    def is_visible(self):
-        return self._visible
-
-    def all(self):
-        return [self] if self._text else []
-
-
-class _NoticePage:
-    """Body holds the inbox badge and (optionally) the coded warning."""
-
-    def __init__(self, body, alerts=()):
-        self._body, self._alerts = body, list(alerts)
-
-    def locator(self, sel):
-        if sel == "body":
-            return _Loc(self._body)
-        if sel == "[role='alert']" and self._alerts:
-            loc = _Loc(self._alerts[0])
-            loc.all = lambda: [_Loc(t) for t in self._alerts]
-            return loc
-        return _Loc("")
-
-
-def _client_with(page):
-    from strakalari.core.strava_client import StravaClient
-
-    client = StravaClient.__new__(StravaClient)
-    client.page = page
-    return client
-
-
-def test_notice_prefers_coded_warning_over_inbox_badge():
-    page = _NoticePage("Máte 1 nepřečtených zpráv\nOtevřít zprávy\n" + LOW_BALANCE_TEXT,
-                       alerts=["Máte 1 nepřečtených zpráv\nOtevřít zprávy"])
-    notice = _client_with(page)._page_notice_text()
-    assert notice.startswith("Warning [5005]")
-    assert "sufficient account balance" in notice
-
-
-def test_notice_ignores_inbox_badge_alone():
-    page = _NoticePage("Máte 1 nepřečtených zpráv\nOtevřít zprávy",
-                       alerts=["Máte 1 nepřečtených zpráv\nOtevřít zprávy"])
-    assert _client_with(page)._page_notice_text() == ""
-
+# -- low balance (Strava warning 5005) -----------------------------------------
 
 class _BrokeClient:
     """Orders the first meal, then Strava refuses everything for lack of money."""

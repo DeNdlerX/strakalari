@@ -85,8 +85,6 @@ CANONICAL_DEFAULTS: Dict[str, Any] = {
     "absence_plan_reserve_pct": 10.0,
     "cache_ttl_hours": 24,
     "page_load_timeout_s": 60.0,
-    "element_wait_s": 30.0,
-    "week_switch_delay_s": 2.5,
     "gemini_model": "gemini-3.8-flash",
     "gemini_api_key": "",
     "gemini_api_key_encrypted": False,
@@ -115,8 +113,6 @@ CANONICAL_DEFAULTS: Dict[str, Any] = {
     "go_forward_weeks": 1,
     "excuse_delay_days": 2,
     "sent_excuses_limit": 100,
-    "maximize_window": False,
-    "hide_window": True,
     "minimize_to_tray": True,
     "language": "cs",
     "excuse_mode": "confirm",
@@ -239,8 +235,6 @@ def validate_config(data: Dict[str, Any]) -> list:
         problems.append("'tutorials_done' must be a list of tutorial ids.")
     for timeout_key, minimum, maximum in (
         ("page_load_timeout_s", 5.0, 180.0),
-        ("element_wait_s", 2.0, 120.0),
-        ("week_switch_delay_s", 0.0, 30.0),
     ):
         try:
             timeout_val = float(data.get(timeout_key, minimum))

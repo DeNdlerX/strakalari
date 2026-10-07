@@ -95,18 +95,11 @@ class AppPrefsMixin:
         page_to = self._auto(S("timeout_page"), "adv:page_to", "page_load_timeout_s",
                              str(state.get("page_load_timeout_s", 60.0)),
                              parse=_float_parse(60.0))
-        elem_to = self._auto(S("timeout_element"), "adv:elem_to", "element_wait_s",
-                             str(state.get("element_wait_s", 30.0)),
-                             parse=_float_parse(30.0))
-        week_delay = self._auto(S("week_switch_delay"), "adv:week_delay",
-                                "week_switch_delay_s",
-                                str(state.get("week_switch_delay_s", 2.5)),
-                                parse=_float_parse(2.5))
         log_file = self._auto(S("log_file"), "adv:log_file", "log_file",
                               str(state.get("log_file", "./log.txt")))
         blacklist = self._auto(S("blacklist_file"), "adv:blacklist", "strava_blacklist",
                                str(state.get("strava_blacklist", "./strava_blacklist.json")))
-        return [C.form_card(ttl, page_to, elem_to, week_delay, C.divider(tok),
+        return [C.form_card(ttl, page_to, C.divider(tok),
                            log_file, blacklist, tok=tok)]
 
     # -- notifications -------------------------------------------------------------------

@@ -172,13 +172,10 @@ def test_user_dialog_hides_traceback_but_copies():
 def test_clients_raise_user_error_for_missing_login():
     from strakalari.core.bakalari_client import BakalariClient
 
-    class StubBM:
-        page = None
-
     with pytest.raises(er.UserError):
-        BakalariClient(StubBM(), {}).login()
+        BakalariClient({}).login()
     with pytest.raises(er.UserError):
-        BakalariClient(StubBM(), {"bakalari_url": "https://x.example"}).login()
+        BakalariClient({"bakalari_url": "https://x.example"}).login()
 
 
 def test_is_timeout_error_classification():
@@ -209,39 +206,6 @@ def test_timeout_user_message_names_fix():
     text = er.timeout_user_message()
     assert "Nastavení" in text or "Settings" in text
     assert "síti" in text or "network" in text
-
-
-def test_goto_timeout_raises_friendly_user_error():
-    from strakalari.core.bakalari_client import BakalariClient
-
-    class _TimeoutPage:
-        def __init__(self):
-            self.goto_calls = []
-
-        def goto(self, url, timeout=None, wait_until=None):
-            self.goto_calls.append(url)
-            raise TimeoutError(f"Timeout {timeout}ms exceeded.")
-
-    raw = _TimeoutPage()
-    bm = type("BM", (), {"page": raw})()
-    client = BakalariClient(bm, {"page_load_timeout_s": 5}, logger=None)
-    with pytest.raises(er.UserError) as exc_info:
-        client._goto("https://skola.bakalari.cz")
-    assert str(exc_info.value) == er.timeout_user_message()
-    assert raw.goto_calls == ["https://skola.bakalari.cz"]  # issued once, never refreshed
-
-
-def test_goto_hard_error_reraises_unchanged():
-    from strakalari.core.bakalari_client import BakalariClient
-
-    class _RefusedPage:
-        def goto(self, url, timeout=None, wait_until=None):
-            raise RuntimeError("net::ERR_CONNECTION_REFUSED")
-
-    bm = type("BM", (), {"page": _RefusedPage()})()
-    client = BakalariClient(bm, {}, logger=None)
-    with pytest.raises(RuntimeError):
-        client._goto("https://skola.bakalari.cz")
 
 
 def test_redact_text_scrubs_secret_values():

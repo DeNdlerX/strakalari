@@ -1,25 +1,6 @@
-"""Bakaláři parsing helpers shared by the client mixins (no browser state)."""
-
-import json
-import re
+"""Bakaláři parsing helpers shared by the client mixins."""
 
 from .helpers import extract_lesson_num, short_room_name
-
-
-def _norm_date_str(value) -> str:
-    """Normalizes a Czech date for comparison (``18. 09. 2026`` == ``18.9.2026``).
-
-    DevExpress date boxes echo the typed date back in their own spelling
-    (zero-padded or not, spaces around dots or not). Comparing raw
-    strings therefore misses systematically and callers retype the same
-    date into the field a second time. Never raises.
-    """
-    try:
-        s = re.sub(r"\s*\.\s*", ".", str(value or "").strip())
-        s = re.sub(r"\b0+(\d)", r"\1", s)
-        return s
-    except Exception:
-        return ""
 
 
 def _split_removed_info(removedinfo: str) -> tuple:
@@ -145,48 +126,19 @@ def parse_timetable_detail(detail: dict) -> dict | None:
     return lesson
 
 
-# Same attribute pattern as extract_timetable_data: only " or ' open the
-# attribute and the closing quote must end it, so an apostrophe inside
-# the JSON payload never truncates the blob.
-_DETAIL_ATTR_RE = re.compile(r'data-detail=([\"\'])(.*?)\1(?=[\s>/])', re.DOTALL)
-
-
-def _html_lesson_days(html_string: str) -> set:
-    """Dates of every lesson in a captured timetable page. Never raises."""
-    import html as _html
-
+def _detail_days(details) -> set:
+    """Dates of every lesson in a list of timetable details. Never raises."""
     from .models import parse_cz_date
 
     days = set()
-    for match in _DETAIL_ATTR_RE.finditer(str(html_string or "")):
+    for detail in details or []:
         try:
-            detail = json.loads(_html.unescape(match.group(2)))
             day = parse_cz_date(detail.get("day") or detail.get("Day"))
         except Exception:
             continue
         if day is not None:
             days.add(day)
     return days
-
-
-def _week_loaded_js(target_days) -> str:
-    """JS predicate: a lesson of one of ``target_days`` is in the DOM."""
-    targets = json.dumps([f"{d.day}.{d.month}.{d.year}" for d in target_days])
-    return (
-        "() => { try {"
-        " var targets = " + targets + ";"
-        " var els = document.querySelectorAll('[data-detail]');"
-        " for (var i = 0; i < els.length; i++) {"
-        "  var day = '';"
-        "  try { day = String(JSON.parse(els[i].getAttribute('data-detail')).day || ''); }"
-        "  catch (e) { continue; }"
-        r"  var m = /(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/.exec(day);"
-        "  if (m && targets.indexOf(parseInt(m[1], 10) + '.' + parseInt(m[2], 10)"
-        " + '.' + m[3]) !== -1) return true;"
-        " }"
-        " return false;"
-        " } catch (e) { return false; } }"
-    )
 
 
 def week_offsets(go_back_weeks: int, go_forward_weeks: int) -> list[int]:

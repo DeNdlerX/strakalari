@@ -298,7 +298,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "sec_limits": {"cs": "Limity předmětů", "en": "Subject limits"},
     "sec_templates": {"cs": "Šablony omluvenek", "en": "Excuse templates"},
     "sec_rules": {"cs": "Automatizace", "en": "Automation"},
-    "sec_browser": {"cs": "Prohlížeč a běh na pozadí", "en": "Browser & background"},
+    "sec_browser": {"cs": "Běh na pozadí", "en": "Background"},
     "sec_ai": {"cs": "AI doporučení", "en": "AI recommendations"},
     "sec_advanced": {"cs": "Pokročilé", "en": "Advanced"},
     "sec_diagnostics": {"cs": "Diagnostika", "en": "Diagnostics"},
@@ -391,12 +391,6 @@ STRINGS: dict[str, dict[str, str]] = {
 
     # Settings — new fields -------------------------------------------------------
     "strava_url": {"cs": "URL Stravy", "en": "Strava URL"},
-    "show_browser": {"cs": "Zobrazit prohlížeč při obnově", "en": "Show browser window during refresh"},
-    "show_browser_hint": {
-        "cs": "Když je zapnuto, uvidíte živé okno prohlížeče, jak prochází Bakaláře a Stravu.",
-        "en": "When on, you will see the live browser window going through Bakaláři and Strava.",
-    },
-    "maximize_browser": {"cs": "Maximalizovat okno prohlížeče", "en": "Maximize browser window"},
     "autostart": {"cs": "Spouštět po startu systému", "en": "Start with the system"},
     "minimize_to_tray": {"cs": "Minimalizovat do oznamovací oblasti", "en": "Minimize to tray"},
     "test_bakalari": {"cs": "Otestovat Bakaláře", "en": "Test Bakaláři login"},
@@ -525,8 +519,6 @@ STRINGS: dict[str, dict[str, str]] = {
     "pick_random": {"cs": "Náhodná", "en": "Random"},
     "cache_ttl": {"cs": "Platnost mezipaměti (hodiny)", "en": "Cache lifetime (hours)"},
     "timeout_page": {"cs": "Timeout načtení stránky (s)", "en": "Page load timeout (s)"},
-    "timeout_element": {"cs": "Čekání na prvek (s)", "en": "Element wait (s)"},
-    "week_switch_delay": {"cs": "Prodleva přepnutí týdne (s)", "en": "Week switch delay (s)"},
     "log_file": {"cs": "Soubor protokolu", "en": "Log file"},
     "blacklist_file": {"cs": "Soubor blacklistu jídel", "en": "Food blacklist file"},
 
@@ -835,34 +827,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "A Google AI Studio key is only used for lunch picks — it's free. Without it, local selection works.",
     },
     "wiz_use_ai": {"cs": "Používat AI doporučení", "en": "Use AI recommendations"},
-    "wiz_browser_h": {"cs": "Prohlížeč pro automatizaci", "en": "Automation browser"},
-    "wiz_browser_p": {
-        "cs": "Automatizace ovládá weby přes Chrome (~320 MB). Stáhne se jednorázově a automaticky.",
-        "en": "Automation drives websites through Chrome (~320 MB). It downloads once, automatically.",
-    },
-    "wiz_browser_ok": {"cs": "Chrome je připraven.", "en": "Chrome is ready."},
-    "wiz_browser_missing": {"cs": "Chrome zatím není stažen.", "en": "Chrome is not downloaded yet."},
-    "wiz_install_browser": {"cs": "Stáhnout Chrome", "en": "Download Chrome"},
-    "wiz_retry_browser": {"cs": "Zkusit znovu", "en": "Try again"},
-    "wiz_browser_done": {"cs": "Hotovo, Chrome je připraven.", "en": "Done, Chrome is ready."},
-    "wiz_browser_failed": {"cs": "Stažení Chrome selhalo: {e}", "en": "Chrome download failed: {e}"},
-    "wiz_browser_downloading": {"cs": "Stahuji {name}", "en": "Downloading {name}"},
-    "wiz_browser_extracting": {"cs": "Rozbaluji {name}", "en": "Unpacking {name}"},
-    "wiz_browser_preparing": {"cs": "Připravuji stahování…", "en": "Preparing download…"},
-    "wiz_browser_bg": {
-        "cs": "Můžete pokračovat — stahování poběží na pozadí.",
-        "en": "You can continue — the download keeps running in the background.",
-    },
-    "wiz_browser_wait_test": {
-        "cs": "Chrome se ještě stahuje — přihlášení otestuji hned po dokončení.",
-        "en": "Chrome is still downloading — the login test runs as soon as it's done.",
-    },
     "wiz_test_continue": {"cs": "Otestovat a pokračovat", "en": "Test & continue"},
     "wiz_test_key": {"cs": "Otestovat klíč", "en": "Test key"},
-    "wiz_need_browser_first": {
-        "cs": "Nejdřív stáhněte Chrome — test přihlášení ho potřebuje.",
-        "en": "Download Chrome first — the login test needs it.",
-    },
     "wiz_finishing_refresh": {
         "cs": "Spouštím první obnovu dat…",
         "en": "Starting the first data refresh…",
@@ -1030,7 +996,6 @@ STRINGS: dict[str, dict[str, str]] = {
     "unknown_error": {"cs": "neznámá chyba", "en": "unknown error"},
     "subjects_count": {"cs": "{n} předmětů", "en": "{n} subjects"},
     "refresh_started_log": {"cs": "Obnovování spuštěno ({scope}).", "en": "Refresh started ({scope})."},
-    "checking_browser": {"cs": "Kontroluji prohlížeč…", "en": "Checking the browser…"},
     "fetching_bakalari": {"cs": "Stahuji data z Bakalářů…", "en": "Fetching Bakalari data…"},
     "baseline_log": {
         "cs": "Stálý rozvrh: {slots} slotů, změn oproti stálému: {changes}.",

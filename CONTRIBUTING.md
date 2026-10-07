@@ -25,7 +25,6 @@ cd strakalari
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-playwright install chromium
 ```
 
 **On Windows (PowerShell):**
@@ -34,7 +33,6 @@ playwright install chromium
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-playwright install chromium
 ```
 
 Create your local config from the template (never commit the real one — `config.json` holds credentials):
@@ -84,13 +82,14 @@ python -m ruff check .   # lint: bug-finding rules only (config in pyproject.tom
 ```
 main.py                  # entry point: UI, or tray with --minimized
 strakalari/core/         # business logic (no UI imports)
-  bakalari_client.py     #   Bakaláři session + login (Playwright), assembled from:
-  bakalari_timetable.py  #     weekly + stable timetable scraping
+  bakalari_client.py     #   Bakaláři client (plain HTTP, no browser), assembled from:
+  bakalari_timetable.py  #     weekly + stable timetable
   bakalari_data.py       #     marks, absence, sent excuses, substitutions, baseline
-  bakalari_excuse.py     #     the excuse form (fill, lesson pickers, verified submit)
+  bakalari_excuse.py     #     the excuse form postback, confirmed via Komens → Odeslané
   bakalari_common.py     #     pure parsing helpers shared by the above
-  strava_client.py       #   Strava session: login, cookie banner, menu scraping
-  strava_ordering.py     #     meal clicks, verification, rollback, save confirm
+  bakalari_http.py       #   plain-HTTP web session (login, WebForms posts and callbacks)
+  strava_client.py       #   Strava client (the web app's JSON API, no browser): login, menu
+  strava_ordering.py     #     staged orders with the web app's checks, one verified save
   automation.py          #   Strakalari: clients + excuse sending + order application
   refresh.py             #   THE refresh pipeline (used by the UI and the tray)
   excuse_history.py      #   already-excused history: coverage checks + send lock
@@ -104,6 +103,8 @@ strakalari/flet_ui/      # Flet desktop UI
   views/, strings.py, tray.py, app.py
 tests/                   # pytest suite, one file per feature (shared fixtures in conftest.py)
 tools/demo_data.py       # synthetic demo data + README screenshots
+docs/BAKALARI_API.md     # the Bakaláři web requests the client sends (pages, endpoints, postbacks)
+docs/STRAVA_API.md       # the Strava web app API the client uses
 config.example.json      # canonical config-key reference (keep in sync with code!)
 strakalari.spec          # PyInstaller bundle definition
 installer.iss            # Inno Setup script (Windows installer)
@@ -125,7 +126,7 @@ These rules keep the automation safe:
 - **Dependencies are pinned exactly** in `requirements.txt` (CI resolves fresh every run; floating ranges have shipped broken combos before). `flet` + `flet-desktop` + `flet-web` must share one version. If you bump a version, re-run the full test suite **plus a local frozen smoke test** (section 7) before committing.
 - **Keep it locale-safe.** Releases are QA-tested on an English-locale Windows machine — never assume a Czech locale: no locale-dependent date/number parsing, no hardcoded Czech strings in logic (UI text belongs in `strakalari/flet_ui/strings.py` with both `cs` and `en`), no console codepage assumptions.
 - **Keep it end-user safe.** The installer is used by non-technical classmates: no scary dialogs, no unexplained failures, no data loss. Destructive/network actions default to confirmation (`confirm` modes).
-- **Screenshots use synthetic data only.** README images live in `docs/images/` (`<screen>-cs.png` / `<screen>-en.png`, dark theme) and come from `python tools/demo_data.py screenshots`, which builds a made-up student in a throwaway data folder and captures both languages with headless Chromium. `generate` / `serve` give you the same demo data to click through by hand. Never take screenshots from a real account.
+- **Screenshots use synthetic data only.** README images live in `docs/images/` (`<screen>-cs.png` / `<screen>-en.png`, dark theme) and come from `python tools/demo_data.py screenshots`, which builds a made-up student in a throwaway data folder and captures both languages with headless Chromium (dev-only: `pip install playwright` and `playwright install chromium` first; the app itself needs no browser). `generate` / `serve` give you the same demo data to click through by hand. Never take screenshots from a real account.
 - **User docs stay non-technical.** README.md / README.en.md are for classmates who just download the installer; anything about source, config files or internals belongs here.
 - **GPLv3.** All contributions are under the project's GNU GPLv3 license.
 

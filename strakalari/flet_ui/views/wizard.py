@@ -1,11 +1,9 @@
-"""First-run setup wizard: Chromium, Bakalari login, Strava login, AI key, calendar.
+"""First-run setup wizard: Bakalari login, Strava login, AI key, calendar.
 
 Shown full-screen by the Shell while ``state.needs_setup()`` is true (no
 valid Bakalari credentials, not skipped).
 
-Order matters: the Chromium download comes *before* any credentials
-because the Bakalari/Strava login tests need a working browser. Each
-credential step (Bakalari, Strava, AI key) runs a live test when the
+Each credential step (Bakalari, Strava, AI key) runs a live test when the
 user presses Continue — the wizard only advances on success (staying
 put with the error otherwise). Finishing the wizard kicks off the
 first data refresh automatically.
@@ -20,16 +18,15 @@ from ..overlays import snack
 from ..state import AppState
 from ..strings import S
 
-STEPS_TOTAL = 8
+STEPS_TOTAL = 7
 
 STEP_WELCOME = 0
 STEP_DISCLAIMER = 1
-STEP_BROWSER = 2
-STEP_BAKALARI = 3
-STEP_STRAVA = 4
-STEP_AI = 5
-STEP_CALENDAR = 6
-STEP_DONE = 7
+STEP_BAKALARI = 2
+STEP_STRAVA = 3
+STEP_AI = 4
+STEP_CALENDAR = 5
+STEP_DONE = 6
 
 
 def _v(state: AppState, key: str, fallback: str = "") -> str:
@@ -184,30 +181,6 @@ def _ready_ai(state: AppState) -> bool:
     return bool(ov.get("gemini_api_key") or state.get("gemini_api_key", ""))
 
 
-def _browser_ready(state: AppState) -> bool:
-    """True once Chrome is fully installed.
-
-    Trusts the wizard's own status while it downloads (Chrome's
-    executable exists long before the install finishes) and probes the
-    disk at most until it once says yes — the probe starts Playwright's
-    driver, far too slow to repeat on every render.
-    """
-    status = state.wizard_browser_status
-    if status in ("done", "ready"):
-        return True
-    if status == "working" or status.startswith("error:"):
-        return False
-    try:
-        from strakalari.core.browser import is_browser_installed
-
-        ready = bool(is_browser_installed())
-    except Exception:
-        return False
-    if ready:
-        state.wizard_browser_status = "ready"
-    return ready
-
-
 def _save_for(service: str, state: AppState) -> bool:
     if service == "bakalari":
         return _save_bakalari(state)
@@ -225,17 +198,6 @@ def _begin_wizard_test(state: AppState, page: ft.Page | None,
     unchanged fields). On failure the wizard stays put showing the
     error — the user fixes the fields and presses Continue again.
     """
-    if service in ("bakalari", "strava") and not _browser_ready(state):
-        if state.wizard_browser_status == "working":
-            # Still downloading: stay on this step and run the test the
-            # moment Chrome is in (see _browser_finished).
-            state.wizard_pending_test = (service, step)
-            state._emit()
-            return False
-        if page is not None:
-            snack(page, S("wiz_need_browser_first"))
-        state.wizard_goto(STEP_BROWSER)
-        return False
     fp = _fp_for(state, service)
     overrides = _overrides_for(state, service)
 
@@ -272,8 +234,6 @@ def _test_rows(state: AppState, service: str) -> list:
     tok = state.tok
     if state.testing == service:
         return [_busy_row(tok, S("testing"))]
-    if _waiting_for_browser(state, service):
-        return [_busy_row(tok, S("wiz_browser_wait_test"))]
     last = state.last_test or {}
     if last.get("service") == service and last.get("at"):
         color = tok.green if last.get("ok") else tok.red
@@ -349,179 +309,6 @@ def _busy_row(tok, text: str) -> ft.Control:
     )
 
 
-def _waiting_for_browser(state: AppState, service: str) -> bool:
-    pending = state.wizard_pending_test
-    return bool(pending and pending[0] == service
-                and state.wizard_browser_status == "working")
-
-
-# -- Chrome download panel ---------------------------------------------------
-#
-# The download reports progress several times a second. A full wizard
-# re-render per tick replaced every control: indeterminate animations
-# restarted, a field being typed into on a later step lost focus, and
-# the screen flickered. Instead, the panel's controls are created once
-# (kept on the state, reused by every render) and progress ticks update
-# them in place; full renders happen only on start / finish.
-
-_DL_KEY = "_wiz_dl"
-_DL_MIN_INTERVAL = 0.12  # s between in-place progress pushes
-
-
-def _dl_widgets(state: AppState) -> dict:
-    widgets = state.__dict__.get(_DL_KEY)
-    if widgets is None:
-        widgets = {
-            "title": ft.Text(expand=True),
-            "pct": ft.Text(weight=ft.FontWeight.BOLD),
-            "bar": ft.ProgressBar(bar_height=6, border_radius=3),
-        }
-        state.__dict__[_DL_KEY] = widgets
-    return widgets
-
-
-def _dl_texts(state: AppState) -> tuple[str, str, float | None, str]:
-    """(title, percent label, bar value or None, tone) for the panel."""
-    status = state.wizard_browser_status
-    frac = state.wizard_browser_progress
-    if status in ("done", "ready"):
-        key = "wiz_browser_done" if status == "done" else "wiz_browser_ok"
-        return S(key), "", 1.0, "ok"
-    if status.startswith("error:"):
-        return (S("wiz_browser_failed").format(e=status[6:]), "",
-                frac if isinstance(frac, (int, float)) else 0.0, "error")
-    label = state.wizard_browser_label
-    if not label:
-        # Planning the install (dry run) — no numbers yet.
-        return S("wiz_browser_preparing"), "", None, "working"
-    try:
-        cur, total = (int(v) for v in state.wizard_browser_pos)
-    except Exception:
-        cur, total = 0, 0
-    key = ("wiz_browser_extracting" if state.wizard_browser_phase == "extract"
-           else "wiz_browser_downloading")
-    title = S(key).format(name=label)
-    if cur and total:
-        title += f" ({cur}/{total})"
-    if isinstance(frac, (int, float)):
-        value = max(0.0, min(1.0, float(frac)))
-        return title, f"{round(value * 100)} %", value, "working"
-    return title, "", None, "working"
-
-
-def _sync_dl(state: AppState) -> dict:
-    tok = state.tok
-    widgets = _dl_widgets(state)
-    title, pct, value, tone = _dl_texts(state)
-    color = {"ok": tok.green, "error": tok.red}.get(tone, tok.accent)
-    widgets["title"].value = title
-    widgets["title"].size = tok.fs_small
-    widgets["title"].color = color if tone != "working" else tok.muted
-    widgets["pct"].value = pct
-    widgets["pct"].size = tok.fs_small
-    widgets["pct"].color = tok.text
-    widgets["bar"].value = value
-    widgets["bar"].color = color
-    widgets["bar"].bgcolor = tok.overlay
-    return widgets
-
-
-def _push_dl(state: AppState, force: bool = False) -> None:
-    """Updates the mounted download panel in place (no re-render)."""
-    import time as _time
-
-    now = _time.monotonic()
-    if not force and now - state.__dict__.get("_wiz_dl_t", 0.0) < _DL_MIN_INTERVAL:
-        return
-    state.__dict__["_wiz_dl_t"] = now
-    widgets = _sync_dl(state)
-    page = getattr(state, "_page", None)
-    if page is None:
-        return
-    for control in widgets.values():
-        # Only when the panel is on screen: a detached control (other
-        # step, wizard closed) must not be updated.
-        if not C._is_mounted(control, page):
-            continue
-        try:
-            control.update()
-        except Exception:
-            pass
-    # The ticks come from the download worker: wake the event loop or
-    # the patches wait for the next click (see C.wake_ui).
-    C.wake_ui(page)
-
-
-def _dl_panel(state: AppState) -> ft.Control:
-    from ..theme import pad_all, radius_all
-
-    tok = state.tok
-    widgets = _sync_dl(state)
-    return ft.Container(
-        content=ft.Column(
-            [
-                ft.Row([widgets["title"], widgets["pct"]], spacing=8,
-                       vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                widgets["bar"],
-            ],
-            spacing=8, tight=True,
-        ),
-        bgcolor=tok.surface,
-        border_radius=radius_all(tok.radius_sm),
-        padding=pad_all(12),
-    )
-
-
-def _browser_finished(state: AppState) -> None:
-    """Download over (either way): run a queued login test or refresh."""
-    pending, state.wizard_pending_test = state.wizard_pending_test, None
-    ok = state.wizard_browser_status == "done"
-    active = not state.wizard_dismissed
-    if pending and ok and active and state.wizard_step == pending[1]:
-        _begin_wizard_test(state, getattr(state, "_page", None), *pending)
-        return
-    if active and (state.wizard_step == STEP_BROWSER or pending):
-        state._emit()
-        return
-    # Elsewhere (typing on a later step): just flip the mini panel to
-    # done/failed in place; the next render picks up the new status.
-    _push_dl(state, force=True)
-
-
-def _start_browser_install(state: AppState) -> None:
-    if state.wizard_browser_status == "working":
-        return
-    state.wizard_browser_status = "working"
-    state.wizard_browser_progress = None
-    state.wizard_browser_label = ""
-    state.wizard_browser_pos = (0, 0)
-    state.wizard_browser_phase = ""
-    state._emit()
-
-    def _on_progress(label: str, frac, cur: int, total: int) -> None:
-        state.wizard_browser_label = label or ""
-        state.wizard_browser_progress = frac
-        state.wizard_browser_pos = (cur, total)
-        _push_dl(state, force=frac == 1.0)
-
-    def _on_phase(phase: str) -> None:
-        state.wizard_browser_phase = phase
-        _push_dl(state, force=True)
-
-    def _work() -> None:
-        try:
-            from strakalari.core.browser import ensure_browser
-
-            ensure_browser(progress_callback=_on_progress, phase_callback=_on_phase)
-            state.wizard_browser_status = "done"
-            state.wizard_browser_progress = 1.0
-        except Exception as exc:  # noqa: BLE001 - surface in wizard
-            state.wizard_browser_status = f"error:{str(exc).splitlines()[0][:160] if str(exc) else '?'}"
-        _browser_finished(state)
-
-    state._spawn(_work, (), name="strakalari-wizard-browser")
-
-
 def _step_content(state: AppState, page: ft.Page | None, step: int) -> list:
     tok = state.tok
     if step == STEP_WELCOME:
@@ -555,40 +342,6 @@ def _step_content(state: AppState, page: ft.Page | None, step: int) -> list:
             ft.Checkbox(label=S("wiz_disclaimer_ack"), value=_disclaimer_ok(state),
                         on_change=_ack, active_color=tok.accent),
         ]
-    if step == STEP_BROWSER:
-        from ..theme import pad_all
-
-        status = state.wizard_browser_status
-        out = [
-            C.txt(S("wiz_browser_h"), tok, size=19, bold=True),
-            C.txt(S("wiz_browser_p"), tok, muted=True),
-        ]
-        if _browser_ready(state):
-            key = "wiz_browser_done" if status == "done" else "wiz_browser_ok"
-            out.append(ft.Container(
-                ft.Row(
-                    [ft.Icon(ft.Icons.CHECK_CIRCLE, color=tok.green, size=20),
-                     C.txt(S(key), tok, color=tok.green)],
-                    spacing=8, tight=True,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                ),
-                padding=pad_all(4),
-            ))
-        elif status == "working":
-            out += [_dl_panel(state), C.hint_text(S("wiz_browser_bg"), tok)]
-        elif status.startswith("error:"):
-            out += [
-                _dl_panel(state),
-                C.ghost_button(S("wiz_retry_browser"), tok, icon=ft.Icons.REFRESH,
-                               on_click=lambda e: _start_browser_install(state)),
-            ]
-        else:
-            out += [
-                C.txt(S("wiz_browser_missing"), tok, muted=True),
-                C.ghost_button(S("wiz_install_browser"), tok, icon=ft.Icons.DOWNLOAD,
-                               on_click=lambda e: _start_browser_install(state)),
-            ]
-        return out
     if step == STEP_BAKALARI:
         rows = [
             C.txt(S("wiz_bakalari_h"), tok, size=19, bold=True),
@@ -771,29 +524,9 @@ def _test_needed(state: AppState, service: str) -> bool:
     return state.wizard_verified.get(service) != _fp_for(state, service)
 
 
-def _background_download(state: AppState, step: int) -> list:
-    """Download panel on the steps after the browser one.
-
-    The download keeps running while the user fills in the next steps;
-    the panel (same in-place-updated controls) shows how far it is.
-    """
-    status = state.wizard_browser_status
-    if step <= STEP_BROWSER or not (status == "working" or status.startswith("error:")):
-        return []
-    return [_dl_panel(state)]
-
-
 def build(state: AppState, page: ft.Page | None) -> ft.Control:
-    step = max(0, min(7, int(state.wizard_step)))
+    step = max(0, min(STEP_DONE, int(state.wizard_step)))
     tok = state.tok
-
-    # The login tests need Chromium: start its download as soon as the
-    # browser step shows, so it is (usually) ready before the user
-    # reaches the credential steps. Headless builds (page=None, tests)
-    # never auto-start.
-    if step == STEP_BROWSER and page is not None:
-        if state.wizard_browser_status == "" and not _browser_ready(state):
-            _start_browser_install(state)
 
     def _next(e):
         if step == STEP_BAKALARI:
@@ -853,9 +586,6 @@ def build(state: AppState, page: ft.Page | None) -> ft.Control:
     service = _TESTED_STEPS.get(step)
     if service and _test_needed(state, service):
         next_label = S("wiz_test_continue")
-    pending = state.wizard_pending_test
-    if pending and pending[1] == step and _waiting_for_browser(state, pending[0]):
-        testing_now = True
     nav: list[ft.Control] = []
     if step > 0:
         nav.append(C.ghost_button(S("wiz_back"), tok, on_click=_back))
@@ -885,7 +615,6 @@ def build(state: AppState, page: ft.Page | None) -> ft.Control:
         dots,
         C.divider(tok),
         *_step_content(state, page, step),
-        *_background_download(state, step),
         C.divider(tok),
         ft.Row(nav, spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
         tok=tok,

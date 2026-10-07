@@ -1,101 +1,14 @@
-"""Absence upgrade: full overview rows, subject directory, tracked set.
+"""Absence: the subject directory as the tracked set, school verdicts, taught-hour overrides.
 
-The overview table carries elapsed hours plus display:none-gated school
-verdict badges per subject; the subject directory is the canonical
-absence-tracked set (homeroom hour is listed in the overview but has no
-directory entry and is not tracked for real).
+The subject directory is the canonical absence-tracked set (the homeroom
+hour shows up in the absence data but has no directory entry and is not
+tracked for real).
 """
 
 from datetime import date
 
-from strakalari.core.extractors.bakalari import (
-    extract_absence_details,
-    extract_absence_percentages,
-    parse_subject_directory,
-)
 from strakalari.core.forecast import canon_subject, forecast_all, forecast_subject
 from strakalari.core.models import SubjectState
-
-
-def _absence_html():
-    def _row(subject, total, missed, pct, warn_visible=False, err_visible=False):
-        def _badge(label, visible):
-            style = "" if visible else ' style="display: none;"'
-            return f'<span class="bk-badge warn"{style}>{label}</span>'
-
-        return (
-            "<tr>"
-            f'<td aria-colindex="1">{subject}</td>'
-            f'<td aria-colindex="2">{total}</td>'
-            f'<td aria-colindex="3">{missed}</td>'
-            f'<td aria-colindex="4">{pct}</td>'
-            "<td aria-colindex=\"5\">"
-            '<div data-options="dxTemplate: { name: \'percentBadge\'}">'
-            + _badge("Blíží se limitu", warn_visible)
-            + _badge("Nelze klasifikovat", err_visible)
-            + "</div></td>"
-            '<td aria-colindex="6"></td></tr>'
-        )
-
-    return (
-        "<table>"
-        + _row("Matematika", "8", "2", "25,0 %", warn_visible=True)
-        + _row("Anglický jazyk", "6", "0", "0,00 %")
-        + _row("Třídnická hodina", "4", "0", "0,00 %")
-        + "</table>"
-    )
-
-
-def _directory_html():
-    return (
-        "<table>"
-        "<tr><td>Matematika</td><td>Mgr. Jana Tláskalová</td></tr>"
-        "<tr><td>Anglický jazyk</td><td>Mgr. Klára Perlíková Ph.D.</td></tr>"
-        "<tr><td></td><td>Mgr. Nikdo Prázdný</td></tr>"
-        "</table>"
-    )
-
-
-def test_details_parse_hours_and_badges():
-    details = extract_absence_details(_absence_html())
-    assert set(details) == {"Matematika", "Anglický jazyk", "Třídnická hodina"}
-    math = details["Matematika"]
-    assert math["percent"] == 25.0
-    assert math["total_hours"] == 8.0
-    assert math["missed_hours"] == 2.0
-    assert math["approaching"] is True
-    assert math["unclassifiable"] is False
-    aj = details["Anglický jazyk"]
-    assert aj["percent"] == 0.0
-    # Hidden badges (display:none) mean no flag.
-    assert aj["approaching"] is False
-    assert aj["unclassifiable"] is False
-
-
-def test_details_agree_with_legacy_percentages():
-    details = extract_absence_details(_absence_html())
-    legacy = extract_absence_percentages(_absence_html())
-    assert legacy == {k: v["percent"] for k, v in details.items()}
-
-
-def test_details_never_raise():
-    assert extract_absence_details("") == {}
-    assert extract_absence_details(None) == {}
-    assert extract_absence_details("<html>no table</html>") == {}
-
-
-def test_directory_parses_subject_teacher_pairs():
-    directory = parse_subject_directory(_directory_html())
-    assert directory == {
-        "Matematika": "Mgr. Jana Tláskalová",
-        "Anglický jazyk": "Mgr. Klára Perlíková Ph.D.",
-    }
-
-
-def test_directory_never_raises():
-    assert parse_subject_directory("") == {}
-    assert parse_subject_directory(None) == {}
-    assert parse_subject_directory("<html>no table</html>") == {}
 
 
 def test_canon_subject_collapses_nbsp_and_case():

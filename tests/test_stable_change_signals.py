@@ -8,11 +8,10 @@ Room moves arrive with ``infoChangeCode == "RoomChanged"`` and the
 explanation in ``changeinfo`` while ``notice`` stays empty.
 """
 
-import json
 
 
 from strakalari.core.bakalari_client import BakalariClient, parse_timetable_detail
-from strakalari.core.extractors.bakalari import parse_substitutions
+from strakalari.core.extractors.bakalari import substitutions_from_weeks
 from strakalari.core.helpers import extract_lesson_num
 from strakalari.core.schedule import (
     apply_substitution_feed,
@@ -24,8 +23,7 @@ from strakalari.core.schedule import (
 
 
 def _client():
-    dummy_bm = type("DummyBM", (), {"page": None})()
-    return BakalariClient(dummy_bm, {}, logger=None)
+    return BakalariClient({}, logger=None)
 
 
 def _removed_detail():
@@ -62,13 +60,6 @@ def _moved_detail():
     }
 
 
-def _html(*details):
-    return "".join(
-        f"<div data-detail='{json.dumps(d, ensure_ascii=False)}'></div>"
-        for d in details
-    )
-
-
 def test_removed_row_parses_to_cancelled_lesson():
     lesson = parse_timetable_detail(_removed_detail())
     assert lesson is not None
@@ -102,7 +93,7 @@ def test_room_move_keeps_changeinfo_as_note():
 
 def test_extract_keeps_removed_rows():
     client = _client()
-    client.extract_timetable_data(_html(_moved_detail(), _removed_detail()))
+    client.add_timetable_details([_moved_detail(), _removed_detail()])
     friday = client.timetableData["18.9.2026 (pátek)"]
     assert len(friday) == 2
     removed = [lesson for lesson in friday if lesson.get("type") == "removed"]
@@ -310,28 +301,22 @@ def test_late_lesson_keeps_teacher_note_as_note_not_change():
     assert diff.note == "- kritéria hodnocení"
 
 
-def _feed_html():
-    def _entry(badge, period, time, info, description):
-        return (
-            '<div data-testid="substitutions-entry">'
-            f'<div data-testid="substitutions-badge">{badge}</div>'
-            f'<span data-testid="substitutions-hour-label">{period}</span>'
-            f'<span data-testid="substitutions-time-label">{time}</span>'
-            f'<div data-testid="substitutions-lesson-info">{info}</div>'
-            '<div data-testid="substitutions-lesson-description">'
-            f"<span>{description}</span></div></div>"
-        )
+def _feed():
+    """The substitution feed as ``/Timetable/substitutions/dates`` returns it, parsed."""
+    def change(day, hour, time, kind, subject, description):
+        return {"Day": day, "HourLabel": hour, "TimeLabel": time, "ChangeType": kind,
+                "Description": description,
+                "ChangeLessonInfo": {"ClassAbbrev": "8.1", "IsClassGroup": True,
+                                     "SubjectAbbrev": subject, "RoomAbbrev": "VIII"}}
 
-    return (
-        '<div data-testid="substitutions-day-header">čtvrtek 17.9.2026</div>'
-        + _entry("M", "3", "10:05 - 10:50", "8.1 | M | VIII", "Změna místnosti: VIII")
-        + '<div data-testid="substitutions-day-header">pátek 18.9.2026</div>'
-        + _entry("O", "7", "13:40 - 14:25", "8.1 | FG | VIII", "Zrušeno")
-    )
+    return substitutions_from_weeks([{"Title": "", "Changes": [
+        change("čtvrtek 17.9.2026", "3", "10:05 - 10:50", "RoomChanged", "M", "Změna místnosti: VIII"),
+        change("pátek 18.9.2026", "7", "13:40 - 14:25", "Canceled", "FG", "Zrušeno"),
+    ]}])
 
 
-def test_parse_substitutions_reads_badges_and_days():
-    entries = parse_substitutions(_feed_html())
+def test_substitution_feed_reads_badges_and_days():
+    entries = _feed()
     assert len(entries) == 2
     assert entries[0] == {
         "day": "17.9.2026", "period": 3, "time": "10:05 - 10:50",
@@ -344,14 +329,11 @@ def test_parse_substitutions_reads_badges_and_days():
     assert entries[1]["subject_short"] == "FG"
 
 
-def test_parse_substitutions_never_raises():
-    assert parse_substitutions("") == []
-    assert parse_substitutions(None) == []
-    assert parse_substitutions("<html>no feed here</html>") == []
-    # Entries before any day header are orphaned and skipped.
-    assert parse_substitutions(
-        '<div data-testid="substitutions-entry">'
-        '<div data-testid="substitutions-badge">M</div></div>') == []
+def test_substitution_feed_never_raises():
+    assert substitutions_from_weeks(None) == []
+    assert substitutions_from_weeks("garbage") == []
+    # A change without a date is skipped.
+    assert substitutions_from_weeks([{"Changes": [{"Day": "nikdy", "ChangeType": "Canceled"}]}]) == []
 
 
 def test_feed_stamps_signal_less_lesson():
@@ -361,7 +343,7 @@ def test_feed_stamps_signal_less_lesson():
              "time": "3 (10:05 - 10:50)", "date": "17.09.2026"},
         ],
     }
-    feed = [parse_substitutions(_feed_html())[0]]
+    feed = [_feed()[0]]
     assert apply_substitution_feed(timetable, feed) == 1
     lesson = timetable["17.09.2026"][0]
     assert lesson["infoChangeCode"] == "RoomChanged"
@@ -373,7 +355,7 @@ def test_feed_stamps_signal_less_lesson():
 
 def test_feed_synthesizes_missing_cancelled_lesson():
     timetable = {"18.09.2026": []}
-    feed = [parse_substitutions(_feed_html())[1]]
+    feed = [_feed()[1]]
     assert apply_substitution_feed(timetable, feed) == 1
     shell = timetable["18.09.2026"][0]
     assert shell["status"] == "cancelled"
@@ -404,7 +386,7 @@ def test_feed_matches_period_less_cancelled_row_by_clock():
              "type": "removed"},
         ],
     }
-    feed = [parse_substitutions(_feed_html())[1]]
+    feed = [_feed()[1]]
     assert apply_substitution_feed(timetable, feed) == 0
     assert len(timetable["18.09.2026"]) == 1
 
@@ -425,7 +407,7 @@ def test_feed_end_to_end_flags_unmarked_change():
                      "room": "III", "time": "3 (10:05 - 10:50)"}],
     }
     assert client.update_stable_baseline() and client.weekChanges == []
-    client.substitutions = [parse_substitutions(_feed_html())[0]]
+    client.substitutions = [_feed()[0]]
     baseline = client.update_stable_baseline()
     assert (3, 3) in baseline
     assert len(client.weekChanges) == 1

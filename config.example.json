@@ -18,8 +18,6 @@
   "absence_plan_reserve_pct": 10.0,
   "cache_ttl_hours": 24,
   "page_load_timeout_s": 60.0,
-  "element_wait_s": 30.0,
-  "week_switch_delay_s": 2.5,
   "gemini_model": "gemini-3.8-flash",
   "late_income_excuses": [
     {"name": "Dopravní komplikace", "text": "Dobrý den, omluvte prosím pozdní příchod z důvodu dopravních komplikací.\nDěkuji\n"},
@@ -42,8 +40,6 @@
   "go_forward_weeks": 1,
   "excuse_delay_days": 2,
   "sent_excuses_limit": 100,
-  "maximize_window": false,
-  "hide_window": true,
   "minimize_to_tray": true,
   "language": "cs",
   "excuse_mode": "confirm",

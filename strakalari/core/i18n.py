@@ -30,10 +30,6 @@ MESSAGES: dict[str, dict[str, str]] = {
         "cs": "Přihlášení k Bakalářům selhalo — zkontrolujte jméno a heslo v Nastavení. (Bakaláři: {detail})",
         "en": "Bakaláři login failed — check your username and password in Settings. (Bakaláři: {detail})",
     },
-    "bak_login_timeout": {
-        "cs": "Přihlášení k Bakalářům se nezdařilo — stránka po přihlášení se neotevřela do {seconds} s. Zkontrolujte jméno, heslo a URL v Nastavení. [{detail}]",
-        "en": "Bakaláři login did not complete — the page after login did not open within {seconds} s. Check your username, password and URL in Settings. [{detail}]",
-    },
     "bak_missing_url": {
         "cs": "Chybí URL Bakalářů — doplňte ho v Nastavení.",
         "en": "The Bakaláři URL is missing — add it in Settings.",
@@ -69,6 +65,10 @@ MESSAGES: dict[str, dict[str, str]] = {
     "strava_password_undecryptable": {
         "cs": "Heslo ke Stravě nelze rozšifrovat — zadejte ho znovu v Nastavení.",
         "en": "The stored Strava password cannot be decrypted — enter it again in Settings.",
+    },
+    "strava_not_loading": {
+        "cs": "Strava neodpověděla — ani po {seconds} s. Zkontrolujte připojení, případně zvyšte Timeout načtení stránky v Nastavení.",
+        "en": "Strava did not respond within {seconds} s. Check your connection, or raise the page load timeout in Settings.",
     },
     "strava_login_failed": {
         "cs": "Přihlášení ke Stravě selhalo — zkontrolujte kód jídelny, uživatelské jméno a heslo v Nastavení.",
