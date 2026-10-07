@@ -483,6 +483,8 @@ def _auto_lunch(app, cfg, fresh, result, _emit, cancelled_lunch_days, lunch_prom
         handled = []
     ordered_before = dict(getattr(client, "orderedDict", None) or {})
     placed: set = set()
+    # True when the run ended before showing whether money was short.
+    balance_unknown = False
     try:
         cancelled = planned_lunch_days(cfg) | set(cancelled_lunch_days or ())
         orders, result.used_gemini = plan_auto_orders(
@@ -522,12 +524,16 @@ def _auto_lunch(app, cfg, fresh, result, _emit, cancelled_lunch_days, lunch_prom
             raise AutomationError(t("auto_orders_failed", n=len(orders) - len(placed),
                                     total=len(orders)))
     except InterruptedError:
+        balance_unknown = True
         raise
     except Exception as exc:
+        # AutomationError is raised above after a finished order run; any
+        # other error (login, page) ended the run before that.
+        balance_unknown = not isinstance(exc, AutomationError)
         result.errors.append(("auto_lunch", exc))
         _emit("auto_lunch_failed", err=_first_line(exc))
     finally:
-        if not result.low_balance:
+        if not result.low_balance and not balance_unknown:
             # Nothing was refused for lack of money this run (topped up, or
             # the days were ordered elsewhere): the warning is over.
             fresh[LOW_BALANCE_KEY] = None

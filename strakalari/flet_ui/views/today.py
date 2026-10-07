@@ -352,8 +352,10 @@ def _next_lesson_card(state: AppState, now: datetime) -> ft.Control:
     for ahead in range(1, 8):
         day = today + timedelta(days=ahead)
         key = day.strftime("%d.%m.%Y")
+        # Cancelled lessons are not the next day's first lesson.
         rows = sorted(
-            [r for r in (timetable.get(key, []) or []) if isinstance(r, dict)],
+            [r for r in (timetable.get(key, []) or []) if isinstance(r, dict)
+             and Lesson.from_legacy(r, day=key).status != "cancelled"],
             key=lambda l: (lesson_clock(l, day=key) or (9999, 9999))[0],
         )
         if not rows:

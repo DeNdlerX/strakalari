@@ -14,6 +14,7 @@ import json
 from strakalari.core.bakalari_client import BakalariClient, parse_timetable_detail
 from strakalari.core.extractors.bakalari import parse_substitutions
 from strakalari.core.helpers import extract_lesson_num
+from strakalari.core.models import Lesson
 from strakalari.core.schedule import (
     apply_substitution_feed,
     backfill_stable_facts,
@@ -407,6 +408,127 @@ def test_feed_matches_period_less_cancelled_row_by_clock():
     feed = [parse_substitutions(_feed_html())[1]]
     assert apply_substitution_feed(timetable, feed) == 0
     assert len(timetable["18.09.2026"]) == 1
+
+
+def _swapped_slot():
+    # 2.9. p5: IVT moved in from 14:30 replaces the cancelled Tv.
+    return {
+        "02.09.2026": [
+            {"subject": "Informatika a výpočetní technika", "teacher": "Sixta Roman",
+             "room": "IVT2", "time": "5 (11:55 - 12:40)", "date": "02.09.2026",
+             "notice": "Přesun z  2.9., 14:30: IVT, Sixta Roman, IVT2",
+             "changeinfo": "Přesun z  2.9., 14:30: IVT, Sixta Roman, IVT2",
+             "infoChangeCode": "Added", "changeBadgeChar": "N"},
+            {"subject": "Tv", "subject_short": "Tv", "teacher": "Neumannová Adéla",
+             "room": "", "time": "11:55 - 12:40", "date": "02.09.2026",
+             "notice": "Zrušeno (Tv, Neumannová Adéla)",
+             "removedinfo": "Zrušeno (Tv, Neumannová Adéla)",
+             "status": "cancelled", "type": "removed", "hourIndex": 7},
+        ],
+    }
+
+
+def test_feed_cancel_never_cancels_swapped_in_lesson():
+    timetable = _swapped_slot()
+    apply_substitution_feed(timetable, [
+        {"day": "2.9.2026", "period": 5, "time": "11:55 - 12:40", "badge": "O",
+         "info": "8.1 | Tv | TV", "subject_short": "Tv", "description": "Zrušeno"},
+        {"day": "2.9.2026", "period": 5, "time": "11:55 - 12:40", "badge": "N",
+         "info": "8.1 | IVT | IVT2", "subject_short": "IVT",
+         "description": "Přesun z 2.9., 14:30"},
+    ])
+    taught, removed = timetable["02.09.2026"]
+    assert Lesson.from_legacy(taught).status == ""
+    assert "Zrušeno" not in taught["notice"]
+    assert "Přesun z 2.9." in taught["notice"]
+    assert Lesson.from_legacy(removed).status == "cancelled"
+    assert "Přesun" not in removed["notice"]
+    assert len(timetable["02.09.2026"]) == 2
+
+
+def test_feed_cancel_synthesizes_shell_beside_replacement():
+    # Only the replacement was scraped: it stays taught, the cancelled
+    # original becomes its own shell.
+    timetable = {"02.09.2026": [_swapped_slot()["02.09.2026"][0]]}
+    assert apply_substitution_feed(timetable, [
+        {"day": "2.9.2026", "period": 5, "time": "11:55 - 12:40", "badge": "O",
+         "info": "8.1 | Tv | TV", "subject_short": "Tv", "description": "Zrušeno"},
+    ]) == 1
+    taught, shell = timetable["02.09.2026"]
+    assert Lesson.from_legacy(taught).status == ""
+    assert shell["status"] == "cancelled" and shell["subject"] == "Tv"
+
+
+def test_swapped_slot_resolves_to_taught_lesson():
+    from datetime import datetime
+
+    from strakalari.core.schedule import resolve_day_lessons
+
+    lessons = list(reversed(_swapped_slot()["02.09.2026"]))  # cancelled row first
+    running = resolve_day_lessons(lessons, datetime(2026, 9, 2, 12, 0), day="02.09.2026")
+    assert running["current"]["subject"] == "Informatika a výpočetní technika"
+
+
+def _monday_with_cancelled_nj():
+    # 5.10.: the cancelled Nj (p7, bare clock) arrives after the day's rows.
+    def atom(period, clock, subject, **extra):
+        return {"subject": subject, "teacher": "T", "room": "VIII",
+                "time": f"{period} ({clock})", "period": period,
+                "infoChangeCode": "NoChange", "absenceType": "NoAbsent", **extra}
+    return [
+        atom(1, "8:00 - 8:45", "Seminář z matematiky S"),
+        atom(4, "11:00 - 11:45", "Anglický jazyk", infoChangeCode="RoomChanged",
+             changeinfo="Změna místnosti: VIII (Hv)", notice="Změna místnosti: VIII (Hv)"),
+        atom(6, "12:50 - 13:35", "Český jazyk a literatura"),
+        atom(8, "14:30 - 15:15", "Maturita Preparation in Conversational E",
+             absenceType="Absent"),
+        {"subject": "Německý jazyk", "teacher": "Odcházelová Kateřina", "room": "VIII",
+         "time": "13:40 - 14:25", "period": 7,
+         "notice": "Zrušeno (Nj, Odcházelová Kateřina)",
+         "removedinfo": "Zrušeno (Nj, Odcházelová Kateřina)",
+         "type": "removed", "status": "cancelled"},
+    ]
+
+
+def test_list_view_orders_cancelled_row_into_its_period():
+    from datetime import date
+
+    from strakalari.flet_ui.views.timetable import _list_order, _taught
+
+    day = date(2026, 10, 5)
+    rows = sorted(_monday_with_cancelled_nj(), key=lambda r: _list_order(r, day))
+    assert [r.get("period") for r in rows] == [1, 4, 6, 7, 8]
+    # Swapped slot: the taught lesson first, the cancelled original after it.
+    swapped = sorted(reversed(_swapped_slot()["02.09.2026"]),
+                     key=lambda r: _list_order(r, date(2026, 9, 2)))
+    assert Lesson.from_legacy(swapped[0]).status == ""
+    # The day's lesson count leaves the cancelled one out.
+    assert len(_taught(_monday_with_cancelled_nj())) == 4
+
+
+def test_cancelled_lesson_is_never_running_or_ahead():
+    from datetime import datetime
+
+    from strakalari.core.schedule import future_lessons, resolve_day_lessons
+
+    day = _monday_with_cancelled_nj()
+    during_nj = resolve_day_lessons(day, datetime(2026, 10, 5, 13, 50), day="05.10.2026")
+    assert during_nj["phase"] == "between"
+    assert during_nj["upcoming"]["subject"].startswith("Maturita")
+    # Only the cancelled Nj and Maturita are left at 13:36: one to skip.
+    assert len(future_lessons(day, datetime(2026, 10, 5, 13, 36), day="05.10.2026")) == 1
+
+
+def test_grid_cell_shows_taught_lesson_of_swapped_slot():
+    from strakalari.flet_ui.views.timetable import _combined_cell
+
+    for rows in (_swapped_slot()["02.09.2026"], list(reversed(_swapped_slot()["02.09.2026"]))):
+        cell = _combined_cell(rows)
+        assert cell["subject"] == "Informatika a výpočetní technika"
+        assert Lesson.from_legacy(cell).status == ""
+    # Nothing replaced it: the cancelled lesson still shows.
+    removed = _swapped_slot()["02.09.2026"][1]
+    assert Lesson.from_legacy(_combined_cell([removed])).status == "cancelled"
 
 
 def test_feed_end_to_end_flags_unmarked_change():

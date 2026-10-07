@@ -252,6 +252,21 @@ def test_day_name_follows_app_language():
         core_i18n.set_language(prev)
 
 
+def test_lessons_text_czech_plurals():
+    from strakalari.core import i18n as core_i18n
+    from strakalari.flet_ui import components as C
+
+    prev = core_i18n.get_language()
+    try:
+        core_i18n.set_language("cs")
+        assert [C.lessons_text(n) for n in (0, 1, 2, 4, 5, 7)] == [
+            "0 hodin", "1 hodina", "2 hodiny", "4 hodiny", "5 hodin", "7 hodin"]
+        core_i18n.set_language("en")
+        assert [C.lessons_text(n) for n in (1, 4)] == ["1 lesson", "4 lessons"]
+    finally:
+        core_i18n.set_language(prev)
+
+
 def test_timetable_period_of_zero():
     from strakalari.flet_ui.views.timetable import _period_of
 

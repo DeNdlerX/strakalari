@@ -118,7 +118,7 @@ class Strakalari:
     def __init__(
         self,
         config_file: str = "./config.json",
-        user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
+        user_agent: str | None = None,  # None: matches the launched Chromium
         enc: str = "utf-8",
         on_log=None,
         config_data: dict = None,

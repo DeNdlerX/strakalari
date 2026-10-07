@@ -97,10 +97,16 @@ def lesson_clock(raw: dict, day: Any = None) -> tuple[int, int] | None:
 
 
 def _clocked(lessons: Iterable[dict], day: Any = None) -> list[tuple[int, int, dict]]:
-    """Lessons with a parseable clock, sorted by start time."""
+    """Taught lessons with a parseable clock, sorted by start time.
+
+    Cancelled lessons are never running or up next — in a swapped slot
+    the lesson taught instead is.
+    """
     out: list[tuple[int, int, dict]] = []
     for raw in lessons or []:
         if not isinstance(raw, dict):
+            continue
+        if Lesson.from_legacy(raw, day=day).status == "cancelled":
             continue
         clock = lesson_clock(raw, day=day)
         if clock is not None:
@@ -152,13 +158,16 @@ def future_lessons(
     """Lessons of one day that haven't started yet (clock-aware).
 
     Lessons without a parseable clock are kept (better to offer than to
-    hide), so "plan today" never drops unparseable rows.
+    hide), so "plan today" never drops unparseable rows. Cancelled lessons
+    are never ahead: there is nothing left to skip.
     """
     now = now or datetime.now()
     now_min = now.hour * 60 + now.minute
     out: list[dict] = []
     for raw in day_lessons or []:
         if not isinstance(raw, dict):
+            continue
+        if Lesson.from_legacy(raw, day=day).status == "cancelled":
             continue
         clock = lesson_clock(raw, day=day)
         if clock is None or clock[0] > now_min:
@@ -551,7 +560,7 @@ def apply_substitution_feed(
             except (TypeError, ValueError):
                 start = None
             day_key, lessons = _feed_day_lessons(timetable, day)
-            match = None
+            candidates = []
             for raw in lessons:
                 if not isinstance(raw, dict):
                     continue
@@ -562,8 +571,7 @@ def apply_substitution_feed(
                         lesson_period = None
                     if lesson_period is not None:
                         if lesson_period == period:
-                            match = raw
-                            break
+                            candidates.append(raw)
                         continue
                     # Lesson period unknown (e.g. a bare-clock cancelled
                     # row awaiting backfill): fall through to the clock.
@@ -573,8 +581,23 @@ def apply_substitution_feed(
                     except Exception:
                         lesson_clock_value = None
                     if lesson_clock_value is not None and lesson_clock_value[0] == start:
-                        match = raw
-                        break
+                        candidates.append(raw)
+            # A swapped / moved slot holds both the removed original and the
+            # lesson taught instead: a cancel entry belongs to the removed
+            # row, any other entry to the taught lesson.
+            match = next((c for c in candidates
+                          if (str(c.get("type") or "").strip().lower() == "removed") == (badge == "O")),
+                         None)
+            if match is None and candidates:
+                if badge != "O":
+                    match = candidates[0]
+                else:
+                    # Only taught lessons here: one carrying its own change
+                    # code (swap, substitution, room move) is the
+                    # replacement and still takes place — never cancel it.
+                    match = next((c for c in candidates
+                                  if str(c.get("infoChangeCode") or "").strip().lower()
+                                  in ("", "nochange")), None)
             if match is None:
                 if badge != "O" or day_key is None:
                     # Never invent a day that was not scraped this run: the

@@ -490,6 +490,10 @@ class OrderingMixin:
                         except Exception:
                             continue
                         _t = (_text or "").strip()
+                        # Page chrome with alert roles (the unread-messages
+                        # badge) never explains a failed save.
+                        if _is_page_chrome_notice(_t):
+                            continue
                         # Decorative matches (separators, icon glyphs like
                         # "/") carry no words — only real messages fail.
                         if len(_t) >= 3 and any(ch.isalnum() for ch in _t):

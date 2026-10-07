@@ -543,6 +543,12 @@ class AppState(ExcuseTasksMixin, LunchMixin, MarksMixin, PlannerMixin, ActivityM
                     self.orders[day_label] = meal_id
                 else:
                     self.orders.pop(day_label, None)
+            # A day the web no longer lists has no order there (cancelled
+            # on the Strava website or another device): only an
+            # unsubmitted pick may keep a local value for it.
+            for day_label in [d for d in self.orders if d not in cached_orders]:
+                if day_label not in self.pending_orders:
+                    self.orders.pop(day_label, None)
             # The web truth is whatever the cache reports.
             self.web_orders = {str(k): str(v) for k, v in cached_orders.items() if v}
         self._emit()

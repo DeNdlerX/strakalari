@@ -97,6 +97,19 @@ def _install_teardown_noise_suppression() -> None:
 _install_teardown_noise_suppression()
 
 
+def _chrome_user_agent(version) -> str:
+    """Desktop Chrome user agent for the launched Chromium ``version``.
+
+    Headless Chromium's own agent says "HeadlessChrome", which sites may
+    treat differently; this one names the real engine and major version.
+    """
+    major = str(version or "").split(".")[0]
+    if not major.isdigit():
+        major = "151"
+    return ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            f"(KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36")
+
+
 class BrowserManager:
     """Manages the Playwright browser lifecycle and provides robust DOM interactions."""
     def __init__(self, user_agent, is_maximized, is_headless, launch_retries: int = 2):
@@ -171,7 +184,7 @@ class BrowserManager:
             if self.browser is None:
                 raise RuntimeError(f"Could not launch Chrome after retries: {last_err}") from last_err
 
-            context_kwargs = {"user_agent": user_agent}
+            context_kwargs = {"user_agent": user_agent or _chrome_user_agent(self.browser.version)}
             if is_maximized:
                 context_kwargs["no_viewport"] = True
 
