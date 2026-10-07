@@ -3,7 +3,7 @@
 **Excuses in Bakaláři and lunches on Strava — handled for you.**
 A free app for students on Windows, macOS and Linux. No coding: download it and run it.
 
-**[⬇️ Download the latest version](https://github.com/DeNdlerX/strakalari/releases)** · [Česká verze](README.md)
+**[⬇️ Download the latest version](https://github.com/DeNdlerX/strakalari/releases)** · [Microsoft Store](https://apps.microsoft.com/detail/9njc9ldmkc3k) · [Česká verze](README.md)
 
 <img src="docs/images/today-en.png" alt="The Today screen with pending excuses">
 
@@ -26,11 +26,16 @@ A free app for students on Windows, macOS and Linux. No coding: download it and 
 
 > **Windows says "Windows protected your PC"?** The app has no paid code-signing certificate. Click *More info → Run anyway*, but only for a file you downloaded from the Releases page above. To double-check the download, compare it against `SHA256SUMS.txt` on the release.
 
+> **On Windows, also from the Microsoft Store.** Strakaláři is in the **[Microsoft Store](https://apps.microsoft.com/detail/9njc9ldmkc3k)** too. The Store version is signed by Microsoft, so the warning above doesn't appear, and it updates itself. Only stable versions go to the Store, no betas.
+> Switching from the installer? On first launch the Store version takes over your settings, passwords and history. Then **uninstall** the old install, otherwise automation runs twice (duplicate excuses and orders).
+
 ## Updating
 
 When a new version comes out, the app tells you. Download the new installer from [Releases](https://github.com/DeNdlerX/strakalari/releases) and run it over your current install. **Your settings, passwords and history are kept.** There is no need to uninstall first.
 
-Want test versions before everyone else? Switch the update channel to **Beta** in *Settings → Diagnostics*.
+The Microsoft Store version is updated by the Store itself; the app doesn't announce new versions there.
+
+Want test versions before everyone else? Switch the update channel to **Beta** in *Settings → Diagnostics* (Releases version only).
 
 ---
 
@@ -100,6 +105,7 @@ If the app does not start at all, attach `log.txt` and `console.log`. They are i
 | System | Folder |
 |---|---|
 | Windows | `%LOCALAPPDATA%\Programs\Strakalari` |
+| Windows (Microsoft Store) | `%LOCALAPPDATA%\Packages\DeNdler.Strakali_…\LocalCache\Local\Strakalari` |
 | macOS | `~/Library/Application Support/Strakalari` |
 | Linux | `~/.config/strakalari` |
 

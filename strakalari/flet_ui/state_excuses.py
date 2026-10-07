@@ -39,8 +39,25 @@ class ExcuseTasksMixin:
             for t in excuse_tasks_from_lessons(lessons_from_timetable(self.timetable()))
         ]
 
+    def _excuse_window_start(self) -> date:
+        """First day still excusable (same window as automatic excusing)."""
+        from strakalari.core.excuse_history import excuse_window_start
+        from strakalari.core.refresh import SENT_EXCUSES_FROM_KEY
+
+        try:
+            outbox_from = date.fromisoformat(str((self.data or {}).get(SENT_EXCUSES_FROM_KEY) or ""))
+        except ValueError:
+            outbox_from = None
+        return excuse_window_start(date.today(), outbox_from)
+
     def excuse_tasks(self) -> list[dict]:
         tasks = self._all_excuse_tasks()
+        # Older absences are history, not tasks: the Komens outbox no
+        # longer lists their excuses, so a send could not be checked
+        # for duplicates.
+        window_start = self._excuse_window_start().isoformat()
+        tasks = [t for t in tasks
+                 if not t.get("date") or str(t.get("date")) >= window_start]
         sent_keys = {entry["key"] for entry in self.excuse_log}
         tasks = [t for t in tasks if t["key"] not in sent_keys]
         if self.ignored_excuse_keys:
@@ -360,25 +377,32 @@ class ExcuseTasksMixin:
         outcomes: list[str] = []
         dry = False
         crashed = False
+        busy = False
         try:
             from strakalari.core.automation import Strakalari
+            from strakalari.core.refresh import session_lock
 
-            # Excuses go over HTTP: no browser needed.
-            app = Strakalari(on_log=self._core_log)
-            try:
-                dry = (getattr(app, "excuse_mode", "") == "dry_run")
-                send = getattr(app, "send_excuse_outcome", None)
-                for excuse, custom_text in jobs:
-                    if callable(send):
-                        outcomes.append(str(send(dict(excuse), custom_text)))
-                    else:  # minimal clients (tests): bool-only API
-                        sent = bool(app.excuse_single(dict(excuse), custom_text=custom_text))
-                        outcomes.append(("dry_run" if dry else "sent") if sent else "failed")
-            finally:
-                try:
-                    app.close()
-                except Exception as exc:  # noqa: BLE001 - teardown only
-                    print(f"Warning: session close failed: {exc}")
+            # A refresh (here or in the tray process) may be talking to the
+            # school sites right now: never send in parallel with it.
+            with session_lock() as held:
+                if not held:
+                    busy = True
+                else:
+                    app = Strakalari(on_log=self._core_log)
+                    try:
+                        dry = (getattr(app, "excuse_mode", "") == "dry_run")
+                        send = getattr(app, "send_excuse_outcome", None)
+                        for excuse, custom_text in jobs:
+                            if callable(send):
+                                outcomes.append(str(send(dict(excuse), custom_text)))
+                            else:  # minimal clients (tests): bool-only API
+                                sent = bool(app.excuse_single(dict(excuse), custom_text=custom_text))
+                                outcomes.append(("dry_run" if dry else "sent") if sent else "failed")
+                    finally:
+                        try:
+                            app.close()
+                        except Exception as exc:  # noqa: BLE001 - teardown only
+                            print(f"Warning: session close failed: {exc}")
         except Exception as exc:  # noqa: BLE001 - report, don't crash
             crashed = True
             self._worker_log(f"{S('excuse_failed')}: {type(exc).__name__}: {exc}".splitlines()[0][:200])
@@ -391,7 +415,10 @@ class ExcuseTasksMixin:
         total = len(jobs)
         done = sum(1 for o in outcomes if o in ("sent", "covered"))
         ok = not crashed and total > 0 and done == total
-        if dry and outcomes and all(o == "dry_run" for o in outcomes):
+        if busy:
+            # Nothing was sent; the user retries once the other run is done.
+            msg = S("session_busy")
+        elif dry and outcomes and all(o == "dry_run" for o in outcomes):
             # Dry run simulates success without sending — never mark sent.
             msg = S("excuse_dry_run")
         elif ok:

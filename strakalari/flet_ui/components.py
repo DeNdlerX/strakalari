@@ -114,7 +114,19 @@ def cz_day_year(value) -> str:
     return f"{day.day}. {day.month}. {day.year}"
 
 
-CZECH_DAY_NAMES = ["Pondělí", "Úterý", "Středa", "Čtvrtek", "Pátek", "Sobota", "Neděle"]
+def lessons_text(n: int) -> str:
+    """'1 hodina' / '3 hodiny' / '5 hodin' (Czech plural rules; English 1/other)."""
+    from .strings import S
+
+    n = int(n)
+    if n == 1:
+        return S("lessons_one").format(n=n)
+    if 2 <= n <= 4:
+        return S("lessons_few").format(n=n)
+    return S("lessons_many").format(n=n)
+
+
+CZECH_DAY_NAMES =["Pondělí", "Úterý", "Středa", "Čtvrtek", "Pátek", "Sobota", "Neděle"]
 ENGLISH_DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 CZECH_DAY_NAMES_SHORT = ["Po", "Út", "St", "Čt", "Pá", "So", "Ne"]
 ENGLISH_DAY_NAMES_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]

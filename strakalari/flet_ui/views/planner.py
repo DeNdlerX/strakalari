@@ -124,7 +124,9 @@ def _dropdown_value(e) -> str | None:
 def _day_lessons(state: AppState, day: date) -> list[dict]:
     key = day.strftime("%d.%m.%Y")
     lessons = state.timetable().get(key, []) or []
-    return [r for r in lessons if isinstance(r, dict)]
+    # Cancelled lessons need no skipping (same rule as LessonSource).
+    return [r for r in lessons if isinstance(r, dict)
+            and Lesson.from_legacy(r, day=key).status != "cancelled"]
 
 
 def _plannable_days(state: AppState, days: list[date], now: datetime) -> list[date]:
@@ -588,7 +590,7 @@ def _tag_badges(state: AppState, option) -> list[ft.Control]:
 
 
 def _cost_text(option) -> str:
-    lessons = f"{option.lessons_count} {S('lessons_count')}"
+    lessons = C.lessons_text(option.lessons_count)
     if not option.cost:
         return f"{lessons} · {S('day_cost_free')}"
     return f"{lessons} · {S('day_cost').format(n=option.budget_hours)}"
@@ -707,7 +709,7 @@ def _calendar_cell(state: AppState, page: ft.Page, plan, term, day: date,
         tip = f"{label} · {S('cal_tip_past')}"
         fill, border = tint(tok.overlay, 0.55), None
     elif option is None:
-        tip = f"{label} · {len(lessons)} {S('lessons_count')}" if lessons else label
+        tip = f"{label} · {C.lessons_text(len(lessons))}" if lessons else label
         fill, border = tok.overlay, None
     elif not option.feasible:
         names = ", ".join(sorted(option.names.get(c, c) for c in option.blocked_by))

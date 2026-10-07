@@ -416,6 +416,20 @@ def _period_of(raw: dict, day) -> int | None:
         return None
 
 
+def _taught(lessons: list[dict]) -> list[dict]:
+    """Lessons that take place (cancelled rows dropped)."""
+    return [r for r in lessons if Lesson.from_legacy(r).status != "cancelled"]
+
+
+def _list_order(raw: dict, day) -> tuple:
+    """Period order. Cancelled rows carry a bare clock (no period in the
+    time text), so the period comes from the row; in a swapped slot the
+    lesson taught instead goes first."""
+    period = _period_of(raw, day)
+    return (period if period is not None else 99,
+            Lesson.from_legacy(raw, day=day).status == "cancelled")
+
+
 def _period_time(lessons_by_day: dict, period: int) -> str:
     """Most common clock time for ``period`` across the week."""
     from collections import Counter
@@ -561,7 +575,7 @@ def _day_gutter(tok, day: date, count: int, is_today: bool) -> ft.Control:
         height=ROW_H,
         bgcolor=tok.accent if is_today else tok.surface,
         border_radius=radius_all(tok.radius_sm),
-        tooltip=f"{C.day_name(day)} {C.cz_day_year(day)} · {count} {S('lessons_count')}",
+        tooltip=f"{C.day_name(day)} {C.cz_day_year(day)} · {C.lessons_text(count)}",
     )
 
 
@@ -573,6 +587,12 @@ def _combined_cell(raws: list[dict]) -> dict | None:
     visible; clock/status/change come from the first group.
     """
     raws = [r for r in (raws or []) if isinstance(r, dict)]
+    # A swapped / moved slot holds the removed original next to the lesson
+    # taught instead: the taught one owns the cell (its own change code
+    # flags it), a cancelled row only shows when nothing replaced it.
+    taught = _taught(raws)
+    if taught:
+        raws = taught
     if not raws:
         return None
     if len(raws) == 1:
@@ -643,7 +663,7 @@ def _table_view(
     for day in days:
         lessons = [r for r in (week_days[day] or []) if isinstance(r, dict)]
         is_today = day == today
-        cells: list[ft.Control] = [_day_gutter(tok, day, len(lessons), is_today)]
+        cells: list[ft.Control] = [_day_gutter(tok, day, len(_taught(lessons)), is_today)]
         for period in periods:
             cells.append(_grid_cell(
                 state, page, _combined_cell(by_day_period.get(day, {}).get(period)),
@@ -687,7 +707,9 @@ def _lesson_row(state: AppState, page: ft.Page, lesson: dict, day: date,
                           faint=True),
                     width=96,
                 ),
-                _bar(look.bar or (tok.accent if look.diff.is_change else None), 32),
+                # Cancelled rows are struck through, not marked as a change.
+                _bar(look.bar or (tok.accent if look.diff.is_change and not look.cancelled
+                                  else None), 32),
                 ft.Column(
                     [
                         _subject_text(tok, look, look.parsed.subject or "?", tok.fs_body),
@@ -718,7 +740,7 @@ def _day_summary(state: AppState, lessons: list[dict], day: date) -> str:
         look = _look(state, raw, day)
         if look.tag:
             counts[look.tag] = counts.get(look.tag, 0) + 1
-    parts = [f"{len(lessons)} {S('lessons_count')}"]
+    parts = [C.lessons_text(len(_taught(lessons)))]
     parts += [f"{n}× {tag}" for tag, n in counts.items()]
     return " · ".join(parts)
 
@@ -735,8 +757,9 @@ def _list_view(
     for day in sorted(week_days):
         lessons = sorted(
             [l for l in (week_days[day] or []) if isinstance(l, dict)],
-            key=lambda l: extract_lesson_num(str((l or {}).get("time", ""))) or 0,
+            key=lambda l: _list_order(l, day),
         )
+        taught = _taught(lessons)
         is_today = day == today
         title = f"{names[day.weekday()]} {C.cz_day_year(day)}"
         focus_period, focus_kind = _focus_period(lessons, day, now)
@@ -744,7 +767,8 @@ def _list_view(
         if not lessons:
             rows.append(C.txt(S("no_lessons_today"), tok, size=tok.fs_small, faint=True))
         for lesson in lessons:
-            focus = focus_kind if _period_of(lesson, day) == focus_period else ""
+            focus = (focus_kind if _period_of(lesson, day) == focus_period
+                     and Lesson.from_legacy(lesson, day=day).status != "cancelled" else "")
             rows.append(_lesson_row(state, page, lesson, day, focus=focus))
         if week_has_today and day < today:
             # Past days of the current week fold away; the summary keeps
@@ -757,7 +781,7 @@ def _list_view(
                 C.txt(title, tok, bold=True, color=tok.accent if is_today else None),
                 C.badge(S("today_badge"), tok) if is_today else ft.Container(width=0),
                 ft.Container(expand=True),
-                C.txt(f"{len(lessons)} {S('lessons_count')}", tok,
+                C.txt(C.lessons_text(len(taught)), tok,
                       size=tok.fs_small, faint=True),
             ],
             spacing=8,

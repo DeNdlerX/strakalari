@@ -3,7 +3,7 @@
 **Omluvenky do Bakalářů a obědy ve Stravě — samy, bez hlídání.**
 Bezplatná aplikace pro studenty na Windows, macOS a Linux. Nic neprogramujete, jen stáhnete a spustíte.
 
-**[⬇️ Stáhnout nejnovější verzi](https://github.com/DeNdlerX/strakalari/releases)** · [English version](README.en.md)
+**[⬇️ Stáhnout nejnovější verzi](https://github.com/DeNdlerX/strakalari/releases)** · [Microsoft Store](https://apps.microsoft.com/detail/9njc9ldmkc3k) · [English version](README.en.md)
 
 <img src="docs/images/today-cs.png" alt="Obrazovka Dnes s čekajícími omluvenkami">
 
@@ -26,11 +26,16 @@ Bezplatná aplikace pro studenty na Windows, macOS a Linux. Nic neprogramujete, 
 
 > **Windows hlásí „Systém Windows ochránil váš počítač“?** Aplikace nemá placený podpisový certifikát. Klikněte na *Další informace → Přesto spustit*, ale jen u souboru staženého ze stránky Releases výše. Kdo chce, může stažený soubor ověřit proti `SHA256SUMS.txt` u vydání.
 
+> **Na Windows i z Microsoft Storu.** Strakaláře najdete i v **[Microsoft Storu](https://apps.microsoft.com/detail/9njc9ldmkc3k)**. Store verzi podepisuje Microsoft, takže se varování výše neukáže, a aktualizuje se sama. Do Storu chodí jen stabilní verze, bety ne.
+> Přecházíte z instalátoru? Store verze si při prvním spuštění převezme nastavení, hesla i historii. Starou instalaci pak **odinstalujte**, jinak poběží automatizace dvakrát (dvojí omluvenky i objednávky).
+
 ## Aktualizace
 
 Když vyjde nová verze, aplikace vám to sama oznámí. Stáhněte nový instalátor ze stránky [Releases](https://github.com/DeNdlerX/strakalari/releases) a spusťte ho přes stávající instalaci. **Nastavení, hesla i historie zůstanou.** Nic nemusíte odinstalovávat.
 
-Chcete dostávat i testovací verze dřív než ostatní? V *Nastavení → Diagnostika* přepněte kanál aktualizací na **Beta**.
+Verzi z Microsoft Storu aktualizuje sám Store, aplikace na nové verze neupozorňuje.
+
+Chcete dostávat i testovací verze dřív než ostatní? V *Nastavení → Diagnostika* přepněte kanál aktualizací na **Beta** (jen u verze ze stránky Releases).
 
 ---
 
@@ -100,6 +105,7 @@ Pokud aplikace vůbec nenaběhne, přiložte soubory `log.txt` a `console.log`. 
 | Systém | Složka |
 |---|---|
 | Windows | `%LOCALAPPDATA%\Programs\Strakalari` |
+| Windows (Microsoft Store) | `%LOCALAPPDATA%\Packages\DeNdler.Strakali_…\LocalCache\Local\Strakalari` |
 | macOS | `~/Library/Application Support/Strakalari` |
 | Linux | `~/.config/strakalari` |
 

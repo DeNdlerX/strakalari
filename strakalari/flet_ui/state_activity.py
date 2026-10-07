@@ -329,7 +329,8 @@ class ActivityMixin:
                 self._refresh_locked(scope, started)
                 return
         self._worker_log(S("session_busy"))
-        self._finish_run(started, scope, False, S("session_busy"))
+        # Not a failure: the other process is refreshing right now.
+        self._finish_run(started, scope, False, S("session_busy"), skipped=True)
 
     def _refresh_locked(self, scope: str, started: datetime) -> None:
         """The refresh proper; runs while :func:`session_lock` is held."""
@@ -464,7 +465,7 @@ class ActivityMixin:
             print(f"Warning: notification failed: {exc}")
 
     def _finish_run(self, started: datetime, scope: str, ok: bool, detail: str,
-                    cancelled: bool = False) -> None:
+                    cancelled: bool = False, skipped: bool = False) -> None:
         finished = datetime.now()
         self.runs.append({
             "started": started.strftime("%H:%M:%S"),
@@ -478,7 +479,7 @@ class ActivityMixin:
             "cancelled": bool(cancelled),
         })
         self.runs = self.runs[-20:]
-        self.status = "idle" if ok else "error"
+        self.status = "idle" if ok or skipped else "error"
         self.current_step = ""
         self.refresh_running = False
         self.cancel_requested = False
