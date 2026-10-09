@@ -742,6 +742,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Strava refused to order lunch for {days}. Top up the account — automatic ordering retries on its own; send manual picks again.",
     },
     "excuse_all": {"cs": "Omluvit vše z tohoto dne", "en": "Excuse all of this day"},
+    "day_group_covers": {"cs": "Najednou {lessons}: {subjects}", "en": "All at once, {lessons}: {subjects}"},
+    "or_one_by_one": {"cs": "Nebo jednotlivě:", "en": "Or one by one:"},
     "excuse_already_covered": {"cs": "Už bylo omluveno", "en": "Already excused"},
     "excuse_day_result": {"cs": "Omluveno {ok} z {n}", "en": "Excused {ok} of {n}"},
     "autostart_failed": {

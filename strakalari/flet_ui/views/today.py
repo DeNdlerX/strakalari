@@ -19,6 +19,7 @@ from .. import tutorial as T
 from ..overlays import snack as show_snack
 from ..state import AppState
 from ..strings import S
+from ..theme import border_all, tint
 
 
 def _snack(page: ft.Page, text: str, undo=None) -> None:
@@ -142,10 +143,13 @@ def _excuse_cards(state: AppState, page: ft.Page, tasks: list[dict]) -> list[ft.
                             size=tok.fs_small, faint=True))
     for day_iso, day_tasks in by_day.items():
         try:
-            day_title = date.fromisoformat(day_iso).strftime("%d.%m.%Y")
+            day = date.fromisoformat(day_iso)
+            day_title = f"{C.day_name(day)} {C.cz_day_year(day)}"
         except ValueError:
             day_title = day_iso
-        if len(day_tasks) > 1:
+        grouped = len(day_tasks) > 1
+        group: list[ft.Control] = []
+        if grouped:
             # A whole-day excuse only when the whole day was missed;
             # otherwise the button sends lesson ranges (see day_excuse_plan).
             try:
@@ -176,29 +180,43 @@ def _excuse_cards(state: AppState, page: ft.Page, tasks: list[dict]) -> list[ft.
                 elif state.last_ignore_error:
                     _snack(page, state.last_ignore_error)
 
+            # Key format "<iso>|<period>|<subject>" (excuse_tasks_from_lessons).
+            subjects = [s for s in dict.fromkeys(
+                str(t.get("key", "")).split("|", 2)[-1] for t in day_tasks) if s]
             picker, preview = _template_dropdown(state, key, options)
-            blocks.append(T.anchor(state, "excuse_card",
-                C.card(
-                    ft.Row(
-                        [
-                            C.txt(day_title, tok, bold=True),
-                            C.kind_badge("long" if whole_day else "short", tok),
-                        ],
-                        spacing=8,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    ft.Row(
-                        [
-                            picker,
-                            C.primary_button(S("excuse_day") if whole_day else S("excuse_all"),
-                                             tok, on_click=_send_day),
-                            C.ghost_button(S("ignore_day"), tok, on_click=_ignore_day),
-                        ],
-                        spacing=8,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    preview,
-                    tok=tok,
+            group.append(T.anchor(state, "excuse_card",
+                ft.Column(
+                    [
+                        ft.Row(
+                            [
+                                ft.Icon(ft.Icons.EVENT_BUSY_OUTLINED, size=20,
+                                        color=tok.accent),
+                                C.txt(day_title, tok, bold=True),
+                                C.kind_badge("long" if whole_day else "short", tok),
+                            ],
+                            spacing=8,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        ),
+                        C.txt(S("day_group_covers").format(
+                                  lessons=C.lessons_text(len(day_tasks)),
+                                  subjects=", ".join(subjects)),
+                              tok, size=tok.fs_small, muted=True),
+                        ft.Row(
+                            [
+                                picker,
+                                C.primary_button(S("excuse_day") if whole_day else S("excuse_all"),
+                                                 tok, on_click=_send_day),
+                                C.ghost_button(S("ignore_day"), tok, on_click=_ignore_day),
+                            ],
+                            spacing=8,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        ),
+                        preview,
+                        C.txt(S("or_one_by_one"), tok, size=tok.fs_small, faint=True),
+                    ],
+                    spacing=tok.gap // 2,
+                    tight=True,
+                    horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                 )
             ))
         for task in day_tasks:
@@ -228,7 +246,7 @@ def _excuse_cards(state: AppState, page: ft.Page, tasks: list[dict]) -> list[ft.
                     _snack(page, state.last_ignore_error)
 
             picker, preview = _template_dropdown(state, key, options)
-            blocks.append(T.anchor(state, "excuse_card",
+            group.append(T.anchor(state, "excuse_card",
                 C.card(
                     ft.Row(
                         [
@@ -258,6 +276,16 @@ def _excuse_cards(state: AppState, page: ft.Page, tasks: list[dict]) -> list[ft.
                     tok=tok,
                 )
             ))
+        if grouped:
+            # One tinted frame per day: the header is the whole-day action and
+            # the lesson cards sit inside it, so it doesn't read as one more
+            # absence without a subject.
+            frame = C.card(*group, tok=tok, padding=tok.gap)
+            frame.bgcolor = tint(tok.accent, 0.08)
+            frame.border = border_all(1, tint(tok.accent, 0.5))
+            blocks.append(frame)
+        else:
+            blocks.extend(group)
     blocks.extend(_ignored_blocks(state, page))
     return blocks
 

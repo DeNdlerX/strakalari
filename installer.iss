@@ -47,9 +47,11 @@ Name: "autostart"; Description: "{cm:AutostartDesc}"; GroupDescription: "{cm:Aut
 english.AutostartDesc=Start Strakaláři automatically on Windows startup
 english.AutomationGroup=Automation:
 english.RemoveDataMsg=Do you also want to remove all user data (settings, credentials and cache)?%n%nChoose Yes for a complete removal, or No to keep your data for a later reinstall (the install folder with your data will remain in place).
+english.RemoveBrowserMsg=From this version on, Strakaláři no longer needs a browser.%n%nThe Chromium browser downloaded by older versions (about 320 MB) is still in the app folder and can be removed. Remove it?
 czech.AutostartDesc=Spustit Strakaláře automaticky při startu Windows
 czech.AutomationGroup=Automatizace:
 czech.RemoveDataMsg=Chcete také odstranit všechna uživatelská data (nastavení, přihlašovací údaje a mezipaměť)?%n%nZvolte Ano pro úplné odebrání, nebo Ne pro zachování dat pro případnou přeinstalaci (složka s daty zůstane na místě).
+czech.RemoveBrowserMsg=Od této verze Strakaláři prohlížeč nepotřebují.%n%nProhlížeč Chromium stažený staršími verzemi (asi 320 MB) je stále ve složce aplikace a lze ho odstranit. Odstranit?
 
 [Files]
 Source: "dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
@@ -110,6 +112,23 @@ begin
     flet.exe image name would also kill other vendors' Flet apps running
     on this machine. Only our own Strakalari.exe tree (above) is stopped;
     detached helpers of a previous install hold no install locks. }
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  BrowsersDir: String;
+begin
+  { Older versions downloaded Chromium (~320 MB) next to the exe; this one
+    talks HTTP only and never uses it. Offered after the new files are in,
+    so a failed install leaves the old version with its browser. Not user
+    data, so /SUPPRESSMSGBOXES takes Yes. }
+  if CurStep = ssPostInstall then
+  begin
+    BrowsersDir := ExpandConstant('{app}\browsers');
+    if DirExists(BrowsersDir) and
+       (SuppressibleMsgBox(CustomMessage('RemoveBrowserMsg'), mbConfirmation, MB_YESNO, IDYES) = IDYES) then
+      DelTree(BrowsersDir, True, True, True);
+  end;
 end;
 
 function IsUninstallSilent(): Boolean;
