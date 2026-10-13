@@ -326,6 +326,13 @@ STRINGS: dict[str, dict[str, str]] = {
     "tpl_text": {"cs": "Text omluvenky", "en": "Excuse text"},
     "template_n": {"cs": "Šablona", "en": "Template"},
     "signature": {"cs": "Podpis", "en": "Signature"},
+    "signature_hint": {"cs": "Jméno Příjmení", "en": "First and last name"},
+    "signature_ask_title": {"cs": "Chybí podpis", "en": "Signature missing"},
+    "signature_ask_p": {
+        "cs": "Omluvenka by odešla nepodepsaná. Zadejte jméno, kterým se omluvenky podepisují — uloží se i do Nastavení.",
+        "en": "The excuse would go out unsigned. Enter the name excuses are signed with — it is saved to Settings too.",
+    },
+    "signature_save_send": {"cs": "Uložit a odeslat", "en": "Save and send"},
     "add": {"cs": "Přidat", "en": "Add"},
     "delete": {"cs": "Smazat", "en": "Delete"},
     "bakalari_url": {"cs": "URL Bakalářů", "en": "Bakaláři URL"},
@@ -470,6 +477,10 @@ STRINGS: dict[str, dict[str, str]] = {
     "auto_confirm_no_dry_run": {
         "cs": "Zatím jste nezkusili režim Jen nanečisto. Doporučujeme ho nejdřív jednou spustit a zkontrolovat výsledek v Aktivitě.",
         "en": "You have not tried Dry run yet. We recommend running it once first and checking the result in Activity.",
+    },
+    "auto_confirm_unsigned": {
+        "cs": "Není vyplněn podpis — automatické omluvenky by odcházely nepodepsané. Doplňte ho v Nastavení → Šablony omluvenek.",
+        "en": "No signature is set — automatic excuses would go out unsigned. Add it in Settings → Excuse templates.",
     },
     "auto_confirm_pause_hint": {
         "cs": "Kdykoli ho zastavíte přepínačem Pozastavit automatizaci (Aktivita, Nastavení nebo ikona v liště). Vše odeslané najdete v Historii automatizace.",
@@ -857,6 +868,34 @@ STRINGS: dict[str, dict[str, str]] = {
     "wiz_need_ai_key": {
         "cs": "Zapnete-li AI, vložte API klíč — nebo AI vypněte.",
         "en": "With AI on, paste the API key — or turn AI off.",
+    },
+    "wiz_limits_h": {"cs": "Limity absence", "en": "Absence limits"},
+    "wiz_limits_p": {
+        "cs": "Kolik procent hodin můžete v každém předmětu zameškat. Limit určuje vaše škola.",
+        "en": "The share of lessons you may miss in each subject. Your school sets the limit.",
+    },
+    "wiz_limits_loading": {"cs": "Načítám předměty z Bakalářů…", "en": "Loading subjects from Bakaláři…"},
+    "wiz_limits_none": {
+        "cs": "Předměty se zatím nepodařilo načíst. Limity můžete nastavit i později v Nastavení → Limity předmětů.",
+        "en": "The subjects could not be loaded yet. You can also set the limits later in Settings → Subject limits.",
+    },
+    "wiz_limits_retry": {"cs": "Načíst znovu", "en": "Load again"},
+    "wiz_limits_invalid": {
+        "cs": "Limit musí být číslo od 0 do 100.",
+        "en": "A limit must be a number from 0 to 100.",
+    },
+    "wiz_excuses_h": {"cs": "Omluvenky", "en": "Excuses"},
+    "wiz_excuses_p": {
+        "cs": "Tímto jménem se podepíše každá omluvenka — bez něj by odešla nepodepsaná.",
+        "en": "Every excuse is signed with this name — without it, it would go out unsigned.",
+    },
+    "wiz_excuses_tpl": {
+        "cs": "Texty omluvenek si můžete upravit — teď nebo kdykoli později v Nastavení → Šablony omluvenek. Podpis se připojí na konec sám.",
+        "en": "You can edit the excuse texts — now or any time later in Settings → Excuse templates. The signature is added at the end automatically.",
+    },
+    "wiz_need_signature": {
+        "cs": "Vyplňte jméno, kterým se omluvenky podepisují.",
+        "en": "Enter the name excuses are signed with.",
     },
     # School calendar ------------------------------------------------------
     "sec_calendar": {"cs": "Školní kalendář", "en": "School calendar"},

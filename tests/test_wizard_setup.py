@@ -144,6 +144,44 @@ def test_calendar_step_requires_explicit_pick(state):
     assert state.config.data["school_preset_id"] == "custom"
 
 
+def test_excuses_step_requires_signature(state):
+    state.config.data["your_signature"] = ""
+    assert wiz._save_signature(state) is False
+    state.set_draft("wiz:signature", "  Jan Novák  ")
+    assert wiz._save_signature(state) is True
+    assert state.config.data["your_signature"] == "Jan Novák"
+
+
+def test_limits_step_updates(state, monkeypatch):
+    monkeypatch.setattr(wiz, "_limit_subjects", lambda s: ["Matematika", "Fyzika"])
+    state.config.data.update({"subject_limits": {"Fyzika": 20.0, "Dějepis": 30.0},
+                              "absence_critical_pct": 25.0})
+    state.set_draft("wiz:limit:Matematika", "30,5")
+    state.set_draft("wiz:limit:Fyzika", "")  # blank = the default limit
+    assert wiz._limits_updates(state) == {
+        "subject_limits": {"Matematika": 30.5, "Dějepis": 30.0},
+        "absence_critical_pct": 25.0,
+    }
+    for bad in ("abc", "150", "-1"):
+        state.set_draft("wiz:limit:Matematika", bad)
+        assert wiz._limits_updates(state) is None
+
+
+def test_limits_step_loads_subjects_once(state, monkeypatch):
+    started = []
+    monkeypatch.setattr(state, "start_refresh",
+                        lambda scope="all": started.append(scope) or True)
+    monkeypatch.setattr(wiz, "_limit_subjects", lambda s: [])
+    state.wizard_step = wiz.STEP_LIMITS
+    wiz.build(state, None)
+    assert started == []  # no Bakaláři login yet
+    state.config.data.update({"bakalari_url": "https://skola.bakalari.cz",
+                              "bakalari_username": "novak", "bakalari_password": "x"})
+    wiz.build(state, None)
+    wiz.build(state, None)  # re-renders (progress, Back) never start another
+    assert started == ["bakalari"]
+
+
 def test_calendar_preset_lines_total(state):
     total, groups = wiz._preset_lines("gekom_2026_2027")
     assert total == 30
@@ -223,8 +261,8 @@ def test_refresh_worker_aborts_without_credentials(state):
 
 
 def test_step_order():
-    assert wiz.STEP_DISCLAIMER < wiz.STEP_BAKALARI < wiz.STEP_STRAVA < wiz.STEP_AI
-    assert wiz.STEP_AI < wiz.STEP_CALENDAR < wiz.STEP_DONE
+    assert wiz.STEP_DISCLAIMER < wiz.STEP_BAKALARI < wiz.STEP_LIMITS < wiz.STEP_STRAVA < wiz.STEP_AI
+    assert wiz.STEP_AI < wiz.STEP_CALENDAR < wiz.STEP_EXCUSES < wiz.STEP_DONE
     assert wiz.STEPS_TOTAL == wiz.STEP_DONE + 1
 
 

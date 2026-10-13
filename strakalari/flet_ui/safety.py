@@ -2,8 +2,8 @@
 
 ``auto`` submits things under the user's school account without asking,
 so turning it on always goes through a warning dialog. It recommends a
-dry run first when none was ever recorded in the automation history, and
-points at the pause switch.
+dry run first when none was ever recorded in the automation history,
+warns when excuses would go out unsigned, and points at the pause switch.
 """
 
 from __future__ import annotations
@@ -24,12 +24,14 @@ def confirm_auto_mode(
     on_confirm: Callable[[], None],
     on_dry_run: Callable[[], None],
     on_cancel: Callable[[], None],
+    unsigned: bool = False,
 ) -> ft.AlertDialog:
     """Shows the "turn on automatic mode?" dialog for ``mode_key``.
 
     Exactly one of the callbacks runs: ``on_confirm`` (keep ``auto``),
     ``on_dry_run`` (switch to ``dry_run`` instead) or ``on_cancel``
-    (dialog dismissed — revert the picker).
+    (dialog dismissed — revert the picker). ``unsigned`` (no signature
+    configured) adds a warning to the excuse dialog.
     """
     kind = MODE_KEYS.get(mode_key, "excuse")
     try:
@@ -56,6 +58,8 @@ def confirm_auto_mode(
     ]
     if not tried:
         body.append(ft.Text(S("auto_confirm_no_dry_run"), weight=ft.FontWeight.BOLD))
+    if unsigned and kind == "excuse":
+        body.append(ft.Text(S("auto_confirm_unsigned"), weight=ft.FontWeight.BOLD))
     body.append(ft.Text(S("auto_confirm_pause_hint"), size=12))
 
     dlg = ft.AlertDialog(

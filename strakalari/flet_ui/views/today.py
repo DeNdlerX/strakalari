@@ -16,6 +16,7 @@ from strakalari.core.schedule import (
 
 from .. import components as C
 from .. import tutorial as T
+from ..overlays import close_dialog, show_dialog
 from ..overlays import snack as show_snack
 from ..state import AppState
 from ..strings import S
@@ -68,6 +69,51 @@ def _template_dropdown(state: AppState, key: str, options: list[tuple[str, str]]
     )
     dd.expand = True  # expand on the control itself, not a wrapper
     return dd, preview
+
+
+def _when_signed(state: AppState, page: ft.Page, send) -> None:
+    """Runs ``send`` once a signature is configured.
+
+    Without one the excuse would go out unsigned, so ask for the name
+    first (saved to the config like the Settings field) and send after.
+    """
+    if str(state.get("your_signature", "") or "").strip():
+        send()
+        return
+    tok = state.tok
+    field = ft.TextField(
+        label=S("signature"), hint_text=S("signature_hint"), autofocus=True,
+        text_size=tok.fs_body, fill_color=tok.surface,
+        border_color=tok.border, focused_border_color=tok.accent,
+    )
+
+    def _save(e=None):
+        name = (field.value or "").strip()
+        if not name:
+            field.error_text = S("wiz_need_signature")
+            try:
+                field.update()
+            except Exception:
+                pass
+            return
+        if not state.save({"your_signature": name}):
+            _snack(page, S("save_failed"))
+            return
+        close_dialog(page, dlg)
+        send()
+
+    field.on_submit = _save
+    dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text(S("signature_ask_title")),
+        content=ft.Column([ft.Text(S("signature_ask_p")), field],
+                          tight=True, spacing=10, width=440),
+        actions=[
+            ft.TextButton(S("cancel"), on_click=lambda e: close_dialog(page, dlg)),
+            ft.Button(S("signature_save_send"), on_click=_save),
+        ],
+    )
+    show_dialog(page, dlg)
 
 
 def _picked_option(state: AppState, key: str, options: list[tuple[str, str]]) -> str:
@@ -156,21 +202,27 @@ def _excuse_cards(state: AppState, page: ft.Page, tasks: list[dict]) -> list[ft.
                 whole_day = bool(state.day_fully_absent(day_iso))
             except Exception:
                 whole_day = False
-            options = _options_for(state, "day" if whole_day else "short")
+            day_kind = "day" if whole_day else "short"
+            options = _options_for(state, day_kind)
             key = f"day|{day_iso}"
 
-            def _send_day(e, iso=day_iso, k=key, opts=options):
-                if not state.submit_day_excuse(iso, _picked_option(state, k, opts), page):
-                    if state.demo_mode and not state._has_credentials():
-                        pass  # submit_* already toasted need_credentials
-                    elif k in state.sending_excuses:
-                        _snack(page, S("already_running"))
-                    else:
-                        _snack(page, S("excuse_failed"))
-                    try:
-                        page.update()
-                    except Exception:
-                        pass
+            def _send_day(e, iso=day_iso, k=key, opt_kind=day_kind):
+                def _go():
+                    # Re-read: the signature may have just been entered.
+                    opts = _options_for(state, opt_kind)
+                    if not state.submit_day_excuse(iso, _picked_option(state, k, opts), page):
+                        if state.demo_mode and not state._has_credentials():
+                            pass  # submit_* already toasted need_credentials
+                        elif k in state.sending_excuses:
+                            _snack(page, S("already_running"))
+                        else:
+                            _snack(page, S("excuse_failed"))
+                        try:
+                            page.update()
+                        except Exception:
+                            pass
+
+                _when_signed(state, page, _go)
 
             def _ignore_day(e, iso=day_iso):
                 added = state.ignore_day(iso)
@@ -224,18 +276,23 @@ def _excuse_cards(state: AppState, page: ft.Page, tasks: list[dict]) -> list[ft.
             options = _options_for(state, kind)
             key = str(task.get("key", ""))
 
-            def _send(e, t=task, k=key, opts=options):
-                if not state.submit_excuse(t, page, template=_picked_option(state, k, opts)):
-                    if state.demo_mode and not state._has_credentials():
-                        pass  # submit_* already toasted need_credentials
-                    elif k in state.sending_excuses:
-                        _snack(page, S("already_running"))
-                    else:
-                        _snack(page, S("excuse_failed"))
-                    try:
-                        page.update()
-                    except Exception:
-                        pass
+            def _send(e, t=task, k=key, opt_kind=kind):
+                def _go():
+                    # Re-read: the signature may have just been entered.
+                    opts = _options_for(state, opt_kind)
+                    if not state.submit_excuse(t, page, template=_picked_option(state, k, opts)):
+                        if state.demo_mode and not state._has_credentials():
+                            pass  # submit_* already toasted need_credentials
+                        elif k in state.sending_excuses:
+                            _snack(page, S("already_running"))
+                        else:
+                            _snack(page, S("excuse_failed"))
+                        try:
+                            page.update()
+                        except Exception:
+                            pass
+
+                _when_signed(state, page, _go)
 
             def _ignore(e, t=task):
                 ignored_key = state.ignore_excuse(t)

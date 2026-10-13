@@ -146,7 +146,7 @@ class TestAutomationRules:
 
         asked = {}
         monkeypatch.setattr(safety, "confirm_auto_mode",
-                            lambda page, key, on_confirm, on_dry_run, on_cancel:
+                            lambda page, key, on_confirm, on_dry_run, on_cancel, **_:
                             asked.update(key=key, ok=on_confirm, cancel=on_cancel))
         app_state.save({"excuse_mode": "confirm"})
         dd = _by_label(_section(app_state, "rules"), S("excuse_mode_label"))

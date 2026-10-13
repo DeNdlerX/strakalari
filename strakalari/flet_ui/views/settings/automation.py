@@ -71,6 +71,7 @@ class AutomationMixin:
                     on_confirm=lambda: _set("auto"),
                     on_dry_run=lambda: _set("dry_run"),
                     on_cancel=lambda: _set(previous),
+                    unsigned=not str(state.get("your_signature", "") or "").strip(),
                 )
             return _go
 

@@ -184,6 +184,20 @@ def test_auto_confirm_dialog_after_dry_run():
     assert picked == ["auto"]
 
 
+def test_auto_confirm_dialog_warns_unsigned_excuses():
+    from strakalari.flet_ui.safety import confirm_auto_mode
+    from strakalari.flet_ui.strings import S
+
+    def _dialog(key, unsigned):
+        return confirm_auto_mode(_Page(), key, lambda: None, lambda: None,
+                                 lambda: None, unsigned=unsigned)
+
+    assert S("auto_confirm_unsigned") in _texts(_dialog("excuse_mode", True))
+    assert S("auto_confirm_unsigned") not in _texts(_dialog("excuse_mode", False))
+    # Lunch orders carry no signature.
+    assert S("auto_confirm_unsigned") not in _texts(_dialog("strava_order_mode", True))
+
+
 def test_pause_toggle_persists(state):
     state.save = type(state).save.__get__(state)  # real save (tmp config)
     assert state.automation_paused() is False

@@ -1,4 +1,5 @@
-"""First-run setup wizard: Bakalari login, Strava login, AI key, calendar.
+"""First-run setup wizard: Bakalari login, subject limits, Strava login,
+AI key, calendar, excuse signature and templates.
 
 Shown full-screen by the Shell while ``state.needs_setup()`` is true (no
 valid Bakalari credentials, not skipped).
@@ -7,6 +8,9 @@ Each credential step (Bakalari, Strava, AI key) runs a live test when the
 user presses Continue — the wizard only advances on success (staying
 put with the error otherwise). Finishing the wizard kicks off the
 first data refresh automatically.
+
+The limits step loads the subjects with a Bakalari-only refresh the
+first time it shows (right after the login step).
 """
 
 from __future__ import annotations
@@ -18,15 +22,17 @@ from ..overlays import snack
 from ..state import AppState
 from ..strings import S
 
-STEPS_TOTAL = 7
+STEPS_TOTAL = 9
 
 STEP_WELCOME = 0
 STEP_DISCLAIMER = 1
 STEP_BAKALARI = 2
-STEP_STRAVA = 3
-STEP_AI = 4
-STEP_CALENDAR = 5
-STEP_DONE = 6
+STEP_LIMITS = 3
+STEP_STRAVA = 4
+STEP_AI = 5
+STEP_CALENDAR = 6
+STEP_EXCUSES = 7
+STEP_DONE = 8
 
 
 def _v(state: AppState, key: str, fallback: str = "") -> str:
@@ -300,6 +306,74 @@ def _save_calendar(state: AppState) -> bool:
     return bool(state.save({"school_preset_id": preset}))
 
 
+def _limit_subjects(state: AppState) -> list[str]:
+    """The subjects Settings > Subject limits lists (stable + tracked)."""
+    try:
+        allowed = state.limit_subjects()
+    except Exception:
+        allowed = None
+    if allowed is None:
+        return sorted(set(state.absence()))
+    return list(allowed)
+
+
+def _start_limits_refresh(state: AppState) -> None:
+    """Loads the subjects once, the first time the limits step shows."""
+    if state.drafts.get("wiz:limits_refresh") or state.refresh_running:
+        return
+    if not state._has_credentials() or _limit_subjects(state):
+        return
+    state.set_draft("wiz:limits_refresh", "1")
+    state.start_refresh("bakalari")
+
+
+def _limit_value(raw: str) -> float | None:
+    """A limit in percent, None when blank. Raises ValueError when invalid."""
+    text = str(raw or "").strip().replace(",", ".")
+    if not text:
+        return None
+    num = float(text)
+    if not 0 <= num <= 100:
+        raise ValueError(text)
+    return num
+
+
+def _limits_updates(state: AppState) -> dict | None:
+    """Config updates for the limits step, None when a value is invalid.
+
+    A blank subject falls back to the default limit (no own entry).
+    """
+    try:
+        default = _limit_value(_v(state, "wiz:limit_default",
+                                  str(state.get("absence_critical_pct", 25.0))))
+        limits = dict(state.get("subject_limits", {}) or {})
+        for subject in _limit_subjects(state):
+            value = _limit_value(_v(state, f"wiz:limit:{subject}",
+                                    str(limits.get(subject, ""))))
+            if value is None:
+                limits.pop(subject, None)
+            else:
+                limits[subject] = value
+    except ValueError:
+        return None
+    updates: dict = {"subject_limits": limits}
+    if default is not None:
+        updates["absence_critical_pct"] = default
+    return updates
+
+
+def _signature(state: AppState) -> str:
+    return _v(state, "wiz:signature", str(state.get("your_signature", "") or "")).strip()
+
+
+def _save_signature(state: AppState) -> bool:
+    # Required: without a name every excuse would go out unsigned.
+    name = _signature(state)
+    if not name:
+        return False
+    return bool(state.save({"your_signature": name}))
+
+
 def _busy_row(tok, text: str) -> ft.Control:
     return ft.Row(
         [ft.ProgressRing(width=14, height=14, stroke_width=2, color=tok.accent),
@@ -356,6 +430,39 @@ def _step_content(state: AppState, page: ft.Page | None, step: int) -> list:
                    hint=S("new_password") if state.get("bakalari_password") else S("secret_empty")),
         ]
         rows += _test_rows(state, "bakalari")
+        return rows
+    if step == STEP_LIMITS:
+        rows = [
+            C.txt(S("wiz_limits_h"), tok, size=19, bold=True),
+            C.txt(S("wiz_limits_p"), tok, muted=True),
+        ]
+        if state.refresh_running:
+            # No inputs while loading: every progress tick rebuilds the wizard.
+            rows.append(_busy_row(tok, S("wiz_limits_loading")))
+            if state.current_step:
+                rows.append(C.txt(state.current_step, tok, size=tok.fs_small, faint=True))
+            return rows
+        subjects = _limit_subjects(state)
+        if not subjects:
+            def _reload(e):
+                if not state.start_refresh("bakalari") and page is not None:
+                    snack(page, S("already_running"))
+
+            rows += [
+                C.hint_text(S("wiz_limits_none"), tok),
+                ft.Row([C.ghost_button(S("wiz_limits_retry"), tok, icon=ft.Icons.REFRESH,
+                                       on_click=_reload)]),
+            ]
+            return rows
+        limits = state.get("subject_limits", {}) or {}
+        rows += [
+            _field(state, S("default_limit"), "wiz:limit_default",
+                   str(state.get("absence_critical_pct", 25.0))),
+            C.hint_text(S("limit_subject_hint"), tok),
+        ]
+        rows += [_field(state, subject, f"wiz:limit:{subject}",
+                        str(limits.get(subject, "")))
+                 for subject in subjects]
         return rows
     if step == STEP_STRAVA:
         enabled = _strava_enabled(state)
@@ -484,6 +591,21 @@ def _step_content(state: AppState, page: ft.Page | None, step: int) -> list:
         if not preset:
             rows_cal.append(C.hint_text(S("wiz_cal_pick"), tok))
         return rows_cal
+    if step == STEP_EXCUSES:
+        from .settings.common import _tpl_editor
+
+        return [
+            C.txt(S("wiz_excuses_h"), tok, size=19, bold=True),
+            C.txt(S("wiz_excuses_p"), tok, muted=True),
+            _field(state, S("signature"), "wiz:signature",
+                   str(state.get("your_signature", "") or ""),
+                   hint=S("signature_hint")),
+            C.hint_text(S("wiz_excuses_tpl"), tok),
+            _tpl_editor(state, page, "late_income_excuses", "tpl_late"),
+            _tpl_editor(state, page, "left_soon_excuses", "tpl_soon"),
+            _tpl_editor(state, page, "short_absence_excuses", "tpl_short"),
+            _tpl_editor(state, page, "long_absence_excuses", "tpl_long"),
+        ]
     return [
         C.txt(S("wiz_done_h"), tok, size=19, bold=True),
         C.txt(S("wiz_done_p"), tok, muted=True),
@@ -553,6 +675,12 @@ def build(state: AppState, page: ft.Page | None) -> ft.Control:
             _continue_test_step(state, page, "ai", step,
                                 _ready_ai(state), "wiz_need_ai_key")
             return
+        if step == STEP_LIMITS:
+            updates = _limits_updates(state)
+            if updates is None or not state.save(updates):
+                if page is not None:
+                    snack(page, S("wiz_limits_invalid") if updates is None else S("save_failed"))
+                return
         if step == STEP_DISCLAIMER:
             if not _disclaimer_ok(state):
                 if page is not None:
@@ -563,6 +691,10 @@ def build(state: AppState, page: ft.Page | None) -> ft.Control:
         if step == STEP_CALENDAR and not _save_calendar(state):
             if page is not None:
                 snack(page, S("wiz_cal_pick") if not _cal_preset(state) else S("save_failed"))
+            return
+        if step == STEP_EXCUSES and not _save_signature(state):
+            if page is not None:
+                snack(page, S("wiz_need_signature") if not _signature(state) else S("save_failed"))
             return
         if step >= STEP_DONE:
             state.wizard_finished()
@@ -581,13 +713,18 @@ def build(state: AppState, page: ft.Page | None) -> ft.Control:
     def _skip(e):
         state.dismiss_wizard()
 
+    if step == STEP_LIMITS:
+        _start_limits_refresh(state)
     testing_now = bool(state.testing) and step in (STEP_BAKALARI, STEP_STRAVA, STEP_AI)
+    # The subjects are loading: stay here (inputs elsewhere would lose
+    # focus on every progress tick); Skip still leaves the wizard.
+    limits_loading = step == STEP_LIMITS and bool(state.refresh_running)
     next_label = S("wiz_next")
     service = _TESTED_STEPS.get(step)
     if service and _test_needed(state, service):
         next_label = S("wiz_test_continue")
     nav: list[ft.Control] = []
-    if step > 0:
+    if step > 0 and not limits_loading:
         nav.append(C.ghost_button(S("wiz_back"), tok, on_click=_back))
     nav.append(ft.Container(expand=True))
     if step < STEP_DONE:
@@ -595,7 +732,7 @@ def build(state: AppState, page: ft.Page | None) -> ft.Control:
         if (step == STEP_CALENDAR and not _cal_preset(state)) or (
                 step == STEP_DISCLAIMER and not _disclaimer_ok(state)):
             nav.append(C.primary_button(S("wiz_next"), tok, on_click=_next, disabled=True))
-        elif testing_now:
+        elif testing_now or limits_loading:
             nav.append(C.primary_button(next_label, tok, on_click=_next, disabled=True))
         else:
             nav.append(C.primary_button(next_label, tok, on_click=_next))
