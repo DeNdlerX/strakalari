@@ -642,7 +642,8 @@ def _stats_row(state: AppState, term) -> ft.Control:
     except Exception:
         pass
     cap_kind = "ok" if term.capacity > 0 else "warning"
-    return ft.Row(
+    return C.stat_row(
+        state,
         [
             C.stat_card(S("stat_can_afford"), _days_text(term.capacity), tok, kind=cap_kind),
             C.stat_card(S("stat_planned"),
@@ -651,7 +652,7 @@ def _stats_row(state: AppState, term) -> ft.Control:
             tight_card,
             C.stat_card(S("planner_horizon"), str(len(term.remaining_days)), tok),
         ],
-        spacing=tok.gap,
+        tok.gap,
     )
 
 
@@ -683,11 +684,13 @@ def _planned_entry_for(state: AppState, day: date) -> dict | None:
 
 
 def _calendar_cell(state: AppState, page: ft.Page, plan, term, day: date,
-                   recommended: set[date], over_days: set[date], now: datetime) -> ft.Control:
+                   recommended: set[date], over_days: set[date], now: datetime,
+                   size: int = 18, numbered: bool = False) -> ft.Control:
+    """One day of the overview; ``size`` is its height (the width stretches),
+    ``numbered`` writes the day of the month in it (the phone calendar)."""
     tok = state.tok
-    size = 18  # height; the width stretches with the week column
     if day < term.start or day > term.close:
-        return ft.Container(height=size)
+        return ft.Container(height=size, expand=1 if numbered else None)
     option = term.options.get(day)
     is_free = day in plan.holidays
     is_planned = day in term.planned_dates
@@ -733,11 +736,21 @@ def _calendar_cell(state: AppState, page: ft.Page, plan, term, day: date,
             on_click = (lambda e, ent=dict(entry): _planned_dialog(state, page, ent))
     elif option is not None and not past:
         on_click = (lambda e, d=day: _plan_dialog(state, page, d.isoformat(), _day_label(d)))
+    number = None
+    if numbered:
+        # Solid fills (recommended / planned) carry the accent text color.
+        solid = fill in (tok.green, tok.accent, tok.red)
+        number = ft.Text(str(day.day), size=tok.fs_small, weight=ft.FontWeight.W_600,
+                         color=tok.accent_text if solid else (tok.faint if past or is_free
+                                                              else tok.text))
     return ft.Container(
+        content=number,
+        alignment=ft.Alignment(0, 0) if numbered else None,
         height=size,
+        expand=1 if numbered else None,
         bgcolor=fill,
         border=border_all(2 if day == now.date() else 1, border) if border else None,
-        border_radius=radius_all(3),
+        border_radius=radius_all(6 if numbered else 3),
         tooltip=tip,
         on_click=on_click,
     )
@@ -752,6 +765,10 @@ def _calendar_strip(state: AppState, page: ft.Page, plan, term, now: datetime) -
         if row.over:
             over_days.update(row.days)
     first_monday = term.start - timedelta(days=term.start.weekday())
+    if C.narrow(state):
+        strip = _phone_calendar(state, page, plan, term, now, recommended, over_days,
+                                first_monday)
+        return _strip_card(state, strip)
     monday = first_monday
     columns: list[ft.Control] = []
     last_month = None
@@ -781,6 +798,48 @@ def _calendar_strip(state: AppState, page: ft.Page, plan, term, now: datetime) -
     )
     strip = ft.Row([day_names] + columns, spacing=4,
                    vertical_alignment=ft.CrossAxisAlignment.START)
+    return _strip_card(state, strip)
+
+
+def _phone_calendar(state: AppState, page: ft.Page, plan, term, now: datetime,
+                    recommended: set[date], over_days: set[date],
+                    first_monday: date) -> ft.Control:
+    """Phone: the strip turned on its side, a calendar with one row per week
+    (Mon–Fri) and finger-sized, numbered days; month numbers on the left."""
+    tok = state.tok
+    label_w = 28
+    rows: list[ft.Control] = [ft.Row(
+        [ft.Container(width=label_w)] + [
+            ft.Container(C.txt(C.day_name(first_monday + timedelta(days=i), short=True),
+                               tok, size=tok.fs_tiny, faint=True),
+                         expand=1, alignment=ft.Alignment(0, 0))
+            for i in range(5)],
+        spacing=4,
+    )]
+    monday = first_monday
+    while monday <= term.close:
+        week_days = [monday + timedelta(days=i) for i in range(5)]
+        in_term = [d for d in week_days if term.start <= d <= term.close]
+        # The month's number marks the week it starts in (the term's first
+        # week too, even when the term starts mid-month).
+        starts = [d for d in in_term if d.day == 1 or d == in_term[0] == term.start]
+        month_label = f"{starts[0].month}." if starts else ""
+        rows.append(ft.Row(
+            [ft.Container(C.txt(month_label, tok, size=tok.fs_small, bold=True, faint=True),
+                          width=label_w)]
+            + [_calendar_cell(state, page, plan, term, d, recommended, over_days, now,
+                              size=36, numbered=True)
+               for d in week_days],
+            spacing=4,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ))
+        monday += timedelta(days=7)
+    return ft.Column(rows, spacing=4, tight=True)
+
+
+def _strip_card(state: AppState, strip: ft.Control) -> ft.Control:
+    """The overview calendar with its legend and hint, in one card."""
+    tok = state.tok
 
     def _legend(color: str | None, label: str, border: str | None = None) -> ft.Control:
         return ft.Row([
@@ -902,12 +961,15 @@ def _recommended_blocks(state: AppState, page: ft.Page, term, now: datetime) -> 
         header_actions.append(C.primary_button(
             f"{S('plan_all')} ({len(picks)})", tok, icon=ft.Icons.DONE_ALL,
             on_click=lambda e: _plan_all_dialog(state, page, [o.day for o in picks])))
-    blocks: list[ft.Control] = [
-        ft.Row([ft.Container(C.section_header(f"{S('section_plan')} ({len(picks)})", tok),
-                             expand=True)] + header_actions,
-               vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        C.txt(S("plan_explain"), tok, size=tok.fs_small, faint=True),
-    ]
+    heading = C.section_header(f"{S('section_plan')} ({len(picks)})", tok)
+    blocks: list[ft.Control] = (
+        # Phone: the target picker and Plan all wrap under the heading.
+        [heading, ft.Row(header_actions, spacing=8, run_spacing=8, wrap=True)]
+        if C.narrow(state) else
+        [ft.Row([ft.Container(heading, expand=True)] + header_actions,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER)]
+    )
+    blocks.append(C.txt(S("plan_explain"), tok, size=tok.fs_small, faint=True))
     if not picks:
         already = len(term.planned_dates & set(term.remaining_days))
         target = state.planner_target_days()
@@ -1104,9 +1166,9 @@ def build(state: AppState, page: ft.Page, now: datetime | None = None) -> ft.Con
         on_click=lambda e: _custom_plan_dialog(state, page, now))
     custom_btn.tooltip = S("plan_custom_hint")
     blocks = [
-        C.header_row(
-            tok, S("planner_title"), state.updated_label,
-            actions=[
+        *C.header_with_actions(
+            state, tok, S("planner_title"), state.updated_label,
+            [
                 C.ghost_button(S("see_absences"), tok,
                                on_click=lambda e: state.go("absences")),
                 custom_btn,

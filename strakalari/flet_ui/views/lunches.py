@@ -422,6 +422,12 @@ class LunchView:
         )
         return C.card(*rows, tok=tok)
 
+    def _set_sidebar(self, open: bool) -> None:
+        if C.narrow(self.state):
+            self.state.set_lunch_tools(open)
+        else:
+            self.state.set_lunches_sidebar(open)
+
     def _sidebar(self) -> ft.Control:
         state, tok = self.state, self.state.tok
         bar = ft.Row(
@@ -430,7 +436,7 @@ class LunchView:
                 ft.Container(expand=True),
                 ft.IconButton(
                     ft.Icons.CLOSE, tooltip=S("hide_sidebar"), icon_size=18,
-                    on_click=lambda e: state.set_lunches_sidebar(False),
+                    on_click=lambda e: self._set_sidebar(False),
                 ),
             ],
             spacing=4,
@@ -496,7 +502,11 @@ class LunchView:
             meals = _food.get(day, {}) or {}
             if any("&-1&" in str(mid) for mid in meals):
                 pending += 1
-        sidebar_open = bool(getattr(state, "lunches_sidebar_open", True))
+        narrow = C.narrow(state)
+        # Phone: the panel replaces the menu while open (own flag, closed by
+        # default; the desktop panel starts open next to the menu).
+        sidebar_open = (bool(getattr(state, "lunch_tools_open", False)) if narrow
+                        else bool(getattr(state, "lunches_sidebar_open", True)))
 
         def _send(e):
             if state.submit_orders(self.page):
@@ -518,7 +528,7 @@ class LunchView:
             tooltip=S("hide_sidebar") if sidebar_open else S("show_sidebar"),
             icon_size=22,
             icon_color=tok.accent if sidebar_open else None,
-            on_click=lambda e: state.set_lunches_sidebar(not sidebar_open),
+            on_click=lambda e: self._set_sidebar(not sidebar_open),
         )
         header = C.header_row(tok, S("lunch_title"), state.updated_label,
                               actions=[T.anchor(state, "lunch_tools", toggle)])
@@ -574,6 +584,14 @@ class LunchView:
                 card = T.anchor(state, "lunch_day", card)
             menu_controls.append(card)
         menu_controls.append(C.bottom_spacer(tok))
+        if narrow and not sidebar_open:
+            # Phone: one scrolling page (fixed rows above the menu would
+            # leave it a sliver in landscape).
+            return C.scrollable(
+                state, "lunches:menu", [header, hint, send_row, *menu_controls],
+                spacing=tok.gap, expand=True,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+            )
         menu = C.scrollable(
             state, "lunches:menu", menu_controls,
             spacing=tok.gap, expand=True,
@@ -585,7 +603,9 @@ class LunchView:
             expand=True,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         )
-        if sidebar_open:
+        if narrow:
+            body = self._sidebar()  # the menu itself returned above
+        elif sidebar_open:
             body = ft.Row(
                 [
                     ft.Container(content=left, expand=True),

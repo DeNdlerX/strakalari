@@ -178,7 +178,7 @@ def _sort_toggle(state: AppState) -> ft.SegmentedButton:
     )
 
 
-def _stats(state: AppState, summaries: list[gr.SubjectSummary], bands) -> ft.Row:
+def _stats(state: AppState, summaries: list[gr.SubjectSummary], bands) -> ft.Control:
     tok = state.tok
     predicting = any(s.predicting for s in summaries)
     avg, avg_scale = _overall(summaries, bands)
@@ -186,18 +186,16 @@ def _stats(state: AppState, summaries: list[gr.SubjectSummary], bands) -> ft.Row
     n_marks = sum(s.real_count for s in summaries)
     n_new = sum(s.new_count for s in summaries)
     suffix = f" · {S('marks_predicted_short')}" if predicting else ""
-    return ft.Row(
-        [
-            C.stat_card(S("marks_average") + suffix, _fmt(avg, avg_scale), tok,
-                        kind=gr.kind_for(avg, avg_scale, bands)),
-            C.stat_card(S("marks_report") + suffix,
-                        f"{report:.2f}" if report is not None else "—", tok,
-                        kind=gr.kind_for(report, "grade", bands)),
-            C.stat_card(S("marks_total"), str(n_marks), tok),
-            C.stat_card(S("marks_new"), str(n_new), tok, kind="ok" if n_new else "info"),
-        ],
-        spacing=tok.gap,
-    )
+    cards = [
+        C.stat_card(S("marks_average") + suffix, _fmt(avg, avg_scale), tok,
+                    kind=gr.kind_for(avg, avg_scale, bands)),
+        C.stat_card(S("marks_report") + suffix,
+                    f"{report:.2f}" if report is not None else "—", tok,
+                    kind=gr.kind_for(report, "grade", bands)),
+        C.stat_card(S("marks_total"), str(n_marks), tok),
+        C.stat_card(S("marks_new"), str(n_new), tok, kind="ok" if n_new else "info"),
+    ]
+    return C.stat_row(state, cards, tok.gap)
 
 
 def _prediction_banner(state: AppState, summaries: list[gr.SubjectSummary]) -> ft.Control | None:
@@ -905,11 +903,54 @@ def _detail(state: AppState, page, summary: gr.SubjectSummary, bands) -> list[ft
 
 
 # -- build ------------------------------------------------------------------------------------
+def _build_narrow(state: AppState, page: ft.Page, grades) -> ft.Control:
+    """Phone: one scrolling page; a picked subject replaces the list
+    (its close button, or Back, returns to it) instead of a side panel."""
+    tok = state.tok
+    blocks: list[ft.Control] = [C.header_row(tok, S("marks_title"), state.updated_label)]
+    if not grades:
+        blocks.append(C.empty_state(S("no_data"), tok))
+        if state.demo_mode:
+            blocks.append(C.txt(S("need_credentials"), tok, size=tok.fs_small, faint=True))
+        return ft.Column(blocks, spacing=tok.gap, expand=True)
+    bands = state.marks_bands()
+    summaries = state.marks_summaries()
+    selected = {s.name: s for s in summaries}.get(state.marks_selected or "")
+    if selected is not None:
+        blocks += _detail(state, page, selected, bands)
+        key = f"marks:panel:{selected.name}"
+    else:
+        blocks.append(T.anchor(state, "marks_scale", _scale_toggle(state)))
+        blocks.append(T.anchor(state, "marks_stats", _stats(state, summaries, bands)))
+        banner = _prediction_banner(state, summaries)
+        if banner is not None:
+            blocks.append(banner)
+        blocks.append(ft.Row(
+            [C.txt(S("marks_subjects_n").format(n=len(summaries)), tok, bold=True,
+                   size=tok.fs_small), _sort_toggle(state)],
+            wrap=True, run_spacing=6, spacing=tok.gap,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ))
+        cards = [_subject_card(state, s, bands)
+                 for s in _sorted(summaries, state.marks_sort(), bands)]
+        if cards:
+            cards[0] = T.anchor(state, "marks_subject", cards[0])
+        blocks += cards
+        blocks += _overview(state, page, summaries, bands)
+        key = "marks"
+    blocks.append(C.bottom_spacer(tok))
+    return C.scrollable(state, key, blocks, spacing=tok.gap // 2 + 2, expand=True,
+                        horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+
+
 def build(state: AppState, page: ft.Page) -> ft.Control:
     tok = state.tok
     grades = state.grades()
     if grades:
         T.offer(state, "marks")
+    narrow = C.narrow(state)
+    if narrow:
+        return _build_narrow(state, page, grades)
     header = C.header_row(tok, S("marks_title"), state.updated_label,
                           actions=[T.anchor(state, "marks_scale", _scale_toggle(state))]
                           if grades else None)

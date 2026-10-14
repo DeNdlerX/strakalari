@@ -229,7 +229,7 @@ def _detail_dialog(state: AppState, page: ft.Page, lesson: dict, day: date) -> N
                 tight=True,
                 horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             ),
-            width=380,
+            width=C.dialog_width(page, 380),
         ),
         actions=[ft.TextButton(S("close"), on_click=lambda e: close_dialog(page, dlg))],
         actions_alignment=ft.MainAxisAlignment.END,
@@ -479,14 +479,19 @@ def _cell_subject(raw: dict, full: str, max_chars: int) -> str:
     return _abbrev(full)
 
 
+def _sized(width: float | None) -> dict:
+    """A grid column's size: a share of the row (desktop) or fixed (phone)."""
+    return {"expand": 1} if width is None else {"width": width}
+
+
 def _grid_cell(
     state: AppState, page: ft.Page, raw: dict | None, day: date,
-    focus: str, max_chars: int,
+    focus: str, max_chars: int, width: float | None = None,
 ) -> ft.Control:
     tok = state.tok
     if not isinstance(raw, dict):
         # Free period: blank space keeps the column rhythm, no frame.
-        return ft.Container(expand=1, height=ROW_H)
+        return ft.Container(height=ROW_H, **_sized(width))
     look = _look(state, raw, day)
     subject = _cell_subject(raw, look.parsed.subject, max_chars)
     body: list[ft.Control] = [
@@ -525,8 +530,8 @@ def _grid_cell(
             spacing=6,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
-        expand=1,
         height=ROW_H,
+        **_sized(width),
         bgcolor=look.fill,
         border=frame,
         border_radius=radius_all(tok.radius_sm),
@@ -536,7 +541,8 @@ def _grid_cell(
     )
 
 
-def _period_header(tok, period: int, time_label: str, active: bool) -> ft.Control:
+def _period_header(tok, period: int, time_label: str, active: bool,
+                   width: float | None = None) -> ft.Control:
     return ft.Container(
         content=ft.Column(
             [
@@ -551,12 +557,13 @@ def _period_header(tok, period: int, time_label: str, active: bool) -> ft.Contro
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             alignment=ft.MainAxisAlignment.CENTER,
         ),
-        expand=1,
         height=HEADER_H,
+        **_sized(width),
     )
 
 
-def _day_gutter(tok, day: date, count: int, is_today: bool) -> ft.Control:
+def _day_gutter(tok, day: date, count: int, is_today: bool,
+                width: int = GUTTER_W) -> ft.Control:
     name = C.day_name(day, short=True)
     color = tok.accent_text if is_today else None
     return ft.Container(
@@ -571,7 +578,7 @@ def _day_gutter(tok, day: date, count: int, is_today: bool) -> ft.Control:
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             alignment=ft.MainAxisAlignment.CENTER,
         ),
-        width=GUTTER_W,
+        width=width,
         height=ROW_H,
         bgcolor=tok.accent if is_today else tok.surface,
         border_radius=radius_all(tok.radius_sm),
@@ -644,10 +651,13 @@ def _table_view(
     if not periods:
         return C.card(C.txt(S("no_lessons_today"), tok, faint=True), tok=tok)
 
-    max_chars = _cell_chars(page, len(periods))
     focus_period, focus_kind = None, ""
     if today in week_days:
         focus_period, focus_kind = _focus_period(week_days[today] or [], today, now)
+    if C.narrow(state):
+        return _phone_table(state, page, week_days, days, periods, by_day_period,
+                            today, focus_period, focus_kind)
+    max_chars = _cell_chars(page, len(periods))
 
     header = ft.Container(
         content=ft.Row(
@@ -678,6 +688,78 @@ def _table_view(
             padding=pad_all(ROW_PAD),
         ))
     return grid
+
+
+#: Phone grid: the day column, and the narrowest a lesson cell may get
+#: (subject + room/teacher still readable). Below that the periods
+#: scroll sideways while the day column stays put; wider screens
+#: (landscape) stretch the cells to fill the width instead.
+PHONE_GUTTER_W = 52
+PHONE_CELL_MIN_W = 92
+#: Horizontal space around the grid on a phone (the Shell's content gutters).
+_PHONE_CHROME_W = 2 * 12
+
+
+def _phone_table(
+    state: AppState, page: ft.Page, week_days: dict[date, list[dict]], days: list[date],
+    periods: list[int], by_day_period: dict[date, dict[int, list[dict]]], today: date,
+    focus_period: int | None, focus_kind: str,
+) -> ft.Control:
+    """The week grid on a phone: same cells, fixed width, scrolls sideways."""
+    tok = state.tok
+    try:
+        width = float(getattr(page, "width", 0) or 0)
+    except (TypeError, ValueError):
+        width = 0.0
+    free = (width or 390.0) - _PHONE_CHROME_W - PHONE_GUTTER_W - GAP - 2 * ROW_PAD
+    cell_w = max(PHONE_CELL_MIN_W, int((free - GAP * (len(periods) - 1)) / len(periods)))
+    max_chars = max(3, int((cell_w - 24) / 7.5))
+    row_h = ROW_H + 2 * ROW_PAD
+
+    gutters: list[ft.Control] = [ft.Container(height=HEADER_H)]
+    rows: list[ft.Control] = [ft.Container(
+        content=ft.Row(
+            [_period_header(tok, p, _period_time(week_days, p),
+                            active=p == focus_period, width=cell_w)
+             for p in periods],
+            spacing=GAP,
+        ),
+        padding=pad_sym(horizontal=ROW_PAD),
+    )]
+    for day in days:
+        lessons = [r for r in (week_days[day] or []) if isinstance(r, dict)]
+        is_today = day == today
+        gutters.append(ft.Container(
+            _day_gutter(tok, day, len(_taught(lessons)), is_today, width=PHONE_GUTTER_W),
+            height=row_h, alignment=ft.Alignment(0, 0),
+        ))
+        cells = [
+            _grid_cell(
+                state, page, _combined_cell(by_day_period.get(day, {}).get(period)),
+                day, focus_kind if is_today and period == focus_period else "",
+                max_chars, width=cell_w,
+            )
+            for period in periods
+        ]
+        rows.append(ft.Container(
+            content=ft.Row(cells, spacing=GAP,
+                           vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            height=row_h,
+            bgcolor=tint(tok.accent, 0.08) if is_today else None,
+            border_radius=radius_all(tok.radius_md),
+            padding=pad_all(ROW_PAD),
+        ))
+    periods_scroller = C.scrollable(
+        state, "timetable:table:x",
+        [ft.Column(rows, spacing=GAP, tight=True)],
+        make=ft.Row, scroll=ft.ScrollMode.AUTO, expand=True,
+        vertical_alignment=ft.CrossAxisAlignment.START,
+    )
+    return ft.Row(
+        [ft.Column(gutters, spacing=GAP, tight=True), periods_scroller],
+        spacing=GAP,
+        vertical_alignment=ft.CrossAxisAlignment.START,
+    )
 
 
 def _lesson_row(state: AppState, page: ft.Page, lesson: dict, day: date,
@@ -906,36 +988,47 @@ def build(state: AppState, page: ft.Page) -> ft.Control:
         today = date.today()
         monday = today - timedelta(days=today.weekday())
         week_days = stable_template_week(baseline, monday)
-        nav = ft.Row(
-            [
-                ft.IconButton(ft.Icons.CHEVRON_LEFT, icon_size=22, disabled=True),
-                C.txt(S("stable_timetable"), tok, bold=True),
-                ft.IconButton(ft.Icons.CHEVRON_RIGHT, icon_size=22, disabled=True),
-                C.ghost_button(S("this_week"), tok, on_click=lambda e: _this_week()),
-                stable_btn,
-                ft.Container(expand=True),
-                _view_toggle(state),
-            ],
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        )
+        prev_btn = ft.IconButton(ft.Icons.CHEVRON_LEFT, icon_size=22, disabled=True)
+        nav_label = C.txt(S("stable_timetable"), tok, bold=True)
+        next_btn = ft.IconButton(ft.Icons.CHEVRON_RIGHT, icon_size=22, disabled=True)
     else:
         week_days = weeks.get(current, {})
+        prev_btn = ft.IconButton(
+            ft.Icons.CHEVRON_LEFT,
+            tooltip=S("prev_week"),
+            icon_size=22,
+            on_click=lambda e: _go(-1),
+        )
+        nav_label = C.txt(week_label, tok, bold=True)
+        next_btn = ft.IconButton(
+            ft.Icons.CHEVRON_RIGHT,
+            tooltip=S("next_week"),
+            icon_size=22,
+            on_click=lambda e: _go(1),
+        )
+    this_week_btn = C.ghost_button(S("this_week"), tok, on_click=lambda e: _this_week())
+    narrow = C.narrow(state)
+    if narrow:
+        # Phone: the week label between the arrows, the buttons below.
+        nav_label.expand = True
+        nav_label.text_align = ft.TextAlign.CENTER
+        nav = ft.Column(
+            [
+                ft.Row([prev_btn, nav_label, next_btn],
+                       vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Row([this_week_btn, stable_btn, _view_toggle(state)],
+                       spacing=8, wrap=True, run_spacing=8),
+            ],
+            spacing=4,
+            tight=True,
+        )
+    else:
         nav = ft.Row(
             [
-                ft.IconButton(
-                    ft.Icons.CHEVRON_LEFT,
-                    tooltip=S("prev_week"),
-                    icon_size=22,
-                    on_click=lambda e: _go(-1),
-                ),
-                C.txt(week_label, tok, bold=True),
-                ft.IconButton(
-                    ft.Icons.CHEVRON_RIGHT,
-                    tooltip=S("next_week"),
-                    icon_size=22,
-                    on_click=lambda e: _go(1),
-                ),
-                C.ghost_button(S("this_week"), tok, on_click=lambda e: _this_week()),
+                prev_btn,
+                nav_label,
+                next_btn,
+                this_week_btn,
                 stable_btn,
                 ft.Container(expand=True),
                 _view_toggle(state),
@@ -949,6 +1042,17 @@ def build(state: AppState, page: ft.Page) -> ft.Control:
 
     names = _day_names()
     is_table = state.timetable_view != "list"
+    if narrow:
+        # Phone: one scrolling page. A fixed header, week navigation and
+        # legend would leave the grid a sliver (in landscape: nothing).
+        body = (_table_view(state, page, week_days, names) if is_table
+                else _list_view(state, page, week_days, names))
+        return C.scrollable(
+            state, "timetable:table" if is_table else "timetable:list",
+            [header, nav, *(body if isinstance(body, list) else [body]), legend,
+             C.bottom_spacer(tok)],
+            spacing=tok.gap, expand=True,
+        )
     if is_table:
         # Header/nav stay fixed; the grid fits the width (cells share it),
         # so only a short window ever needs to scroll — vertically.

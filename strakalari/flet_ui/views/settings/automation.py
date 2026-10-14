@@ -152,6 +152,10 @@ class AutomationMixin:
     # -- background (section id "browser" kept for saved navigation) ------------
     def _browser(self) -> list:
         state, tok, page = self.state, self.state.tok, self.page
+        from strakalari.core.packaging import mobile_platform
+
+        if mobile_platform() == "android":
+            return self._phone_background()
 
         def _commit_tray(e):
             _save_quiet(state, page, {"minimize_to_tray": bool(e.control.value)})
@@ -205,6 +209,21 @@ class AutomationMixin:
                         bool(state.get("minimize_to_tray", True)),
                         on_change=_commit_tray)
         return [C.form_card(autostart, tray, tok=tok)]
+
+    def _phone_background(self) -> list:
+        """Android: run in the background (the app starts / stops its
+        service when the setting is saved, see app._setup_phone_background)."""
+        state, tok, page = self.state, self.state.tok, self.page
+
+        def _commit(e):
+            _save_quiet(state, page, {"run_in_background": bool(e.control.value)})
+
+        return [C.form_card(
+            C.toggle(tok, S("run_in_background"), bool(state.get("run_in_background", True)),
+                     on_change=_commit),
+            C.hint_text(S("run_in_background_hint"), tok),
+            tok=tok,
+        )]
     # -- AI ----------------------------------------------------------------------------
     def _ai(self) -> list:
         state, tok, page = self.state, self.state.tok, self.page

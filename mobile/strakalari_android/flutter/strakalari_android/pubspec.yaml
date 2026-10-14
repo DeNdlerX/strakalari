@@ -1,0 +1,21 @@
+name: strakalari_android
+description: Android pieces of the Strakaláři phone app (background service, wake-up alarms, notifications).
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # The app pins the exact version through dependency_overrides.
+  flet: any
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: io.github.dendlerx.strakalari.android
+        pluginClass: StrakalariAndroidPlugin

@@ -33,6 +33,8 @@ def get_user_data_dir() -> str:
     if override:
         os.makedirs(override, exist_ok=True)
         return override
+    if _is_mobile():
+        return _mobile_data_dir()
     frozen = getattr(sys, "frozen", False)
     if frozen and sys.platform == "darwin":
         return _macos_app_data_dir()
@@ -71,6 +73,29 @@ def _in_store_package() -> bool:
         return is_store_package()
     except Exception:
         return False
+
+
+def _is_mobile() -> bool:
+    try:
+        from .packaging import is_mobile
+
+        return is_mobile()
+    except Exception:
+        return False
+
+
+def _mobile_data_dir() -> str:
+    """The phone app's private storage (``FLET_APP_STORAGE_DATA``), created.
+
+    The app's own folder (next to main.py) is read-only there. Flet's dir
+    survives app updates and is the process cwd; the fallback below is
+    only for a host that did not set it.
+    """
+    data_dir = os.environ.get("FLET_APP_STORAGE_DATA", "").strip()
+    if not data_dir:
+        data_dir = os.path.join(os.path.expanduser("~"), "strakalari")
+    os.makedirs(data_dir, exist_ok=True)
+    return data_dir
 
 
 #: Store data dirs whose first-run migration was already attempted.

@@ -124,7 +124,28 @@ class AppPrefsMixin:
                 tok, notif_label(event), prefs.get(event, True),
                 on_change=lambda e, ev=event: _on_toggle(e, ev),
             ))
-        return [C.card(*switches, tok=tok)]
+        return self._phone_notifications_blocked() + [C.card(*switches, tok=tok)]
+
+    def _phone_notifications_blocked(self) -> list:
+        """Android: a card when the system blocks the app's notifications."""
+        from strakalari.core import android
+
+        if not android.available() or android.notifications_enabled():
+            return []
+        tok = self.state.tok
+        return [C.card(
+            C.txt(S("notif_off_phone"), tok, size=tok.fs_small, color=tok.yellow),
+            ft.Row(
+                [
+                    C.primary_button(S("notif_allow"), tok, icon=ft.Icons.NOTIFICATIONS_ACTIVE,
+                                     on_click=lambda e: android.request_notification_permission()),
+                    C.ghost_button(S("notif_open_settings"), tok,
+                                   on_click=lambda e: android.open_notification_settings()),
+                ],
+                spacing=8, run_spacing=8, wrap=True,
+            ),
+            tok=tok,
+        )]
 
     # -- diagnostics -----------------------------------------------------------------------
     def _diagnostics(self) -> list:

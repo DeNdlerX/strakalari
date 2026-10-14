@@ -12,6 +12,7 @@ from typing import Callable
 
 import flet as ft
 
+from .components import dialog_width
 from .overlays import close_dialog, show_dialog
 from .strings import S
 
@@ -65,7 +66,7 @@ def confirm_auto_mode(
     dlg = ft.AlertDialog(
         modal=True,
         title=ft.Text(S("auto_confirm_title")),
-        content=ft.Column(body, tight=True, spacing=10, width=440),
+        content=ft.Column(body, tight=True, spacing=10, width=dialog_width(page, 440)),
         actions=[
             ft.TextButton(S("cancel"), on_click=_finish(on_cancel)),
             ft.TextButton(S("auto_confirm_dry"), on_click=_finish(on_dry_run)),

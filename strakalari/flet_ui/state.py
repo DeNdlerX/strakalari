@@ -135,6 +135,8 @@ class AppState(ExcuseTasksMixin, LunchMixin, MarksMixin, PlannerMixin, ActivityM
         self.testing: str = ""  # service currently being tested, "" when idle
         self.scheduler_last_run: datetime | None = None
         self.pending_route: str | None = None  # view asking the shell to navigate
+        self.narrow: bool = False  # phone-sized page (set by the Shell each render)
+        self.nav_side: bool = False  # phone in landscape: the tabs sit in a side rail
         self._refresh_tokens()
         self.lunch_hidden: set[str] = set()  # meal_ids hidden by the filter
         self.lunch_reasons: dict[str, str] = {}
@@ -142,7 +144,9 @@ class AppState(ExcuseTasksMixin, LunchMixin, MarksMixin, PlannerMixin, ActivityM
         # -- per-render UI memory (in-memory only, survives re-renders) -----
         self.picked_templates: dict[str, int] = {}  # excuse task/day key -> template idx
         self.settings_section: str = "accounts"  # active settings category
+        self.settings_open: bool = False  # phone: a section open over the list
         self.lunches_sidebar_open: bool = True  # AI + blacklist side panel
+        self.lunch_tools_open: bool = False  # phone: that panel instead of the menu
         self.show_past_calendar: bool = False  # past free days hidden by default
         self.show_past_lunches: bool = False  # past menu days hidden by default
         self.drafts: dict[str, str] = {}  # unsaved field text (no re-render on typing)
@@ -478,8 +482,16 @@ class AppState(ExcuseTasksMixin, LunchMixin, MarksMixin, PlannerMixin, ActivityM
 
     def set_settings_section(self, section: str) -> None:
         self.settings_section = section
+        self.settings_open = True
         # Password / key fields clear on leave: returning later shows the
         # "saved — enter a new one" hint instead of the typed value.
+        for key in ("acc:bakalari_password", "acc:strava_password", "ai:key"):
+            self.drafts.pop(key, None)
+        self._emit()
+
+    def close_settings_section(self) -> None:
+        """Phone layout: back from a settings section to the section list."""
+        self.settings_open = False
         for key in ("acc:bakalari_password", "acc:strava_password", "ai:key"):
             self.drafts.pop(key, None)
         self._emit()
@@ -487,6 +499,11 @@ class AppState(ExcuseTasksMixin, LunchMixin, MarksMixin, PlannerMixin, ActivityM
     def set_lunches_sidebar(self, open: bool) -> None:
         """Shows/hides the AI + blacklist side panel (in-memory)."""
         self.lunches_sidebar_open = bool(open)
+        self._emit()
+
+    def set_lunch_tools(self, open: bool) -> None:
+        """Phone layout: the AI + blacklist panel in place of the menu."""
+        self.lunch_tools_open = bool(open)
         self._emit()
 
     def set_show_past_calendar(self, show: bool) -> None:

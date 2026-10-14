@@ -15,6 +15,11 @@ The store entry is bound to the data dir path, so separate installs
 (portable + installed) keep separate keys. Moving the data folder
 therefore means re-entering the passwords once — the same outcome as
 copying it to another machine, which is the point.
+
+Android (phone app): no keyring there. The key is kept in the data dir
+as ``secret.key.wrapped``, encrypted with a key that lives in the
+Android Keystore (secure hardware; it never leaves it). A plain
+``secret.key`` from an older build is wrapped and deleted the same way.
 """
 
 from __future__ import annotations
@@ -25,6 +30,8 @@ import threading
 
 SERVICE = "Strakalari"
 KEY_FILE = "secret.key"
+#: Android: the key, encrypted by the Android Keystore (base64 text).
+WRAPPED_FILE = "secret.key.wrapped"
 
 _CACHE: dict[str, bytes] = {}
 _LOCK = threading.Lock()
@@ -172,6 +179,67 @@ def get_key(data_dir: str) -> bytes:
         return key
 
 
+def _android_keystore():
+    """The Keystore helpers inside the Android app, else None."""
+    if os.environ.get("STRAKALARI_NO_KEYRING", "").strip() not in ("", "0"):
+        return None
+    try:
+        from . import android
+
+        return android if android.available() else None
+    except Exception:  # noqa: BLE001 - no Keystore: file fallback
+        return None
+
+
+def _android_load_or_create(data_dir: str, file_key: bytes | None, fernet_cls, android) -> bytes:
+    """Android: unwrap ``secret.key.wrapped``, or create / migrate it.
+
+    Falls back to the plain ``secret.key`` (the old behaviour) when the
+    Keystore misbehaves, so the passwords stay usable either way.
+    """
+    import base64
+
+    from .helpers import quarantine_corrupt_file
+
+    path = os.path.join(data_dir, KEY_FILE)
+    wrapped_path = os.path.join(data_dir, WRAPPED_FILE)
+    wrapped = _read_file(wrapped_path)
+    if wrapped is not None:
+        try:
+            key = android.keystore_unwrap(base64.b64decode(wrapped))
+        except Exception as exc:  # noqa: BLE001 - Keystore key gone, file damaged
+            print(f"Warning: could not unlock {WRAPPED_FILE} ({type(exc).__name__}: {exc}); "
+                  "stored passwords must be entered again.")
+            quarantine_corrupt_file(wrapped_path)
+            key = None
+        if key is not None and _valid(key):
+            if file_key is not None and file_key != key:
+                # As with the keyring: the file encrypted what is in
+                # config.json now. Never guess, keep using it.
+                print(f"Warning: {KEY_FILE} differs from {WRAPPED_FILE}; using the file.")
+                return file_key
+            if file_key is not None:
+                _remove_file(path)  # leftover of an interrupted migration
+            return key
+
+    key = file_key or fernet_cls.generate_key()
+    try:
+        blob = android.keystore_wrap(key)
+        if android.keystore_unwrap(blob) != key:
+            raise ValueError("the wrapped key does not read back")
+        _write_file(wrapped_path, base64.b64encode(blob))
+    except Exception as exc:  # noqa: BLE001 - keep the plain file then
+        print(f"Warning: Android Keystore unavailable ({type(exc).__name__}: {exc}); "
+              f"keeping {KEY_FILE}.")
+        if file_key is None:
+            _write_file(path, key)
+        return key
+    if file_key is not None:
+        _remove_file(path)
+    print(f"Info: password key {'moved into' if file_key else 'created in'} the Android Keystore.")
+    return key
+
+
 def _load_or_create(data_dir: str, fernet_cls) -> bytes:
     path = os.path.join(data_dir, KEY_FILE)
     file_key = _read_file(path)
@@ -181,6 +249,10 @@ def _load_or_create(data_dir: str, fernet_cls) -> bytes:
 
         quarantine_corrupt_file(path)
         file_key = None
+
+    android = _android_keystore()
+    if android is not None:
+        return _android_load_or_create(data_dir, file_key, fernet_cls, android)
 
     kr = _keyring()
     if kr is None:
@@ -270,19 +342,23 @@ def forget_key(data_dir: str) -> bool:
                     ok = False
             except Exception:
                 ok = False
-    path = os.path.join(data_dir, KEY_FILE)
-    if os.path.exists(path):
-        _remove_file(path)
-        ok = ok and not os.path.exists(path)
+    for name in (KEY_FILE, WRAPPED_FILE):
+        path = os.path.join(data_dir, name)
+        if os.path.exists(path):
+            _remove_file(path)
+            ok = ok and not os.path.exists(path)
     with _LOCK:
         _CACHE.pop(data_dir, None)
     return ok
 
 
 def storage_location(data_dir: str) -> str:
-    """``"keyring"`` or ``"file"`` — where the key currently lives (for diagnostics)."""
+    """``"keyring"``, ``"keystore"`` (Android) or ``"file"`` — where the key
+    currently lives (for diagnostics)."""
     if os.path.exists(os.path.join(data_dir, KEY_FILE)):
         return "file"
+    if os.path.exists(os.path.join(data_dir, WRAPPED_FILE)):
+        return "keystore"
     return "keyring" if _keyring() is not None else "file"
 
 

@@ -114,6 +114,9 @@ CANONICAL_DEFAULTS: Dict[str, Any] = {
     "excuse_delay_days": 2,
     "sent_excuses_limit": 100,
     "minimize_to_tray": True,
+    # Phone app: keep refreshing and automating with the app closed
+    # (Android foreground service; ignored on desktop and iOS).
+    "run_in_background": True,
     "language": "cs",
     "excuse_mode": "confirm",
     "default_excuse_selection": "first",

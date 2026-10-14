@@ -14,6 +14,12 @@ def show_dialog(page: ft.Page, dialog: ft.AlertDialog) -> None:
     page.show_dialog(dialog)
 
 
+def _dialog_width(page, preferred: int) -> int:
+    from .components import dialog_width
+
+    return dialog_width(page, preferred)
+
+
 def close_dialog(page: ft.Page, dialog: ft.AlertDialog | None = None) -> None:
     """Closes the topmost dialog and repaints.
 
@@ -54,6 +60,9 @@ def snack(
     bar = ft.SnackBar(
         ft.Text(text),
         action=ft.SnackBarAction(action_label, on_click=on_action) if action_label else None,
+        # Flutter keeps a snackbar with an action (Undo) open until it is
+        # tapped; it should time out like any other.
+        persist=False,
     )
     try:
         # Drop stale snackbars so the overlay doesn't grow on every refresh.
@@ -250,7 +259,7 @@ def show_error_dialog(
                 spacing=8,
                 tight=True,
             ),
-            width=560,
+            width=_dialog_width(page, 560),
         ),
         actions=[
             ft.TextButton(S("error_close"), on_click=_dismiss),

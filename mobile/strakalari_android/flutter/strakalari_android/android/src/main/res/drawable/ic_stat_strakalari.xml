@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status bar icon: assets/tray-icon.svg as a silhouette (the hexagon,
+     with the fork and the pencil cut out). Android draws only its alpha. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M256,26L455.2,141L455.2,371L256,486L56.8,371L56.8,141Z
+            M168,135h18v63h-18z M196,135h18v63h-18z M224,135h18v63h-18z
+            M166,198h78v34h-78z M184,232h44v164h-44z
+            M282,112h52v26h-52z M280,142h56v198h-56z M280,340L336,340L308,415Z" />
+</vector>

@@ -38,7 +38,7 @@ from dataclasses import dataclass
 import flet as ft
 
 from . import components as C
-from .strings import S
+from .strings import STRINGS, S
 from .theme import border_all, pad_all, radius_all, tint
 
 #: Where a step's bubble goes. ``inline`` = right below its anchor (the
@@ -178,6 +178,7 @@ def anchor(state, key: str, control: ft.Control) -> ft.Control:
         return control
     state._tutorial_anchored = True
     tour, index, step = current
+    place = _place(state, step)
     tok = state.tok
     ring = ft.Container(
         content=control,
@@ -187,7 +188,7 @@ def anchor(state, key: str, control: ft.Control) -> ft.Control:
         shadow=ft.BoxShadow(blur_radius=18, spread_radius=1, color=tint(tok.accent, 0.35)),
         expand=getattr(control, "expand", None),
     )
-    if step.place != "inline":
+    if place != "inline":
         return ring
     bubble = _bubble(state, tour, index, step, caret="up")
     return ft.Column(
@@ -211,7 +212,7 @@ def layer(state) -> ft.Control | None:
     if current is None:
         return None
     tour, index, step = current
-    place = step.place
+    place = _place(state, step)
     if place == "inline":
         if getattr(state, "_tutorial_anchored", False):
             return None
@@ -220,6 +221,12 @@ def layer(state) -> ft.Control | None:
             return None
         place = "bottom_right"
     tok = state.tok
+    if place == "bottom":
+        # Phone: just above the bottom bar the step talks about.
+        return ft.Container(
+            ft.Row([_bubble(state, tour, index, step)], alignment=ft.MainAxisAlignment.CENTER),
+            left=0, right=0, bottom=tok.gap,
+        )
     if place == "center":
         return ft.Container(
             content=_bubble(state, tour, index, step, width=440),
@@ -245,6 +252,23 @@ def layer(state) -> ft.Control | None:
                             right=tok.pad + 8, top=tok.pad + 8 + HEADER_HEIGHT)
     return ft.Container(_bubble(state, tour, index, step),
                         right=tok.pad, bottom=tok.pad)
+
+
+def _place(state, step: Step) -> str:
+    """Where ``step``'s bubble goes in the current layout.
+
+    The phone layout's header actions move into the content, so a bubble
+    pointing at a control goes right below it (the topbar's refresh and
+    status stay where they are), and the screens step points at the
+    bottom bar (portrait) or the side rail (landscape).
+    """
+    if not C.narrow(state):
+        return step.place
+    if step.place == "left":
+        return "left" if getattr(state, "nav_side", False) else "bottom"
+    if step.anchor and step.anchor not in ("refresh", "status"):
+        return "inline"
+    return step.place
 
 
 # -- the bubble ---------------------------------------------------------------
@@ -287,6 +311,11 @@ def _bubble(state, tour: Tour, index: int, step: Step, caret: str = "",
     tok = state.tok
     total = len(tour.steps)
     last = index == total - 1
+    if C.narrow(state):
+        width = C.dialog_width(getattr(state, "_page", None), width)
+    body_key = f"tut_{step.key}_body"
+    if C.narrow(state) and f"{body_key}_narrow" in STRINGS:
+        body_key += "_narrow"
 
     close = ft.IconButton(
         ft.Icons.CLOSE, icon_size=16, icon_color=tok.faint,
@@ -309,7 +338,7 @@ def _bubble(state, tour: Tour, index: int, step: Step, caret: str = "",
     )
     body: list[ft.Control] = [
         head,
-        ft.Text(S(f"tut_{step.key}_body"), size=tok.fs_body, color=tok.muted),
+        ft.Text(S(body_key), size=tok.fs_body, color=tok.muted),
     ]
     if step.until:
         body.append(ft.Row(

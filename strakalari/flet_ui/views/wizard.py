@@ -525,6 +525,7 @@ def _step_content(state: AppState, page: ft.Page | None, step: int) -> list:
         from ..theme import border_all, pad_all, radius_all
 
         preset = _cal_preset(state)
+        narrow = C.narrow(state)
 
         def _pick(p):
             state.set_draft("wiz:cal_preset", p)
@@ -559,7 +560,7 @@ def _step_content(state: AppState, page: ft.Page | None, step: int) -> list:
                                  tok.accent if selected else tok.border),
                 border_radius=radius_all(tok.radius_md),
                 padding=pad_all(tok.pad),
-                width=280,
+                width=None if narrow else 280,  # phone: stacked, full width
                 on_click=lambda e, p=pid: _pick(p),
             )
 
@@ -586,7 +587,9 @@ def _step_content(state: AppState, page: ft.Page | None, step: int) -> list:
         rows_cal: list = [
             C.txt(S("wiz_cal_h"), tok, size=19, bold=True),
             C.txt(S("wiz_cal_p"), tok, muted=True),
-            ft.Row(cards, spacing=8, wrap=True),
+            ft.Column(cards, spacing=8, tight=True,
+                      horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+            if narrow else ft.Row(cards, spacing=8, wrap=True),
         ]
         if not preset:
             rows_cal.append(C.hint_text(S("wiz_cal_pick"), tok))
@@ -711,7 +714,9 @@ def build(state: AppState, page: ft.Page | None) -> ft.Control:
         state.wizard_goto(step - 1)
 
     def _skip(e):
-        state.dismiss_wizard()
+        # One step only, nothing of it saved: skipping must never jump
+        # past the remaining steps and finish the setup.
+        state.wizard_goto(step + 1)
 
     if step == STEP_LIMITS:
         _start_limits_refresh(state)
@@ -728,7 +733,9 @@ def build(state: AppState, page: ft.Page | None) -> ft.Control:
         nav.append(C.ghost_button(S("wiz_back"), tok, on_click=_back))
     nav.append(ft.Container(expand=True))
     if step < STEP_DONE:
-        nav.append(C.ghost_button(S("wiz_skip"), tok, on_click=_skip))
+        # Welcome has nothing to skip; the disclaimer must be accepted.
+        if step not in (STEP_WELCOME, STEP_DISCLAIMER):
+            nav.append(C.ghost_button(S("wiz_skip"), tok, on_click=_skip))
         if (step == STEP_CALENDAR and not _cal_preset(state)) or (
                 step == STEP_DISCLAIMER and not _disclaimer_ok(state)):
             nav.append(C.primary_button(S("wiz_next"), tok, on_click=_next, disabled=True))
@@ -746,6 +753,19 @@ def build(state: AppState, page: ft.Page | None) -> ft.Control:
         ],
         spacing=6, tight=True,
     )
+    narrow = C.narrow(state)
+    if narrow:
+        # Phone: the main button gets its own full-width line, Back and
+        # Skip share the one below (all three side by side don't fit).
+        primary, rest = nav[-1], [c for c in nav[:-1] if not isinstance(c, ft.Container)]
+        primary.expand = True
+        nav_row: ft.Control = ft.Column(
+            [ft.Row([primary])]
+            + ([ft.Row(rest, alignment=ft.MainAxisAlignment.SPACE_BETWEEN)] if rest else []),
+            spacing=8, tight=True,
+        )
+    else:
+        nav_row = ft.Row(nav, spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)
     card = C.card(
         C.txt(S("wiz_step_of").format(i=step + 1, n=STEPS_TOTAL), tok,
               size=tok.fs_small, muted=True),
@@ -753,7 +773,7 @@ def build(state: AppState, page: ft.Page | None) -> ft.Control:
         C.divider(tok),
         *_step_content(state, page, step),
         C.divider(tok),
-        ft.Row(nav, spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        nav_row,
         tok=tok,
     )
     return ft.Container(
@@ -766,13 +786,14 @@ def build(state: AppState, page: ft.Page | None) -> ft.Control:
                 [ft.Container(card, col={"xs": 12, "md": 9, "lg": 7,
                                          "xl": 6, "xxl": 5})],
                 alignment=ft.MainAxisAlignment.CENTER,
+                spacing=0,
             )],
             alignment=ft.MainAxisAlignment.START,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=0, tight=True,
             expand=True,
         ),
-        padding=24,
+        padding=8 if narrow else 24,
         expand=True,
         bgcolor=tok.bg,
     )

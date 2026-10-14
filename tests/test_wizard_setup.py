@@ -89,6 +89,42 @@ def test_wizard_goto_clamps_and_finish_clears(state):
     assert not [k for k in state.drafts if k.startswith("wiz:")]
 
 
+def _buttons(control, label):
+    """Every button under ``control`` whose text is ``label``."""
+    found, stack = [], [control]
+    while stack:
+        c = stack.pop()
+        content = getattr(c, "content", None)
+        if getattr(c, "on_click", None) and getattr(content, "value", None) == label:
+            found.append(c)
+        for attr in ("content", "controls"):
+            child = getattr(c, attr, None)
+            if isinstance(child, list):
+                stack.extend(child)
+            elif child is not None and not isinstance(child, str):
+                stack.append(child)
+    return found
+
+
+def test_skip_moves_one_step_only(state):
+    from strakalari.flet_ui.strings import S
+
+    state.wizard_goto(wiz.STEP_BAKALARI)
+    (skip,) = _buttons(wiz.build(state, None), S("wiz_skip"))
+    skip.on_click(None)
+    assert state.wizard_step == wiz.STEP_BAKALARI + 1
+    assert state.wizard_dismissed is False
+    assert state.config.data["bakalari_username"] == ""  # nothing saved
+
+
+@pytest.mark.parametrize("step", [wiz.STEP_WELCOME, wiz.STEP_DISCLAIMER, wiz.STEP_DONE])
+def test_no_skip_where_nothing_may_be_skipped(state, step):
+    from strakalari.flet_ui.strings import S
+
+    state.wizard_goto(step)
+    assert _buttons(wiz.build(state, None), S("wiz_skip")) == []
+
+
 def test_wizard_stays_after_bakalari_step(state):
     """Regression: saving Bakalari creds must not eject the later steps."""
     from strakalari.flet_ui.app import Shell

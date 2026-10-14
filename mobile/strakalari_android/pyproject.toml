@@ -1,0 +1,22 @@
+# Installed into the phone app by tools/make_mobile.py (never on desktop).
+[project]
+name = "strakalari-android"
+version = "1.0.0"
+description = "Android pieces of the Strakalari phone app (Flet extension)"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["strakalari_android*", "flutter*"]
+
+[tool.setuptools.package-data]
+"flutter.strakalari_android" = [
+    "pubspec.yaml",
+    "lib/**",
+    "android/**",
+    "android/consumer-rules.pro",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"

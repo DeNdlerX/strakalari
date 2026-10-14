@@ -28,6 +28,41 @@ STRINGS: dict[str, dict[str, str]] = {
     "scope_bakalari": {"cs": "Bakaláři", "en": "Bakaláři"},
     "scope_strava": {"cs": "Strava", "en": "Strava"},
     "nav_activity": {"cs": "Aktivita", "en": "Activity"},
+    "nav_more": {"cs": "Více", "en": "More"},
+
+    # Phone app: background running and notifications -------------------
+    "run_in_background": {"cs": "Běžet na pozadí", "en": "Run in the background"},
+    "run_in_background_hint": {
+        "cs": "Aplikace pak obnovuje data, omlouvá a objednává i se zavřenou obrazovkou, "
+              "tak často, jak je nastavená automatická kontrola v Automatizaci. "
+              "V oznámeních zůstane „Strakaláři běží na pozadí“. Po restartu telefonu "
+              "nebo aktualizaci aplikace ji jednou otevřete.",
+        "en": "The app then refreshes, excuses and orders with its screen closed, as often "
+              "as the auto-check under Automation is set to. A \"Strakaláři is running in "
+              "the background\" notification stays in the shade. After the phone restarts "
+              "or the app updates, open it once.",
+    },
+    "bg_notif_title": {"cs": "Strakaláři běží na pozadí",
+                       "en": "Strakaláři is running in the background"},
+    "bg_notif_text": {"cs": "Kontroluje omluvenky a obědy každých {n} min.",
+                      "en": "Checks excuses and lunches every {n} min."},
+    "bg_channel": {"cs": "Běh na pozadí", "en": "Background running"},
+    "bg_boot_title": {"cs": "Strakaláři teď nehlídají", "en": "Strakaláři is paused"},
+    "bg_boot_text": {
+        "cs": "Telefon se restartoval nebo se aplikace aktualizovala. Otevřete ji, aby zase "
+              "hlídala omluvenky a obědy.",
+        "en": "The phone restarted or the app was updated. Open it to keep watching excuses "
+              "and lunches.",
+    },
+    "events_channel": {"cs": "Automatizace", "en": "Automation"},
+    "notif_off_phone": {
+        "cs": "Oznámení má Strakaláři v telefonu vypnutá, takže se o odeslaných omluvenkách "
+              "a objednávkách nedozvíte.",
+        "en": "Notifications are turned off for Strakaláři on this phone, so you won't hear "
+              "about sent excuses and orders.",
+    },
+    "notif_allow": {"cs": "Povolit oznámení", "en": "Allow notifications"},
+    "notif_open_settings": {"cs": "Nastavení oznámení", "en": "Notification settings"},
 
     "tray_open": {"cs": "Otevřít Strakaláře", "en": "Open Strakaláři"},
     "tray_refresh": {"cs": "Obnovit nyní", "en": "Refresh now"},
@@ -823,7 +858,7 @@ STRINGS: dict[str, dict[str, str]] = {
     },
     "wiz_next": {"cs": "Pokračovat", "en": "Continue"},
     "wiz_back": {"cs": "Zpět", "en": "Back"},
-    "wiz_skip": {"cs": "Přeskočit prozatím", "en": "Skip for now"},
+    "wiz_skip": {"cs": "Přeskočit krok", "en": "Skip this step"},
     "wiz_finish": {"cs": "Dokončit", "en": "Finish"},
     "wiz_step_of": {"cs": "Krok {i} z {n}", "en": "Step {i} of {n}"},
     "wiz_bakalari_h": {"cs": "Přihlášení do Bakalářů", "en": "Bakaláři login"},
@@ -1167,6 +1202,15 @@ STRINGS: dict[str, dict[str, str]] = {
               "Absences show your Bakaláři data, the Planner finds days off and Lunches "
               "handles Strava orders.",
     },
+    # Phone layout variants (tutorial picks "<key>_narrow" when it exists).
+    "tut_intro_nav_body_narrow": {
+        "cs": "Tady přepínáte obrazovky. Dnes je rychlý přehled, Rozvrh a Známky ukazují "
+              "data z Bakalářů a Obědy řeší objednávky ve Stravě. Absence, Plánovač, "
+              "Aktivita a Nastavení jsou pod Více.",
+        "en": "Switch screens here. Today is a quick overview, Timetable and Marks show "
+              "your Bakaláři data and Lunches handles Strava orders. Absences, the "
+              "Planner, Activity and Settings are under More.",
+    },
     "tut_intro_refresh_title": {"cs": "Obnovení dat", "en": "Refreshing data"},
     "tut_intro_refresh_body": {
         "cs": "Data se stahují sama na pozadí v nastaveném intervalu. Tímto tlačítkem "
@@ -1338,6 +1382,12 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Settings are grouped on the left. Changes save by themselves as soon as "
               "you leave a field — no Save button needed.",
     },
+    "tut_settings_intro_body_narrow": {
+        "cs": "Nastavení je rozdělené do skupin; klepnutím otevřete jednu z nich. Změny se "
+              "ukládají samy, jakmile opustíte pole — žádné tlačítko Uložit nehledejte.",
+        "en": "Settings are split into groups; tap one to open it. Changes save by "
+              "themselves as soon as you leave a field — no Save button needed.",
+    },
     "tut_activity_intro_title": {"cs": "Aktivita", "en": "Activity"},
     "tut_activity_intro_body": {
         "cs": "Záznam všeho, co aplikace dělala: obnovy, omluvenky, objednávky. Když se "
@@ -1360,12 +1410,56 @@ NOTIF_LABELS: dict[str, dict[str, str]] = {
 }
 
 
+#: Phone app wording for strings that talk about the computer or the tray
+#: (S() picks these inside the Android / iOS app).
+MOBILE_STRINGS: dict[str, dict[str, str]] = {
+    "session_busy": {
+        "cs": "Právě probíhá jiná obnova nebo odesílání. Zkuste to za chvíli.",
+        "en": "Another refresh or submit is running. Try again in a moment.",
+    },
+    "ai_key_steps": {
+        "cs": "Zdarma bez karty: odkaz → Create API key → klíč vložte sem a otestujte. Klíč zůstává šifrovaně jen v tomto telefonu.",
+        "en": "Free, no card needed: open the link → Create API key → paste it here and test. The key stays encrypted on this phone.",
+    },
+    "auto_confirm_excuse": {
+        "cs": "Strakaláři budou při každé obnově sami odesílat omluvenky pod vaším účtem v Bakalářích — bez ptaní. Odeslanou omluvenku nelze vzít zpět.",
+        "en": "Strakaláři will send excuses under your Bakaláři account on every refresh — without asking. A sent excuse cannot be taken back.",
+    },
+    "auto_confirm_lunch": {
+        "cs": "Strakaláři budou při každé obnově sami objednávat a rušit obědy ve Stravě — bez ptaní. Objednané obědy se platí.",
+        "en": "Strakaláři will order and cancel lunches on Strava on every refresh — without asking. Ordered lunches are paid for.",
+    },
+    "auto_confirm_pause_hint": {
+        "cs": "Kdykoli ho zastavíte přepínačem Pozastavit automatizaci (Aktivita nebo Nastavení). Vše odeslané najdete v Historii automatizace.",
+        "en": "Stop it any time with Pause automation (Activity or Settings). Everything sent is listed in Automation history.",
+    },
+    "update_store_managed": {
+        "cs": "Aktualizace instaluje obchod s aplikacemi.",
+        "en": "Updates are installed by the app store.",
+    },
+    "wiz_disclaimer_p": {
+        "cs": "Strakaláři je nezávislý studentský projekt bez oficiální podpory Bakalářů a Stravy. Přihlašovací údaje slouží jen k přihlášení do vašich systémů a ukládají se šifrovaně v tomto telefonu.",
+        "en": "Strakaláři is an independent student project with no official support from Bakaláři or Strava. Your logins are only used to sign in to your systems and are stored encrypted on this phone.",
+    },
+}
+
+
+def _on_mobile() -> bool:
+    try:
+        from strakalari.core.packaging import is_mobile
+
+        return is_mobile()
+    except Exception:
+        return False
+
+
 def S(key: str) -> str:
     """Translated UI string for the active language."""
     lang = get_language()
     if lang not in ("cs", "en"):
         lang = "cs"
-    entry = STRINGS.get(key)
+    entry = (MOBILE_STRINGS.get(key) if key in MOBILE_STRINGS and _on_mobile()
+             else None) or STRINGS.get(key)
     if not entry:
         return key
     text = entry.get(lang) or entry.get("cs") or entry.get("en") or key

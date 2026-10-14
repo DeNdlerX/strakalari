@@ -1,7 +1,7 @@
 # <img src="assets/logo-128.png" width="72" alt="" align="center"> Strakaláři
 
 **Excuses in Bakaláři and lunches on Strava — handled for you.**
-A free app for students on Windows, macOS and Linux. No coding: download it and run it.
+A free app for students on Windows, macOS, Linux and Android. No coding: download it and run it.
 
 **[⬇️ Download the latest version](https://github.com/DeNdlerX/strakalari/releases)** · [Microsoft Store](https://apps.microsoft.com/detail/9njc9ldmkc3k) · [Česká verze](README.md)
 
@@ -20,6 +20,7 @@ A free app for students on Windows, macOS and Linux. No coding: download it and 
    | **Windows** | `Strakalari-Setup-<version>.exe` | Run the installer. No administrator rights needed. |
    | **macOS** | `Strakalari-<version>.dmg` | Drag the app into Applications. |
    | **Linux** | `Strakalari-<version>-x86_64.AppImage` | Allow executing it in the file's properties, then run it. |
+   | **Android** | `Strakalari-<version>-android.apk` | Open the file on your phone and allow installing from that source. |
 
 2. Launch Strakaláři. A **setup wizard** walks you through your Bakaláři and Strava logins and the basic settings.
 3. Done. The first time you open each screen, a short **interactive tutorial** shows you around.
@@ -29,9 +30,11 @@ A free app for students on Windows, macOS and Linux. No coding: download it and 
 > **On Windows, also from the Microsoft Store.** Strakaláři is in the **[Microsoft Store](https://apps.microsoft.com/detail/9njc9ldmkc3k)** too. The Store version is signed by Microsoft, so the warning above doesn't appear, and it updates itself. Only stable versions go to the Store, no betas.
 > Switching from the installer? On first launch the Store version takes over your settings, passwords and history. Then **uninstall** the old install, otherwise automation runs twice (duplicate excuses and orders).
 
+> **On a phone** the app refreshes, excuses and orders in the background too (a "Strakaláři is running in the background" notification then stays in the shade; switch it off under *Settings → Background*). After the phone restarts or the app updates, open it once. The phone and the computer don't share settings, so sign in on each. Keep automatic excusing and ordering switched on on one device only.
+
 ## Updating
 
-When a new version comes out, the app tells you. Download the new installer from [Releases](https://github.com/DeNdlerX/strakalari/releases) and run it over your current install. **Your settings, passwords and history are kept.** There is no need to uninstall first.
+When a new version comes out, the app tells you. Download the new installer from [Releases](https://github.com/DeNdlerX/strakalari/releases) and run it over your current install (on a phone, install the new `.apk` over the app). **Your settings, passwords and history are kept.** There is no need to uninstall first.
 
 The Microsoft Store version is updated by the Store itself; the app doesn't announce new versions there.
 

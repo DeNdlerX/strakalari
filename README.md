@@ -1,7 +1,7 @@
 # <img src="assets/logo-128.png" width="72" alt="" align="center"> Strakaláři
 
 **Omluvenky do Bakalářů a obědy ve Stravě — samy, bez hlídání.**
-Bezplatná aplikace pro studenty na Windows, macOS a Linux. Nic neprogramujete, jen stáhnete a spustíte.
+Bezplatná aplikace pro studenty na Windows, macOS, Linux a Android. Nic neprogramujete, jen stáhnete a spustíte.
 
 **[⬇️ Stáhnout nejnovější verzi](https://github.com/DeNdlerX/strakalari/releases)** · [Microsoft Store](https://apps.microsoft.com/detail/9njc9ldmkc3k) · [English version](README.en.md)
 
@@ -20,6 +20,7 @@ Bezplatná aplikace pro studenty na Windows, macOS a Linux. Nic neprogramujete, 
    | **Windows** | `Strakalari-Setup-<verze>.exe` | Spusťte instalátor. Administrátor není potřeba. |
    | **macOS** | `Strakalari-<verze>.dmg` | Přetáhněte aplikaci do složky Aplikace. |
    | **Linux** | `Strakalari-<verze>-x86_64.AppImage` | Ve vlastnostech souboru povolte spouštění a spusťte ho. |
+   | **Android** | `Strakalari-<verze>-android.apk` | Otevřete soubor v telefonu a povolte instalaci z tohoto zdroje. |
 
 2. Spusťte Strakaláře. **Průvodce** vás provede přihlášením do Bakalářů a Stravy a základním nastavením.
 3. Hotovo. Při prvním pohledu na každou obrazovku vám krátký **interaktivní návod** ukáže, co kde je.
@@ -29,9 +30,11 @@ Bezplatná aplikace pro studenty na Windows, macOS a Linux. Nic neprogramujete, 
 > **Na Windows i z Microsoft Storu.** Strakaláře najdete i v **[Microsoft Storu](https://apps.microsoft.com/detail/9njc9ldmkc3k)**. Store verzi podepisuje Microsoft, takže se varování výše neukáže, a aktualizuje se sama. Do Storu chodí jen stabilní verze, bety ne.
 > Přecházíte z instalátoru? Store verze si při prvním spuštění převezme nastavení, hesla i historii. Starou instalaci pak **odinstalujte**, jinak poběží automatizace dvakrát (dvojí omluvenky i objednávky).
 
+> **Na telefonu** aplikace obnovuje data, omlouvá a objednává i na pozadí (v oznámeních pak trvale svítí „Strakaláři běží na pozadí“; vypnout jde v *Nastavení → Běh na pozadí*). Po restartu telefonu nebo aktualizaci aplikaci jednou otevřete. Telefon a počítač nastavení nesdílejí, přihlaste se v každém zvlášť. Automatické omlouvání a objednávání nechte zapnuté jen na jednom zařízení.
+
 ## Aktualizace
 
-Když vyjde nová verze, aplikace vám to sama oznámí. Stáhněte nový instalátor ze stránky [Releases](https://github.com/DeNdlerX/strakalari/releases) a spusťte ho přes stávající instalaci. **Nastavení, hesla i historie zůstanou.** Nic nemusíte odinstalovávat.
+Když vyjde nová verze, aplikace vám to sama oznámí. Stáhněte nový instalátor ze stránky [Releases](https://github.com/DeNdlerX/strakalari/releases) a spusťte ho přes stávající instalaci (v telefonu nainstalujte nový `.apk` přes stávající aplikaci). **Nastavení, hesla i historie zůstanou.** Nic nemusíte odinstalovávat.
 
 Verzi z Microsoft Storu aktualizuje sám Store, aplikace na nové verze neupozorňuje.
 

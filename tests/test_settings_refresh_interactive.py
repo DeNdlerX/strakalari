@@ -87,13 +87,15 @@ def test_user_nav_rebuilds_settings_during_refresh(shell, state, monkeypatch):
     assert shell.content.content is not before  # new section visible
 
 
-def test_progress_tick_off_settings_falls_back_to_full_render(shell, state, monkeypatch):
-    """On other routes a tick still live-updates the whole view."""
-    shell.route = "today"
+@pytest.mark.parametrize("route, full", [("today", False), ("activity", True)])
+def test_progress_tick_rebuilds_only_the_live_log(shell, state, monkeypatch, route, full):
+    """A tick repaints the topbar only (the data changes when the refresh
+    ends); Activity, which shows the live log, still gets a full render."""
+    shell.route = route
     shell.render()
     state.refresh_running = True
-    # Two identical empty "today" trees compare equal, so Flet skips the
-    # store — count full renders instead of comparing control identity.
+    # Two identical empty trees compare equal, so Flet skips the store —
+    # count full renders instead of comparing control identity.
     inner_calls: list = []
     orig_inner = shell._render_inner
 
@@ -103,4 +105,4 @@ def test_progress_tick_off_settings_falls_back_to_full_render(shell, state, monk
 
     monkeypatch.setattr(shell, "_render_inner", _spy_inner)
     state._emit_progress()
-    assert len(inner_calls) == 1
+    assert len(inner_calls) == (1 if full else 0)

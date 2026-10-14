@@ -173,23 +173,32 @@ def _update_banner(state: AppState, page: ft.Page) -> ft.Control | None:
             return
         await C.open_url(page, url)
 
-    return ft.Container(
-        content=ft.Row(
-            [
-                ft.Icon(ft.Icons.NEW_RELEASES_OUTLINED, color=tok.accent, size=22),
-                ft.Column(
-                    [C.txt(S("update_available").format(v=latest), tok, bold=True),
-                     C.txt(desc, tok, size=tok.fs_small, muted=True)],
-                    spacing=2, tight=True, expand=True,
-                ),
-                C.primary_button(S("download_update"), tok, on_click=_open,
-                                 icon=ft.Icons.DOWNLOAD),
-                C.ghost_button(S("update_dismiss"), tok,
-                               on_click=lambda e: state.dismiss_update()),
-            ],
-            spacing=10,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+    lead = [
+        ft.Icon(ft.Icons.NEW_RELEASES_OUTLINED, color=tok.accent, size=22),
+        ft.Column(
+            [C.txt(S("update_available").format(v=latest), tok, bold=True),
+             C.txt(desc, tok, size=tok.fs_small, muted=True)],
+            spacing=2, tight=True, expand=True,
         ),
+    ]
+    buttons = [
+        C.primary_button(S("download_update"), tok, on_click=_open,
+                         icon=ft.Icons.DOWNLOAD),
+        C.ghost_button(S("update_dismiss"), tok,
+                       on_click=lambda e: state.dismiss_update()),
+    ]
+    if C.narrow(state):
+        # Phone: the buttons go under the text instead of squeezing it.
+        content: ft.Control = ft.Column(
+            [ft.Row(lead, spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+             ft.Row(buttons, spacing=8, run_spacing=8, wrap=True)],
+            spacing=10, tight=True,
+        )
+    else:
+        content = ft.Row(lead + buttons, spacing=10,
+                         vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    return ft.Container(
+        content=content,
         bgcolor=tint(tok.accent, 0.10),
         border=border_all(1, tint(tok.accent, 0.5)),
         border_radius=radius_all(tok.radius_md),
@@ -331,7 +340,7 @@ def _hero(state: AppState, page: ft.Page, now: datetime) -> ft.Control:
 
 
 # -- stat tiles -------------------------------------------------------------------------------
-def _stats(state: AppState, now: datetime, audit: list[dict]) -> ft.Row:
+def _stats(state: AppState, now: datetime, audit: list[dict]) -> ft.Control:
     tok = state.tok
     last = state.runs[-1] if state.runs else None
     if last is None:
@@ -355,14 +364,15 @@ def _stats(state: AppState, now: datetime, audit: list[dict]) -> ft.Row:
     sent = sum(1 for item in audit
                if item.get("outcome") == "sent"
                and (_audit_time(item) or datetime.min) >= week_ago)
-    return ft.Row(
+    return C.stat_row(
+        state,
         [
             C.stat_card(S("last_run"), last_value, tok, kind=last_kind),
             C.stat_card(S("next_run"), next_value, tok),
             C.stat_card(S("stat_success"), success, tok, kind=success_kind),
             C.stat_card(S("stat_sent_week"), str(sent), tok, kind="ok" if sent else "info"),
         ],
-        spacing=tok.gap,
+        tok.gap,
     )
 
 

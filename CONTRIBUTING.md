@@ -144,6 +144,23 @@ pyinstaller strakalari.spec
 
 After building, smoke-test the actual artifact (launch, wizard, one refresh) before pushing.
 
+### Phone app (Android; iOS later)
+
+The phone app is the same code built with `flet build`. `tools/make_mobile.py` copies only `main.py`, `strakalari/` and the launcher icon into `build/mobile/` (never the repo root, which holds your real `config.json` and data), writes the mobile `pyproject.toml` there (bundle id `io.github.dendlerx.strakalari`, mobile dependency pins), builds, and fails if a personal file name ends up in the APK:
+
+```bash
+python tools/make_mobile.py apk -- --arch arm64-v8a
+```
+
+The first build downloads Flutter, a JDK and the Android SDK into your home folder (several GB; Windows also needs *Developer Mode* on for Flutter's symlinks). Install the APK from `dist/mobile/apk/` with `adb install -r <file>.apk` (USB debugging on).
+
+- **Signing**: every release APK must carry the same release key, or Android refuses to update installed copies. The tool signs with `~/.strakalari-signing/android-release.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`) when it exists, else with Flutter's debug key (testing only; `--release` refuses that). CI signs with the repository secrets `ANDROID_KEYSTORE_B64` (the `.jks`, base64) and `ANDROID_KEYSTORE_PASSWORD`; the `build-android` job attaches `Strakalari-<version>-android.apk` to every release. Keep a backup of the key folder outside this machine.
+- **Distribution**: `apk` builds are for GitHub Releases and keep the in-app update check; `aab` builds are for Google Play, which owns updates (the check is off, see `packaging.mobile_store()`).
+
+- **Layout** follows the page width, not the platform: below 720 px the app switches to the phone layout (bottom bar + *More*, stacked panels; `state.narrow`, `C.narrow(state)`). Try it without a phone: `python tools/demo_data.py serve DIR` and a ~390 px wide browser window.
+- **Platform differences** go through `strakalari.core.packaging.is_mobile()` / `mobile_platform()`: data in the app's private storage, no tray/autostart/single-instance, Android Back walks up the screens. Phone-specific wording lives in `MOBILE_STRINGS` in `strings.py`.
+- **Android system features** (notifications, background running, wake-up alarms, the Android Keystore protecting the password key) are called from Python through pyjnius in `strakalari/core/android.py`, without a Flutter channel, so they keep working after the app's screen is closed (Flet keeps Python alive in the process). The few Java classes Android needs in the APK (the foreground service, the alarm and boot receivers, the notification icon) live in the Flet extension `mobile/strakalari_android`; `make_mobile.py` packs it as a wheel. With *Run in the background* off, scheduled refreshes wait while the app is hidden.
+
 ## 8. Releases
 
 Releases are cut by tagging: `git tag vX.Y.Z && git push origin vX.Y.Z` — or run the **Build & Release Strakalari** workflow by hand with the `release_tag` input (the tag is created on the selected commit). The `build.yml` workflow builds all three platforms, runs the test suite, and a single final job publishes one GitHub Release with every installer attached and generated notes. Keep `strakalari/__init__.py:__version__` sensible — CI stamps it from the tag at build time.

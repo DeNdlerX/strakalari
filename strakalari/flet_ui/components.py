@@ -20,6 +20,61 @@ from .theme import Tokens, align_center, border_all, pad_all, pad_sym, radius_al
 AI_STUDIO_URL = "https://aistudio.google.com/apikey"
 
 
+def narrow(state) -> bool:
+    """True on a phone-sized page: views stack what sits side by side on
+    desktop (the Shell sets ``state.narrow`` before every render)."""
+    return bool(getattr(state, "narrow", False))
+
+
+def dialog_width(page, preferred: int) -> int:
+    """``preferred`` px, but never wider than the page minus a margin."""
+    try:
+        width = float(getattr(page, "width", 0) or 0)
+    except (TypeError, ValueError):
+        width = 0
+    if width <= 0:
+        return preferred
+    return int(max(240, min(preferred, width - 64)))
+
+
+def stat_row(state, cards: list[ft.Control], spacing: int) -> ft.Control:
+    """Stat tiles side by side; two per line on a phone (four across
+    leave no room for their labels)."""
+    if not narrow(state) or len(cards) <= 3:
+        return ft.Row(cards, spacing=spacing)
+    half = spacing // 2
+    return ft.Column([ft.Row(cards[i:i + 2], spacing=half) for i in range(0, len(cards), 2)],
+                     spacing=half, tight=True)
+
+
+def header_with_actions(state, tok: Tokens, heading: str, updated: str,
+                        actions: list[ft.Control]) -> list[ft.Control]:
+    """A screen header; on a phone its action buttons wrap on the line
+    below the title instead of squeezing it."""
+    if not narrow(state):
+        return [header_row(tok, heading, updated, actions=actions)]
+    return [header_row(tok, heading, updated),
+            ft.Row(actions, spacing=8, run_spacing=8, wrap=True)]
+
+
+def picker_with_actions(state, picker: ft.Control, buttons: list[ft.Control]) -> ft.Control:
+    """A dropdown (``expand=True``) followed by its action buttons.
+
+    One row on desktop; on a phone the dropdown takes the full width and
+    the buttons go on the next line.
+    """
+    if not narrow(state):
+        return ft.Row([picker, *buttons], spacing=8,
+                      vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    # A row of its own: expand stays horizontal (a dropdown sizes to its
+    # options otherwise, and expand in the column would be vertical).
+    picker.expand = True
+    return ft.Column(
+        [ft.Row([picker]), ft.Row(buttons, spacing=8, wrap=True, run_spacing=8)],
+        spacing=8, tight=True, horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+    )
+
+
 async def open_url(page, url: str) -> None:
     """Opens ``url`` in the system browser.
 

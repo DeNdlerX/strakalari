@@ -22,6 +22,13 @@ def _forget_secrets() -> int:
 
 
 def main():
+    from strakalari.core.packaging import is_mobile
+
+    if is_mobile():
+        # Android / iOS app (tools/make_mobile.py): no CLI, tray or autostart.
+        from strakalari.flet_ui.app import run_mobile
+        run_mobile()
+        return
     args = sys.argv[1:]
     if "--forget-secrets" in args:
         sys.exit(_forget_secrets())

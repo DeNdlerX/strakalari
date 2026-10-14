@@ -18,6 +18,9 @@ so frozen builds on all three OSes just work):
   usually absent).
 - Linux: ``notify-send`` (checked exit code), then ``plyer``
   (xdg-portal / D-Bus path).
+- Android (phone app): the system notifications through pyjnius
+  (``core/android.py``); they also work with the app's screen closed.
+  iOS: none yet (printed only).
 
 Sending never raises, so background jobs stay alive — but unlike before,
 the return value is honest: True only when a backend accepted the toast.
@@ -205,8 +208,26 @@ def _send_plyer(title: str, message: str) -> bool:
         return False
 
 
+def _send_android(title: str, message: str) -> bool:
+    """The phone app: Android's own notifications (works in the background)."""
+    from . import android
+    from .i18n import get_language
+
+    channel = "Automation" if get_language() == "en" else "Automatizace"
+    return android.notify(title, message, channel)
+
+
 def _send(title: str, message: str, tag: str = "") -> bool:
     platform = sys.platform
+    from .packaging import mobile_platform
+
+    mobile = mobile_platform()
+    if mobile is not None:
+        # No subprocess backends on a phone (iOS forbids them).
+        sent = mobile == "android" and _send_android(title, message)
+        if not sent:
+            print(f"[{title}] {message}")
+        return sent
     try:
         if platform == "win32":
             if _send_windows(title, message, tag):

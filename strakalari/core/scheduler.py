@@ -58,12 +58,16 @@ class PeriodicRunner:
         on_result: ResultCallback | None = None,
         last_run: datetime | None = None,
         interval_provider: Callable[[], float] | None = None,
+        paused: Callable[[], bool] | None = None,
     ) -> None:
         self.interval_minutes = max(1.0, float(60 if interval_minutes is None else interval_minutes))
         self.on_result = on_result
         # Polled every tick so a setting saved elsewhere (e.g. the window
         # process while this runs in the tray) takes effect without a restart.
         self.interval_provider = interval_provider
+        # True = hold due runs (the phone app in the background, where the
+        # OS freezes it mid-run). A held run fires on the first tick after.
+        self.paused = paused
         self._jobs: dict[str, Job] = {}
         # Seed for process starts: pass the last successful refresh time so
         # the first auto-run comes ``interval`` after it instead of firing
@@ -174,10 +178,21 @@ class PeriodicRunner:
         except Exception:  # noqa: BLE001 - keep the last good interval
             pass
 
+    def _is_paused(self) -> bool:
+        check = self.paused
+        if not callable(check):
+            return False
+        try:
+            return bool(check())
+        except Exception:  # noqa: BLE001 - a broken check never blocks runs
+            return False
+
     def _loop(self) -> None:
         while not self._stop.wait(5):
             if self._stop.is_set():
                 break
+            if self._is_paused():
+                continue
             self._poll_interval()
             due_at = next_due(self._last_run, self.interval_minutes, datetime.now())
             if datetime.now() >= due_at:

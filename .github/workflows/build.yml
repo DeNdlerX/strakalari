@@ -403,6 +403,74 @@ jobs:
             Strakalari-*.dmg
           retention-days: 14
 
+  # The phone app's GitHub APK (arm64: every phone of the last years).
+  # tools/make_mobile.py builds it from a staging dir with the version
+  # stamped from the tag. Releases must be signed with the release key
+  # (secrets ANDROID_KEYSTORE_B64 = base64 of the .jks, ANDROID_KEYSTORE_PASSWORD):
+  # Android only installs an update signed with the same key as the app.
+  # Without the secrets, build-only runs make a debug-signed test APK.
+  build-android:
+    name: Build Android (APK)
+    needs: meta
+    runs-on: ubuntu-latest
+    env:
+      STRAKALARI_VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: '3.11'
+
+      - name: Install the Flet CLI
+        run: |
+          set -euo pipefail
+          # Same pin as the desktop app (requirements.txt); flet build
+          # downloads Flutter itself and uses the runner's Android SDK.
+          FLET=$(grep -E '^flet==' requirements.txt | cut -d= -f3)
+          python -m pip install "flet==$FLET" "flet-cli==$FLET"
+          # Flet's build wants JDK 17 (it downloads one when JAVA_HOME is another).
+          if [[ -n "${JAVA_HOME_17_X64:-}" ]]; then
+            echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build APK
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          RELEASE: ${{ needs.meta.outputs.release }}
+        run: |
+          set -euo pipefail
+          release_flag=""
+          if [[ -n "$ANDROID_KEYSTORE_B64" && -n "$ANDROID_KEYSTORE_PASSWORD" ]]; then
+            echo "$ANDROID_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            export FLET_ANDROID_SIGNING_KEY_STORE="$RUNNER_TEMP/release.jks"
+            export FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD="$ANDROID_KEYSTORE_PASSWORD"
+            export FLET_ANDROID_SIGNING_KEY_PASSWORD="$ANDROID_KEYSTORE_PASSWORD"
+            export FLET_ANDROID_SIGNING_KEY_ALIAS=upload
+            release_flag="--release"
+          elif [[ "$RELEASE" == "true" ]]; then
+            echo "::error::Secrets ANDROID_KEYSTORE_B64 / ANDROID_KEYSTORE_PASSWORD are not set: a release APK must carry the release signature."
+            exit 1
+          else
+            echo "::warning::No signing secrets: debug-signed APK, for testing only."
+          fi
+          python tools/make_mobile.py apk --version "$STRAKALARI_VERSION" $release_flag \
+            -- --arch arm64-v8a --no-rich-output
+          rm -f "$RUNNER_TEMP/release.jks"
+          mv dist/mobile/apk/strakalari-arm64-v8a.apk "Strakalari-${STRAKALARI_VERSION}-android.apk"
+          ls -lh Strakalari-*-android.apk
+
+      - name: Upload Android Artifacts
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
+        with:
+          name: android-binaries
+          path: |
+            Strakalari-*-android.apk
+          retention-days: 14
+
   # Stable releases only (Store versions are numeric X.Y.Z with no
   # pre-release suffix) go to the Microsoft Store; betas stay on GitHub.
   # The Store signs the package itself, so the unsigned MSIX from
@@ -445,7 +513,7 @@ jobs:
   # to the Microsoft Store (publish-store job), which also signs it.
   release:
     name: Publish GitHub Release
-    needs: [meta, build-windows, build-linux, build-macos]
+    needs: [meta, build-windows, build-linux, build-macos, build-android]
     if: needs.meta.outputs.release == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -465,7 +533,8 @@ jobs:
         working-directory: release-assets
         run: |
           set -euo pipefail
-          sha256sum Strakalari-Setup-*.exe Strakalari-*-x86_64.AppImage Strakalari-*.dmg > SHA256SUMS.txt
+          sha256sum Strakalari-Setup-*.exe Strakalari-*-x86_64.AppImage Strakalari-*.dmg \
+            Strakalari-*-android.apk > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: Publish release
@@ -485,6 +554,7 @@ jobs:
             release-assets/Strakalari-Setup-*.exe
             release-assets/Strakalari-*-x86_64.AppImage
             release-assets/Strakalari-*.dmg
+            release-assets/Strakalari-*-android.apk
             release-assets/SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

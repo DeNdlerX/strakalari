@@ -18,6 +18,18 @@ from .common import (
 )
 from .school_calendar import SchoolCalendarMixin
 
+#: Sections with nothing to set in the phone app on that platform. Android
+#: has its own background running (in "browser") and notifications; iOS
+#: has neither yet.
+HIDDEN_SECTIONS = {"ios": frozenset({"browser", "notifications"})}
+
+
+def _sections_here() -> set[str]:
+    from strakalari.core.packaging import mobile_platform
+
+    ids = {s for s, _ in SECTIONS}
+    return ids - HIDDEN_SECTIONS.get(mobile_platform() or "", frozenset())
+
 
 class SettingsView(AccountsMixin, SchoolCalendarMixin, AutomationMixin, AppPrefsMixin):
     def __init__(self, state: AppState, page: ft.Page) -> None:
@@ -88,7 +100,9 @@ class SettingsView(AccountsMixin, SchoolCalendarMixin, AutomationMixin, AppPrefs
     def _nav(self) -> ft.Control:
         """Grouped list nav (icon + label) instead of a stack of pills."""
         state, tok = self.state, self.state.tok
-        labels = dict(SECTIONS)
+        here = _sections_here()
+        labels = {s: k for s, k in SECTIONS if s in here}
+        vpad = 14 if C.narrow(state) else 8  # finger-sized rows on a phone
         items: list[ft.Control] = []
         for group_key, section_ids in NAV_GROUPS:
             if items:
@@ -98,7 +112,8 @@ class SettingsView(AccountsMixin, SchoolCalendarMixin, AutomationMixin, AppPrefs
             for section_id in section_ids:
                 if section_id not in labels:
                     continue
-                active = state.settings_section == section_id
+                # Phone: the list stands alone, nothing is "open" beside it.
+                active = state.settings_section == section_id and not C.narrow(state)
                 color = tok.accent if active else tok.muted
                 items.append(ft.Container(
                     content=ft.Row(
@@ -117,7 +132,7 @@ class SettingsView(AccountsMixin, SchoolCalendarMixin, AutomationMixin, AppPrefs
                     ),
                     bgcolor=tint(tok.accent, 0.16) if active else None,
                     border_radius=tok.radius_sm,
-                    padding=ft.Padding(left=10, top=8, right=10, bottom=8),
+                    padding=ft.Padding(left=10, top=vpad, right=10, bottom=vpad),
                     on_click=lambda e, s=section_id: state.set_settings_section(s),
                     tooltip=S(labels[section_id]),
                 ))
@@ -128,7 +143,7 @@ class SettingsView(AccountsMixin, SchoolCalendarMixin, AutomationMixin, AppPrefs
         state, tok = self.state, self.state.tok
         T.offer(state, "settings")
         section = state.settings_section
-        if section not in {s for s, _ in SECTIONS}:
+        if section not in _sections_here():
             section = "accounts"
         builder = {
             "accounts": self._accounts,
@@ -143,6 +158,8 @@ class SettingsView(AccountsMixin, SchoolCalendarMixin, AutomationMixin, AppPrefs
             "notifications": self._notifications,
             "diagnostics": self._diagnostics,
         }[section]
+        if C.narrow(state):
+            return self._build_narrow(section, builder)
         content = C.scrollable(
             state, f"settings:{section}",
             [C.header_row(tok, S(label_key))
@@ -163,6 +180,31 @@ class SettingsView(AccountsMixin, SchoolCalendarMixin, AutomationMixin, AppPrefs
              )],
             spacing=tok.gap,
             expand=True,
+        )
+
+    def _build_narrow(self, section: str, builder) -> ft.Control:
+        """Phone: the section list, or one open section with a back arrow."""
+        state, tok = self.state, self.state.tok
+        if not state.settings_open:
+            return C.scrollable(
+                state, "settings:nav",
+                [C.header_row(tok, S("settings_title")), self._nav(), C.bottom_spacer(tok)],
+                spacing=tok.gap, expand=True,
+            )
+        label = next((S(k) for sid, k in SECTIONS if sid == section), "")
+        head = ft.Row(
+            [
+                ft.IconButton(ft.Icons.ARROW_BACK, tooltip=S("settings_title"),
+                              on_click=lambda e: state.close_settings_section()),
+                ft.Container(C.title(label, tok), expand=True),
+            ],
+            spacing=4,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+        return C.scrollable(
+            state, f"settings:{section}",
+            [head, *builder(), C.bottom_spacer(tok)],
+            spacing=tok.gap, expand=True,
         )
 
 

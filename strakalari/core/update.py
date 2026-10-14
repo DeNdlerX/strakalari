@@ -276,15 +276,17 @@ def should_check(cached: dict | None, now: float | None = None) -> bool:
 
 
 def updates_managed_externally() -> bool:
-    """True when updates come from the Microsoft Store, not GitHub.
+    """True when updates come from a store (Microsoft Store, Google Play,
+    App Store), not GitHub.
 
-    The Store build must never check GitHub releases or offer downloads:
-    updates (including certification) are owned by the Store.
+    Store builds must never check GitHub releases or offer downloads:
+    updates (including certification) are owned by the store. The
+    Android APK is sideloaded from GitHub, so it keeps the check.
     """
     try:
-        from strakalari.core.packaging import is_store_package
+        from strakalari.core.packaging import is_store_package, mobile_store
 
-        return bool(is_store_package())
+        return bool(is_store_package()) or mobile_store() is not None
     except Exception:
         return False
 

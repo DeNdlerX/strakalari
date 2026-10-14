@@ -107,7 +107,7 @@ def _when_signed(state: AppState, page: ft.Page, send) -> None:
         modal=True,
         title=ft.Text(S("signature_ask_title")),
         content=ft.Column([ft.Text(S("signature_ask_p")), field],
-                          tight=True, spacing=10, width=440),
+                          tight=True, spacing=10, width=C.dialog_width(page, 440)),
         actions=[
             ft.TextButton(S("cancel"), on_click=lambda e: close_dialog(page, dlg)),
             ft.Button(S("signature_save_send"), on_click=_save),
@@ -253,16 +253,11 @@ def _excuse_cards(state: AppState, page: ft.Page, tasks: list[dict]) -> list[ft.
                                   lessons=C.lessons_text(len(day_tasks)),
                                   subjects=", ".join(subjects)),
                               tok, size=tok.fs_small, muted=True),
-                        ft.Row(
-                            [
-                                picker,
-                                C.primary_button(S("excuse_day") if whole_day else S("excuse_all"),
-                                                 tok, on_click=_send_day),
-                                C.ghost_button(S("ignore_day"), tok, on_click=_ignore_day),
-                            ],
-                            spacing=8,
-                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                        ),
+                        C.picker_with_actions(state, picker, [
+                            C.primary_button(S("excuse_day") if whole_day else S("excuse_all"),
+                                             tok, on_click=_send_day),
+                            C.ghost_button(S("ignore_day"), tok, on_click=_ignore_day),
+                        ]),
                         preview,
                         C.txt(S("or_one_by_one"), tok, size=tok.fs_small, faint=True),
                     ],
@@ -320,15 +315,10 @@ def _excuse_cards(state: AppState, page: ft.Page, tasks: list[dict]) -> list[ft.
                         spacing=8,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
-                    ft.Row(
-                        [
-                            picker,
-                            C.primary_button(S("excused_btn"), tok, on_click=_send),
-                            C.ghost_button(S("ignore_btn"), tok, on_click=_ignore),
-                        ],
-                        spacing=8,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
+                    C.picker_with_actions(state, picker, [
+                        C.primary_button(S("excused_btn"), tok, on_click=_send),
+                        C.ghost_button(S("ignore_btn"), tok, on_click=_ignore),
+                    ]),
                     preview,
                     tok=tok,
                 )
@@ -603,13 +593,14 @@ def _planner_tip(state: AppState, now: datetime) -> list[ft.Control]:
         return []
     option = upcoming[0]
     label = f"{C.day_name(option.day)} {C.cz_day(option.day)}"
+    tip = C.txt(S("planner_next").format(day=label), tok, bold=True)
+    tip.expand = True  # wraps on a phone instead of pushing the button out
     return [
         C.section_header(S("planner_suggestion"), tok),
         C.card(ft.Row(
             [
                 ft.Icon(ft.Icons.BEACH_ACCESS_OUTLINED, color=tok.green, size=20),
-                C.txt(S("planner_next").format(day=label), tok, bold=True),
-                ft.Container(expand=True),
+                tip,
                 C.ghost_button(S("nav_planner"), tok, on_click=lambda e: state.go("planner")),
             ],
             spacing=tok.gap, vertical_alignment=ft.CrossAxisAlignment.CENTER,

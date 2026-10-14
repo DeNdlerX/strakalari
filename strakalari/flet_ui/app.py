@@ -16,17 +16,77 @@ from .macos import embedded_tray_supported, tray_hosts_window
 from .overlays import show_error_dialog, snack
 from .state import AppState
 from .strings import S
-from .theme import pad_all
-from .views import absences, activity, lunches, marks, planner, settings, timetable, today, wizard
+from .theme import pad_all, pad_sym
+from .views import absences, activity, lunches, marks, more, planner, settings, timetable, today, wizard
 
 ROUTES = ("today", "timetable", "absences", "marks", "planner", "lunches", "activity", "settings")
 
+#: Narrow (phone) layout: a bottom bar with these tabs; the other screens
+#: sit on the More page, and the bar keeps More selected while one is open.
+NARROW_TABS = ("today", "timetable", "marks", "lunches", "more")
+MORE_ROUTES = ("absences", "planner", "activity", "settings")
+
+#: Narrower than this, the side rail and the side-by-side panels don't fit
+#: (phones in portrait); lower than NARROW_MAX_HEIGHT, the eight rail
+#: items don't (phones in landscape). Desktop windows never get this small.
+NARROW_MAX_WIDTH = 720
+NARROW_MAX_HEIGHT = 520
+
+
+def is_narrow(page) -> bool:
+    """True when ``page`` is phone-sized (decided by its size, not the
+    platform, so a small browser window gets the same layout). Never raises."""
+    try:
+        width = float(getattr(page, "width", 0) or 0)
+        height = float(getattr(page, "height", 0) or 0)
+    except (TypeError, ValueError):
+        return False
+    return 0 < width < NARROW_MAX_WIDTH or 0 < height < NARROW_MAX_HEIGHT
+
+
+def layout_for(page) -> str:
+    """``"wide"`` (desktop, tablets: full rail and side panels),
+    ``"bar"`` (phone portrait: bottom bar) or ``"side"`` (phone landscape:
+    the same five tabs in a slim side rail, so the content keeps the
+    little height there is). Never raises."""
+    if not is_narrow(page):
+        return "wide"
+    try:
+        width = float(getattr(page, "width", 0) or 0)
+        height = float(getattr(page, "height", 0) or 0)
+    except (TypeError, ValueError):
+        return "bar"
+    return "side" if width > height > 0 else "bar"
+
+
+def _pending_count(pending_lunches) -> int:
+    try:
+        return max(0, int(pending_lunches or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _bar_destinations(pending_lunches: int = 0) -> list[ft.NavigationBarDestination]:
+    n = _pending_count(pending_lunches)
+    lunch_icon = ft.Icon(ft.Icons.RESTAURANT_OUTLINED, badge=str(n) if n else None)
+    return [
+        ft.NavigationBarDestination(icon=ft.Icons.HOME_OUTLINED, label=S("nav_today")),
+        ft.NavigationBarDestination(icon=ft.Icons.CALENDAR_MONTH_OUTLINED,
+                                    label=S("nav_timetable")),
+        ft.NavigationBarDestination(icon=ft.Icons.GRADE_OUTLINED, label=S("nav_marks")),
+        ft.NavigationBarDestination(icon=lunch_icon, label=S("nav_lunches")),
+        ft.NavigationBarDestination(icon=ft.Icons.MENU, label=S("nav_more")),
+    ]
+
+
+def _side_destinations(pending_lunches: int = 0) -> list[ft.NavigationRailDestination]:
+    """The bottom bar's tabs as rail items (phone in landscape)."""
+    return [ft.NavigationRailDestination(icon=d.icon, label=d.label)
+            for d in _bar_destinations(pending_lunches)]
+
 
 def _destinations(pending_lunches: int = 0) -> list[ft.NavigationRailDestination]:
-    try:
-        n = int(pending_lunches or 0)
-    except (TypeError, ValueError):
-        n = 0
+    n = _pending_count(pending_lunches)
     lunch_label = S("nav_lunches") + (f" ({n})" if n > 0 else "")
     return [
         ft.NavigationRailDestination(icon=ft.Icons.HOME_OUTLINED, label=S("nav_today")),
@@ -49,6 +109,7 @@ _BUILDERS = {
     "lunches": lunches.build,
     "activity": activity.build,
     "settings": settings.build,
+    "more": more.build,
 }
 
 
@@ -74,6 +135,28 @@ class Shell:
             on_change=self._on_nav,
             bgcolor=state.tok.surface,
         )
+        self.nav_bar = ft.NavigationBar(
+            destinations=_bar_destinations(),
+            selected_index=0,
+            on_change=self._on_bar_nav,
+            bgcolor=state.tok.surface,
+            label_behavior=ft.NavigationBarLabelBehavior.ALWAYS_SHOW,
+        )
+        self.side_rail = ft.NavigationRail(
+            destinations=_side_destinations(),
+            selected_index=0,
+            on_change=self._on_bar_nav,
+            bgcolor=state.tok.surface,
+            label_type=ft.NavigationRailLabelType.ALL,
+            group_alignment=0.0,
+        )
+        # Layout the chrome on the page was built for (None = not built,
+        # see layout_for), and the column holding the topbar above the content.
+        self._layout: str | None = None
+        self._narrow: bool | None = None
+        self._side_frame: ft.Container | None = None  # landscape: rail + its inset
+        self._right: ft.Column | None = None
+        self._back_enabled = False  # phone app only, see enable_back_navigation
         self.topbar = ft.Row(spacing=8, tight=True)
         self._wizard_shown = False
         self._in_render = False  # guards report_error() re-entering render()
@@ -101,11 +184,19 @@ class Shell:
         self.route = ROUTES[int(e.control.selected_index)]
         self.render()
 
+    def _on_bar_nav(self, e) -> None:
+        self.route = NARROW_TABS[int(e.control.selected_index)]
+        self.render()
+
     def on_resize(self, e=None) -> None:
         """Re-lays out width-sensitive screens (the timetable picks full or
         short subject names from the window width, Activity stacks its two
-        columns when narrow). Steps of 60 px keep a drag-resize from
-        rebuilding the view on every pixel."""
+        columns when narrow) and swaps the side rail for the bottom bar
+        when the page turns phone-sized (or back). Steps of 60 px keep a
+        drag-resize from rebuilding the view on every pixel."""
+        if self._layout is not None and layout_for(self.page) != self._layout:
+            self.render()  # rotated / resized into another layout
+            return
         if self.route not in ("timetable", "activity"):
             return
         try:
@@ -118,9 +209,89 @@ class Shell:
         self.render()
 
     def go(self, route: str) -> None:
-        if route in ROUTES:
+        if route in ROUTES or route == "more":
             self.route = route
             self.render()
+
+    def back_target(self) -> str | None:
+        """Where the phone's Back button leads: a More screen -> More,
+        anything else -> Today; None on Today (Back leaves the app)."""
+        if self.route == "today" or self._wizard_shown:
+            return None
+        return "more" if self.route in MORE_ROUTES and self._narrow else "today"
+
+    def enable_back_navigation(self) -> None:
+        """Android Back steps up the app (see back_target) before leaving it.
+
+        Back pops the page's root view, which closes the app. While there
+        is somewhere to go back to, the view refuses the pop and
+        ``on_confirm_pop`` navigates instead. Never raises.
+        """
+        self._back_enabled = True
+        try:
+            view = self.page.views[0]
+        except Exception:
+            return
+
+        async def _on_confirm_pop(e) -> None:
+            subpage = self._subpage_open()
+            target = None if subpage else self.back_target()
+            try:
+                await view.confirm_pop(not subpage and target is None)
+            except Exception:
+                pass
+            if subpage:
+                self._close_subpage()
+            elif target is not None:
+                self.go(target)
+
+        try:
+            view.on_confirm_pop = _on_confirm_pop
+        except Exception:
+            pass
+        self._sync_back_button()
+
+    def _subpage_open(self) -> str:
+        """The phone screen's own sub-page Back closes first ("" = none)."""
+        if not self._narrow:
+            return ""
+        state = self.state
+        if self.route == "settings" and getattr(state, "settings_open", False):
+            return "settings"
+        if self.route == "marks" and getattr(state, "marks_selected", None):
+            return "marks"
+        if self.route == "lunches" and getattr(state, "lunch_tools_open", False):
+            return "lunches"
+        return ""
+
+    def _close_subpage(self) -> None:
+        state = self.state
+        try:
+            which = self._subpage_open()
+            if which == "settings":
+                state.close_settings_section()
+            elif which == "marks":
+                state.select_marks_subject(state.marks_selected)  # same name = close
+            elif which == "lunches":
+                state.set_lunch_tools(False)
+        except Exception:
+            pass
+
+    def _sync_back_button(self) -> None:
+        if not self._back_enabled:
+            return
+        try:
+            self.page.views[0].can_pop = (self.back_target() is None
+                                          and not self._subpage_open())
+        except Exception:
+            pass
+
+    def _set_nav_bar(self, bar) -> None:
+        try:
+            if getattr(self.page, "navigation_bar", None) is not bar:
+                self.page.navigation_bar = bar
+        except Exception:
+            pass
 
     def _apply_chrome(self) -> None:
         tok = self.state.tok
@@ -129,13 +300,27 @@ class Shell:
             ft.ThemeMode.LIGHT if tok.mode == "light" else ft.ThemeMode.DARK
         )
         self.rail.bgcolor = tok.surface
+        self.nav_bar.bgcolor = tok.surface
+        self.side_rail.bgcolor = tok.surface
+        if self._side_frame is not None:
+            self._side_frame.bgcolor = tok.surface
         _apply_locale(self.page)
         try:
             pending = int(getattr(self.state, "pending_lunch_count", 0) or 0)
         except (TypeError, ValueError):
             pending = 0
-        self.rail.destinations = _destinations(pending)
-        self.rail.selected_index = ROUTES.index(self.route)
+        if self._narrow:
+            tab = (NARROW_TABS.index(self.route) if self.route in NARROW_TABS
+                   else NARROW_TABS.index("more"))
+            if self._layout == "side":
+                self.side_rail.destinations = _side_destinations(pending)
+                self.side_rail.selected_index = tab
+            else:
+                self.nav_bar.destinations = _bar_destinations(pending)
+                self.nav_bar.selected_index = tab
+        else:
+            self.rail.destinations = _destinations(pending)
+            self.rail.selected_index = ROUTES.index(self.route)
 
     def _status_text(self) -> str:
         state = self.state
@@ -160,7 +345,49 @@ class Shell:
             return
         snack(self.page, S("refresh_started"))
 
+    def _build_narrow_topbar(self) -> None:
+        """Phone topbar: status line (tap -> Activity) and icon buttons only."""
+        state, tok = self.state, self.state.tok
+        status_text = self._status_text()
+        label = C.txt(status_text, tok, size=tok.fs_small, muted=True)
+        label.max_lines = 1
+        label.overflow = ft.TextOverflow.ELLIPSIS
+        label.expand = True
+        controls: list = [ft.Container(
+            content=ft.Row(
+                [C.status_dot(tok, state.status_kind()), label],
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            padding=pad_all(8),
+            expand=True,
+            on_click=lambda e: self.go("activity"),
+        )]
+        if state.update_banner is not None:
+            latest = str(state.update_banner.get("version") or "?")
+            controls.append(ft.IconButton(
+                ft.Icons.NEW_RELEASES_OUTLINED, icon_color=tok.accent,
+                tooltip=S("update_available").format(v=latest),
+                on_click=lambda e: self.go("activity"),
+            ))
+        if state.refresh_running:
+            controls.append(ft.ProgressRing(width=18, height=18, color=tok.accent))
+            controls.append(ft.IconButton(
+                ft.Icons.CLOSE, tooltip=S("cancel_refresh"), on_click=self._refresh_clicked))
+        elif state.sending_label:
+            controls.append(ft.ProgressRing(width=18, height=18, color=tok.accent))
+        else:
+            controls.append(T.anchor(state, "refresh", ft.IconButton(
+                ft.Icons.REFRESH, icon_color=tok.accent, tooltip=S("refresh_data"),
+                on_click=self._refresh_clicked,
+            )))
+        self.topbar.controls = controls
+        self.topbar.vertical_alignment = ft.CrossAxisAlignment.CENTER
+
     def _build_topbar(self) -> None:
+        if self._narrow:
+            self._build_narrow_topbar()
+            return
         state, tok = self.state, self.state.tok
         # The status pill carries the state; its tooltip the full status
         # text and the refresh bookkeeping (updated / next run). It takes
@@ -278,29 +505,30 @@ class Shell:
     def render_progress(self) -> None:
         """Background worker tick (~1 Hz): repaint only the status bar.
 
-        Used while the user edits settings so half-typed inputs keep
-        focus. Everywhere else (or once the refresh is done) it falls
-        back to a full render so e.g. the activity log keeps updating
-        live. User actions always go through ``render`` (full rebuild),
-        so clicks in settings are never swallowed by this fast-path.
+        A refresh changes the screens' data only when it ends (that emit
+        is a full render), so rebuilding the whole view on every tick only
+        cost work: the timetable grid stuttered, half-typed settings lost
+        focus. Activity shows the live log, so it (or anything once the
+        refresh is done) still gets a full render. User actions always go
+        through ``render``, so clicks are never swallowed by this path.
         """
         try:
-            on_settings = (
+            topbar_only = (
                 self.state.refresh_running
-                and self.route == "settings"
-                and self._last_built_route == "settings"
+                and self.route != "activity"
+                and not self._wizard_shown  # the wizard has no topbar
+                and self._last_built_route == self.route
                 and bool(self.page.controls)
             )
         except Exception:
-            on_settings = False
-        if not on_settings:
+            topbar_only = False
+        if not topbar_only:
             self.render()
             return
         self._build_topbar()
         try:
-            right = self.page.controls[0].controls[2]
-            right.controls[0] = self.topbar
-        except (IndexError, AttributeError):
+            self._right.controls[0] = self.topbar
+        except (IndexError, AttributeError, TypeError):
             pass
         try:
             self.page.update()
@@ -323,11 +551,17 @@ class Shell:
         # intermediate saves (e.g. Bakalari credentials on step 1) flip
         # needs_setup() to False, but must NOT eject the user to the main
         # chrome before Strava/AI/browser steps are done.
+        layout = layout_for(self.page)
+        narrow = layout != "wide"
+        self.state.narrow = narrow
+        self.state.nav_side = layout == "side"
         if not self.state.wizard_dismissed and (
             self._wizard_shown or self.state.needs_setup()
         ):
             self._wizard_shown = True
             self.state.wizard_shown = True
+            # The wizard owns the page: rebuild the chrome after it.
+            self._layout = self._narrow = None
             self._apply_chrome()
             C.begin_render(self.state)
             view = wizard.build(self.state, self.page)
@@ -335,8 +569,10 @@ class Shell:
                 self.page.controls.clear()
             except Exception:
                 pass
+            self._set_nav_bar(None)
+            root = ft.Column([view], expand=True, spacing=0)
             try:
-                self.page.add(ft.Column([view], expand=True, spacing=0))
+                self.page.add(ft.SafeArea(root, expand=True) if narrow else root)
             except Exception:
                 pass
             try:
@@ -354,13 +590,22 @@ class Shell:
                 self.page.controls.clear()
             except Exception:
                 pass
+        if layout != self._layout:
+            # The chrome itself changes (rail / bottom bar / side rail).
+            try:
+                self.page.controls.clear()
+            except Exception:
+                pass
+            self._layout, self._narrow = layout, narrow
         # Views navigate by setting state.pending_route.
-        if self.state.pending_route in ROUTES:
+        if self.state.pending_route in ROUTES or self.state.pending_route == "more":
             self.route = self.state.pending_route  # type: ignore[assignment]
             self.state.pending_route = None
         elif self.state.pending_route is not None:
             # Drop invalid routes instead of letting them linger forever.
             self.state.pending_route = None
+        if self.route == "more" and not narrow:
+            self.route = "today"  # More is the phone menu; the rail lists it all
         self._sync_runner_interval()
         # Tutorials: suspend a tour of another screen, offer the intro.
         T.begin(self.state, self.route)
@@ -390,7 +635,9 @@ class Shell:
         )
         padded = ft.Container(
             content=body,
-            padding=pad_all(self.state.tok.pad + 8),
+            # Phones: every pixel of width counts, the edge gutter stays small.
+            padding=(pad_sym(horizontal=12, vertical=4) if narrow
+                     else pad_all(self.state.tok.pad + 8)),
             expand=True,
         )
         # A floating tutorial bubble (if a step wants one) stacks over the
@@ -401,32 +648,69 @@ class Shell:
             else ft.Stack([padded, bubble], expand=True, fit=ft.StackFit.EXPAND)
         )
         if not self.page.controls:
-            self.page.add(
-                ft.Row(
-                    [
-                        self.rail,
-                        ft.VerticalDivider(width=1, color=self.state.tok.border),
-                        ft.Column(
-                            [
-                                self.topbar,
-                                self.content,
-                            ],
-                            expand=True,
-                            spacing=0,
-                        ),
-                    ],
-                    expand=True,
-                    spacing=0,
-                    vertical_alignment=ft.CrossAxisAlignment.STRETCH,
-                )
+            self._right = ft.Column(
+                [
+                    self.topbar,
+                    self.content,
+                ],
+                expand=True,
+                spacing=0,
             )
+            if layout == "bar":
+                # Bottom bar instead of the rail; SafeArea keeps the topbar
+                # out of the status bar / notch. Not at the bottom: the bar
+                # covers the gesture area itself, and an inset there left
+                # a dead strip between the content and the bar.
+                self.page.add(ft.SafeArea(self._right, expand=True,
+                                          avoid_intrusions_bottom=False))
+                self._set_nav_bar(self.nav_bar)
+            elif layout == "side":
+                # Landscape phone: a bottom bar would eat a fifth of the
+                # height; the side rail costs width, of which there is plenty.
+                # Each side keeps its own inset, painted in its own color:
+                # the camera cutout / status bar strip beside the rail is
+                # rail-colored instead of an empty gap, and the content
+                # scrolls under the gesture area like on the portrait bar.
+                self._set_nav_bar(None)
+                self._side_frame = ft.Container(
+                    ft.SafeArea(self.side_rail, avoid_intrusions_right=False,
+                                avoid_intrusions_bottom=False),
+                    bgcolor=self.state.tok.surface,
+                )
+                self.page.add(
+                    ft.Row(
+                        [
+                            self._side_frame,
+                            ft.VerticalDivider(width=1, color=self.state.tok.border),
+                            ft.SafeArea(self._right, avoid_intrusions_left=False,
+                                        avoid_intrusions_bottom=False, expand=True),
+                        ],
+                        expand=True,
+                        spacing=0,
+                        vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+                    )
+                )
+            else:
+                self._set_nav_bar(None)
+                self.page.add(
+                    ft.Row(
+                        [
+                            self.rail,
+                            ft.VerticalDivider(width=1, color=self.state.tok.border),
+                            self._right,
+                        ],
+                        expand=True,
+                        spacing=0,
+                        vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+                    )
+                )
         else:
             # Re-attach rebuilt chrome (the topbar is a fresh control).
             try:
-                right = self.page.controls[0].controls[2]
-                right.controls[0] = self.topbar
-            except (IndexError, AttributeError):
+                self._right.controls[0] = self.topbar
+            except (IndexError, AttributeError, TypeError):
                 pass
+        self._sync_back_button()
         self._last_built_route = self.route
         try:
             self.page.update()
@@ -642,7 +926,7 @@ def _startup_seed(state: AppState):
 _REFRESH_JOB_WAIT_S = 30 * 60
 
 
-def _register_jobs(state: AppState) -> PeriodicRunner:
+def _register_jobs(state: AppState, paused=None) -> PeriodicRunner:
     def _on_result(result) -> None:
         # Scheduler heartbeat: track it for the "next run" label.
         state.scheduler_last_run = datetime.now()
@@ -667,6 +951,14 @@ def _register_jobs(state: AppState) -> PeriodicRunner:
             return "skipped (a refresh is already running)"
         if state.demo_mode and not state._has_credentials():
             return "skipped (no credentials configured)"
+        # Phone with the screen off: the CPU must stay up until the refresh
+        # is done (a no-op elsewhere).
+        from strakalari.core.android import KeepAwake
+
+        with KeepAwake(minutes=_REFRESH_JOB_WAIT_S / 60):
+            return _run_refresh()
+
+    def _run_refresh():
         before = state.runs[-1] if state.runs else None
         if not state.start_refresh("all"):
             # Another refresh is running: fresh data is on its way.
@@ -695,6 +987,7 @@ def _register_jobs(state: AppState) -> PeriodicRunner:
         # Anchor the first auto-run to the last successful refresh; with
         # no or an overdue cache (None) the app refreshes on start.
         last_run=_startup_seed(state),
+        paused=paused,
     )
     if runner._last_run is not None:
         # The "next run" label derives from this; seed it so it is right
@@ -702,6 +995,89 @@ def _register_jobs(state: AppState) -> PeriodicRunner:
         state.scheduler_last_run = runner._last_run
     runner.add_job("refresh", _refresh_job)
     return runner
+
+
+def _phone_background_on(state: AppState) -> bool:
+    """Background running is possible here (Android) and switched on."""
+    from strakalari.core import android
+
+    try:
+        return android.available() and bool(state.get("run_in_background", True))
+    except Exception:
+        return False
+
+
+def _schedule_phone_wake(runner: PeriodicRunner) -> None:
+    """Sets the Android alarm that wakes the phone for the next due run."""
+    from strakalari.core import android
+    from strakalari.core.scheduler import next_due
+
+    try:
+        due = next_due(runner._last_run, runner.interval_minutes, datetime.now())
+        # A little after due: the runner's tick (5 s) must see it as due.
+        if android.schedule_wake(due.timestamp() + 10):
+            print(f"Info: next background check at {due:%H:%M}.")
+    except Exception as exc:  # noqa: BLE001 - never break the scheduler
+        print(f"Warning: could not schedule the next wake-up ({exc})")
+
+
+def _setup_phone_background(state: AppState, runner: PeriodicRunner) -> None:
+    """Android: background service + wake-up alarms, following the setting.
+
+    Started while the app's screen is open (Android forbids starting it
+    from the background); re-synced after every config save (the switch
+    in Settings, the check interval). Never raises.
+    """
+    from strakalari.core import android
+
+    if not android.available():
+        return
+    android.context()  # needs the open screen once; cached for the background
+    applied: dict = {}
+
+    def _sync() -> None:
+        try:
+            on = _phone_background_on(state)
+            if on and not applied.get("asked") and not getattr(state, "setup_pending", False):
+                # Android 13+: allow notifications? Not over the setup wizard;
+                # its last save brings us back here.
+                applied["asked"] = True
+                android.request_notification_permission()
+            interval = max(1, int(float(state.get("check_interval_minutes", 60) or 60)))
+            if applied.get("on") == on and applied.get("interval") == interval:
+                return
+            applied.update(on=on, interval=interval)
+            if not on:
+                android.stop_background()
+                print("Info: background running off.")
+                return
+            print(f"Info: background running on (every {interval} min).")
+            android.start_background({
+                "title": S("bg_notif_title"),
+                "text": S("bg_notif_text").format(n=interval),
+                "channel": S("bg_channel"),
+                "boot_title": S("bg_boot_title"),
+                "boot_text": S("bg_boot_text"),
+                "events_channel": S("events_channel"),
+            })
+            _schedule_phone_wake(runner)
+        except Exception as exc:  # noqa: BLE001 - background is best effort
+            print(f"Warning: background running setup failed ({exc})")
+
+    previous = runner.on_result
+
+    def _on_result(result) -> None:
+        if callable(previous):
+            previous(result)
+        _sync()  # e.g. the wizard just finished: ask about notifications now
+        if _phone_background_on(state):
+            _schedule_phone_wake(runner)
+
+    runner.on_result = _on_result
+    listen_config = getattr(state, "listen_config", None)
+    if callable(listen_config):
+        listen_config(_sync)
+    _sync()
 
 
 def _is_window_close_event(e) -> bool:
@@ -937,19 +1313,24 @@ def _apply_locale(page: ft.Page) -> None:
 def main(page: ft.Page) -> None:
     global _active_runner
 
+    from strakalari.core.packaging import is_mobile
+
+    mobile = is_mobile()
     state = AppState()
     page.title = S("app_title")
-    try:
-        from .assets import window_icon_path
+    if not mobile:
+        try:
+            from .assets import window_icon_path
 
-        icon = window_icon_path()
-        if icon:
-            page.window.icon = icon
-    except Exception:
-        pass
+            icon = window_icon_path()
+            if icon:
+                page.window.icon = icon
+        except Exception:
+            pass
     _tolerate_stale_method_results(page)
-    page.window.min_width, page.window.min_height = 960, 640
-    page.window.width, page.window.height = 1240, 800
+    if not mobile:
+        page.window.min_width, page.window.min_height = 960, 640
+        page.window.width, page.window.height = 1240, 800
     shell = Shell(page, state)
     try:
         page.on_resize = shell.on_resize
@@ -969,7 +1350,12 @@ def main(page: ft.Page) -> None:
     # parent already refreshes in the background, and a second loop
     # means duplicate browsers, duplicate notifications and refreshes
     # fighting over the cache.
-    runner = None if _is_tray_child() else _register_jobs(state)
+    # Phone app: without background running, runs wait while the app is
+    # in the background (the OS freezes it there, mid-run); an overdue one
+    # fires within seconds of reopening.
+    paused = ((lambda: not getattr(page, "app_visible", True)
+               and not _phone_background_on(state)) if mobile else None)
+    runner = None if _is_tray_child() else _register_jobs(state, paused=paused)
     shell.runner = runner
     if runner is not None:
         runner.start()
@@ -979,6 +1365,20 @@ def main(page: ft.Page) -> None:
         state.start_update_check()
     except Exception:
         pass
+    if mobile:
+        # The OS owns the lifecycle: no window close, tray or second
+        # instance on a phone. Closing the app's screen ends this session,
+        # but with background running on, Python (and this scheduler)
+        # lives on; the next session (reopened app) replaces the runner.
+        def _on_close(e) -> None:
+            if runner is not None and not _phone_background_on(state):
+                runner.stop()
+
+        page.on_close = _on_close
+        shell.enable_back_navigation()
+        if runner is not None:
+            _setup_phone_background(state, runner)
+        return
     # X hides into the tray (real quit is tray-menu Quit); without the
     # tray (toggle off / unavailable) X quits as before.
     try:
@@ -1064,6 +1464,27 @@ def run() -> None:
             ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=args.port,
                    assets_dir=assets)
             return
+    ft.app(target=main, assets_dir=assets)
+
+
+def run_mobile() -> None:
+    """Entry of the Android / iOS app (built by tools/make_mobile.py).
+
+    No argparse, single-instance ports, orphan sweep or tray: the OS runs
+    one copy of the app and owns its lifecycle (no subprocesses on iOS).
+    TLS needs nothing here: Flet's launcher points SSL_CERT_FILE at
+    certifi before this module runs.
+    """
+    from strakalari.core import android
+
+    android.log_to_logcat()  # Android: warnings and errors readable over adb
+    print("Info: phone app starting.", flush=True)
+    try:
+        from .assets import assets_dir
+
+        assets = str(assets_dir())
+    except Exception:
+        assets = "assets"
     ft.app(target=main, assets_dir=assets)
 
 

@@ -1,0 +1,38 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Background running: a foreground service keeps the process (and the
+         embedded Python with its refresh scheduler) alive; alarms wake the
+         CPU when a refresh is due. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Android 13+: asked at runtime before the first notification. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+        <service
+            android:name="io.github.dendlerx.strakalari.android.KeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the user's scheduled sync with their school information system and canteen running in the background (sending absence excuses, ordering lunches), which the user switches on in the app." />
+        </service>
+
+        <receiver
+            android:name="io.github.dendlerx.strakalari.android.WakeReceiver"
+            android:exported="false" />
+
+        <!-- Boot / app update end the process: remind the user to open the
+             app once (Python, and with it the scheduler, starts with it). -->
+        <receiver
+            android:name="io.github.dendlerx.strakalari.android.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

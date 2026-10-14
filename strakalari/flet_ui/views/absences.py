@@ -61,41 +61,43 @@ def build(state: AppState, page: ft.Page) -> ft.Control:
         parts.append(S("budget_end").format(p=f"{budget.projected_pct:.1f}"))
         return " · ".join(parts)
 
+    narrow = C.narrow(state)
     rows: list[ft.Control] = []
     for subject in states:
-        rows.append(T.anchor(state, "abs_first",
-            C.card(
-                ft.Row(
-                    [
-                        ft.Column(
-                            [
-                                C.txt(subject.name, tok, bold=True),
-                                C.txt(_detail(subject), tok, size=tok.fs_small, muted=True),
-                            ],
-                            spacing=2,
-                            expand=True,
-                            tight=True,
-                        ),
-                        C.meter(subject.current_pct, tok, kind=subject.status),
-                        # Fixed slot sized for the longest label, so a shorter
-                        # badge doesn't shift the meter sideways.
-                        ft.Container(
-                            content=ft.Row(
-                                [C.badge(
-                                    {"ok": S("state_ok"), "warning": S("state_warning"),
-                                     "critical": S("state_critical")}[subject.status],
-                                    tok, kind=subject.status,
-                                )],
-                                alignment=ft.MainAxisAlignment.END,
-                            ),
-                            width=tok.fs_tiny * 8,
-                        ),
-                    ],
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        info = ft.Column(
+            [
+                C.txt(subject.name, tok, bold=True),
+                C.txt(_detail(subject), tok, size=tok.fs_small, muted=True),
+            ],
+            spacing=2,
+            expand=not narrow,
+            tight=True,
+        )
+        gauge = [
+            C.meter(subject.current_pct, tok, kind=subject.status),
+            # Fixed slot sized for the longest label, so a shorter
+            # badge doesn't shift the meter sideways.
+            ft.Container(
+                content=ft.Row(
+                    [C.badge(
+                        {"ok": S("state_ok"), "warning": S("state_warning"),
+                         "critical": S("state_critical")}[subject.status],
+                        tok, kind=subject.status,
+                    )],
+                    alignment=ft.MainAxisAlignment.END,
                 ),
-                tok=tok,
-            )
-        ))
+                width=tok.fs_tiny * 8,
+            ),
+        ]
+        # Phone: the meter goes under the name, which needs the full width.
+        body = (ft.Column([info, ft.Row(gauge, vertical_alignment=ft.CrossAxisAlignment.CENTER)],
+                          spacing=8, tight=True) if narrow
+                else ft.Row([info, *gauge], vertical_alignment=ft.CrossAxisAlignment.CENTER))
+        rows.append(T.anchor(state, "abs_first", C.card(body, tok=tok)))
+    if narrow:
+        # Phone: header and stats scroll away with the list (landscape).
+        return C.scrollable(state, "absences", blocks + rows + [C.bottom_spacer(tok)],
+                            spacing=tok.gap // 2 + 2, expand=True)
     blocks.append(C.scrollable(state, "absences", rows + [C.bottom_spacer(tok)],
                                spacing=tok.gap // 2, expand=True))
     return ft.Column(blocks, spacing=tok.gap, expand=True)
