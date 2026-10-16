@@ -14,7 +14,7 @@ from . import components as C
 from . import tutorial as T
 from .macos import embedded_tray_supported, tray_hosts_window
 from .overlays import show_error_dialog, snack
-from .state import AppState
+from .state import AppState, ensure_page_executor
 from .strings import S
 from .theme import pad_all, pad_sym
 from .views import absences, activity, lunches, marks, more, planner, settings, timetable, today, wizard
@@ -752,6 +752,7 @@ def _call_on_ui_thread(page: ft.Page, fn, *args) -> None:
     """
     run_thread = getattr(page, "run_thread", None)
     if callable(run_thread):
+        ensure_page_executor(page)
         try:
             run_thread(fn, *args)
             return

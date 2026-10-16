@@ -77,6 +77,9 @@ class RefreshResult:
     unfunded_days: list = field(default_factory=list)
     #: (phase, exception) for phases that failed without aborting the run.
     errors: list = field(default_factory=list)
+    #: (notification event, message) for new marks, absences and timetable
+    #: changes since the previous refresh (see ``core/news.py``).
+    news: list = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -336,9 +339,24 @@ def run_refresh(
         # The global stamp only moves on complete full refreshes, so a
         # partial or failed run never makes stale data look fresh.
         fresh["last_updated"] = started.strftime("%d.%m.%Y %H:%M:%S")
+    if result.bakalari_fetched:
+        # Before the save below: the cache still holds the previous state.
+        result.news = _find_news(fresh, started.date())
     _persist(app, cfg, fresh, started)
     result.saved = fresh
     return result
+
+
+def _find_news(fresh: dict, today: date) -> list:
+    """What this run brought since the cached state. Never raises."""
+    from .cache import load_data_cache
+    from .news import find_news
+
+    try:
+        return find_news(load_data_cache(), fresh, today)
+    except Exception as exc:  # noqa: BLE001 - news must never fail a refresh
+        print(f"Warning: could not compare with the previous data: {exc}")
+        return []
 
 
 def _persist(app: Any, cfg: dict, fresh: dict, started: datetime) -> None:

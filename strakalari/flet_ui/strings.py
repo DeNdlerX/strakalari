@@ -1407,6 +1407,9 @@ NOTIF_LABELS: dict[str, dict[str, str]] = {
     "lunch_skipped": {"cs": "Přeskočený oběd", "en": "Lunch skipped"},
     "planner_suggestion": {"cs": "Tip plánovače", "en": "Planner suggestion"},
     "automation_failed": {"cs": "Selhané odeslání / objednání", "en": "Send or order failed"},
+    "new_mark": {"cs": "Nová známka", "en": "New mark"},
+    "new_absence": {"cs": "Nová absence", "en": "New absence"},
+    "timetable_change": {"cs": "Změna v rozvrhu", "en": "Timetable change"},
 }
 
 

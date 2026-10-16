@@ -371,6 +371,8 @@ class ActivityMixin:
                 # reload_cache emits so no frame shows a stale "to send".
                 self.pending_orders.difference_update(result.auto_ordered_days)
             self.reload_cache()
+            for event, body in result.news:
+                self._notify(event, body)
             extras = []
             if result.excuses_sent:
                 extras.append(S("auto_excuses_sent").format(n=result.excuses_sent))

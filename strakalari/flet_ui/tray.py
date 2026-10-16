@@ -186,6 +186,8 @@ class TrayApp:
             notify_core.notify("excuse_sent", S("excuses_auto_sent"), prefs)
         if result.lunches_ordered:
             notify_core.notify("lunch_ordered", S("lunches_auto_ordered"), prefs)
+        for event, body in result.news:
+            notify_core.notify(event, body, prefs)
         fetch_errors = [e for e in result.errors if e not in result.automation_errors]
         if fetch_errors:
             _phase, exc = fetch_errors[0]

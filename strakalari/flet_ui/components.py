@@ -12,6 +12,7 @@ from typing import Callable
 import flet as ft
 
 from strakalari.core.models import parse_cz_date
+from strakalari.core.packaging import is_mobile
 
 from .theme import Tokens, align_center, border_all, pad_all, pad_sym, radius_all, status_color
 
@@ -611,6 +612,12 @@ def labeled_field(
         border_color=tok.border,
         focused_border_color=tok.accent,
     )
+    if on_blur is not None and is_mobile():
+        # A touch outside never unfocuses a phone's text field (Flutter),
+        # so blur only came when another field took focus: an edit followed
+        # by a tap on Refresh or another tab stayed unsaved while the field
+        # kept showing it. The on_blur handlers here are saves, safe to repeat.
+        box.on_tap_outside = on_blur
     caption = txt(label, tok, size=tok.fs_small, bold=True)
     return ft.Column([caption, box], spacing=4, tight=True,
                      horizontal_alignment=ft.CrossAxisAlignment.STRETCH)

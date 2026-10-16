@@ -37,6 +37,33 @@ from .theme import Tokens, normalize_mode, tokens
 # paint), so it must stay silent instead of printing like a real bug.
 _DEAD_SESSION_NEEDLES = ("destroyed session", "fetch destroyed")
 
+_executor_lock = threading.Lock()
+
+
+def ensure_page_executor(page: Any) -> None:
+    """Gives the page's connection its own, running thread pool. Never raises.
+
+    Android (Flet's dart_bridge transport): every connection shares one
+    pool, and reopening the app swaps in a new connection and closes the
+    old one, which shuts that shared pool down. ``page.run_thread`` then
+    drops every job silently (the error only reaches asyncio's log), so a
+    refresh stayed "running" until the app was force-stopped. A pool of
+    our own per connection is never shut down by another connection's
+    close; a shut-down one is replaced.
+    """
+    try:
+        connection = page.session.connection
+        with _executor_lock:
+            if (getattr(connection, "_strakalari_executor", False)
+                    and not getattr(connection.executor, "_shutdown", False)):
+                return
+            import concurrent.futures
+
+            connection.executor = concurrent.futures.ThreadPoolExecutor()
+            connection._strakalari_executor = True
+    except Exception:  # noqa: BLE001 - no session / no executor: run_thread's own fallback
+        pass
+
 
 def _canonical_orders(orders: dict) -> dict[str, str]:
     """``{DD.MM.YYYY: meal_id}`` — Strava day spellings collapsed."""
@@ -256,6 +283,7 @@ class AppState(ExcuseTasksMixin, LunchMixin, MarksMixin, PlannerMixin, ActivityM
         """
         run_thread = getattr(self._page, "run_thread", None)
         if callable(run_thread):
+            ensure_page_executor(self._page)
             try:
                 run_thread(target, *args)
                 return
