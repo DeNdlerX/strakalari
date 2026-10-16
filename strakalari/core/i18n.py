@@ -146,6 +146,10 @@ MESSAGES: dict[str, dict[str, str]] = {
     "news_added": {"cs": "hodina navíc", "en": "extra lesson"},
     "news_room": {"cs": "učebna {room}", "en": "room {room}"},
     "news_changed": {"cs": "změna", "en": "changed"},
+    "update_available_notice": {
+        "cs": "Je dostupná nová verze Strakalářů {version}.",
+        "en": "Strakaláři {version} is available.",
+    },
     "cache_age_now": {"cs": "právě teď", "en": "just now"},
     "cache_age_min": {"cs": "před {n} min", "en": "{n} min ago"},
     "cache_age_hours": {"cs": "před {n} h", "en": "{n} h ago"},

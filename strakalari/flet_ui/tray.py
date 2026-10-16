@@ -84,6 +84,7 @@ class TrayApp:
         )
         self._config_mtime: float | None = self._config_file_mtime()
         self.runner.add_job("refresh", self._job_refresh)
+        self.runner.add_job("update", self._job_update)
         self._ui_process: subprocess.Popen | None = None
         self._icon = None
         #: This tray was started by a normal launch to host the window
@@ -216,6 +217,17 @@ class TrayApp:
                                      ("meals", result.lunches_ordered)) if n]
         suffix = f" + {', '.join(done)}" if done else ""
         return f"{count} subjects{suffix}"
+
+    def _job_update(self) -> str:
+        """Announces a new release once (GitHub is asked at most once a day)."""
+        from strakalari.core import update
+
+        channel = update.normalize_channel(
+            ConfigManager().get("update_channel") or update.default_channel())
+        info = update.check_for_updates(channel=channel)
+        if update.notify_new_release(info, self._prefs()):
+            return f"update {info.get('version')} announced"
+        return "no new release to announce"
 
     def _on_result(self, result: JobResult) -> None:
         if not result.ok and not getattr(result, "reported", False):

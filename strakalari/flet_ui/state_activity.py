@@ -236,6 +236,7 @@ class ActivityMixin:
             info = _update_mod.check_for_updates(force=force, channel=self.update_channel)
             if info and _update_mod.update_available(info):
                 self.update_info = info
+                _update_mod.notify_new_release(info, self.get("notifications", {}))
             elif force or info is not None:
                 # Manual re-check with no newer release clears a stale banner.
                 self.update_info = None

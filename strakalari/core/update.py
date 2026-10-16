@@ -258,10 +258,47 @@ def save_cached(channels: dict, checked_at: float | None = None) -> None:
             {
                 "checked_at": checked_at if checked_at is not None else time.time(),
                 "channels": {c: channels.get(c) for c in UPDATE_CHANNELS},
+                # Kept across checks: see claim_update_notice.
+                "notified": str((_load_cache_file() or {}).get("notified") or ""),
             },
         )
     except Exception:
         pass
+
+
+def claim_update_notice(info: dict | None) -> bool:
+    """True once per release newer than the running app: whether to notify
+    about ``info``. The tray and the window share it through the update
+    cache file (not the data cache: that would make an empty one look
+    fresh). Never raises."""
+    if not update_available(info):
+        return False
+    version = str(info.get("version") or "")
+    try:
+        from strakalari.core.helpers import atomic_write_json
+
+        cache = _load_cache_file() or {"checked_at": 0, "channels": {}}
+        if cache.get("notified") == version:
+            return False
+        cache["notified"] = version
+        atomic_write_json(_cache_path(), cache)
+    except Exception:
+        return False
+    return True
+
+
+def notify_new_release(info: dict | None, prefs: dict | None) -> bool:
+    """Announces ``info`` with a notification, once per release. Never raises."""
+    if not claim_update_notice(info):
+        return False
+    try:
+        from . import notify
+        from .i18n import t
+
+        return notify.notify("update_available",
+                             t("update_available_notice", version=info.get("version")), prefs)
+    except Exception:
+        return False
 
 
 def should_check(cached: dict | None, now: float | None = None) -> bool:

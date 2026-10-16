@@ -265,10 +265,11 @@ def test_scheduler_skips_refresh_while_setup_pending(state, monkeypatch):
         state, "start_refresh",
         lambda scope="all": (calls.append(scope), True)[1],
     )
+    monkeypatch.setattr(state, "start_update_check", lambda force=False: True)
     runner = _register_jobs(state)
     assert state.setup_pending is True
     results = runner.run_now()
-    assert len(results) == 1 and results[0].ok
+    assert results[0].name == "refresh" and results[0].ok
     assert results[0].detail == "skipped (setup not finished)"
     assert calls == []
     # After finishing setup the same scheduler run starts a refresh.

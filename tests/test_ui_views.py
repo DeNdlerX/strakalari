@@ -453,6 +453,12 @@ def test_lunch_menu_hides_past_days_until_asked(state):
     state.show_past_lunches = True
     assert "Staré jídlo" in texts(lunches.build(state, None))
 
+    # No menu: the page says why the last refresh brought none.
+    for status, key in (("empty", "lunch_empty_no_menu"), ("no_login", "lunch_empty_no_login"),
+                        (None, "need_credentials")):
+        state.data = {"timetable": {future: []}, "absence": {"M": 1.0}, "strava_status": status}
+        assert S(key) in texts(lunches.build(state, None))
+
 
 def test_activity_groups_and_translates_automation_history(state):
     from datetime import datetime

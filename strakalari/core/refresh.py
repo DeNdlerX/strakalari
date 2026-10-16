@@ -219,6 +219,12 @@ TIMETABLE_HISTORY_KEY = "timetable_history"
 #: last sync (ISO date) — bounds the excuse window in the UI.
 SENT_EXCUSES_FROM_KEY = "sent_excuses_from"
 
+#: Data-cache key: how the last Strava fetch went — "ok", "no_login" (the
+#: canteen number or username is not saved) or "empty" (logged in, but no
+#: menu came back). Lets an empty lunches page say why instead of a bare
+#: "refresh". A failed fetch leaves it as it was (the error is shown).
+STRAVA_STATUS_KEY = "strava_status"
+
 
 def _school_year_start(today: date) -> date:
     from .planner import school_year_terms
@@ -424,6 +430,7 @@ def _fetch_phases(app, scope, has_bak, has_strava, fresh, result, _emit, _check_
             _emit("strava_disabled_skip")
         elif not has_strava:
             _emit("strava_skipped_log")
+            fresh[STRAVA_STATUS_KEY] = "no_login"
         else:
             _check_cancel()
             _emit("fetching_menu")
@@ -441,8 +448,10 @@ def _fetch_phases(app, scope, has_bak, has_strava, fresh, result, _emit, _check_
                     fresh["strava_ordered"] = dict(app.orderedDict or {})
                     result.strava_fetched = True
                     result.menu_days = len(food)
+                    fresh[STRAVA_STATUS_KEY] = "ok"
                     _emit("strava_done_log", n=len(food))
                 else:
+                    fresh[STRAVA_STATUS_KEY] = "empty"
                     _emit("strava_menu_empty")
 
 

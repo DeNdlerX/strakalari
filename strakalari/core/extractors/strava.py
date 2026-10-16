@@ -67,10 +67,17 @@ def menu_from_reply(reply) -> tuple:
 
     food, ordered = {}, {}
     for key, meals in menu_tables(reply):
-        try:
-            day = str(meals[0].get("datum") or "").strip()
-            when = datetime.strptime(day, "%d.%m.%Y")
-        except (AttributeError, ValueError):
+        # The day's date from the first row carrying one: the soup row
+        # comes first and may have none.
+        day, when = "", None
+        for meal in meals:
+            try:
+                day = str(meal.get("datum") or "").strip()
+                when = datetime.strptime(day, "%d.%m.%Y")
+                break
+            except (AttributeError, ValueError):
+                continue
+        if when is None:
             continue
         selection = {f"{key}&-1&0": f"{_WEEKDAYS[when.weekday()]} {when:%d/%m/%Y}"}
         for meal in meals:

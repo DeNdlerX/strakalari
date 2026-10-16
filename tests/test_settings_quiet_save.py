@@ -115,3 +115,14 @@ def test_template_editor_saves_names(app_state):
     name_a.value = ""
     name_a.on_blur(SimpleNamespace(control=name_a))
     assert app_state.get("short_absence_excuses") == ["Text A", "Text B"]
+
+
+def test_text_fields_compare_as_text():
+    from strakalari.flet_ui.views.settings.common import _same
+
+    # A canteen number with a leading zero is a change, not "the same number".
+    assert _same("123", "0123") is False
+    assert _same("1234", "1234") is True
+    # Numeric settings still compare by value.
+    assert _same(60, 60.0) is True
+    assert _same(25.0, "25") is True

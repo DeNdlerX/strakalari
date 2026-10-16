@@ -27,6 +27,15 @@ def _no_real_http(monkeypatch):
 
     monkeypatch.setattr(httpx.HTTPTransport, "handle_request", _refuse)
 
+    # Nor GitHub (the scheduler's update check): tests that check updates
+    # patch urlopen with a fake themselves.
+    import urllib.request
+
+    def _refuse_urlopen(*args, **kwargs):
+        raise OSError("network disabled in tests")
+
+    monkeypatch.setattr(urllib.request, "urlopen", _refuse_urlopen)
+
 
 @pytest.fixture()
 def state(monkeypatch, tmp_path):

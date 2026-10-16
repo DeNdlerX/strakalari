@@ -122,6 +122,15 @@ def test_empty_menu_keeps_cached_menu():
     assert load_data_cache()["strava_meals"] == {"1.1.2099": {"a&1&0": "old"}}
 
 
+def test_strava_status_tells_why_the_menu_is_missing():
+    run_refresh(FakeApp([], menu={}), CONFIG)
+    assert load_data_cache()["strava_status"] == "empty"
+    run_refresh(FakeApp([]), {**CONFIG, "strava_canteen_id": ""})
+    assert load_data_cache()["strava_status"] == "no_login"
+    run_refresh(FakeApp([]), CONFIG)
+    assert load_data_cache()["strava_status"] == "ok"
+
+
 def test_unavailable_extras_survive_refresh():
     save_data_cache({
         "absence_details": {"M": {"total_hours": 10}},

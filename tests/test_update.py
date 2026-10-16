@@ -239,6 +239,33 @@ class TestUpdateAvailable:
         assert update.update_available(None) is False
 
 
+class TestUpdateNotice:
+    def test_each_release_is_announced_once(self, monkeypatch):
+        from strakalari.core import notify
+
+        sent: list = []
+        monkeypatch.setattr(notify, "_send", lambda title, message, tag="": sent.append(tag) or True)
+        monkeypatch.setattr(update, "get_current_version", lambda: "1.0.0")
+        update.save_cached({"stable": {"version": "1.0.1"}, "beta": None})
+        assert update.notify_new_release({"version": "1.0.1"}, {}) is True
+        # A later daily check keeps the record: no second notification.
+        update.save_cached({"stable": {"version": "1.0.1"}, "beta": None})
+        assert update.notify_new_release({"version": "1.0.1"}, {}) is False
+        assert update.notify_new_release({"version": "1.0.2"}, {}) is True
+        assert sent == ["update_available", "update_available"]
+
+    def test_nothing_newer_or_switched_off_sends_nothing(self, monkeypatch):
+        from strakalari.core import notify
+
+        sent: list = []
+        monkeypatch.setattr(notify, "_send", lambda *a, **k: sent.append(1) or True)
+        monkeypatch.setattr(update, "get_current_version", lambda: "1.0.0")
+        assert update.notify_new_release({"version": "1.0.0"}, {}) is False
+        assert update.notify_new_release(None, {}) is False
+        assert update.notify_new_release({"version": "2.0.0"}, {"update_available": False}) is False
+        assert sent == []
+
+
 class TestStrings:
     def test_update_keys_have_both_languages(self):
         from strakalari.flet_ui.strings import STRINGS

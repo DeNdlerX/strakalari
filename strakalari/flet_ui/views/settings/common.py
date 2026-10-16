@@ -85,6 +85,9 @@ def _same(a, b) -> bool:
     """True when a stored config value already equals the new one."""
     if a == b:
         return True
+    if isinstance(a, str) and isinstance(b, str):
+        # Text stays text: a canteen number "0123" is not "123".
+        return False
     try:
         return float(a) == float(b)
     except (TypeError, ValueError):

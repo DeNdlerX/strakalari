@@ -282,6 +282,16 @@ def test_save_not_shown_on_the_menu_is_not_success():
     assert len(server.saves) == 1  # never repeated
 
 
+def test_menu_day_found_when_the_soup_row_has_no_date():
+    from strakalari.core.extractors.strava import menu_from_reply
+
+    soup = _soup(DAY1)
+    del soup["datum"]
+    food, _ordered = menu_from_reply({"table0": [soup, _meal(DAY1, 1, "1", "Řízek")]})
+    assert list(food) == [f"{DAY1:%d.%m.%Y}"]
+    assert "table0&1&0" in food[f"{DAY1:%d.%m.%Y}"]
+
+
 def test_newer_backend_orders_nothing():
     client, server = _client(FakeStrava(s5url="https://s5.example.test"))
     client.fetch_data()

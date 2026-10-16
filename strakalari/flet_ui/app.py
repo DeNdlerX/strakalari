@@ -995,6 +995,13 @@ def _register_jobs(state: AppState, paused=None) -> PeriodicRunner:
         # from launch instead of showing "—" until the first tick.
         state.scheduler_last_run = runner._last_run
     runner.add_job("refresh", _refresh_job)
+
+    def _update_job():
+        # A new release is announced also while the app only runs in the
+        # background (phone) or tray; GitHub is asked at most once a day.
+        return "update check started" if state.start_update_check() else "update check busy"
+
+    runner.add_job("update", _update_job)
     return runner
 
 

@@ -553,9 +553,11 @@ class LunchView:
                 tok=tok,
             ))
         if not state.food():
+            # Why the last refresh brought no menu (see STRAVA_STATUS_KEY).
+            reason = {"no_login": "lunch_empty_no_login", "empty": "lunch_empty_no_menu"}.get(
+                (state.data or {}).get("strava_status"), "need_credentials")
             menu_controls.append(C.empty_state(S("no_data"), tok))
-            menu_controls.append(C.txt(S("need_credentials"), tok,
-                                       size=tok.fs_small, faint=True))
+            menu_controls.append(C.txt(S(reason), tok, size=tok.fs_small, faint=True))
         today = date.today()
         past: list[tuple[str, dict]] = []
         upcoming: list[tuple[str, dict]] = []

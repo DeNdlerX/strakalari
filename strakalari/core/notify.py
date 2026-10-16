@@ -59,6 +59,7 @@ EVENT_TYPES: tuple[str, ...] = (
     "new_mark",
     "new_absence",
     "timetable_change",
+    "update_available",
 )
 
 DEFAULTS: dict[str, bool] = {event: True for event in EVENT_TYPES}

@@ -104,6 +104,18 @@ STRINGS: dict[str, dict[str, str]] = {
         "cs": "Vyplňte přihlášení v Nastavení a stiskněte Obnovit.",
         "en": "Fill in your logins in Settings and press Refresh.",
     },
+    "lunch_empty_no_login": {
+        "cs": "Strava není nastavená: v Nastavení vyplňte číslo jídelny a uživatelské jméno "
+              "a stiskněte Obnovit.",
+        "en": "Strava is not set up: fill in the canteen ID and username in Settings, "
+              "then press Refresh.",
+    },
+    "lunch_empty_no_menu": {
+        "cs": "Přihlášení do Stravy proběhlo, ale jídelna nevrátila žádný jídelníček. "
+              "Pokud ho na webu Stravy vidíte, pošlete prosím log z Aktivity.",
+        "en": "Strava logged in, but the canteen returned no menu. If you can see one "
+              "on the Strava website, please send the log from Activity.",
+    },
     "next_lesson": {"cs": "Další hodina", "en": "Next lesson"},
     "no_lessons_today": {"cs": "Dnes žádné vyučování", "en": "No lessons today"},
     "week_changes": {"cs": "Změny tento týden", "en": "Changes this week"},
@@ -1410,6 +1422,7 @@ NOTIF_LABELS: dict[str, dict[str, str]] = {
     "new_mark": {"cs": "Nová známka", "en": "New mark"},
     "new_absence": {"cs": "Nová absence", "en": "New absence"},
     "timetable_change": {"cs": "Změna v rozvrhu", "en": "Timetable change"},
+    "update_available": {"cs": "Nová verze aplikace", "en": "New app version"},
 }
 
 
