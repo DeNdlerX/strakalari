@@ -10,6 +10,7 @@ Usage (from the repository root)::
     python tools/demo_data.py screenshots --theme light
     python tools/demo_data.py generate DIR --lang en # just write the data folder
     python tools/demo_data.py serve DIR --port 8561  # browse it at http://127.0.0.1:8561
+    python tools/demo_data.py playstore              # dist/playstore/<lang>/: phone + 7"/10" tablet shots, feature graphic
 
 ``serve`` runs the Flet UI as a local web server on that folder
 (``STRAKALARI_DATA_DIR``), skipping the first-run wizard and the
@@ -231,6 +232,11 @@ def serve(data_dir: str, port: int) -> None:
     from strakalari.flet_ui import app
     from strakalari.flet_ui.assets import assets_dir
 
+    if os.environ.get("DEMO_NO_UPDATE_BANNER"):
+        from strakalari.core import update
+
+        update.updates_managed_externally = lambda: True
+
     class DemoState(app.AppState):
         def __init__(self, *a, **kw):
             super().__init__(*a, **kw)
@@ -304,6 +310,131 @@ def screenshots(out_dir: str, theme: str, port: int) -> None:
                 server.wait(timeout=15)
 
 
+#: Play Store screenshots: (folder, CSS viewport, device scale) -> exact pixels
+#: 1080x1920, 1200x1920, 2560x1600 (Play: 9:16 or 16:9, 320-3840 px per side).
+#: The app picks its layout from the width: phones and 7" tablets (portrait)
+#: get the bottom bar, the 10" tablet (landscape) the side rail, as on a
+#: real device.
+PLAY_DEVICES = [("phone", (360, 640), 3), ("tablet7", (600, 960), 2),
+                ("tablet10", (1280, 800), 2)]
+PLAY_ROUTES = ["today", "timetable", "marks", "lunches", "absences", "planner"]
+#: Screens the phone layout keeps in the "Více" menu: tile centre (CSS px) by route.
+MORE_TILES = {"absences": 105, "planner": 161}
+PLAY_TAGLINES = {"cs": "Rozvrh, známky, absence a obědy na jednom místě",
+                 "en": "Timetable, marks, absences and lunches in one place"}
+_FONT_DIRS = ["C:/Windows/Fonts", "/usr/share/fonts/truetype/dejavu", "/Library/Fonts",
+              "/System/Library/Fonts/Supplemental"]
+
+
+def _font(size: int, bold: bool = False):
+    from PIL import ImageFont
+
+    for name in (("segoeuib.ttf", "DejaVuSans-Bold.ttf", "Arial Bold.ttf") if bold
+                 else ("segoeui.ttf", "DejaVuSans.ttf", "Arial.ttf")):
+        for folder in _FONT_DIRS:
+            path = os.path.join(folder, name)
+            if os.path.exists(path):
+                return ImageFont.truetype(path, size)
+    return ImageFont.load_default(size)
+
+
+def feature_graphic(path: str, lang: str) -> None:
+    """The 1024x500 Play feature graphic: logo, name and a one-line tagline."""
+    from PIL import Image, ImageDraw
+
+    width, height = 1024, 500
+    bg = Image.new("RGB", (width, height))
+    draw = ImageDraw.Draw(bg)
+    for y in range(height):  # vertical gradient in the app's dark theme colours
+        k = y / (height - 1)
+        draw.line([(0, y), (width, y)], fill=tuple(int(a + (b - a) * k) for a, b in
+                                                    ((15, 28), (17, 32), (21, 44))))
+    logo = Image.open(os.path.join(ROOT, "assets", "logo-512.png")).convert("RGBA")
+    ghost = logo.resize((620, 620), Image.LANCZOS)
+    ghost.putalpha(ghost.getchannel("A").point(lambda a: a * 0.10))
+    bg.paste(ghost, (width - 440, -60), ghost)  # faint oversized copy bleeding off the right edge
+    mark = logo.resize((340, 340), Image.LANCZOS)
+    bg.paste(mark, (70, 80), mark)
+    draw.text((450, 130), "Strakaláři", font=_font(88, bold=True), fill=(232, 234, 240))
+    tagline, font, lines, line = PLAY_TAGLINES[lang], _font(34), [], ""
+    for word in tagline.split():  # wrap to the space right of the logo
+        if draw.textlength(f"{line} {word}".strip(), font=font) > width - 450 - 50:
+            lines.append(line)
+            line = word
+        else:
+            line = f"{line} {word}".strip()
+    lines.append(line)
+    for i, text in enumerate(lines):
+        draw.text((452, 262 + 48 * i), text, font=font, fill=(167, 173, 189))
+    draw.rectangle([452, 240, 452 + 120, 245], fill=(122, 165, 248))  # accent underline
+    bg.save(path, optimize=True)
+
+
+def _nav_click(page, route: str, viewport: tuple) -> None:
+    """Opens ``route``: the bottom bar when narrow, else the side rail."""
+    from strakalari.flet_ui.app import NARROW_MAX_WIDTH, NARROW_TABS, ROUTES
+
+    width, height = viewport
+    if width < NARROW_MAX_WIDTH:
+        if route in MORE_TILES:
+            _nav_click(page, "more", viewport)
+            page.mouse.click(width / 2, MORE_TILES[route])
+        else:
+            page.mouse.click(width * (NARROW_TABS.index(route) + 0.5) / len(NARROW_TABS), height - 40)
+    else:
+        page.mouse.click(50, 45 + 64 * ROUTES.index(route))
+    time.sleep(2.5)
+
+
+def playstore(out_dir: str, theme: str, port: int) -> None:
+    from PIL import Image
+    from playwright.sync_api import sync_playwright
+
+    sys.path.insert(0, ROOT)
+    for lang in ("cs", "en"):
+        dest_dir = os.path.join(out_dir, lang)
+        os.makedirs(dest_dir, exist_ok=True)
+        feature_graphic(os.path.join(dest_dir, "feature-graphic.png"), lang)
+        # The server still holds the folder as its cwd when it is removed (Windows).
+        with tempfile.TemporaryDirectory(prefix=f"strakalari-demo-{lang}-",
+                                         ignore_cleanup_errors=True) as tmp:
+            generate(tmp, lang=lang, theme=theme)
+            server = subprocess.Popen(
+                [sys.executable, os.path.abspath(__file__), "serve", tmp, "--port", str(port)],
+                # The Play build never shows the GitHub update banner.
+                env={**os.environ, "PYTHONIOENCODING": "utf-8", "DEMO_NO_UPDATE_BANNER": "1"},
+            )
+            try:
+                url = f"http://127.0.0.1:{port}"
+                _wait_http(url)
+                with sync_playwright() as p:
+                    browser = p.chromium.launch(
+                        headless=True,
+                        args=["--use-gl=swiftshader", "--enable-unsafe-swiftshader"])
+                    for device, viewport, scale in PLAY_DEVICES:
+                        page = browser.new_page(
+                            viewport={"width": viewport[0], "height": viewport[1]},
+                            device_scale_factor=scale)
+                        page.goto(url)
+                        time.sleep(10)  # CanvasKit start-up + first render
+                        n = 0
+                        for route in PLAY_ROUTES:
+                            _nav_click(page, route, viewport)
+                            page.mouse.move(0, 0)  # no hover tooltip left over the page
+                            time.sleep(1)
+                            n += 1
+                            raw = os.path.join(tmp, f"{device}-{n}.png")
+                            page.screenshot(path=raw)
+                            dest = os.path.join(dest_dir, f"{device}-{n}-{route}.png")
+                            Image.open(raw).convert("RGB").save(dest, optimize=True)
+                            print(f"{dest} ({os.path.getsize(dest) // 1024} KB)")
+                        page.close()
+                    browser.close()
+            finally:
+                server.terminate()
+                server.wait(timeout=15)
+
+
 def _cli() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -320,11 +451,17 @@ def _cli() -> None:
     sh.add_argument("--out", default=os.path.join(ROOT, "docs", "images"))
     sh.add_argument("--theme", choices=["dark", "light"], default="dark")
     sh.add_argument("--port", type=int, default=8561)
+    ps = sub.add_parser("playstore", help="Play Store screenshots and feature graphic")
+    ps.add_argument("--out", default=os.path.join(ROOT, "dist", "playstore"))
+    ps.add_argument("--theme", choices=["dark", "light"], default="dark")
+    ps.add_argument("--port", type=int, default=8561)
     args = parser.parse_args()
     if args.cmd == "generate":
         print(generate(args.dir, args.lang, args.theme, args.tutorials))
     elif args.cmd == "serve":
         serve(args.dir, args.port)
+    elif args.cmd == "playstore":
+        playstore(args.out, args.theme, args.port)
     else:
         screenshots(args.out, args.theme, args.port)
 

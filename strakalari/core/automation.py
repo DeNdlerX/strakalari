@@ -23,7 +23,7 @@ from .excuse_history import (
 )
 from .helpers import _resolve_path, atomic_write_json, parse_date, extract_lesson_num, format_excuse_template, example_path_for, template_texts
 from .i18n import t
-from .models import absence_kind, is_cancel_notice
+from .models import absence_kind, is_cancel_notice, is_class_event
 
 # Process-wide guard for log rotation + append: refresh threads, the tray
 # scheduler and one-off runs can otherwise interleave or race a rotation.
@@ -983,12 +983,13 @@ class Strakalari:
                 # malformed row beats over-excusing the wrong lessons.
                 if not lesson.get("teacher") or not lesson.get("subject"):
                     continue
-                # Cancelled lessons ("Odpadá" / "Zrušeno") need no excuse and prove no
-                # attendance — keep them neutral so they neither trigger new
-                # excuses nor break/merge full-day ranges. Negated notices
+                # Cancelled lessons ("Odpadá" / "Zrušeno") and class events need no
+                # excuse and prove no attendance — keep them neutral so they neither
+                # trigger new excuses nor break/merge full-day ranges. Negated notices
                 # ("Neodpadá", "Nezrušeno") mean the lesson takes place and
                 # must NOT match — see _is_cancelled_notice().
-                if lesson.get("status") == "cancelled" or is_cancel_notice(lesson.get("notice")):
+                if (lesson.get("status") == "cancelled" or is_class_event(lesson)
+                        or is_cancel_notice(lesson.get("notice"))):
                     continue
                 lesson_num = extract_lesson_num(lesson.get("time", ""))
                 if lesson_num is None:

@@ -127,6 +127,8 @@ allowBackup = "false"
 # resolves jni_flutter 1.0.4+, which needs jni 1.1 and fails to compile.
 # Drop this together with the jni pin when bumping flet.
 jni_flutter = "1.0.1"
+# Same problem: shared_preferences_android 2.5.x needs jni ^1.1.0.
+shared_preferences_android = "2.4.28"
 
 [tool.flet.splash]
 color = "#FFFFFF"

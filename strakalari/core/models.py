@@ -224,6 +224,13 @@ def is_cancel_notice(text: Any) -> bool:
     return False
 
 
+def is_class_event(raw: Any) -> bool:
+    """True for a school event replacing the lesson (Bakaláři class
+    absence, e.g. "beseda / přednáška / workshop"). It shows as a change,
+    but costs no absence budget and needs no excuse."""
+    return isinstance(raw, dict) and _str(raw.get("type")).lower() == "event"
+
+
 def _lesson_status_from_legacy(raw: dict) -> tuple[str, str, bool]:
     """Derives (status, change, excused) from Bakalari seed shapes.
 

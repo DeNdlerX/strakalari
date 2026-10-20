@@ -296,6 +296,9 @@ class Shell:
     def _apply_chrome(self) -> None:
         tok = self.state.tok
         self.page.bgcolor = tok.bg
+        # Flet pads the page by 10 px by default: on the phone layouts that
+        # left a strip above the bottom bar and doubled the edge gutter.
+        self.page.padding = 0 if self._narrow else 10
         self.page.theme_mode = (
             ft.ThemeMode.LIGHT if tok.mode == "light" else ft.ThemeMode.DARK
         )

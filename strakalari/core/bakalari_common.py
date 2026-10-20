@@ -47,6 +47,7 @@ def parse_timetable_detail(detail: dict) -> dict | None:
     info_code = str(detail.get("infoChangeCode") or detail.get("InfoChangeCode") or "").strip()
     badge = str(detail.get("changeBadgeChar") or "").strip()
     removedinfo = str(detail.get("removedinfo") or detail.get("RemovedInfo") or "").strip()
+    absentinfo = str(detail.get("absentinfo") or detail.get("AbsentInfo") or "").strip()
     notice = str(
         detail.get("notice") or detail.get("Notice")
         or detail.get("change") or detail.get("Change") or ""
@@ -57,6 +58,33 @@ def parse_timetable_detail(detail: dict) -> dict | None:
         notice = changeinfo
     hour_index = _hour_index(detail.get("hourIndex") or detail.get("HourIndex"))
     time_text = detail.get("time") or detail.get("Time")
+
+    if absentinfo and not detail.get("teacher"):
+        # Class absence: a school event replaces the lesson (absentinfo
+        # "B", removedinfo "beseda / přednáška / workshop") and arrives
+        # with no type/teacher/subject. The event name stands in for the
+        # subject until backfill_stable_facts fills in the stable lesson;
+        # it shows as a change, never as cancelled (see is_class_event).
+        if not removedinfo:
+            return None
+        return {
+            "teacher": "",
+            "subject": removedinfo,
+            "subject_short": "",
+            "room": "",
+            "group": "",
+            "theme": "",
+            "notice": removedinfo,
+            "date": detail.get("day") or detail.get("Day"),
+            "time": time_text,
+            "absencetext": "",
+            "absenceType": "",
+            "type": "event",
+            "changeinfo": changeinfo,
+            "infoChangeCode": info_code,
+            "changeBadgeChar": badge,
+            "hourIndex": hour_index,
+        }
 
     if str(detail.get("type") or "atom").strip().lower() == "removed":
         if not (removedinfo or notice):

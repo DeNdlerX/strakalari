@@ -242,7 +242,7 @@ class ExcuseTasksMixin:
         happened; a day the student partly attended, or was only late
         for, needs lesson-level excuses instead.
         """
-        from strakalari.core.models import Lesson
+        from strakalari.core.models import Lesson, is_class_event
 
         try:
             day = date.fromisoformat(str(day_iso))
@@ -253,7 +253,7 @@ class ExcuseTasksMixin:
         lessons = [
             Lesson.from_legacy(raw, day=day.strftime("%d.%m.%Y"))
             for raw in (self.timetable().get(day.strftime("%d.%m.%Y"), []) or [])
-            if isinstance(raw, dict)
+            if isinstance(raw, dict) and not is_class_event(raw)
         ]
         held = [ls for ls in lessons if ls.status != "cancelled"]
         if not held or not absent_keys:

@@ -34,7 +34,7 @@ from datetime import date, timedelta
 from typing import Iterable, Sequence
 
 from .forecast import canon_subject, normalize_holidays, school_days_between
-from .models import Lesson, SubjectState, parse_cz_date
+from .models import Lesson, SubjectState, is_class_event, parse_cz_date
 from .planned_skips import entry_days, normalize_planned_entry
 
 #: School days before the closure that the plan avoids (grading crunch,
@@ -67,10 +67,10 @@ class LessonSource:
                 continue
             bucket = self.concrete.setdefault(day, [])
             for raw in rows or []:
-                if not isinstance(raw, dict):
+                if not isinstance(raw, dict) or is_class_event(raw):
                     continue
                 lesson = Lesson.from_legacy(raw, day=day_key)
-                # Cancelled lessons cost no absence budget.
+                # Cancelled lessons and class events cost no absence budget.
                 if lesson.status != "cancelled" and lesson.subject.strip() not in ("", "?"):
                     bucket.append(lesson)
         self.template: dict[int, list[Lesson]] = {}

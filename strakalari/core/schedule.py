@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Iterable, Sequence
 
-from .models import Lesson, cancel_negated, parse_cz_date
+from .models import Lesson, cancel_negated, is_class_event, parse_cz_date
 
 _TIME_RANGE_RE = re.compile(
     r"(\d{1,2})\s*:\s*(\d{2})\s*(?:-|–|—|do)\s*(\d{1,2})\s*:\s*(\d{2})"
@@ -159,7 +159,7 @@ def future_lessons(
 
     Lessons without a parseable clock are kept (better to offer than to
     hide), so "plan today" never drops unparseable rows. Cancelled lessons
-    are never ahead: there is nothing left to skip.
+    and class events are never ahead: there is nothing left to skip.
     """
     now = now or datetime.now()
     now_min = now.hour * 60 + now.minute
@@ -167,7 +167,7 @@ def future_lessons(
     for raw in day_lessons or []:
         if not isinstance(raw, dict):
             continue
-        if Lesson.from_legacy(raw, day=day).status == "cancelled":
+        if Lesson.from_legacy(raw, day=day).status == "cancelled" or is_class_event(raw):
             continue
         clock = lesson_clock(raw, day=day)
         if clock is None or clock[0] > now_min:
@@ -452,9 +452,9 @@ def _period_by_clock(
 
 
 def backfill_stable_facts(timetable: dict | None, baseline: dict | None) -> int:
-    """Completes scraped removed rows from the stable baseline.
+    """Completes scraped removed rows and class events from the stable baseline.
 
-    Cancelled lessons arrive with a bare clock and short names; matching
+    Cancelled lessons (and class events) arrive with a bare clock and short names; matching
     their start time against the stable day fills the period number (so
     the timetable grid can place them) and completes subject, teacher
     and room from the closest stable variant. Returns the enriched row
@@ -474,7 +474,7 @@ def backfill_stable_facts(timetable: dict | None, baseline: dict | None) -> int:
             if not isinstance(raw, dict):
                 continue
             try:
-                if str(raw.get("type") or "").strip().lower() != "removed":
+                if str(raw.get("type") or "").strip().lower() not in ("removed", "event"):
                     continue
                 clock = lesson_clock(raw, day=day_key)
                 if clock is None:
@@ -792,11 +792,11 @@ def classify_lesson(
 
     raw_dict = raw if isinstance(raw, dict) else {}
     info_code = str(raw_dict.get("infoChangeCode") or "").strip().lower()
-    # Bakalari's own verdict: an explicit change code (e.g. RoomChanged) or
-    # a "removed" (cancelled) row is a change even when the teacher notice
-    # is empty and no baseline is available to diff against.
+    # Bakalari's own verdict: an explicit change code (e.g. RoomChanged), a
+    # "removed" (cancelled) row or a class event is a change even when the
+    # teacher notice is empty and no baseline is available to diff against.
     flagged = (
-        str(raw_dict.get("type") or "").strip().lower() == "removed"
+        str(raw_dict.get("type") or "").strip().lower() in ("removed", "event")
         or (bool(info_code) and info_code != "nochange")
     )
 

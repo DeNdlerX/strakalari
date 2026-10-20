@@ -16,7 +16,7 @@ from datetime import date, datetime, timedelta
 import flet as ft
 
 from strakalari.core.helpers import template_name, template_text
-from strakalari.core.models import Lesson, parse_cz_date
+from strakalari.core.models import Lesson, is_class_event, parse_cz_date
 from strakalari.core.planned_skips import entry_end_iso, entry_start_iso, normalize_planned_entry
 from strakalari.core.schedule import future_lessons
 
@@ -124,8 +124,8 @@ def _dropdown_value(e) -> str | None:
 def _day_lessons(state: AppState, day: date) -> list[dict]:
     key = day.strftime("%d.%m.%Y")
     lessons = state.timetable().get(key, []) or []
-    # Cancelled lessons need no skipping (same rule as LessonSource).
-    return [r for r in lessons if isinstance(r, dict)
+    # Cancelled lessons and class events need no skipping (same rule as LessonSource).
+    return [r for r in lessons if isinstance(r, dict) and not is_class_event(r)
             and Lesson.from_legacy(r, day=key).status != "cancelled"]
 
 

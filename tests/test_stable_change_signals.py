@@ -260,6 +260,42 @@ def test_vyjmuto_counts_without_baseline():
     assert diff.is_change is True
 
 
+def _class_absent_detail():
+    # The class is at a school event instead of the lesson: no type,
+    # teacher or subject — only the event code and its name.
+    return {"absentinfo": "B", "removedinfo": "beseda / přednáška / workshop",
+            "day": "22.10.2026 (čtvrtek)", "time": "12:50 - 13:35",
+            "isSupervision": False}
+
+
+def test_class_event_is_a_change_not_cancelled():
+    from datetime import datetime
+
+    from strakalari.core.planner import LessonSource
+    from strakalari.core.schedule import future_lessons
+
+    lesson = parse_timetable_detail(_class_absent_detail())
+    assert lesson is not None
+    assert lesson["type"] == "event"
+    assert lesson["subject"] == "beseda / přednáška / workshop"
+    assert Lesson.from_legacy(lesson).status == ""
+    assert classify_lesson(lesson, day="22.10.2026", baseline=None).is_change is True
+    stable = {"Čtvrtek": [{"subject": "Český jazyk a literatura", "teacher": "Novák",
+                           "room": "VIII", "time": "6 (12:50 - 13:35)"}]}
+    baseline = baseline_from_stable_timetable(stable)
+    timetable = {"22.10.2026": [lesson]}
+    assert backfill_stable_facts(timetable, baseline) == 1
+    assert lesson["period"] == 6
+    assert lesson["subject"] == "Český jazyk a literatura"
+    diff = classify_lesson(lesson, day="22.10.2026", baseline=baseline)
+    assert diff.is_change is True
+    assert diff.changed == ["notice"]
+    assert diff.note == "beseda / přednáška / workshop"
+    # It costs no absence budget and is nothing to skip.
+    assert not LessonSource(timetable, baseline).concrete.get(datetime(2026, 10, 22).date())
+    assert future_lessons([lesson], datetime(2026, 10, 22, 8, 0), day="22.10.2026") == []
+
+
 def test_added_lesson_flagged_without_baseline():
     lesson = parse_timetable_detail(_added_detail())
     assert lesson["notice"] == "Přidáno do rozvrhu: TřH, Picka Jaroslav, VIII"

@@ -1,8 +1,8 @@
 # Privacy Policy for Strakaláři
 
-**Last updated:** October 2, 2026
+**Last updated:** October 20, 2026
 
-Strakaláři is an open-source, local desktop application designed to help students manage school schedules, absences, and lunches. Your privacy is paramount: **the application operates locally on your machine and does not collect, track, or sell your personal data.**
+Strakaláři is an open-source, local application for Windows and Android designed to help students manage school schedules, absences, and lunches. Your privacy is paramount: **the application operates locally on your device and does not collect, track, or sell your personal data.**
 
 ---
 
@@ -20,7 +20,8 @@ Strakaláři processes the following information strictly to perform the actions
 ### 2. Where Data Is Stored & Security
 
 * **Local Storage Only:** All configuration, caches, and logs reside solely on your local device: on Windows in `%LOCALAPPDATA%\Programs\Strakalari` (installer version) or `%LOCALAPPDATA%\Strakalari` (Microsoft Store version, kept by Windows in the app's private package folder).
-* **Credential Encryption:** Passwords are encrypted before saving. The encryption key is protected using the operating system's native credential management / DPAPI mechanisms.
+* **Android:** All data resides in the app's private storage on your phone, which other apps cannot access. Android backup is disabled for the app, so the data is not uploaded to Google's cloud backup.
+* **Credential Encryption:** Passwords are encrypted before saving. On Windows the encryption key is protected using the operating system's native credential management / DPAPI mechanisms. On Android the key is kept in the app's private storage next to the encrypted passwords.
 * **No Developer Access:** The developer(s) of Strakaláři have **no access** to your credentials, school data, or activity logs.
 
 ---
@@ -32,7 +33,7 @@ Strakaláři only connects to the internet to perform the services you request:
 1. **Your School's Bakaláři Server:** Directly connects to your school's official Bakaláři web portal to synchronize timetable and absence data.
 2. **Strava.cz:** Directly connects to the official Strava.cz portal to retrieve menus and place lunch orders.
 3. **Google Gemini API (Optional):** Only if you explicitly activate AI lunch recommendations and provide an API key, dish names and meal preferences are sent to Google Gemini to generate recommendations.
-4. **GitHub Releases API (installer version only):** Periodically checks `api.github.com` for application updates. No identifying information is transmitted. The Microsoft Store version is updated by the Store and never contacts GitHub.
+4. **GitHub Releases API (installer version only):** Periodically checks `api.github.com` for application updates. No identifying information is transmitted. The Microsoft Store version is updated by the Store and the Android version by Google Play; neither contacts GitHub.
 5. **No Telemetry or Tracking:** The application contains **no third-party tracking scripts, advertising SDKs, or remote analytics**.
 
 ---
@@ -46,11 +47,11 @@ Strakaláři only connects to the internet to perform the services you request:
 
 ### 5. Data Deletion
 
-You can delete all data and credentials at any time by uninstalling the application and confirming data removal, or by deleting the application data directory from your local system. Uninstalling the Microsoft Store version removes its data automatically.
+You can delete all data and credentials at any time by uninstalling the application and confirming data removal, or by deleting the application data directory from your local system. Uninstalling the Microsoft Store version removes its data automatically. On Android, clearing the app's storage in system settings or uninstalling the app removes all of its data.
 
 ---
 
 ### 6. Contact
 
-If you have questions regarding this policy or the application's security, you can open an issue on GitHub:
+If you have questions regarding this policy or the application's security, you can write to **dendlerx@gmail.com** or open an issue on GitHub:
 https://github.com/DeNdlerX/strakalari/issues
