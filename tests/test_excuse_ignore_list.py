@@ -108,3 +108,30 @@ def test_ignore_saved_normally(state):
     assert state.last_ignore_error == ""
     assert state.unignore_keys(["2026-09-01|2|Matematika"]) is True
     assert state.ignored_excuse_keys == set()
+
+
+def test_ignore_day_skips_already_excused_lessons(state, monkeypatch):
+    tasks = [
+        {"key": "2026-09-08|1|M", "label": "M (1.)", "date": "2026-09-08", "period": 1},
+        {"key": "2026-09-08|2|F", "label": "F (2.)", "date": "2026-09-08", "period": 2},
+        {"key": "2026-09-08|3|C", "label": "C (3.)", "date": "2026-09-08", "period": 3},
+    ]
+    monkeypatch.setattr(state, "_all_excuse_tasks", lambda: tasks)
+    # Period 1 excused in current session; period 2 in persisted history.
+    state.mark_excused(tasks[0], sent=True)
+    monkeypatch.setattr(
+        state.config,
+        "get_excuse_history",
+        lambda: [{"type": "days and hours", "starting_day": "08.09.2026",
+                  "ending_day": "08.09.2026", "starting_lesson": 2, "ending_lesson": 2}],
+    )
+    added = state.ignore_day("2026-09-08")
+    assert added == ["2026-09-08|3|C"]
+    assert state.ignored_excuse_keys == {"2026-09-08|3|C"}
+    assert [t["key"] for t in state.ignored_tasks()] == ["2026-09-08|3|C"]
+    # Even if an excused lesson's key was previously in ignored_excuse_keys,
+    # ignored_tasks() must not show it as ignored.
+    state.ignored_excuse_keys.add("2026-09-08|1|M")
+    state.ignored_excuse_keys.add("2026-09-08|2|F")
+    assert [t["key"] for t in state.ignored_tasks()] == ["2026-09-08|3|C"]
+

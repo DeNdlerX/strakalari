@@ -155,6 +155,11 @@ CANONICAL_DEFAULTS: Dict[str, Any] = {
     # (pre-releases too, whichever is newest). ConfigManager replaces
     # this with the running build's kind (beta build -> "beta").
     "update_channel": "stable",
+    # Phone wake-up alarm before the first lesson (core/wakeup.py); the
+    # skip list holds ISO days the user turned it off for.
+    "wakeup_enabled": False,
+    "wakeup_minutes_before": 60,
+    "wakeup_skip_dates": [],
 }
 
 
@@ -293,6 +298,15 @@ def validate_config(data: Dict[str, Any]) -> list:
             problems.append("'check_interval_minutes' must be >= 1.")
     except (TypeError, ValueError):
         problems.append("'check_interval_minutes' must be a number.")
+    try:
+        wakeup_min = int(float(str(data.get("wakeup_minutes_before", 60)).replace(",", ".")))
+    except (TypeError, ValueError):
+        problems.append("'wakeup_minutes_before' must be a whole number.")
+    else:
+        if not (1 <= wakeup_min <= 720):
+            problems.append("'wakeup_minutes_before' must be within [1, 720].")
+    if not isinstance(data.get("wakeup_skip_dates", []), list):
+        problems.append("'wakeup_skip_dates' must be a list of dates (YYYY-MM-DD).")
     limits = data.get("subject_limits", {})
     if not isinstance(limits, dict):
         problems.append("'subject_limits' must be an object mapping subject -> percent.")

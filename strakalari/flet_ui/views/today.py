@@ -20,7 +20,7 @@ from ..overlays import close_dialog, show_dialog
 from ..overlays import snack as show_snack
 from ..state import AppState
 from ..strings import S
-from ..theme import border_all, tint
+from ..theme import border_all, pad_sym, tint
 
 
 def _snack(page: ft.Page, text: str, undo=None) -> None:
@@ -259,13 +259,13 @@ def _excuse_cards(state: AppState, page: ft.Page, tasks: list[dict]) -> list[ft.
                             C.ghost_button(S("ignore_day"), tok, on_click=_ignore_day),
                         ]),
                         preview,
-                        C.txt(S("or_one_by_one"), tok, size=tok.fs_small, faint=True),
                     ],
                     spacing=tok.gap // 2,
                     tight=True,
                     horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                 )
             ))
+        lesson_cards: list[ft.Control] = []
         for task in day_tasks:
             kind = str(task.get("kind", "short")).lower()
             options = _options_for(state, kind)
@@ -298,7 +298,7 @@ def _excuse_cards(state: AppState, page: ft.Page, tasks: list[dict]) -> list[ft.
                     _snack(page, state.last_ignore_error)
 
             picker, preview = _template_dropdown(state, key, options)
-            group.append(T.anchor(state, "excuse_card",
+            lesson_cards.append(T.anchor(state, "excuse_card",
                 C.card(
                     ft.Row(
                         [
@@ -325,14 +325,25 @@ def _excuse_cards(state: AppState, page: ft.Page, tasks: list[dict]) -> list[ft.
             ))
         if grouped:
             # One tinted frame per day: the header is the whole-day action and
-            # the lesson cards sit inside it, so it doesn't read as one more
-            # absence without a subject.
-            frame = C.card(*group, tok=tok, padding=tok.gap)
+            # the individual lesson cards sit inside a collapsible section.
+            exp_key = f"excuse:{day_iso}"
+            details_tile = ft.ExpansionTile(
+                title=C.txt(S("or_one_by_one").format(n=C.lessons_text(len(day_tasks))),
+                            tok, size=tok.fs_small, muted=True),
+                controls=lesson_cards,
+                expanded=state.is_day_expanded(exp_key, default=False),
+                tile_padding=pad_sym(horizontal=4, vertical=0),
+                controls_padding=pad_sym(horizontal=0, vertical=4),
+                shape=ft.RoundedRectangleBorder(radius=tok.radius_sm),
+                collapsed_shape=ft.RoundedRectangleBorder(radius=tok.radius_sm),
+                on_change=lambda e, k=exp_key: state.set_day_expanded(k, C.expansion_value(e)),
+            )
+            frame = C.card(*group, details_tile, tok=tok, padding=tok.gap)
             frame.bgcolor = tint(tok.accent, 0.08)
             frame.border = border_all(1, tint(tok.accent, 0.5))
             blocks.append(frame)
         else:
-            blocks.extend(group)
+            blocks.extend(lesson_cards)
     blocks.extend(_ignored_blocks(state, page))
     return blocks
 
@@ -378,6 +389,14 @@ def _next_lesson_card(state: AppState, now: datetime) -> ft.Control:
     today = now.date()
     today_key = today.strftime("%d.%m.%Y")
     todays = [r for r in (timetable.get(today_key, []) or []) if isinstance(r, dict)]
+    alarm = state.next_wakeup_alarm(now)
+
+    def _head(label: ft.Control, day: date) -> ft.Control:
+        """The card's heading, with the phone's wake-up alarm when it rings that day."""
+        if alarm is None or alarm.day != day:
+            return label
+        return ft.Row([label, C.badge(S("wakeup_badge").format(time=alarm.alarm_time_label), tok)],
+                      spacing=6)
 
     resolved = resolve_day_lessons(todays, now, day=today_key)
     phase = resolved["phase"]
@@ -409,8 +428,8 @@ def _next_lesson_card(state: AppState, now: datetime) -> ft.Control:
         parsed = Lesson.from_legacy(resolved["upcoming"], day=today_key)
         clock = lesson_clock(resolved["upcoming"], day=today_key)
         bits = [
-            C.txt(S("before_school") if phase == "before" else S("up_next"), tok,
-                  size=tok.fs_small, bold=True, color=tok.accent),
+            _head(C.txt(S("before_school") if phase == "before" else S("up_next"), tok,
+                        size=tok.fs_small, bold=True, color=tok.accent), today),
             C.txt(_lesson_headline(parsed), tok, bold=True, size=tok.fs_section),
             C.txt(_lesson_meta(parsed), tok, size=tok.fs_small, muted=True),
         ]
@@ -441,8 +460,8 @@ def _next_lesson_card(state: AppState, now: datetime) -> ft.Control:
         except Exception:
             day_name = ""
         return C.card(
-            C.txt(f"{S('next_school_day')}: {day_name} {C.cz_day(key)}", tok,
-                  size=tok.fs_small, bold=True, color=tok.accent),
+            _head(C.txt(f"{S('next_school_day')}: {day_name} {C.cz_day(key)}", tok,
+                        size=tok.fs_small, bold=True, color=tok.accent), day),
             C.txt(_lesson_headline(parsed), tok, bold=True, size=tok.fs_section),
             C.txt(_lesson_meta(parsed), tok, size=tok.fs_small, muted=True),
             tok=tok,

@@ -177,9 +177,8 @@ class LunchView:
             head.append(status)
         if not order_open:
             head.append(C.badge(S("lunch_closed_badge"), tok, kind="warning"))
-        rows: list[ft.Control] = [
-            ft.Row(head, spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-        ]
+        head_row = ft.Row(head, spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+        rows: list[ft.Control] = []
         if not order_open:
             try:
                 deadline = state.lunch_order_deadline(day)
@@ -250,7 +249,19 @@ class LunchView:
         if hidden:
             rows.append(C.txt(S("hidden_meals").format(n=hidden), tok,
                               size=tok.fs_small, faint=True))
-        return C.card(*rows, tok=tok)
+        # Today's and later menus open (closed for ordering still means
+        # "what's for lunch"); shown past days start folded.
+        exp_key = f"lunch:{day}"
+        parsed_day = parse_cz_date(day)
+        is_past = parsed_day is not None and parsed_day < date.today()
+        return C.collapsed(
+            tok,
+            head_row,
+            rows,
+            initially_expanded=state.is_day_expanded(exp_key, default=not is_past),
+            border_color=tok.border,
+            on_change=lambda e, k=exp_key: state.set_day_expanded(k, C.expansion_value(e)),
+        )
 
     # -- side panel (AI + blacklist, right column) -------------------------------
     def _ai_card(self) -> ft.Control:

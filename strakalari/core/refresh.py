@@ -30,6 +30,14 @@ Emit = Callable[..., None]
 
 SCOPES = ("all", "bakalari", "strava")
 
+
+def _day_order(day: Any) -> tuple:
+    """Calendar sort key for ``DD.MM.YYYY`` days (plain strings sort 01.12 before 30.11)."""
+    from .models import parse_cz_date
+
+    parsed = parse_cz_date(str(day))
+    return (parsed or date.max, str(day))
+
 #: Lock file shared by every process that drives the school sites (the
 #: tray and the window are separate processes, each with a scheduler).
 SESSION_LOCK_FILE = "./session.lock"
@@ -131,7 +139,7 @@ def record_low_balance(days: Iterable[str] | None) -> None:
         else:
             save_data_cache({LOW_BALANCE_KEY: {
                 "at": datetime.now().isoformat(timespec="seconds"),
-                "days": sorted({str(d) for d in days}),
+                "days": sorted({str(d) for d in days}, key=_day_order),
             }})
     except Exception:
         pass
@@ -543,7 +551,7 @@ def _auto_lunch(app, cfg, fresh, result, _emit, cancelled_lunch_days, lunch_prom
                 result.unfunded_days = unfunded
                 fresh[LOW_BALANCE_KEY] = {
                     "at": datetime.now().isoformat(timespec="seconds"),
-                    "days": sorted(set(unfunded)),
+                    "days": sorted(set(unfunded), key=_day_order),
                 }
                 if len(orders) - len(placed) - len(unfunded) <= 0:
                     # Nothing else went wrong: an empty account, not a bug.

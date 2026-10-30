@@ -484,14 +484,31 @@ def _sized(width: float | None) -> dict:
     return {"expand": 1} if width is None else {"width": width}
 
 
+def _day_span(by_period: dict[int, list] | None) -> range:
+    """A day's lesson numbers from period 1 (0 when it has one) to its last
+    lesson: the free periods in it are shown as empty slots."""
+    if not by_period:
+        return range(0)
+    return range(min(1, min(by_period)), max(by_period) + 1)
+
+
 def _grid_cell(
     state: AppState, page: ft.Page, raw: dict | None, day: date,
-    focus: str, max_chars: int, width: float | None = None,
+    focus: str, max_chars: int, width: float | None = None, pause: bool = False,
 ) -> ft.Control:
     tok = state.tok
     if not isinstance(raw, dict):
-        # Free period: blank space keeps the column rhythm, no frame.
-        return ft.Container(height=ROW_H, **_sized(width))
+        if not pause:
+            # Before / after the day's lessons: blank space keeps the column rhythm.
+            return ft.Container(height=ROW_H, **_sized(width))
+        # Free period within the day: an empty, framed slot.
+        return ft.Container(
+            height=ROW_H,
+            **_sized(width),
+            bgcolor=tok.surface,
+            border=border_all(1, tok.border),
+            border_radius=radius_all(tok.radius_sm),
+        )
     look = _look(state, raw, day)
     subject = _cell_subject(raw, look.parsed.subject, max_chars)
     body: list[ft.Control] = [
@@ -647,9 +664,11 @@ def _table_view(
             if period is None:
                 continue
             by_day_period.setdefault(day, {}).setdefault(period, []).append(raw)
-    periods = sorted({p for per_day in by_day_period.values() for p in per_day})
-    if not periods:
+    raw_periods = {p for per_day in by_day_period.values() for p in per_day}
+    if not raw_periods:
         return C.card(C.txt(S("no_lessons_today"), tok, faint=True), tok=tok)
+    # Every lesson number in the week, gaps included (a pause column is visible).
+    periods = list(_day_span(dict.fromkeys(raw_periods)))
 
     focus_period, focus_kind = None, ""
     if today in week_days:
@@ -674,11 +693,12 @@ def _table_view(
         lessons = [r for r in (week_days[day] or []) if isinstance(r, dict)]
         is_today = day == today
         cells: list[ft.Control] = [_day_gutter(tok, day, len(_taught(lessons)), is_today)]
+        span = _day_span(by_day_period.get(day))
         for period in periods:
             cells.append(_grid_cell(
                 state, page, _combined_cell(by_day_period.get(day, {}).get(period)),
                 day, focus_kind if is_today and period == focus_period else "",
-                max_chars,
+                max_chars, pause=period in span,
             ))
         grid.controls.append(ft.Container(
             content=ft.Row(cells, spacing=GAP,
@@ -733,11 +753,12 @@ def _phone_table(
             _day_gutter(tok, day, len(_taught(lessons)), is_today, width=PHONE_GUTTER_W),
             height=row_h, alignment=ft.Alignment(0, 0),
         ))
+        span = _day_span(by_day_period.get(day))
         cells = [
             _grid_cell(
                 state, page, _combined_cell(by_day_period.get(day, {}).get(period)),
                 day, focus_kind if is_today and period == focus_period else "",
-                max_chars, width=cell_w,
+                max_chars, width=cell_w, pause=period in span,
             )
             for period in periods
         ]
@@ -815,8 +836,39 @@ def _lesson_row(state: AppState, page: ft.Page, lesson: dict, day: date,
     )
 
 
+def _pause_row(state: AppState, period: int, time_label: str) -> ft.Control:
+    """Visible empty slot for a free period (pause) in the list view."""
+    tok = state.tok
+    return ft.Container(
+        content=ft.Row(
+            [
+                ft.Container(
+                    C.txt(f"{period}.", tok, bold=True, size=tok.fs_small, faint=True),
+                    width=24,
+                    alignment=ft.Alignment(1, 0),
+                ),
+                ft.Container(
+                    C.txt(time_label, tok, size=tok.fs_small, faint=True),
+                    width=96,
+                ),
+                ft.Container(
+                    height=28,
+                    expand=True,
+                    bgcolor=tok.surface,
+                    border=border_all(1, tok.border),
+                    border_radius=radius_all(tok.radius_sm),
+                ),
+            ],
+            spacing=10,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        border_radius=radius_all(tok.radius_sm),
+        padding=pad_sym(horizontal=8, vertical=4),
+    )
+
+
 def _day_summary(state: AppState, lessons: list[dict], day: date) -> str:
-    """'7 hodin · 2× Absence · 1× Změna' for a collapsed past day."""
+    """'7 hodin · 2× Absence · 1× Změna' summary for a day card."""
     counts: dict[str, int] = {}
     for raw in lessons:
         look = _look(state, raw, day)
@@ -835,44 +887,67 @@ def _list_view(
     now = now or datetime.now()
     today = now.date()
     week_has_today = today in week_days
+    try:
+        all_tt = state.timetable()
+    except Exception:
+        all_tt = {}
     day_cards: list[ft.Control] = []
     for day in sorted(week_days):
         lessons = sorted(
             [l for l in (week_days[day] or []) if isinstance(l, dict)],
             key=lambda l: _list_order(l, day),
         )
-        taught = _taught(lessons)
         is_today = day == today
         title = f"{names[day.weekday()]} {C.cz_day_year(day)}"
         focus_period, focus_kind = _focus_period(lessons, day, now)
         rows: list[ft.Control] = []
         if not lessons:
             rows.append(C.txt(S("no_lessons_today"), tok, size=tok.fs_small, faint=True))
+        by_period: dict[int, list[dict]] = {}
         for lesson in lessons:
-            focus = (focus_kind if _period_of(lesson, day) == focus_period
-                     and Lesson.from_legacy(lesson, day=day).status != "cancelled" else "")
-            rows.append(_lesson_row(state, page, lesson, day, focus=focus))
-        if week_has_today and day < today:
-            # Past days of the current week fold away; the summary keeps
-            # absences and changes visible without opening them.
-            day_cards.append(C.collapsed(tok, title, rows,
-                                         subtitle=_day_summary(state, lessons, day)))
-            continue
-        title_row = ft.Row(
-            [
-                C.txt(title, tok, bold=True, color=tok.accent if is_today else None),
-                C.badge(S("today_badge"), tok) if is_today else ft.Container(width=0),
-                ft.Container(expand=True),
-                C.txt(C.lessons_text(len(taught)), tok,
-                      size=tok.fs_small, faint=True),
-            ],
-            spacing=8,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            period = _period_of(lesson, day)
+            if period is not None:
+                by_period.setdefault(period, []).append(lesson)
+        for period in _day_span(by_period):
+            if period not in by_period:
+                rows.append(_pause_row(state, period, _period_time(week_days, period)
+                                       or _period_time(all_tt, period)))
+                continue
+            for lesson in by_period[period]:
+                focus = (focus_kind if period == focus_period
+                         and Lesson.from_legacy(lesson, day=day).status != "cancelled" else "")
+                rows.append(_lesson_row(state, page, lesson, day, focus=focus))
+        rows += [_lesson_row(state, page, lesson, day, focus="")
+                 for lesson in lessons if _period_of(lesson, day) is None]
+
+        # Past days of the current week start folded; the summary keeps
+        # absences and changes visible without opening them.
+        day_key = f"tt:{day.isoformat()}"
+        expanded = state.is_day_expanded(day_key, default=not (week_has_today and day < today))
+        title_ctl: str | ft.Control = (
+            ft.Row(
+                [
+                    C.txt(title, tok, bold=True, color=tok.accent),
+                    C.badge(S("today_badge"), tok),
+                ],
+                spacing=8,
+                tight=True,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            )
+            if is_today
+            else title
         )
-        card = C.card(title_row, ft.Column(rows, spacing=2, tight=True), tok=tok)
-        if is_today:
-            card.border = border_all(1, tok.accent)
-        day_cards.append(card)
+        day_cards.append(
+            C.collapsed(
+                tok,
+                title_ctl,
+                rows,
+                subtitle=_day_summary(state, lessons, day),
+                initially_expanded=expanded,
+                border_color=tok.accent if is_today else None,
+                on_change=lambda e, k=day_key: state.set_day_expanded(k, C.expansion_value(e)),
+            )
+        )
     return day_cards
 
 

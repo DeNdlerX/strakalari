@@ -11,6 +11,7 @@ from typing import Callable
 
 import flet as ft
 
+from strakalari.core.helpers import short_time, teacher_surname  # noqa: F401 - re-exported (C.short_time)
 from strakalari.core.models import parse_cz_date
 from strakalari.core.packaging import is_mobile
 
@@ -209,35 +210,6 @@ def day_name(value, short: bool = False) -> str:
     if short:
         return (ENGLISH_DAY_NAMES_SHORT if en else CZECH_DAY_NAMES_SHORT)[idx]
     return (ENGLISH_DAY_NAMES if en else CZECH_DAY_NAMES)[idx]
-
-
-def short_time(raw: str) -> str:
-    """Strips the leading period number from both time formats.
-
-    Demo: ``1. 8:00 - 8:45`` -> ``8:00 - 8:45``.
-    Real cache: ``3 (10:05 - 10:50)`` -> ``10:05 - 10:50``.
-    """
-    import re
-
-    text = str(raw or "").strip()
-    m = re.match(r"^\s*\d+\s*\((.*)\)\s*$", text)
-    if m:
-        return m.group(1).strip()
-    return re.sub(r"^\s*\d+\.\s*", "", text).strip()
-
-
-def teacher_surname(full_name: str) -> str:
-    """'Mgr. Jana Tláskalová' -> 'Tláskalová' (titles stripped)."""
-    tokens = [t.strip().rstrip(",") for t in str(full_name or "").split() if t.strip()]
-    suffixes = {
-        "ph.d.", "phd", "csc.", "csc", "drsc.", "drsc", "dis.", "dis", "mba",
-        "th.d.", "thd", "dr.", "mgr.", "ing.", "bc.", "mudr.", "judr.", "paeddr.",
-    }
-    while tokens and tokens[0].lower() in suffixes:
-        tokens.pop(0)
-    while tokens and tokens[-1].lower() in suffixes:
-        tokens.pop()
-    return tokens[-1] if tokens else ""
 
 
 def lesson_kind(status: str) -> str:
@@ -692,27 +664,49 @@ def kind_badge(kind: str, tok: Tokens) -> ft.Container:
     )
 
 
+def expansion_value(e) -> bool:
+    """Expanded state from an ExpansionTile on_change event."""
+    data = getattr(e, "data", None)
+    if isinstance(data, bool):
+        return data
+    if isinstance(data, str) and data.lower() in ("true", "false"):
+        return data.lower() == "true"
+    ctl = getattr(e, "control", None)
+    return bool(getattr(ctl, "expanded", False))
+
+
 def collapsed(
     tok: Tokens,
-    title: str,
+    title: str | ft.Control,
     controls: list[ft.Control],
     subtitle: str = "",
     initially_expanded: bool = False,
+    *,
+    border_color: str | None = None,
+    on_change: Callable | None = None,
 ) -> ft.ExpansionTile:
-    """Collapsible section (AI panel, blacklist, …)."""
+    """Collapsible section (day card, AI panel, blacklist, …)."""
+    title_ctl = (
+        ft.Text(title, size=tok.fs_body, weight=ft.FontWeight.W_600,
+                color=tok.text)
+        if isinstance(title, str)
+        else title
+    )
+    side = ft.BorderSide(1, border_color) if border_color else None
+    shape = ft.RoundedRectangleBorder(radius=tok.radius_md, side=side)
     return ft.ExpansionTile(
-        title=ft.Text(title, size=tok.fs_body, weight=ft.FontWeight.W_600,
-                      color=tok.text),
+        title=title_ctl,
         subtitle=ft.Text(subtitle, size=tok.fs_small, color=tok.faint)
         if subtitle else None,
         controls=controls,
         expanded=initially_expanded,
         collapsed_bgcolor=tok.card,
         bgcolor=tok.card,
-        shape=ft.RoundedRectangleBorder(radius=tok.radius_md),
-        collapsed_shape=ft.RoundedRectangleBorder(radius=tok.radius_md),
+        shape=shape,
+        collapsed_shape=shape,
         tile_padding=pad_sym(horizontal=12, vertical=4),
         controls_padding=pad_all(tok.pad),
+        on_change=on_change,
     )
 
 

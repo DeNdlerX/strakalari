@@ -176,6 +176,7 @@ class AppState(ExcuseTasksMixin, LunchMixin, MarksMixin, PlannerMixin, ActivityM
         self.lunch_tools_open: bool = False  # phone: that panel instead of the menu
         self.show_past_calendar: bool = False  # past free days hidden by default
         self.show_past_lunches: bool = False  # past menu days hidden by default
+        self.expanded_days: dict[str, bool] = {}  # day expansion overrides (tt:/excuse:/lunch:)
         self.drafts: dict[str, str] = {}  # unsaved field text (no re-render on typing)
         self.wizard_step: int = 0  # first-run wizard page index (in-memory)
         self.tutorial: tuple[str, int] | None = None  # active (tour id, step), in-memory
@@ -338,6 +339,10 @@ class AppState(ExcuseTasksMixin, LunchMixin, MarksMixin, PlannerMixin, ActivityM
                 callback()
             except Exception as exc:  # noqa: BLE001 - never break a save
                 print(f"Warning: config listener failed: {exc}")
+        from strakalari.core.wakeup import PHONE_CONFIG_KEYS
+
+        if PHONE_CONFIG_KEYS.intersection(updates):
+            self.sync_android_state()
         self._emit()
         return ok
 
@@ -544,6 +549,49 @@ class AppState(ExcuseTasksMixin, LunchMixin, MarksMixin, PlannerMixin, ActivityM
         self.show_past_lunches = bool(show)
         self._emit()
 
+    def is_day_expanded(self, key: str, default: bool = False) -> bool:
+        """Whether the collapsible day card ``key`` is open (in-memory)."""
+        return bool(self.expanded_days.get(key, default))
+
+    def set_day_expanded(self, key: str, expanded: bool) -> None:
+        """Remembers a day card opened / closed by the user across re-renders."""
+        self.expanded_days[str(key)] = bool(expanded)
+
+    # -- phone: wake-up alarm and home-screen widget -------------------------
+    def wakeup_available(self) -> bool:
+        """The wake-up alarm rings on the Android phone only."""
+        from strakalari.core import android
+
+        return android.available()
+
+    def _phone_timetable(self) -> dict:
+        # Demo lessons must neither ring nor fill the home screen.
+        return {} if self.demo_mode else self.timetable()
+
+    def next_wakeup_alarm(self, now: datetime | None = None):
+        """The phone's next :class:`~strakalari.core.wakeup.WakeupAlarm`, or None."""
+        if not self.wakeup_available():
+            return None
+        from strakalari.core.wakeup import next_wakeup_alarm
+
+        try:
+            return next_wakeup_alarm(self._phone_timetable(), self.config.data, now=now,
+                                     stable_baseline=self.stable_baseline())
+        except Exception as exc:  # noqa: BLE001 - a view must still render
+            print(f"Warning: wake-up alarm lookup failed ({type(exc).__name__}: {exc})")
+            return None
+
+    def sync_android_state(self) -> None:
+        """Hands the widget data and the alarm queue to the phone (a no-op elsewhere)."""
+        from strakalari.core.wakeup import sync_android
+
+        try:
+            sync_android(self._phone_timetable(), self.config.data,
+                         stable_baseline=self.stable_baseline(),
+                         stable_complete=self.stable_complete())
+        except Exception as exc:  # noqa: BLE001 - never break a save or a reload
+            print(f"Warning: phone sync failed ({type(exc).__name__}: {exc})")
+
     def strava_enabled(self) -> bool:
         """True unless the user turned the Strava integration off."""
         try:
@@ -588,6 +636,7 @@ class AppState(ExcuseTasksMixin, LunchMixin, MarksMixin, PlannerMixin, ActivityM
                     self.orders.pop(day_label, None)
             # The web truth is whatever the cache reports.
             self.web_orders = {str(k): str(v) for k, v in cached_orders.items() if v}
+        self.sync_android_state()
         self._emit()
 
     # -- activity log ------------------------------------------------------

@@ -64,6 +64,54 @@ STRINGS: dict[str, dict[str, str]] = {
     "notif_allow": {"cs": "Povolit oznámení", "en": "Allow notifications"},
     "notif_open_settings": {"cs": "Nastavení oznámení", "en": "Notification settings"},
 
+    # Wake-up alarm --------------------------------------------------------
+    "wakeup_title": {"cs": "Budík před vyučováním", "en": "Wake-up alarm"},
+    "wakeup_enable": {
+        "cs": "Budík před první hodinou",
+        "en": "Wake-up alarm before the first lesson",
+    },
+    "wakeup_hint": {
+        "cs": "Zazvoní {n} min před první hodinou, která opravdu proběhne — odpadlé "
+              "hodiny, volné dny a naplánované absence přeskočí. Budíky na dva týdny "
+              "dopředu zvoní i se zavřenou aplikací.",
+        "en": "Rings {n} min before your first lesson that actually takes place — "
+              "cancelled lessons, days off and planned absences are skipped. Alarms "
+              "for the next two weeks ring even with the app closed.",
+    },
+    "wakeup_minutes": {
+        "cs": "Kolik minut před první hodinou budit (min)",
+        "en": "Minutes before the first lesson (min)",
+    },
+    "wakeup_minutes_invalid": {
+        "cs": "Zadejte počet minut od 1 do 720.",
+        "en": "Enter a number of minutes from 1 to 720.",
+    },
+    "wakeup_next": {
+        "cs": "Příští budík: {day} v {alarm} ({subject} v {lesson})",
+        "en": "Next alarm: {day} at {alarm} ({subject} at {lesson})",
+    },
+    "wakeup_none": {
+        "cs": "Na dva týdny dopředu není v rozvrhu žádný budík.",
+        "en": "No alarm in the timetable for the next two weeks.",
+    },
+    "wakeup_notif_off": {
+        "cs": "Oznámení jsou vypnutá — budík nezazvoní.",
+        "en": "Notifications are off — the alarm can't ring.",
+    },
+    "wakeup_exact_off": {
+        "cs": "Přesné budíky nejsou povolené — budík může zazvonit o pár minut později.",
+        "en": "Exact alarms aren't allowed — the alarm may ring a few minutes late.",
+    },
+    "wakeup_exact_allow": {"cs": "Povolit přesné budíky", "en": "Allow exact alarms"},
+    "wakeup_skip_next": {"cs": "Tento den nebudit", "en": "Skip this day"},
+    "wakeup_skipped": {"cs": "Přeskočené dny:", "en": "Skipped days:"},
+    "wakeup_restore_day": {"cs": "Budit {day}", "en": "Wake me {day}"},
+    "wakeup_set_clock": {
+        "cs": "Otevřít v Budíku telefonu",
+        "en": "Open in phone Clock",
+    },
+    "wakeup_badge": {"cs": "Budík {time}", "en": "Alarm {time}"},
+
     "tray_open": {"cs": "Otevřít Strakaláře", "en": "Open Strakaláři"},
     "tray_refresh": {"cs": "Obnovit nyní", "en": "Refresh now"},
     "tray_quit": {"cs": "Ukončit", "en": "Quit"},
@@ -801,7 +849,7 @@ STRINGS: dict[str, dict[str, str]] = {
     },
     "excuse_all": {"cs": "Omluvit vše z tohoto dne", "en": "Excuse all of this day"},
     "day_group_covers": {"cs": "Najednou {lessons}: {subjects}", "en": "All at once, {lessons}: {subjects}"},
-    "or_one_by_one": {"cs": "Nebo jednotlivě:", "en": "Or one by one:"},
+    "or_one_by_one": {"cs": "Nebo jednotlivě ({n})", "en": "Or one by one ({n})"},
     "excuse_already_covered": {"cs": "Už bylo omluveno", "en": "Already excused"},
     "excuse_day_result": {"cs": "Omluveno {ok} z {n}", "en": "Excused {ok} of {n}"},
     "autostart_failed": {

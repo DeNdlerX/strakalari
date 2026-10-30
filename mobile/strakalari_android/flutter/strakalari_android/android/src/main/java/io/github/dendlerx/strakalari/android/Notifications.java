@@ -62,7 +62,8 @@ public final class Notifications {
         return b.build();
     }
 
-    private static PendingIntent openApp(Context ctx) {
+    /** Opens the app (a notification tap, the alarm clock icon). */
+    static PendingIntent openApp(Context ctx) {
         Intent launch = ctx.getPackageManager().getLaunchIntentForPackage(ctx.getPackageName());
         if (launch == null) {
             return null;

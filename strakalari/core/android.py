@@ -381,6 +381,115 @@ def cancel_wake() -> None:
         pass
 
 
+# -- wake-up alarm before the first lesson ----------------------------------------------------
+ALARM_PREFS = "strakalari_alarm"
+ACTION_RESCHEDULE_ALARM = f"{JAVA_PACKAGE}.ACTION_RESCHEDULE_ALARM"
+
+
+def _alarm_manager(ctx):
+    return _service(ctx, _autoclass("android.content.Context").ALARM_SERVICE,
+                    "android.app.AlarmManager")
+
+
+def set_wakeup_alarms(queue_json: str, channel_name: str, dismiss_label: str) -> bool:
+    """Hands the upcoming wake-up alarms to ``AlarmReceiver`` (``[]`` cancels them).
+
+    ``queue_json``: a JSON list of ``at`` / ``lesson`` (epoch ms), ``title``,
+    ``text``. The receiver arms the earliest and chains the rest by itself
+    (also after a reboot), so they ring on days the app never runs.
+    """
+    ctx = context()
+    if ctx is None:
+        return False
+    try:
+        prefs = ctx.getSharedPreferences(ALARM_PREFS, 0).edit()
+        prefs.putString("queue", str(queue_json))
+        prefs.putString("channel", str(channel_name))
+        prefs.putString("dismiss", str(dismiss_label))
+        prefs.commit()
+        intent = _autoclass("android.content.Intent")(ACTION_RESCHEDULE_ALARM)
+        intent.setClassName(ctx.getPackageName(), f"{JAVA_PACKAGE}.AlarmReceiver")
+        ctx.sendBroadcast(intent)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        print(f"Warning: could not hand over the wake-up alarms ({type(exc).__name__}: {exc})")
+        return False
+
+
+def exact_alarms_allowed() -> bool:
+    """False when Android 12+ withholds exact alarms ("Alarms & reminders"
+    off): the wake-up alarm then rings a few minutes late at worst."""
+    ctx = context()
+    if ctx is None:
+        return False
+    if sdk_int() < 31:
+        return True
+    try:
+        return bool(_alarm_manager(ctx).canScheduleExactAlarms())
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def open_exact_alarm_settings() -> None:
+    """Opens the system's "Alarms & reminders" switch for this app (Android 12+)."""
+    ctx = context()
+    if ctx is None or sdk_int() < 31:
+        return
+    try:
+        settings = _autoclass("android.provider.Settings")
+        intent_class = _autoclass("android.content.Intent")
+        uri = _autoclass("android.net.Uri").parse(f"package:{ctx.getPackageName()}")
+        intent = intent_class(settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, uri)
+        intent.addFlags(intent_class.FLAG_ACTIVITY_NEW_TASK)
+        ctx.startActivity(intent)
+    except Exception as exc:  # noqa: BLE001
+        print(f"Warning: could not open the alarm settings ({exc})")
+
+
+def open_system_alarm(hour: int, minute: int, message: str = "Strakaláři") -> bool:
+    """Opens the phone's Clock app on a new alarm at ``hour:minute``."""
+    ctx = context()
+    if ctx is None:
+        return False
+    try:
+        clock_class = _autoclass("android.provider.AlarmClock")
+        intent_class = _autoclass("android.content.Intent")
+        intent = intent_class(clock_class.ACTION_SET_ALARM)
+        intent.putExtra(clock_class.EXTRA_HOUR, int(hour))
+        intent.putExtra(clock_class.EXTRA_MINUTES, int(minute))
+        intent.putExtra(clock_class.EXTRA_MESSAGE, str(message))
+        intent.putExtra(clock_class.EXTRA_SKIP_UI, False)
+        intent.addFlags(intent_class.FLAG_ACTIVITY_NEW_TASK)
+        ctx.startActivity(intent)
+        return True
+    except Exception as exc:  # noqa: BLE001 - e.g. no Clock app handles it
+        print(f"Warning: could not open the Clock app ({type(exc).__name__}: {exc})")
+        return False
+
+
+# -- home-screen timetable widget -------------------------------------------------------------
+WIDGET_PREFS = "strakalari_widget"
+ACTION_REFRESH_WIDGET = f"{JAVA_PACKAGE}.ACTION_REFRESH_WIDGET"
+
+
+def update_timetable_widget(payload_json: str) -> bool:
+    """Saves the widget data (``core.wakeup.build_widget_payload``) and redraws the widget."""
+    ctx = context()
+    if ctx is None:
+        return False
+    try:
+        prefs = ctx.getSharedPreferences(WIDGET_PREFS, 0).edit()
+        prefs.putString("payload", str(payload_json))
+        prefs.commit()
+        intent = _autoclass("android.content.Intent")(ACTION_REFRESH_WIDGET)
+        intent.setClassName(ctx.getPackageName(), f"{JAVA_PACKAGE}.TimetableWidgetProvider")
+        ctx.sendBroadcast(intent)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        print(f"Warning: could not update the timetable widget ({type(exc).__name__}: {exc})")
+        return False
+
+
 class KeepAwake:
     """Holds the CPU awake while a refresh runs (screen may be off).
 

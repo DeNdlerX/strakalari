@@ -50,21 +50,18 @@ class ExcuseTasksMixin:
             outbox_from = None
         return excuse_window_start(date.today(), outbox_from)
 
-    def excuse_tasks(self) -> list[dict]:
+    def _unexcused_tasks(self) -> list[dict]:
+        """Timetable absence tasks that have not been excused yet."""
         tasks = self._all_excuse_tasks()
-        # Older absences are history, not tasks: the Komens outbox no
-        # longer lists their excuses, so a send could not be checked
-        # for duplicates.
-        window_start = self._excuse_window_start().isoformat()
-        tasks = [t for t in tasks
-                 if not t.get("date") or str(t.get("date")) >= window_start]
-        sent_keys = {entry["key"] for entry in self.excuse_log}
-        tasks = [t for t in tasks if t["key"] not in sent_keys]
-        if self.ignored_excuse_keys:
-            tasks = [t for t in tasks if t["key"] not in self.ignored_excuse_keys]
+        if not tasks:
+            return []
+        sent_keys = {entry["key"] for entry in getattr(self, "excuse_log", ()) or ()}
+        if sent_keys:
+            tasks = [t for t in tasks if t["key"] not in sent_keys]
         # Also hide tasks already covered by the persisted excuse history
         # (already_excused_lessons.json) — otherwise a sent excuse reappears
-        # after every restart and can be submitted twice.
+        # after every restart or shows up as ignored when ignoring the rest
+        # of the day before the teacher approves it in Bakaláři.
         try:
             history = self.config.get_excuse_history()
         except Exception:
@@ -73,11 +70,23 @@ class ExcuseTasksMixin:
             tasks = [t for t in tasks if not _task_covered_by_history(t, history)]
         return tasks
 
+    def excuse_tasks(self) -> list[dict]:
+        tasks = self._unexcused_tasks()
+        # Older absences are history, not tasks: the Komens outbox no
+        # longer lists their excuses, so a send could not be checked
+        # for duplicates.
+        window_start = self._excuse_window_start().isoformat()
+        tasks = [t for t in tasks
+                 if not t.get("date") or str(t.get("date")) >= window_start]
+        if self.ignored_excuse_keys:
+            tasks = [t for t in tasks if t["key"] not in self.ignored_excuse_keys]
+        return tasks
+
     def ignored_tasks(self) -> list[dict]:
-        """Currently ignored tasks (still present in the timetable)."""
+        """Currently ignored tasks (still unexcused in the timetable)."""
         if not self.ignored_excuse_keys:
             return []
-        return [t for t in self._all_excuse_tasks()
+        return [t for t in self._unexcused_tasks()
                 if t["key"] in self.ignored_excuse_keys]
 
     def _persist_ignored(self, previous: set[str]) -> bool:
@@ -143,7 +152,7 @@ class ExcuseTasksMixin:
         ([] when there was nothing to hide or the save failed)."""
         self.last_ignore_error = ""
         day_iso = str(day_iso or "")
-        added = [t["key"] for t in self._all_excuse_tasks()
+        added = [t["key"] for t in self._unexcused_tasks()
                  if str(t.get("date", "")) == day_iso
                  and t["key"] not in self.ignored_excuse_keys]
         if not added or not self._change_ignored(add=added):

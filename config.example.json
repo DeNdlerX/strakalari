@@ -79,5 +79,8 @@
   "marks_subject_scales": {},
   "marks_percent_bands": [],
   "marks_sort": "name",
-  "update_channel": "stable"
+  "update_channel": "stable",
+  "wakeup_enabled": false,
+  "wakeup_minutes_before": 60,
+  "wakeup_skip_dates": []
 }

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="strakalari_widget_name">Strakaláři · Timetable</string>
+    <string name="strakalari_widget_desc">Your timetable, free periods included</string>
+    <string name="strakalari_widget_no_data">No data yet — open Strakaláři</string>
+</resources>

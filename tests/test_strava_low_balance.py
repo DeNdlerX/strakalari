@@ -1,5 +1,5 @@
 """Strava low balance (Warning [5005]): detection, ordering stops, cancellations still run, one notice a day."""
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -134,7 +134,7 @@ class _LowBalanceApp:
         self.foodDict = dict(MENU)
 
     def strava_order_selected(self, orders, source="manual"):
-        days = sorted(orders)
+        days = sorted(orders, key=lambda d: datetime.strptime(d, "%d.%m.%Y"))
         self.last_ordered_days = {days[0]}
         self.strava_client.orderedDict[days[0]] = orders[days[0]]
         self.last_order_low_balance = True
@@ -152,7 +152,7 @@ def test_refresh_reports_low_balance_as_its_own_case(always_open):
     assert result.only_low_balance is True
     assert isinstance(result.automation_errors[0][1], LowBalanceError)
     cache = load_data_cache()
-    assert cache["strava_low_balance"]["days"] == sorted([DAY2, DAY3])
+    assert cache["strava_low_balance"]["days"] == [DAY2, DAY3]
     # The day that went through counts as handled; the unpaid ones retry.
     assert DAY1 in cache["auto_lunch_handled"]
     assert DAY2 not in cache["auto_lunch_handled"]

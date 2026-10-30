@@ -1089,6 +1089,9 @@ def _setup_phone_background(state: AppState, runner: PeriodicRunner) -> None:
     if callable(listen_config):
         listen_config(_sync)
     _sync()
+    # Widget and wake-up alarms need no running Python, but the first data
+    # comes from here (later ones from each config save and cache reload).
+    state.sync_android_state()
 
 
 def _is_window_close_event(e) -> bool:
