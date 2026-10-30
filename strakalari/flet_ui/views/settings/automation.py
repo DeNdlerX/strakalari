@@ -1,4 +1,5 @@
-"""Settings sections: excuse templates, automation rules, browser and AI."""
+"""Settings sections: excuse templates, automation rules, wake-up alarm,
+background running and AI."""
 
 from __future__ import annotations
 
@@ -151,13 +152,15 @@ class AutomationMixin:
                         C.hint_text(S("automation_modes_hint"), tok),
                         interval, delay, goback, goforward, pick,
                         cutoff, tok=tok),
-        ] + self._wakeup_card()
+        ]
 
-    def _wakeup_card(self) -> list:
-        """The phone's wake-up alarm; Android only (nothing would ring elsewhere)."""
+    # -- wake-up alarm (section "alarm", Android only) ----------------------------
+    def _wakeup(self) -> list:
+        """The phone's wake-up alarm (the section exists in the Android app only)."""
         state, tok, page = self.state, self.state.tok, self.page
         if not state.wakeup_available():
-            return []
+            return [C.form_card(C.txt(S("wakeup_title"), tok, bold=True),
+                                C.hint_text(S("wakeup_unavailable"), tok), tok=tok)]
         from strakalari.core import android
         from strakalari.core.wakeup import clamp_wakeup_minutes, skipped_days, with_skipped_day
 

@@ -1083,6 +1083,8 @@ def _setup_phone_background(state: AppState, runner: PeriodicRunner) -> None:
         _sync()  # e.g. the wizard just finished: ask about notifications now
         if _phone_background_on(state):
             _schedule_phone_wake(runner)
+        # Also after a skipped or failed run: a new day redraws the widget.
+        state.sync_android_state()
 
     runner.on_result = _on_result
     listen_config = getattr(state, "listen_config", None)

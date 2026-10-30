@@ -143,9 +143,17 @@ def _index_days(timetable: dict | None) -> dict[date, list[dict]]:
 
 def _lessons_for(days: dict[date, list[dict]], day: date,
                  stable_baseline: dict | None) -> list[dict]:
-    """The day's lessons; past the cached weeks, the stable timetable's."""
+    """The day's lessons; past the cached weeks, the stable timetable's.
+
+    A day missing from a week that was loaded (other days of it cached)
+    had no lessons, e.g. a holiday or a day off the school calendar lacks:
+    it stays empty instead of getting the stable timetable.
+    """
     if day in days:
         return days[day]
+    monday = day - timedelta(days=day.weekday())
+    if any(monday + timedelta(days=i) in days for i in range(7)):
+        return []
     if stable_baseline and day.weekday() < 5:
         week = stable_template_week(stable_baseline, day - timedelta(days=day.weekday()))
         return [r for r in (week.get(day) or []) if isinstance(r, dict)]
@@ -515,7 +523,9 @@ def sync_android(
 ) -> None:
     """Hands the widget data and the alarm queue to the phone; a no-op elsewhere.
 
-    Runs on every config save and cache reload, so only changes are sent.
+    Runs on every config save, cache reload and background run, so only
+    changes are sent; the widget data also goes once more on a new day,
+    which redraws a widget whose own midnight refresh never came.
     """
     from . import android
 
@@ -528,8 +538,9 @@ def sync_android(
             build_widget_payload(timetable, config_data, now=now, stable_baseline=stable_baseline,
                                  stable_complete=stable_complete, lang=lang),
             ensure_ascii=False, sort_keys=True)
-        if _sent.get("widget") != widget and android.update_timetable_widget(widget):
-            _sent["widget"] = widget
+        key = now.date().isoformat() + widget
+        if _sent.get("widget") != key and android.update_timetable_widget(widget):
+            _sent["widget"] = key
     except Exception as exc:  # noqa: BLE001 - the widget is best effort
         print(f"Warning: widget sync failed ({type(exc).__name__}: {exc})")
     try:

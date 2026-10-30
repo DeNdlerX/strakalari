@@ -52,6 +52,8 @@ public class KeepAliveService extends Service {
             }
         }
         prefs.apply();
+        // The process now stays: the widget can catch a missed day change on screen-on.
+        TimetableWidgetProvider.watchScreen(this);
         // Not sticky: recreated without the app, no Python would run behind
         // the notification. After a kill the user reopens the app instead.
         return START_NOT_STICKY;
