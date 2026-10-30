@@ -310,6 +310,17 @@ def next_wakeup_alarm(
     return alarms[0] if alarms else None
 
 
+def clock_app_weekday(alarm: WakeupAlarm, now: datetime | None = None) -> int | None:
+    """The weekday (Monday = 0) to hand the phone's Clock app, None for a plain alarm.
+
+    The Clock app takes a time but no date: a plain alarm rings at the next
+    HH:MM, within a day. An alarm further ahead (Monday's, asked on Friday)
+    only lands on its day as a weekly alarm on that weekday.
+    """
+    now = now or datetime.now()
+    return alarm.day.weekday() if alarm.alarm_dt - now >= timedelta(days=1) else None
+
+
 def alarm_queue(alarms: list[WakeupAlarm], lang: str | None = None) -> list[dict]:
     """What ``AlarmReceiver`` rings: epoch ms (alarm, lesson start) and the texts."""
     queue: list[dict] = []

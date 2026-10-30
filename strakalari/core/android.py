@@ -446,9 +446,18 @@ def open_exact_alarm_settings() -> None:
         print(f"Warning: could not open the alarm settings ({exc})")
 
 
-def open_system_alarm(hour: int, minute: int, message: str = "Strakaláři") -> bool:
+#: Python's weekday (Monday = 0) -> java.util.Calendar's (Sunday = 1).
+_CALENDAR_DAYS = (2, 3, 4, 5, 6, 7, 1)
+
+
+def open_system_alarm(hour: int, minute: int, message: str = "Strakaláři",
+                      weekday: int | None = None) -> bool:
     """Opens the phone's Clock app on a new alarm at ``hour:minute`` (else on
     its alarm list). True when an app was opened.
+
+    The Clock app takes no date: without ``weekday`` the alarm rings at the
+    next ``hour:minute``; with it (Monday = 0) it repeats weekly on that day
+    (see ``core.wakeup.clock_app_weekday``).
 
     The extras go in through a Bundle: ``Intent.putExtra`` has an overload
     per number type, pyjnius can't tell which one a Python int means, and
@@ -465,6 +474,10 @@ def open_system_alarm(hour: int, minute: int, message: str = "Strakaláři") -> 
         extras.putInt(clock_class.EXTRA_MINUTES, int(minute))
         extras.putString(clock_class.EXTRA_MESSAGE, str(message))
         extras.putBoolean(clock_class.EXTRA_SKIP_UI, False)
+        if weekday is not None:
+            days = _autoclass("java.util.ArrayList")()
+            days.add(_autoclass("java.lang.Integer").valueOf(_CALENDAR_DAYS[int(weekday) % 7]))
+            extras.putIntegerArrayList(clock_class.EXTRA_DAYS, days)
         actions = ((clock_class.ACTION_SET_ALARM, extras), (clock_class.ACTION_SHOW_ALARMS, None))
     except Exception as exc:  # noqa: BLE001
         print(f"Warning: could not open the Clock app ({type(exc).__name__}: {exc})")

@@ -3,7 +3,7 @@ background running and AI."""
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 import flet as ft
 
@@ -162,7 +162,9 @@ class AutomationMixin:
             return [C.form_card(C.txt(S("wakeup_title"), tok, bold=True),
                                 C.hint_text(S("wakeup_unavailable"), tok), tok=tok)]
         from strakalari.core import android
-        from strakalari.core.wakeup import clamp_wakeup_minutes, skipped_days, with_skipped_day
+        from strakalari.core.wakeup import (
+            clamp_wakeup_minutes, clock_app_weekday, skipped_days, with_skipped_day,
+        )
 
         enabled = bool(state.get("wakeup_enabled", False))
         minutes = clamp_wakeup_minutes(state.get("wakeup_minutes_before", 60))
@@ -191,7 +193,8 @@ class AutomationMixin:
 
         def _open_clock(alarm) -> None:
             if not android.open_system_alarm(alarm.alarm_dt.hour, alarm.alarm_dt.minute,
-                                             f"Strakaláři · {alarm.subject}"):
+                                             f"Strakaláři · {alarm.subject}",
+                                             weekday=clock_app_weekday(alarm, datetime.now())):
                 snack(page, S("wakeup_clock_failed"))
 
         def _live_rows() -> list[ft.Control]:
@@ -235,6 +238,9 @@ class AutomationMixin:
                     C.ghost_button(S("wakeup_set_clock"), tok, icon=ft.Icons.ALARM_ADD,
                                    on_click=lambda e, a=alarm: _open_clock(a)),
                 ], spacing=8, run_spacing=8, wrap=True))
+                if clock_app_weekday(alarm, datetime.now()) is not None:
+                    rows.append(C.hint_text(S("wakeup_clock_weekly").format(
+                        day=_day(alarm.day), time=alarm.alarm_time_label), tok))
 
             skipped = sorted(d for d in skipped_days(state.config.data) if d >= date.today())
             if skipped:

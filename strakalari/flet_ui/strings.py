@@ -110,6 +110,12 @@ STRINGS: dict[str, dict[str, str]] = {
         "cs": "Otevřít v Budíku telefonu",
         "en": "Open in phone Clock",
     },
+    "wakeup_clock_weekly": {
+        "cs": "Budík telefonu neumí konkrétní datum: zazvoní {day} v {time} a pak každý "
+              "týden ve stejný den — po zazvonění ho tam můžete vypnout.",
+        "en": "The phone's Clock can't take a date: it rings {day} at {time} and then every "
+              "week on that day — turn it off there once it has rung.",
+    },
     "wakeup_clock_failed": {
         "cs": "Aplikaci Budík se nepodařilo otevřít.",
         "en": "Couldn't open the Clock app.",

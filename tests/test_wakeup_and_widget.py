@@ -168,6 +168,21 @@ class TestWakeupAlarm:
         assert [days[f"2026-10-{d}"]["taught"] for d in (26, 27, 28, 29, 30)] == [1, 1, 0, 0, 0]
         assert days["2026-11-02"]["taught"] == 1
 
+    def test_clock_app_gets_a_weekday_only_beyond_a_day(self):
+        """The Clock app rings a plain alarm at the next HH:MM: right for an
+        alarm within a day, Saturday for Monday's when asked on Friday."""
+        from strakalari.core.wakeup import clock_app_weekday
+
+        def _alarm(day: date) -> WakeupAlarm:
+            return WakeupAlarm(day=day, alarm_dt=datetime.combine(day, datetime.min.time())
+                               .replace(hour=7), lesson_start_dt=datetime(2000, 1, 1),
+                               period=1, subject="M", room="", minutes_before=60)
+
+        friday_evening = datetime(2026, 10, 30, 18, 0)
+        assert clock_app_weekday(_alarm(date(2026, 11, 2)), friday_evening) == 0  # Monday
+        assert clock_app_weekday(_alarm(date(2026, 10, 31)), friday_evening) is None
+        assert clock_app_weekday(_alarm(date(2026, 10, 31)), datetime(2026, 10, 30, 6, 59)) == 5
+
     def test_queue_spans_two_weeks_for_the_phone(self):
         lessons = [{"time": "1 (8:00 - 8:45)", "subject": "M", "room": "U12"}]
         tt = {(date(2026, 10, 12) + timedelta(days=i)).strftime("%d.%m.%Y"): lessons
@@ -461,13 +476,36 @@ class TestWakeupUI:
         state.config.data.update({**ON, **NO_HOLIDAYS})
         opened, snacks = [], []
         monkeypatch.setattr(android, "open_system_alarm",
-                            lambda h, m, msg: opened.append((h, m)) or False)
+                            lambda h, m, msg, weekday=None: opened.append((h, m)) or False)
         monkeypatch.setattr(automation, "snack", lambda page, text: snacks.append(text))
         (button,) = [c for c in _walk_controls(self._settings(state))
                      if getattr(getattr(c, "content", None), "value", None) == S("wakeup_set_clock")
                      or getattr(c, "text", None) == S("wakeup_set_clock")]
         button.on_click(None)
         assert opened == [(7, 0)] and snacks == [S("wakeup_clock_failed")]
+
+    def test_a_later_alarm_goes_to_the_clock_on_its_weekday(self, monkeypatch, state):
+        """Monday's alarm asked for days before: the Clock app gets Monday
+        (a weekly alarm, it takes no date) and the page says so."""
+        from strakalari.core import android
+        from strakalari.flet_ui.strings import S
+
+        self._phone(monkeypatch, state)
+        day = date.today() + timedelta(days=5)
+        state.data = {"timetable": {day.strftime("%d.%m.%Y"): [
+            {"time": "1 (8:00 - 8:45)", "subject": "Matematika"}]}}
+        state.demo_mode = False
+        state.config.data.update({**ON, **NO_HOLIDAYS})
+        opened = []
+        monkeypatch.setattr(android, "open_system_alarm",
+                            lambda h, m, msg, weekday=None: opened.append((h, m, weekday)) or True)
+        card = self._settings(state)
+        assert any(t.startswith(S("wakeup_clock_weekly").split(":")[0]) for t in _texts(card))
+        (button,) = [c for c in _walk_controls(card)
+                     if getattr(getattr(c, "content", None), "value", None) == S("wakeup_set_clock")
+                     or getattr(c, "text", None) == S("wakeup_set_clock")]
+        button.on_click(None)
+        assert opened == [(7, 0, day.weekday())]
 
     def test_section_explains_a_missing_bridge(self, state):
         from strakalari.flet_ui.strings import S

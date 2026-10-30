@@ -565,6 +565,9 @@ class _FakeBundle:
     def putBoolean(self, key, value):
         self.values[key] = ("bool", value)
 
+    def putIntegerArrayList(self, key, value):
+        self.values[key] = ("int_list", list(value))
+
 
 class _FakeIntent:
     FLAG_ACTIVITY_NEW_TASK = 0x10000000
@@ -579,7 +582,19 @@ class _FakeIntent:
         self.flags |= flags
 
 
+class _FakeList(list):
+    def add(self, value):
+        self.append(value)
+
+
+class _FakeInteger:
+    @staticmethod
+    def valueOf(value):
+        return ("Integer", value)
+
+
 class _FakeAlarmClock:
+    EXTRA_DAYS = "android.intent.extra.alarm.DAYS"
     ACTION_SET_ALARM = "android.intent.action.SET_ALARM"
     ACTION_SHOW_ALARMS = "android.intent.action.SHOW_ALARMS"
     EXTRA_HOUR = "android.intent.extra.alarm.HOUR"
@@ -619,3 +634,27 @@ def test_open_system_alarm_sends_typed_extras(monkeypatch, set_alarm_works):
         }
     else:  # no app takes a new alarm: at least the alarm list opens
         assert intent.action == _FakeAlarmClock.ACTION_SHOW_ALARMS and intent.extras is None
+
+
+def test_open_system_alarm_weekday_becomes_clock_days(monkeypatch):
+    """Monday (0) goes to the Clock app as java.util.Calendar.MONDAY (2)."""
+    from strakalari.core import android
+
+    started = []
+    classes = {"android.provider.AlarmClock": _FakeAlarmClock,
+               "android.content.Intent": _FakeIntent,
+               "android.os.Bundle": _FakeBundle,
+               "java.util.ArrayList": _FakeList,
+               "java.lang.Integer": _FakeInteger}
+    monkeypatch.setattr(android, "context",
+                        lambda: type("Ctx", (), {"startActivity": lambda self, i: started.append(i)})())
+    monkeypatch.setattr(android, "_autoclass", lambda name: classes[name])
+
+    assert android.open_system_alarm(7, 0, "x", weekday=0) is True
+    assert started[0].extras.values[_FakeAlarmClock.EXTRA_DAYS] == ("int_list", [("Integer", 2)])
+    started.clear()
+    assert android.open_system_alarm(7, 0, "x", weekday=6) is True  # Sunday
+    assert started[0].extras.values[_FakeAlarmClock.EXTRA_DAYS] == ("int_list", [("Integer", 1)])
+    started.clear()
+    assert android.open_system_alarm(7, 0, "x") is True
+    assert _FakeAlarmClock.EXTRA_DAYS not in started[0].extras.values
