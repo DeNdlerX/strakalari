@@ -1,5 +1,6 @@
 """First-run setup wizard: Bakalari login, subject limits, Strava login,
-AI key, calendar, excuse signature and templates.
+AI key, calendar, wake-up alarm (Android only), excuse signature and
+templates.
 
 Shown full-screen by the Shell while ``state.needs_setup()`` is true (no
 valid Bakalari credentials, not skipped).
@@ -22,7 +23,7 @@ from ..overlays import snack
 from ..state import AppState
 from ..strings import S
 
-STEPS_TOTAL = 9
+STEPS_TOTAL = 10
 
 STEP_WELCOME = 0
 STEP_DISCLAIMER = 1
@@ -31,8 +32,29 @@ STEP_LIMITS = 3
 STEP_STRAVA = 4
 STEP_AI = 5
 STEP_CALENDAR = 6
-STEP_EXCUSES = 7
-STEP_DONE = 8
+STEP_ALARM = 7
+STEP_EXCUSES = 8
+STEP_DONE = 9
+
+
+def _alarm_here() -> bool:
+    """The wake-up alarm rings on the Android phone only."""
+    from strakalari.core.packaging import mobile_platform
+
+    return mobile_platform() == "android"
+
+
+def _shown_steps() -> list[int]:
+    """The steps this platform walks through (the alarm step: Android only)."""
+    return [s for s in range(STEPS_TOTAL) if s != STEP_ALARM or _alarm_here()]
+
+
+def _step_after(step: int) -> int:
+    return next((s for s in _shown_steps() if s > step), STEP_DONE)
+
+
+def _step_before(step: int) -> int:
+    return next((s for s in reversed(_shown_steps()) if s < step), 0)
 
 
 def _v(state: AppState, key: str, fallback: str = "") -> str:
@@ -220,7 +242,7 @@ def _begin_wizard_test(state: AppState, page: ft.Page | None,
         try:
             if (state.wizard_step == step and not state.wizard_dismissed
                     and _fp_for(state, service) == fp):
-                state.wizard_goto(step + 1)
+                state.wizard_goto(_step_after(step))
         except Exception:
             pass
 
@@ -372,6 +394,41 @@ def _save_signature(state: AppState) -> bool:
     if not name:
         return False
     return bool(state.save({"your_signature": name}))
+
+
+def _alarm_enabled(state: AppState) -> bool:
+    raw = state.drafts.get("wiz:wakeup_enabled")
+    if raw is not None:
+        return raw == "1"
+    return bool(state.get("wakeup_enabled", False))
+
+
+def _alarm_minutes(state: AppState) -> int | None:
+    """The typed minutes (clamped to 1–720), None when not a number."""
+    from strakalari.core.wakeup import clamp_wakeup_minutes
+
+    stored = clamp_wakeup_minutes(state.get("wakeup_minutes_before", 60))
+    raw = _v(state, "wiz:wakeup_minutes", str(stored)).strip().replace(",", ".")
+    try:
+        float(raw)
+    except ValueError:
+        return None
+    return clamp_wakeup_minutes(raw)
+
+
+def _save_alarm(state: AppState) -> bool:
+    """Saves the alarm step; False when the minutes aren't a number."""
+    if not _alarm_enabled(state):
+        return bool(state.save({"wakeup_enabled": False}))
+    minutes = _alarm_minutes(state)
+    if minutes is None:
+        return False
+    if not state.save({"wakeup_enabled": True, "wakeup_minutes_before": minutes}):
+        return False
+    from strakalari.core import android
+
+    android.request_notification_permission()  # the alarm rings as a notification
+    return True
 
 
 def _busy_row(tok, text: str) -> ft.Control:
@@ -594,6 +651,34 @@ def _step_content(state: AppState, page: ft.Page | None, step: int) -> list:
         if not preset:
             rows_cal.append(C.hint_text(S("wiz_cal_pick"), tok))
         return rows_cal
+    if step == STEP_ALARM:
+        from strakalari.core import android
+
+        enabled = _alarm_enabled(state)
+
+        def _toggle_alarm(e):
+            state.set_draft("wiz:wakeup_enabled", "1" if e.control.value else "")
+            state._emit()
+
+        rows_alarm: list = [
+            C.txt(S("wiz_alarm_h"), tok, size=19, bold=True),
+            C.txt(S("wiz_alarm_p"), tok, muted=True),
+            C.toggle(tok, S("wakeup_enable"), enabled, on_change=_toggle_alarm),
+        ]
+        if enabled:
+            minutes = _alarm_minutes(state) or 60
+            rows_alarm += [
+                _field(state, S("wakeup_minutes"), "wiz:wakeup_minutes", str(minutes)),
+                C.hint_text(S("wakeup_hint").format(n=minutes), tok),
+            ]
+            if android.available() and not android.exact_alarms_allowed():
+                rows_alarm += [
+                    C.txt(S("wakeup_exact_off"), tok, size=tok.fs_small, color=tok.yellow),
+                    ft.Row([C.ghost_button(S("wakeup_exact_allow"), tok, icon=ft.Icons.ALARM_ON,
+                                           on_click=lambda e: android.open_exact_alarm_settings())]),
+                ]
+        rows_alarm.append(C.hint_text(S("wiz_alarm_later"), tok))
+        return rows_alarm
     if step == STEP_EXCUSES:
         from .settings.common import _tpl_editor
 
@@ -629,7 +714,7 @@ def _continue_test_step(state: AppState, page: ft.Page | None,
             if page is not None:
                 snack(page, S("save_failed"))
             return False
-        state.wizard_goto(step + 1)
+        state.wizard_goto(_step_after(step))
         return True
     if state.testing:
         return False
@@ -661,7 +746,7 @@ def build(state: AppState, page: ft.Page | None) -> ft.Control:
         if step == STEP_STRAVA:
             if not _strava_enabled(state):
                 if _save_strava(state):
-                    state.wizard_goto(step + 1)
+                    state.wizard_goto(_step_after(step))
                 elif page is not None:
                     snack(page, S("save_failed"))
                 return
@@ -671,7 +756,7 @@ def build(state: AppState, page: ft.Page | None) -> ft.Control:
         if step == STEP_AI:
             if not _ai_enabled(state):
                 if _save_ai(state):
-                    state.wizard_goto(step + 1)
+                    state.wizard_goto(_step_after(step))
                 elif page is not None:
                     snack(page, S("save_failed"))
                 return
@@ -695,6 +780,11 @@ def build(state: AppState, page: ft.Page | None) -> ft.Control:
             if page is not None:
                 snack(page, S("wiz_cal_pick") if not _cal_preset(state) else S("save_failed"))
             return
+        if step == STEP_ALARM and not _save_alarm(state):
+            if page is not None:
+                snack(page, S("wakeup_minutes_invalid") if _alarm_minutes(state) is None
+                      else S("save_failed"))
+            return
         if step == STEP_EXCUSES and not _save_signature(state):
             if page is not None:
                 snack(page, S("wiz_need_signature") if not _signature(state) else S("save_failed"))
@@ -708,15 +798,15 @@ def build(state: AppState, page: ft.Page | None) -> ft.Control:
             if page is not None:
                 snack(page, S("wiz_finishing_refresh") if _started else S("already_running"))
         else:
-            state.wizard_goto(step + 1)
+            state.wizard_goto(_step_after(step))
 
     def _back(e):
-        state.wizard_goto(step - 1)
+        state.wizard_goto(_step_before(step))
 
     def _skip(e):
         # One step only, nothing of it saved: skipping must never jump
         # past the remaining steps and finish the setup.
-        state.wizard_goto(step + 1)
+        state.wizard_goto(_step_after(step))
 
     if step == STEP_LIMITS:
         _start_limits_refresh(state)
@@ -746,10 +836,11 @@ def build(state: AppState, page: ft.Page | None) -> ft.Control:
     else:
         nav.append(C.primary_button(S("wiz_finish"), tok, on_click=_next))
 
+    shown = _shown_steps()
     dots = ft.Row(
         [
             C.status_dot(tok, "ok" if i < step else ("working" if i == step else "idle"))
-            for i in range(STEPS_TOTAL)
+            for i in shown
         ],
         spacing=6, tight=True,
     )
@@ -767,7 +858,7 @@ def build(state: AppState, page: ft.Page | None) -> ft.Control:
     else:
         nav_row = ft.Row(nav, spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)
     card = C.card(
-        C.txt(S("wiz_step_of").format(i=step + 1, n=STEPS_TOTAL), tok,
+        C.txt(S("wiz_step_of").format(i=sum(1 for s in shown if s <= step), n=len(shown)), tok,
               size=tok.fs_small, muted=True),
         dots,
         C.divider(tok),

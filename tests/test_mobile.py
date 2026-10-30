@@ -547,3 +547,114 @@ class TestMakeMobile:
             zf.write(inner, "assets/app.zip")
         with pytest.raises(SystemExit):
             mm.check_package(str(apk))
+
+
+# -- Android: the Clock app shortcut ------------------------------------------------------------
+class _FakeBundle:
+    """Records the typed puts (``putInt`` / ``putString`` / ``putBoolean``)."""
+
+    def __init__(self):
+        self.values = {}
+
+    def putInt(self, key, value):
+        self.values[key] = ("int", value)
+
+    def putString(self, key, value):
+        self.values[key] = ("str", value)
+
+    def putBoolean(self, key, value):
+        self.values[key] = ("bool", value)
+
+    def putIntegerArrayList(self, key, value):
+        self.values[key] = ("int_list", list(value))
+
+
+class _FakeIntent:
+    FLAG_ACTIVITY_NEW_TASK = 0x10000000
+
+    def __init__(self, action):
+        self.action, self.extras, self.flags = action, None, 0
+
+    def putExtras(self, bundle):
+        self.extras = bundle
+
+    def addFlags(self, flags):
+        self.flags |= flags
+
+
+class _FakeList(list):
+    def add(self, value):
+        self.append(value)
+
+
+class _FakeInteger:
+    @staticmethod
+    def valueOf(value):
+        return ("Integer", value)
+
+
+class _FakeAlarmClock:
+    EXTRA_DAYS = "android.intent.extra.alarm.DAYS"
+    ACTION_SET_ALARM = "android.intent.action.SET_ALARM"
+    ACTION_SHOW_ALARMS = "android.intent.action.SHOW_ALARMS"
+    EXTRA_HOUR = "android.intent.extra.alarm.HOUR"
+    EXTRA_MINUTES = "android.intent.extra.alarm.MINUTES"
+    EXTRA_MESSAGE = "android.intent.extra.alarm.MESSAGE"
+    EXTRA_SKIP_UI = "android.intent.extra.alarm.SKIP_UI"
+
+
+@pytest.mark.parametrize("set_alarm_works", [True, False])
+def test_open_system_alarm_sends_typed_extras(monkeypatch, set_alarm_works):
+    from strakalari.core import android
+
+    started = []
+
+    class _Ctx:
+        def startActivity(self, intent):
+            if intent.action == _FakeAlarmClock.ACTION_SET_ALARM and not set_alarm_works:
+                raise RuntimeError("ActivityNotFoundException")
+            started.append(intent)
+
+    classes = {"android.provider.AlarmClock": _FakeAlarmClock,
+               "android.content.Intent": _FakeIntent,
+               "android.os.Bundle": _FakeBundle}
+    monkeypatch.setattr(android, "context", lambda: _Ctx())
+    monkeypatch.setattr(android, "_autoclass", lambda name: classes[name])
+
+    assert android.open_system_alarm(6, 45, "Strakaláři · Matematika") is True
+    (intent,) = started
+    assert intent.flags & _FakeIntent.FLAG_ACTIVITY_NEW_TASK
+    if set_alarm_works:
+        assert intent.action == _FakeAlarmClock.ACTION_SET_ALARM
+        assert intent.extras.values == {
+            _FakeAlarmClock.EXTRA_HOUR: ("int", 6),
+            _FakeAlarmClock.EXTRA_MINUTES: ("int", 45),
+            _FakeAlarmClock.EXTRA_MESSAGE: ("str", "Strakaláři · Matematika"),
+            _FakeAlarmClock.EXTRA_SKIP_UI: ("bool", False),
+        }
+    else:  # no app takes a new alarm: at least the alarm list opens
+        assert intent.action == _FakeAlarmClock.ACTION_SHOW_ALARMS and intent.extras is None
+
+
+def test_open_system_alarm_weekday_becomes_clock_days(monkeypatch):
+    """Monday (0) goes to the Clock app as java.util.Calendar.MONDAY (2)."""
+    from strakalari.core import android
+
+    started = []
+    classes = {"android.provider.AlarmClock": _FakeAlarmClock,
+               "android.content.Intent": _FakeIntent,
+               "android.os.Bundle": _FakeBundle,
+               "java.util.ArrayList": _FakeList,
+               "java.lang.Integer": _FakeInteger}
+    monkeypatch.setattr(android, "context",
+                        lambda: type("Ctx", (), {"startActivity": lambda self, i: started.append(i)})())
+    monkeypatch.setattr(android, "_autoclass", lambda name: classes[name])
+
+    assert android.open_system_alarm(7, 0, "x", weekday=0) is True
+    assert started[0].extras.values[_FakeAlarmClock.EXTRA_DAYS] == ("int_list", [("Integer", 2)])
+    started.clear()
+    assert android.open_system_alarm(7, 0, "x", weekday=6) is True  # Sunday
+    assert started[0].extras.values[_FakeAlarmClock.EXTRA_DAYS] == ("int_list", [("Integer", 1)])
+    started.clear()
+    assert android.open_system_alarm(7, 0, "x") is True
+    assert _FakeAlarmClock.EXTRA_DAYS not in started[0].extras.values

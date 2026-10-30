@@ -4,11 +4,14 @@ import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.net.Uri;
+import android.os.Build;
 import android.widget.RemoteViews;
 
 import org.json.JSONArray;
@@ -27,6 +30,12 @@ import java.util.Locale;
  * worked out here from the clock, and a refresh is armed for today's next
  * lesson start / end and for midnight, so the widget stays right while the
  * app is closed. A day picked with ‹ › holds until the date changes.
+ *
+ * <p>That refresh alarm alone left the widget on a past day on some phones
+ * (deferred or dropped while the app sat in the background), so the day
+ * also moves on the system's date change, on the first screen-on / unlock
+ * after a missed refresh (while the process lives, e.g. with background
+ * running on) and on the app's own daily hand-over.
  */
 public class TimetableWidgetProvider extends AppWidgetProvider {
     static final String PREFS = "strakalari_widget";
@@ -41,12 +50,17 @@ public class TimetableWidgetProvider extends AppWidgetProvider {
     static final String EXTRA_WIDGET_ID = "app_widget_id";
     private static final int REQUEST_OPEN = 7310;
     private static final int REQUEST_TICK = 7311;
+    /** Inexact refreshes (no exact alarms allowed) land within this window. */
+    private static final long TICK_WINDOW_MS = 10 * 60 * 1000L;
+
+    private static BroadcastReceiver screenWatcher;
 
     @Override
     public void onReceive(Context context, Intent intent) {
         super.onReceive(context, intent);
         String action = intent != null ? intent.getAction() : null;
         if (ACTION_REFRESH.equals(action)
+                || Intent.ACTION_DATE_CHANGED.equals(action)
                 || Intent.ACTION_TIME_CHANGED.equals(action)
                 || Intent.ACTION_TIMEZONE_CHANGED.equals(action)) {
             refreshAll(context);
@@ -66,8 +80,9 @@ public class TimetableWidgetProvider extends AppWidgetProvider {
         for (int widgetId : appWidgetIds) {
             updateWidget(context, mgr, widgetId);
         }
-        mgr.notifyAppWidgetViewDataChanged(appWidgetIds, R.id.widget_list);
+        notifyLegacyList(mgr, appWidgetIds);
         scheduleTick(context);
+        watchScreen(context);
     }
 
     @Override
@@ -100,8 +115,48 @@ public class TimetableWidgetProvider extends AppWidgetProvider {
         for (int id : ids) {
             updateWidget(context, mgr, id);
         }
-        mgr.notifyAppWidgetViewDataChanged(ids, R.id.widget_list);
+        notifyLegacyList(mgr, ids);
         scheduleTick(context);
+        watchScreen(context);
+    }
+
+    /** Redraws when the refresh armed by {@link #scheduleTick} is overdue (it never came). */
+    static void refreshIfOverdue(Context context) {
+        if (System.currentTimeMillis() >= prefs(context).getLong("due_at", 0L)) {
+            refreshAll(context);
+        }
+    }
+
+    /**
+     * Catches a missed refresh as soon as the screen comes on or the phone
+     * is unlocked. Lives as long as the process (registered once on the
+     * application context: a manifest receiver's own context can't).
+     */
+    static void watchScreen(Context context) {
+        Context app = context.getApplicationContext();
+        synchronized (TimetableWidgetProvider.class) {
+            if (screenWatcher != null || app == null) {
+                return;
+            }
+            BroadcastReceiver watcher = new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context ctx, Intent intent) {
+                    refreshIfOverdue(ctx);
+                }
+            };
+            IntentFilter filter = new IntentFilter(Intent.ACTION_SCREEN_ON);
+            filter.addAction(Intent.ACTION_USER_PRESENT);
+            try {
+                if (Build.VERSION.SDK_INT >= 33) {
+                    app.registerReceiver(watcher, filter, Context.RECEIVER_NOT_EXPORTED);
+                } else {
+                    app.registerReceiver(watcher, filter);
+                }
+                screenWatcher = watcher;
+            } catch (RuntimeException ignored) {
+                // Best effort: the refresh alarm still runs.
+            }
+        }
     }
 
     private static void pickDay(Context context, int widgetId, String action) {
@@ -118,14 +173,15 @@ public class TimetableWidgetProvider extends AppWidgetProvider {
             ed.putString("pick_day_" + widgetId, day != null ? day.optString("iso") : "")
                     .putString("pick_on_" + widgetId, isoDay(0));
         }
-        ed.commit(); // the list's factory reads it right below
+        ed.commit(); // the rows are built from it right below
         AppWidgetManager mgr = AppWidgetManager.getInstance(context);
         if (mgr != null) {
             updateWidget(context, mgr, widgetId);
-            mgr.notifyAppWidgetViewDataChanged(widgetId, R.id.widget_list);
+            notifyLegacyList(mgr, new int[] {widgetId});
         }
     }
 
+    @SuppressWarnings("deprecation") // setRemoteAdapter(int, Intent): before Android 12 only
     static void updateWidget(Context context, AppWidgetManager mgr, int widgetId) {
         SharedPreferences prefs = prefs(context);
         JSONObject payload = parsePayload(prefs);
@@ -134,9 +190,10 @@ public class TimetableWidgetProvider extends AppWidgetProvider {
         String title = "Strakaláři";
         String subtitle = "";
         String empty = context.getString(R.string.strakalari_widget_no_data);
+        JSONObject day = null;
         if (payload != null) {
             empty = payload.optString("empty", empty);
-            JSONObject day = shownDay(prefs, payload, widgetId);
+            day = shownDay(prefs, payload, widgetId);
             if (day != null) {
                 title = dayTitle(payload, day);
                 subtitle = day.optString("subtitle", "");
@@ -160,14 +217,32 @@ public class TimetableWidgetProvider extends AppWidgetProvider {
             views.setPendingIntentTemplate(R.id.widget_list, openApp);
         }
 
-        Intent svc = new Intent(context, TimetableWidgetService.class);
-        svc.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId);
-        // A distinct data URI per widget: otherwise every widget shares one list factory.
-        svc.setData(Uri.parse(svc.toUri(Intent.URI_INTENT_SCHEME)));
-        views.setRemoteAdapter(R.id.widget_list, svc);
+        if (Build.VERSION.SDK_INT >= 31) {
+            // The rows travel with the title: one update, nothing to re-send.
+            views.setRemoteAdapter(R.id.widget_list, TimetableWidgetService.items(context, day));
+        } else {
+            Intent svc = new Intent(context, TimetableWidgetService.class);
+            svc.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId);
+            // A distinct data URI per widget: otherwise every widget shares one list factory.
+            svc.setData(Uri.parse(svc.toUri(Intent.URI_INTENT_SCHEME)));
+            views.setRemoteAdapter(R.id.widget_list, svc);
+        }
         views.setEmptyView(R.id.widget_list, R.id.widget_empty);
 
         mgr.updateAppWidget(widgetId, views);
+    }
+
+    /**
+     * Before Android 12 the list comes from {@link TimetableWidgetService} and
+     * must be told to reload. Never on 12+: there the rows are already in the
+     * update, and Android 15+ answers this call by re-sending the widget's
+     * stored views, which put the previous day's title back.
+     */
+    @SuppressWarnings("deprecation")
+    private static void notifyLegacyList(AppWidgetManager mgr, int[] ids) {
+        if (Build.VERSION.SDK_INT < 31) {
+            mgr.notifyAppWidgetViewDataChanged(ids, R.id.widget_list);
+        }
     }
 
     static SharedPreferences prefs(Context ctx) {
@@ -270,8 +345,11 @@ public class TimetableWidgetProvider extends AppWidgetProvider {
 
     /**
      * Arms a refresh at today's next lesson start / end (the highlight moves)
-     * or at midnight (the day moves), whichever comes first. It doesn't wake
-     * the phone: a sleeping phone catches up as soon as it wakes.
+     * or at midnight (the day moves), whichever comes first. Lesson
+     * boundaries don't wake the phone (a sleeping phone catches up as soon
+     * as it wakes); midnight does, also in Doze, so the new day is drawn
+     * before anyone looks. The time is kept as {@code due_at} for
+     * {@link #refreshIfOverdue}.
      */
     static void scheduleTick(Context ctx) {
         AlarmManager alarms = ctx.getSystemService(AlarmManager.class);
@@ -312,16 +390,23 @@ public class TimetableWidgetProvider extends AppWidgetProvider {
             cal.add(Calendar.DAY_OF_YEAR, 1);
         }
         long at = cal.getTimeInMillis() + 1000L; // just past the boundary
+        boolean midnight = nextMin < 0;
+        int type = midnight ? AlarmManager.RTC_WAKEUP : AlarmManager.RTC;
+        prefs(ctx).edit().putLong("due_at", at).apply();
         PendingIntent op = tickIntent(ctx);
         if (AlarmReceiver.exactAllowed(alarms)) {
             try {
-                alarms.setExact(AlarmManager.RTC, at, op);
+                if (midnight) {
+                    alarms.setExactAndAllowWhileIdle(type, at, op);
+                } else {
+                    alarms.setExact(type, at, op);
+                }
                 return;
             } catch (SecurityException ignored) {
                 // Permission withdrawn meanwhile: the windowed alarm below.
             }
         }
-        alarms.setWindow(AlarmManager.RTC, at, 5 * 60 * 1000L, op);
+        alarms.setWindow(type, at, TICK_WINDOW_MS, op);
     }
 
     private static PendingIntent tickIntent(Context ctx) {

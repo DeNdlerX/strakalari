@@ -16,6 +16,7 @@ SECTIONS: tuple[tuple[str, str], ...] = (
     ("accounts", "sec_accounts"),
     ("limits", "sec_limits"),
     ("calendar", "sec_calendar"),
+    ("alarm", "sec_alarm"),
     ("templates", "sec_templates"),
     ("rules", "sec_rules"),
     ("browser", "sec_browser"),
@@ -28,7 +29,7 @@ SECTIONS: tuple[tuple[str, str], ...] = (
 
 #: Sidebar grouping (group caption -> sections) and one icon per section.
 NAV_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("sec_group_school", ("accounts", "limits", "calendar")),
+    ("sec_group_school", ("accounts", "limits", "calendar", "alarm")),
     ("sec_group_automation", ("rules", "templates", "ai", "browser")),
     ("sec_group_app", ("appearance", "notifications")),
     ("sec_group_advanced", ("advanced", "diagnostics")),
@@ -37,6 +38,7 @@ SECTION_ICONS: dict[str, str] = {
     "accounts": ft.Icons.PERSON_OUTLINE,
     "limits": ft.Icons.PERCENT,
     "calendar": ft.Icons.CALENDAR_MONTH_OUTLINED,
+    "alarm": ft.Icons.ALARM,
     "templates": ft.Icons.DESCRIPTION_OUTLINED,
     "rules": ft.Icons.BOLT_OUTLINED,
     "browser": ft.Icons.SYNC_OUTLINED,

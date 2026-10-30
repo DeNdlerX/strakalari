@@ -48,13 +48,14 @@
         </receiver>
 
         <!-- Home-screen timetable widget (the app reaches it by explicit
-             intents; the clock broadcasts move "today"). -->
+             intents; the clock and date broadcasts move "today"). -->
         <receiver
             android:name="io.github.dendlerx.strakalari.android.TimetableWidgetProvider"
             android:exported="true"
             android:label="@string/strakalari_widget_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
                 <action android:name="android.intent.action.TIME_SET" />
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>

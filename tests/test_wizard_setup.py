@@ -299,8 +299,65 @@ def test_refresh_worker_aborts_without_credentials(state):
 
 def test_step_order():
     assert wiz.STEP_DISCLAIMER < wiz.STEP_BAKALARI < wiz.STEP_LIMITS < wiz.STEP_STRAVA < wiz.STEP_AI
-    assert wiz.STEP_AI < wiz.STEP_CALENDAR < wiz.STEP_EXCUSES < wiz.STEP_DONE
+    assert wiz.STEP_AI < wiz.STEP_CALENDAR < wiz.STEP_ALARM < wiz.STEP_EXCUSES < wiz.STEP_DONE
     assert wiz.STEPS_TOTAL == wiz.STEP_DONE + 1
+
+
+@pytest.mark.parametrize("platform, alarm", [(None, False), ("ios", False), ("android", True)])
+def test_alarm_step_only_on_android(monkeypatch, state, platform, alarm):
+    from strakalari.flet_ui.strings import S
+
+    monkeypatch.delenv("FLET_PLATFORM", raising=False)
+    if platform:
+        monkeypatch.setenv("FLET_PLATFORM", platform)
+    assert (wiz.STEP_ALARM in wiz._shown_steps()) is alarm
+    after_calendar = wiz.STEP_ALARM if alarm else wiz.STEP_EXCUSES
+    assert wiz._step_after(wiz.STEP_CALENDAR) == after_calendar
+    assert wiz._step_before(wiz.STEP_EXCUSES) == (wiz.STEP_ALARM if alarm else wiz.STEP_CALENDAR)
+    # Skip from the calendar step lands on the next step shown here.
+    state.wizard_goto(wiz.STEP_CALENDAR)
+    (skip,) = _buttons(wiz.build(state, None), S("wiz_skip"))
+    skip.on_click(None)
+    assert state.wizard_step == after_calendar
+    # The counter counts the shown steps only.
+    total = len(wiz._shown_steps())
+    assert total == (wiz.STEPS_TOTAL if alarm else wiz.STEPS_TOTAL - 1)
+    state.wizard_goto(wiz.STEP_DONE)
+    assert S("wiz_step_of").format(i=total, n=total) in _texts(wiz.build(state, None))
+
+
+def test_alarm_step_saves_the_alarm(monkeypatch, state):
+    from strakalari.core import android
+
+    asked = []
+    monkeypatch.setattr(android, "request_notification_permission", lambda: asked.append(1))
+    # Off by default: Continue saves it off and asks for nothing.
+    assert wiz._save_alarm(state) is True
+    assert state.config.data["wakeup_enabled"] is False and asked == []
+    state.set_draft("wiz:wakeup_enabled", "1")
+    state.set_draft("wiz:wakeup_minutes", "abc")
+    assert wiz._save_alarm(state) is False  # not a number: nothing saved
+    assert state.config.data["wakeup_enabled"] is False
+    state.set_draft("wiz:wakeup_minutes", "45")
+    assert wiz._save_alarm(state) is True
+    assert state.config.data["wakeup_enabled"] is True
+    assert state.config.data["wakeup_minutes_before"] == 45 and asked == [1]
+
+
+def _texts(control) -> list[str]:
+    out, stack = [], [control]
+    while stack:
+        c = stack.pop()
+        value = getattr(c, "value", None)
+        if isinstance(value, str):
+            out.append(value)
+        for attr in ("content", "controls"):
+            child = getattr(c, attr, None)
+            if isinstance(child, list):
+                stack.extend(child)
+            elif child is not None and not isinstance(child, str):
+                stack.append(child)
+    return out
 
 
 def test_ready_helpers_use_drafts(state):

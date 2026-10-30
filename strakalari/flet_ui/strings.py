@@ -99,8 +99,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Notifications are off — the alarm can't ring.",
     },
     "wakeup_exact_off": {
-        "cs": "Přesné budíky nejsou povolené — budík může zazvonit o pár minut později.",
-        "en": "Exact alarms aren't allowed — the alarm may ring a few minutes late.",
+        "cs": "Přesné budíky nejsou povolené — budík může zazvonit pozdě (až o hodinu).",
+        "en": "Exact alarms aren't allowed — the alarm may ring late (up to an hour).",
     },
     "wakeup_exact_allow": {"cs": "Povolit přesné budíky", "en": "Allow exact alarms"},
     "wakeup_skip_next": {"cs": "Tento den nebudit", "en": "Skip this day"},
@@ -110,7 +110,21 @@ STRINGS: dict[str, dict[str, str]] = {
         "cs": "Otevřít v Budíku telefonu",
         "en": "Open in phone Clock",
     },
+    "wakeup_clock_weekly": {
+        "cs": "Budík telefonu neumí konkrétní datum: zazvoní {day} v {time} a pak každý "
+              "týden ve stejný den — po zazvonění ho tam můžete vypnout.",
+        "en": "The phone's Clock can't take a date: it rings {day} at {time} and then every "
+              "week on that day — turn it off there once it has rung.",
+    },
+    "wakeup_clock_failed": {
+        "cs": "Aplikaci Budík se nepodařilo otevřít.",
+        "en": "Couldn't open the Clock app.",
+    },
     "wakeup_badge": {"cs": "Budík {time}", "en": "Alarm {time}"},
+    "wakeup_unavailable": {
+        "cs": "Budík teď nejde nastavit — zavřete aplikaci a otevřete ji znovu.",
+        "en": "The alarm can't be set right now — close the app and open it again.",
+    },
 
     "tray_open": {"cs": "Otevřít Strakaláře", "en": "Open Strakaláři"},
     "tray_refresh": {"cs": "Obnovit nyní", "en": "Refresh now"},
@@ -401,6 +415,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "sec_diagnostics": {"cs": "Diagnostika", "en": "Diagnostics"},
     "sec_appearance": {"cs": "Vzhled", "en": "Appearance"},
     "sec_notifications": {"cs": "Oznámení", "en": "Notifications"},
+    "sec_alarm": {"cs": "Budík", "en": "Wake-up alarm"},
     "theme_dark": {"cs": "Tmavý", "en": "Dark"},
     "theme_light": {"cs": "Světlý", "en": "Light"},
     "language": {"cs": "Jazyk", "en": "Language"},
@@ -991,6 +1006,17 @@ STRINGS: dict[str, dict[str, str]] = {
     "wiz_need_signature": {
         "cs": "Vyplňte jméno, kterým se omluvenky podepisují.",
         "en": "Enter the name excuses are signed with.",
+    },
+    "wiz_alarm_h": {"cs": "Budík před vyučováním", "en": "Wake-up alarm"},
+    "wiz_alarm_p": {
+        "cs": "Telefon vás může budit podle rozvrhu z Bakalářů — vždy před první hodinou, "
+              "která opravdu proběhne. Je to volitelné.",
+        "en": "The phone can wake you by your Bakaláři timetable — always before the first "
+              "lesson that actually takes place. It's optional.",
+    },
+    "wiz_alarm_later": {
+        "cs": "Později ho najdete v Nastavení → Budík nebo v menu Více.",
+        "en": "Later you'll find it in Settings → Wake-up alarm or in the More menu.",
     },
     # School calendar ------------------------------------------------------
     "sec_calendar": {"cs": "Školní kalendář", "en": "School calendar"},

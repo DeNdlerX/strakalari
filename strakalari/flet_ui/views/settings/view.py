@@ -22,13 +22,16 @@ from .school_calendar import SchoolCalendarMixin
 #: has its own background running (in "browser") and notifications; iOS
 #: has neither yet.
 HIDDEN_SECTIONS = {"ios": frozenset({"browser", "notifications"})}
+#: Sections only the Android app has (the wake-up alarm rings on the phone).
+ANDROID_SECTIONS = frozenset({"alarm"})
 
 
 def _sections_here() -> set[str]:
     from strakalari.core.packaging import mobile_platform
 
-    ids = {s for s, _ in SECTIONS}
-    return ids - HIDDEN_SECTIONS.get(mobile_platform() or "", frozenset())
+    platform = mobile_platform() or ""
+    ids = {s for s, _ in SECTIONS} - HIDDEN_SECTIONS.get(platform, frozenset())
+    return ids if platform == "android" else ids - ANDROID_SECTIONS
 
 
 class SettingsView(AccountsMixin, SchoolCalendarMixin, AutomationMixin, AppPrefsMixin):
@@ -54,8 +57,12 @@ class SettingsView(AccountsMixin, SchoolCalendarMixin, AutomationMixin, AppPrefs
 
     def _auto(self, label: str, dkey: str, ckey: str, fallback: str = "",
               password: bool = False, multiline: bool = False,
-              hint: str = "", parse=None) -> ft.Control:
-        """Autosaving text field: typing fills drafts, blur/Enter saves."""
+              hint: str = "", parse=None, on_saved=None) -> ft.Control:
+        """Autosaving text field: typing fills drafts, blur/Enter saves.
+
+        The save doesn't re-render the screen; ``on_saved(value)`` lets a
+        section refresh the texts that depend on the field in place.
+        """
         state, page = self.state, self.page
 
         def _commit(e):
@@ -89,6 +96,8 @@ class SettingsView(AccountsMixin, SchoolCalendarMixin, AutomationMixin, AppPrefs
             else:
                 state.drafts.pop(dkey, None)
                 _show_value(e.control, new_val)
+            if on_saved is not None:
+                on_saved(new_val)
 
         return C.labeled_field(
             self.state.tok, label, value=self._v(dkey, fallback),
@@ -149,6 +158,7 @@ class SettingsView(AccountsMixin, SchoolCalendarMixin, AutomationMixin, AppPrefs
             "accounts": self._accounts,
             "limits": self._limits,
             "calendar": self._calendar,
+            "alarm": self._wakeup,
             "templates": self._templates,
             "rules": self._automation,
             "browser": self._browser,

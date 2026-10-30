@@ -1,8 +1,9 @@
-"""Settings sections: excuse templates, automation rules, browser and AI."""
+"""Settings sections: excuse templates, automation rules, wake-up alarm,
+background running and AI."""
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 import flet as ft
 
@@ -151,15 +152,19 @@ class AutomationMixin:
                         C.hint_text(S("automation_modes_hint"), tok),
                         interval, delay, goback, goforward, pick,
                         cutoff, tok=tok),
-        ] + self._wakeup_card()
+        ]
 
-    def _wakeup_card(self) -> list:
-        """The phone's wake-up alarm; Android only (nothing would ring elsewhere)."""
+    # -- wake-up alarm (section "alarm", Android only) ----------------------------
+    def _wakeup(self) -> list:
+        """The phone's wake-up alarm (the section exists in the Android app only)."""
         state, tok, page = self.state, self.state.tok, self.page
         if not state.wakeup_available():
-            return []
+            return [C.form_card(C.txt(S("wakeup_title"), tok, bold=True),
+                                C.hint_text(S("wakeup_unavailable"), tok), tok=tok)]
         from strakalari.core import android
-        from strakalari.core.wakeup import clamp_wakeup_minutes, skipped_days, with_skipped_day
+        from strakalari.core.wakeup import (
+            clamp_wakeup_minutes, clock_app_weekday, skipped_days, with_skipped_day,
+        )
 
         enabled = bool(state.get("wakeup_enabled", False))
         minutes = clamp_wakeup_minutes(state.get("wakeup_minutes_before", 60))
@@ -186,61 +191,85 @@ class AutomationMixin:
         def _day(day: date) -> str:
             return f"{C.day_name(day, short=True)} {C.cz_day(day)}"
 
-        rows: list[ft.Control] = [
+        def _open_clock(alarm) -> None:
+            if not android.open_system_alarm(alarm.alarm_dt.hour, alarm.alarm_dt.minute,
+                                             f"Strakaláři · {alarm.subject}",
+                                             weekday=clock_app_weekday(alarm, datetime.now())):
+                snack(page, S("wakeup_clock_failed"))
+
+        def _live_rows() -> list[ft.Control]:
+            """Everything that follows the saved minutes, the permissions and
+            the timetable: rebuilt in place when the minutes change."""
+            minutes = clamp_wakeup_minutes(state.get("wakeup_minutes_before", 60))
+            rows: list[ft.Control] = [C.hint_text(S("wakeup_hint").format(n=minutes), tok)]
+            if not enabled:
+                return rows
+            if not android.notifications_enabled():
+                rows += [
+                    C.txt(S("wakeup_notif_off"), tok, size=tok.fs_small, color=tok.yellow),
+                    ft.Row([
+                        C.primary_button(S("notif_allow"), tok,
+                                         icon=ft.Icons.NOTIFICATIONS_ACTIVE,
+                                         on_click=lambda e: android.request_notification_permission()),
+                        C.ghost_button(S("notif_open_settings"), tok,
+                                       on_click=lambda e: android.open_notification_settings()),
+                    ], spacing=8, run_spacing=8, wrap=True),
+                ]
+            if not android.exact_alarms_allowed():
+                rows += [
+                    C.txt(S("wakeup_exact_off"), tok, size=tok.fs_small, color=tok.yellow),
+                    C.ghost_button(S("wakeup_exact_allow"), tok, icon=ft.Icons.ALARM_ON,
+                                   on_click=lambda e: android.open_exact_alarm_settings()),
+                ]
+
+            alarm = state.next_wakeup_alarm()
+            if alarm is None:
+                rows.append(C.txt(S("wakeup_none"), tok, size=tok.fs_small, muted=True))
+            else:
+                rows.append(C.txt(
+                    S("wakeup_next").format(day=_day(alarm.day), alarm=alarm.alarm_time_label,
+                                            subject=alarm.subject,
+                                            lesson=alarm.lesson_time_label),
+                    tok, size=tok.fs_small, color=tok.accent, bold=True,
+                ))
+                rows.append(ft.Row([
+                    C.ghost_button(S("wakeup_skip_next"), tok, icon=ft.Icons.ALARM_OFF,
+                                   on_click=lambda e, d=alarm.day: _set_skipped(d, True)),
+                    C.ghost_button(S("wakeup_set_clock"), tok, icon=ft.Icons.ALARM_ADD,
+                                   on_click=lambda e, a=alarm: _open_clock(a)),
+                ], spacing=8, run_spacing=8, wrap=True))
+                if clock_app_weekday(alarm, datetime.now()) is not None:
+                    rows.append(C.hint_text(S("wakeup_clock_weekly").format(
+                        day=_day(alarm.day), time=alarm.alarm_time_label), tok))
+
+            skipped = sorted(d for d in skipped_days(state.config.data) if d >= date.today())
+            if skipped:
+                rows.append(C.txt(S("wakeup_skipped"), tok, size=tok.fs_small, muted=True))
+                rows.append(ft.Row([
+                    C.ghost_button(S("wakeup_restore_day").format(day=_day(d)), tok,
+                                   icon=ft.Icons.RESTORE,
+                                   on_click=lambda e, d=d: _set_skipped(d, False))
+                    for d in skipped
+                ], spacing=8, run_spacing=8, wrap=True))
+            return rows
+
+        live = ft.Column(_live_rows(), spacing=tok.gap, tight=True)
+
+        def _refresh_live(_value=None) -> None:
+            live.controls = _live_rows()
+            try:
+                live.update()
+            except Exception:
+                pass  # not on screen: the next render builds it fresh
+
+        return [C.form_card(
             C.txt(S("wakeup_title"), tok, bold=True),
             C.toggle(tok, S("wakeup_enable"), enabled, on_change=_toggle),
-            C.hint_text(S("wakeup_hint").format(n=minutes), tok),
             self._auto(S("wakeup_minutes"), "rule:wakeup_min", "wakeup_minutes_before",
-                       str(minutes), parse=_parse_minutes),
-        ]
-        if not enabled:
-            return [C.form_card(*rows, tok=tok)]
-
-        if not android.notifications_enabled():
-            rows += [
-                C.txt(S("wakeup_notif_off"), tok, size=tok.fs_small, color=tok.yellow),
-                ft.Row([
-                    C.primary_button(S("notif_allow"), tok, icon=ft.Icons.NOTIFICATIONS_ACTIVE,
-                                     on_click=lambda e: android.request_notification_permission()),
-                    C.ghost_button(S("notif_open_settings"), tok,
-                                   on_click=lambda e: android.open_notification_settings()),
-                ], spacing=8, run_spacing=8, wrap=True),
-            ]
-        if not android.exact_alarms_allowed():
-            rows += [
-                C.txt(S("wakeup_exact_off"), tok, size=tok.fs_small, color=tok.yellow),
-                C.ghost_button(S("wakeup_exact_allow"), tok, icon=ft.Icons.ALARM_ON,
-                               on_click=lambda e: android.open_exact_alarm_settings()),
-            ]
-
-        alarm = state.next_wakeup_alarm()
-        if alarm is None:
-            rows.append(C.txt(S("wakeup_none"), tok, size=tok.fs_small, muted=True))
-        else:
-            rows.append(C.txt(
-                S("wakeup_next").format(day=_day(alarm.day), alarm=alarm.alarm_time_label,
-                                        subject=alarm.subject, lesson=alarm.lesson_time_label),
-                tok, size=tok.fs_small, color=tok.accent, bold=True,
-            ))
-            message = f"Strakaláři · {alarm.subject}"
-            rows.append(ft.Row([
-                C.ghost_button(S("wakeup_skip_next"), tok, icon=ft.Icons.ALARM_OFF,
-                               on_click=lambda e, d=alarm.day: _set_skipped(d, True)),
-                C.ghost_button(S("wakeup_set_clock"), tok, icon=ft.Icons.ALARM_ADD,
-                               on_click=lambda e, a=alarm: android.open_system_alarm(
-                                   a.alarm_dt.hour, a.alarm_dt.minute, message)),
-            ], spacing=8, run_spacing=8, wrap=True))
-
-        skipped = sorted(d for d in skipped_days(state.config.data) if d >= date.today())
-        if skipped:
-            rows.append(C.txt(S("wakeup_skipped"), tok, size=tok.fs_small, muted=True))
-            rows.append(ft.Row([
-                C.ghost_button(S("wakeup_restore_day").format(day=_day(d)), tok,
-                               icon=ft.Icons.RESTORE,
-                               on_click=lambda e, d=d: _set_skipped(d, False))
-                for d in skipped
-            ], spacing=8, run_spacing=8, wrap=True))
-        return [C.form_card(*rows, tok=tok)]
+                       str(minutes), parse=_parse_minutes, on_saved=_refresh_live),
+            live,
+            tok=tok,
+        )]
 
     # -- background (section id "browser" kept for saved navigation) ------------
     def _browser(self) -> list:
