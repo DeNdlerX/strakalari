@@ -142,6 +142,7 @@ class PlannerMixin:
             print(f"Warning: could not persist planned skips: {exc}")
             self._emit()
             return False
+        self.sync_android_state()  # the phone's alarm skips the planned lessons
         self.tutorial_event("day_planned")
         self._emit()
         return True
@@ -212,6 +213,7 @@ class PlannerMixin:
             print(f"Warning: could not persist planned skips: {exc}")
             self._emit()
             return 0
+        self.sync_android_state()  # the phone's alarm skips the planned lessons
         self.tutorial_event("day_planned")
         self._emit()
         return len(entries)
@@ -356,6 +358,7 @@ class PlannerMixin:
             print(f"Warning: could not persist planned skips: {exc}")
             self._emit()
             return False
+        self.sync_android_state()  # the alarm rings again for unplanned lessons
         self._emit()
         return len(self.planned_skips) < before
 

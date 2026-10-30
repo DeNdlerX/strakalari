@@ -447,24 +447,39 @@ def open_exact_alarm_settings() -> None:
 
 
 def open_system_alarm(hour: int, minute: int, message: str = "Strakaláři") -> bool:
-    """Opens the phone's Clock app on a new alarm at ``hour:minute``."""
+    """Opens the phone's Clock app on a new alarm at ``hour:minute`` (else on
+    its alarm list). True when an app was opened.
+
+    The extras go in through a Bundle: ``Intent.putExtra`` has an overload
+    per number type, pyjnius can't tell which one a Python int means, and
+    the Clock app ignores an hour that doesn't arrive as an ``int``.
+    """
     ctx = context()
     if ctx is None:
         return False
     try:
         clock_class = _autoclass("android.provider.AlarmClock")
         intent_class = _autoclass("android.content.Intent")
-        intent = intent_class(clock_class.ACTION_SET_ALARM)
-        intent.putExtra(clock_class.EXTRA_HOUR, int(hour))
-        intent.putExtra(clock_class.EXTRA_MINUTES, int(minute))
-        intent.putExtra(clock_class.EXTRA_MESSAGE, str(message))
-        intent.putExtra(clock_class.EXTRA_SKIP_UI, False)
-        intent.addFlags(intent_class.FLAG_ACTIVITY_NEW_TASK)
-        ctx.startActivity(intent)
-        return True
-    except Exception as exc:  # noqa: BLE001 - e.g. no Clock app handles it
+        extras = _autoclass("android.os.Bundle")()
+        extras.putInt(clock_class.EXTRA_HOUR, int(hour))
+        extras.putInt(clock_class.EXTRA_MINUTES, int(minute))
+        extras.putString(clock_class.EXTRA_MESSAGE, str(message))
+        extras.putBoolean(clock_class.EXTRA_SKIP_UI, False)
+        actions = ((clock_class.ACTION_SET_ALARM, extras), (clock_class.ACTION_SHOW_ALARMS, None))
+    except Exception as exc:  # noqa: BLE001
         print(f"Warning: could not open the Clock app ({type(exc).__name__}: {exc})")
         return False
+    for action, action_extras in actions:
+        try:
+            intent = intent_class(action)
+            if action_extras is not None:
+                intent.putExtras(action_extras)
+            intent.addFlags(intent_class.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(intent)
+            return True
+        except Exception as exc:  # noqa: BLE001 - e.g. no Clock app handles it
+            print(f"Warning: could not open the Clock app ({type(exc).__name__}: {exc})")
+    return False
 
 
 # -- home-screen timetable widget -------------------------------------------------------------

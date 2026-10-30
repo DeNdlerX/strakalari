@@ -80,7 +80,7 @@ public class TimetableWidgetProvider extends AppWidgetProvider {
         for (int widgetId : appWidgetIds) {
             updateWidget(context, mgr, widgetId);
         }
-        mgr.notifyAppWidgetViewDataChanged(appWidgetIds, R.id.widget_list);
+        notifyLegacyList(mgr, appWidgetIds);
         scheduleTick(context);
         watchScreen(context);
     }
@@ -115,7 +115,7 @@ public class TimetableWidgetProvider extends AppWidgetProvider {
         for (int id : ids) {
             updateWidget(context, mgr, id);
         }
-        mgr.notifyAppWidgetViewDataChanged(ids, R.id.widget_list);
+        notifyLegacyList(mgr, ids);
         scheduleTick(context);
         watchScreen(context);
     }
@@ -173,14 +173,15 @@ public class TimetableWidgetProvider extends AppWidgetProvider {
             ed.putString("pick_day_" + widgetId, day != null ? day.optString("iso") : "")
                     .putString("pick_on_" + widgetId, isoDay(0));
         }
-        ed.commit(); // the list's factory reads it right below
+        ed.commit(); // the rows are built from it right below
         AppWidgetManager mgr = AppWidgetManager.getInstance(context);
         if (mgr != null) {
             updateWidget(context, mgr, widgetId);
-            mgr.notifyAppWidgetViewDataChanged(widgetId, R.id.widget_list);
+            notifyLegacyList(mgr, new int[] {widgetId});
         }
     }
 
+    @SuppressWarnings("deprecation") // setRemoteAdapter(int, Intent): before Android 12 only
     static void updateWidget(Context context, AppWidgetManager mgr, int widgetId) {
         SharedPreferences prefs = prefs(context);
         JSONObject payload = parsePayload(prefs);
@@ -189,9 +190,10 @@ public class TimetableWidgetProvider extends AppWidgetProvider {
         String title = "Strakaláři";
         String subtitle = "";
         String empty = context.getString(R.string.strakalari_widget_no_data);
+        JSONObject day = null;
         if (payload != null) {
             empty = payload.optString("empty", empty);
-            JSONObject day = shownDay(prefs, payload, widgetId);
+            day = shownDay(prefs, payload, widgetId);
             if (day != null) {
                 title = dayTitle(payload, day);
                 subtitle = day.optString("subtitle", "");
@@ -215,14 +217,32 @@ public class TimetableWidgetProvider extends AppWidgetProvider {
             views.setPendingIntentTemplate(R.id.widget_list, openApp);
         }
 
-        Intent svc = new Intent(context, TimetableWidgetService.class);
-        svc.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId);
-        // A distinct data URI per widget: otherwise every widget shares one list factory.
-        svc.setData(Uri.parse(svc.toUri(Intent.URI_INTENT_SCHEME)));
-        views.setRemoteAdapter(R.id.widget_list, svc);
+        if (Build.VERSION.SDK_INT >= 31) {
+            // The rows travel with the title: one update, nothing to re-send.
+            views.setRemoteAdapter(R.id.widget_list, TimetableWidgetService.items(context, day));
+        } else {
+            Intent svc = new Intent(context, TimetableWidgetService.class);
+            svc.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId);
+            // A distinct data URI per widget: otherwise every widget shares one list factory.
+            svc.setData(Uri.parse(svc.toUri(Intent.URI_INTENT_SCHEME)));
+            views.setRemoteAdapter(R.id.widget_list, svc);
+        }
         views.setEmptyView(R.id.widget_list, R.id.widget_empty);
 
         mgr.updateAppWidget(widgetId, views);
+    }
+
+    /**
+     * Before Android 12 the list comes from {@link TimetableWidgetService} and
+     * must be told to reload. Never on 12+: there the rows are already in the
+     * update, and Android 15+ answers this call by re-sending the widget's
+     * stored views, which put the previous day's title back.
+     */
+    @SuppressWarnings("deprecation")
+    private static void notifyLegacyList(AppWidgetManager mgr, int[] ids) {
+        if (Build.VERSION.SDK_INT < 31) {
+            mgr.notifyAppWidgetViewDataChanged(ids, R.id.widget_list);
+        }
     }
 
     static SharedPreferences prefs(Context ctx) {

@@ -1391,6 +1391,16 @@ def main(page: ft.Page) -> None:
                 runner.stop()
 
         page.on_close = _on_close
+
+        def _on_lifecycle(e) -> None:
+            # Back from the system's settings (notifications, exact alarms)
+            # or after a while away: repaint what those change, and hand the
+            # phone today's widget data.
+            if getattr(e, "state", None) == ft.AppLifecycleState.RESUME:
+                state.sync_android_state()
+                state._emit()
+
+        page.on_app_lifecycle_state_change = _on_lifecycle
         shell.enable_back_navigation()
         if runner is not None:
             _setup_phone_background(state, runner)

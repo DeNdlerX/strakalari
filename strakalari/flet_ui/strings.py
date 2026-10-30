@@ -110,6 +110,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "cs": "Otevřít v Budíku telefonu",
         "en": "Open in phone Clock",
     },
+    "wakeup_clock_failed": {
+        "cs": "Aplikaci Budík se nepodařilo otevřít.",
+        "en": "Couldn't open the Clock app.",
+    },
     "wakeup_badge": {"cs": "Budík {time}", "en": "Alarm {time}"},
     "wakeup_unavailable": {
         "cs": "Budík teď nejde nastavit — zavřete aplikaci a otevřete ji znovu.",
