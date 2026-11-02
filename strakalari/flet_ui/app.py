@@ -1499,7 +1499,8 @@ def run_mobile() -> None:
     No argparse, single-instance ports, orphan sweep or tray: the OS runs
     one copy of the app and owns its lifecycle (no subprocesses on iOS).
     TLS needs nothing here: Flet's launcher points SSL_CERT_FILE at
-    certifi before this module runs.
+    certifi before this module runs (a temp copy Android may purge; every
+    HTTPS client restores it first, see core/tls.py).
     """
     from strakalari.core import android
 

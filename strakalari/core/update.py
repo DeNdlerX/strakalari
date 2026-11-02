@@ -174,6 +174,9 @@ def pick_release(releases: list, channel: str = CHANNEL_STABLE) -> dict | None:
 def fetch_releases(timeout: float = 30.0) -> list | None:
     """Raw release list from GitHub (newest first). None on any failure."""
     try:
+        from strakalari.core.tls import ensure_ca_bundle
+
+        ensure_ca_bundle()
         request = urllib.request.Request(
             API_URL,
             headers={

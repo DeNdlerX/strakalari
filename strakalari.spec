@@ -111,9 +111,10 @@ base_binaries = []
 base_hiddenimports = [
     'cryptography',
     'plyer',
-    # Explicit: nothing in app code imports certifi directly (httpx and
-    # stdlib urllib load it), so without this PyInstaller would not bundle
-    # its CA store and every frozen HTTPS call would fail verification.
+    # Explicit: app code reaches certifi only through httpx, stdlib urllib
+    # and a function-level import in core/tls.py; without this PyInstaller
+    # might not bundle its CA store and every frozen HTTPS call would fail
+    # verification.
     'certifi',
 ]
 
