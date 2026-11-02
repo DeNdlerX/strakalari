@@ -59,8 +59,11 @@ class LunchView:
             return C.badge(S("no_lunch"), tok, kind="warning")
         if not ordered:
             return None
-        if state.web_orders.get(day) == ordered:
-            return C.badge(S("web_ordered"), tok, kind="sent")
+        if not state.lunch_is_change(day):
+            # The pick is what Strava reported: nothing to send.
+            if state.web_orders.get(day):
+                return C.badge(S("web_ordered"), tok, kind="sent")
+            return None  # "No lunch" and nothing ordered on the web
         try:
             if not state.is_lunch_order_open(day):
                 # Past the previous-business-day cutoff Send skips this day,
@@ -493,7 +496,7 @@ class LunchView:
         staged = set(getattr(state, "pending_orders", None) or set())
         pending = sum(
             1 for day, mid in state.orders.items()
-            if mid and day in staged and state.web_orders.get(day) != mid and _open(day)
+            if mid and day in staged and state.lunch_is_change(day) and _open(day)
         )
         # Planner-cancelled days without a staged pick still queue a deorder
         # at send time (menu unknown when planned) — count them so Send
