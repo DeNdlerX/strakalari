@@ -636,6 +636,11 @@ class AppState(ExcuseTasksMixin, LunchMixin, MarksMixin, PlannerMixin, ActivityM
                     self.orders.pop(day_label, None)
             # The web truth is whatever the cache reports.
             self.web_orders = {str(k): str(v) for k, v in cached_orders.items() if v}
+            # A staged pick the web now reports as ordered is no change any
+            # more: unstage it, so a later website change wins on refresh.
+            # Planner-cancelled days keep theirs (submit derives the cancel).
+            self.pending_orders = {d for d in self.pending_orders
+                                   if d in self.cancelled_lunches or self.lunch_is_change(d)}
         self.sync_android_state()
         self._emit()
 

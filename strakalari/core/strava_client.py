@@ -183,6 +183,10 @@ class StravaClient(OrderingMixin):
         if self._http is None:
             import httpx
 
+            from .tls import ensure_ca_bundle
+
+            if self._transport is None:
+                ensure_ca_bundle(self.log)
             timeout_s = self._seconds("page_load_timeout_s", 60.0)
             self._http = httpx.Client(
                 base_url=api_root(self.strava_url),

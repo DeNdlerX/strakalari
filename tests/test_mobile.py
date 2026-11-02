@@ -1,6 +1,12 @@
 """The phone app: platform layer, narrow layout, Back button, build tool."""
 import importlib.util
+import io
+import marshal
+import os
+import re
+import subprocess
 import sys
+import tomllib
 import zipfile
 from pathlib import Path
 
@@ -484,6 +490,9 @@ class TestMakeMobile:
         assert '__version__ = "1.2.3"' in init
         pyproject = (stage / "pyproject.toml").read_text(encoding="utf-8")
         assert 'bundle_id = "io.github.dendlerx.strakalari"' in pyproject
+        # pip's direct_url.json of the local extension wheel names this machine's folders.
+        flet_android = tomllib.loads(pyproject)["tool"]["flet"]["android"]
+        assert flet_android["cleanup"]["package_files"] == ["**/direct_url.json"]
         assert 'allowBackup = "false"' in pyproject  # secret.key stays off cloud backups
         assert not list(stage.rglob("__pycache__"))
         assert not [p for p in stage.rglob("*") if mm.PERSONAL.search(str(p.relative_to(stage)))]
@@ -547,6 +556,78 @@ class TestMakeMobile:
             zf.write(inner, "assets/app.zip")
         with pytest.raises(SystemExit):
             mm.check_package(str(apk))
+
+
+    @staticmethod
+    def _compile(tree, pythonpath=None):
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+        if pythonpath:
+            env["PYTHONPATH"] = pythonpath
+        (tree / "pkg" / "mod.pyc").unlink(missing_ok=True)
+        subprocess.run([sys.executable, "-m", "compileall", "-b", "-q", str(tree)],
+                       env=env, check=True)
+        raw = (tree / "pkg" / "mod.pyc").read_bytes()
+        code = marshal.loads(raw[16:])
+        inner = next(c for c in code.co_consts if hasattr(c, "co_filename"))
+        return raw, code.co_filename, inner.co_filename
+
+    def test_pyc_shim_compiles_relative_paths(self, tmp_path):
+        """flet build compiles with absolute paths: every .pyc (and every
+        traceback on the phone) named C:\\Users\\<name>\\... of the build PC."""
+        mm = _make_mobile()
+        tree = tmp_path / "Users" / "someone" / "serious_python_temp1" / "app"
+        (tree / "pkg").mkdir(parents=True)
+        (tree / "pkg" / "mod.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+        _, plain, _ = self._compile(tree)
+        assert plain == str(tree / "pkg" / "mod.py")  # the leak, without the shim
+        shim = tmp_path / "shim"
+        shim.mkdir()
+        raw, outer, inner = self._compile(tree, mm.write_pyc_shim(str(shim), "elsewhere"))
+        assert outer == inner == "pkg/mod.py"
+        assert b"someone" not in raw and str(tmp_path).encode() not in raw
+
+    def test_pyc_shim_keeps_other_pythonpath(self, tmp_path):
+        mm = _make_mobile()
+        value = mm.write_pyc_shim(str(tmp_path), "keep")
+        assert value.split(os.pathsep) == [str(tmp_path), "keep"]
+        assert mm.write_pyc_shim(str(tmp_path)) == str(tmp_path)
+
+    def test_path_markers_spell_every_separator(self, monkeypatch, tmp_path):
+        mm = _make_mobile()
+        monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+        home = tmp_path / "Users" / "Someone"
+        markers = mm.build_path_markers([str(home)])
+        parts = [p for p in re.split(r"[\\/]+", str(home)) if p]
+        for sep in ("\\", "/", "\\\\"):
+            assert sep.join(parts).lower().encode() in markers
+        assert mm.build_path_markers([os.path.abspath(os.sep)]) == []  # a bare root never
+        monkeypatch.setenv("GITHUB_ACTIONS", "true")
+        assert mm.build_path_markers([str(home)]) == []
+
+    def test_package_check_finds_build_machine_path(self, monkeypatch, tmp_path):
+        mm = _make_mobile()
+        monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+        home = tmp_path / "Users" / "Someone"
+        markers = mm.build_path_markers([str(home)])
+        leaked_pyc = b"\xe3" + str(home / "build" / "httpx" / "_client.py").upper().encode()
+        leaked_url = ('{"url": "file:///' + str(home).replace("\\", "/")
+                      + '/strakalari_android.whl"}').encode()
+        for leak_name, leak in (("httpx/_client.pyc", leaked_pyc),
+                                ("x.dist-info/direct_url.json", leaked_url)):
+            site = io.BytesIO()
+            with zipfile.ZipFile(site, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr("httpx/__init__.pyc", b"\xe3clean")
+                zf.writestr(leak_name, leak)
+            apk = tmp_path / "app.apk"
+            with zipfile.ZipFile(apk, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr("lib/arm64-v8a/libpythonsitepackages.so", site.getvalue())
+            with pytest.raises(SystemExit) as exc:
+                mm.check_package(str(apk), markers)
+            assert f"libpythonsitepackages.so!{leak_name}" in str(exc.value)
+        clean = tmp_path / "clean.apk"
+        with zipfile.ZipFile(clean, "w") as zf:
+            zf.writestr("assets/app.zip", b"strakalari/core/refresh.pyc")
+        mm.check_package(str(clean), markers)
 
 
 # -- Android: the Clock app shortcut ------------------------------------------------------------

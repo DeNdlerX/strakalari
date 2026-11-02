@@ -78,9 +78,43 @@ class LunchMixin:
     def pending_lunch_count(self) -> int:
         """Unsubmitted lunch changes (the badge number on Obědy)."""
         try:
-            return len(set(getattr(self, "pending_orders", None) or set()))
+            pending = set(getattr(self, "pending_orders", None) or set())
+            return sum(1 for day in pending if self.lunch_is_change(day))
         except Exception:
             return 0
+
+    @staticmethod
+    def _real_meal(meal_id) -> str:
+        """``meal_id``, or "" for no lunch (nothing ordered, or the day's
+        "no lunch" ``&-1&`` id: both mean no meal on the web)."""
+        mid = str(meal_id or "")
+        return "" if "&-1&" in mid else mid
+
+    def lunch_is_change(self, day: str) -> bool:
+        """True when the local pick for ``day`` differs from what Strava
+        reported at the last fetch.
+
+        Picking the meal that is already ordered, or "No lunch" on a day
+        with nothing ordered, is no change. A day without a local pick
+        shows the web order, so it is no change either.
+        """
+        day = str(day)
+        orders = getattr(self, "orders", None) or {}
+        if day not in orders:
+            return False
+        web = getattr(self, "web_orders", None) or {}
+        return self._real_meal(orders.get(day)) != self._real_meal(web.get(day))
+
+    def _stage_pick(self, day: str, meal_id: str) -> bool:
+        """Sets the local pick for ``day``; it is pending (to send) only
+        while it differs from the web order. True when it is a change."""
+        day = str(day)
+        self.orders[day] = str(meal_id)
+        if self.lunch_is_change(day):
+            self.pending_orders.add(day)
+            return True
+        self.pending_orders.discard(day)
+        return False
 
     def order_lunch(self, day: str, meal_id: str) -> bool:
         """Records a lunch choice locally (clears any planned skip).
@@ -103,8 +137,7 @@ class LunchMixin:
             # Fail-closed: an uncheckable cutoff must not stage a pick
             # Strava would reject.
             return False
-        self.orders[str(day)] = str(meal_id)
-        self.pending_orders.add(str(day))
+        self._stage_pick(str(day), str(meal_id))
         self.cancelled_lunches.discard(str(day))
         self.tutorial_event("lunch_picked")
         self._emit()
@@ -134,10 +167,10 @@ class LunchMixin:
         try:
             # Only what the user changed here: re-sending every known order
             # would revert changes made on the Strava website since the
-            # last refresh.
+            # last refresh. A pick equal to the fetched order is no change.
             pending = set(getattr(self, "pending_orders", None) or set())
             payload = {str(day): str(mid) for day, mid in self.orders.items()
-                       if mid and str(day) in pending}
+                       if mid and str(day) in pending and self.lunch_is_change(str(day))}
             food = self.food()
             for day in self.cancelled_lunches:
                 if day in payload:
@@ -386,10 +419,9 @@ class LunchMixin:
                         continue
                     # Batch the writes (no per-day _emit storm resetting
                     # scroll and half-typed inputs); one emit does it all.
-                    self.orders[str(day)] = str(mid)
-                    self.pending_orders.add(str(day))
                     self.cancelled_lunches.discard(str(day))
-                    staged += 1
+                    if self._stage_pick(str(day), str(mid)):
+                        staged += 1  # the already-ordered meal is no change
                 if staged:
                     msg = S("to_send") + f" ({staged})"
                     if skipped:
@@ -482,8 +514,7 @@ class LunchMixin:
         for day, mid in (picks or {}).items():
             current = self.orders.get(str(day))
             if current is None or str(current) in hidden:
-                self.orders[str(day)] = str(mid)
-                self.pending_orders.add(str(day))
+                self._stage_pick(str(day), str(mid))
         self._emit()
 
     def _blacklist_path(self) -> str:

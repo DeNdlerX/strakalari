@@ -16,6 +16,7 @@ import httpx
 from .cancel import raise_if_cancelled
 from .error_report import UserError, timeout_user_message
 from .i18n import t
+from .tls import ensure_ca_bundle
 
 
 def app_root(url: str) -> str:
@@ -273,6 +274,8 @@ class BakalariSession:
         headers = {"Accept-Language": "cs,en;q=0.8"}
         if user_agent:
             headers["User-Agent"] = user_agent
+        if transport is None:
+            ensure_ca_bundle(self.log)
         self._client = httpx.Client(
             follow_redirects=True,
             timeout=httpx.Timeout(timeout_s, connect=min(timeout_s, 20.0)),

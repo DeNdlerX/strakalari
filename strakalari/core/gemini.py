@@ -13,6 +13,7 @@ import urllib.request
 from typing import Dict, Tuple
 
 from .i18n import t
+from .tls import ensure_ca_bundle
 
 
 def build_menu_block(food_data: dict) -> str:
@@ -180,6 +181,7 @@ def recommend_lunches(
     last_err: Exception | None = None
     for attempt in range(retries + 1):
         try:
+            ensure_ca_bundle()
             req = urllib.request.Request(url, data=payload, headers=headers)
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
@@ -221,6 +223,7 @@ def test_api_key(
     model_name = (model or "gemini-3.8-flash").strip() or "gemini-3.8-flash"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}"
     try:
+        ensure_ca_bundle()
         req = urllib.request.Request(
             url, headers={"Accept": "application/json", "x-goog-api-key": key})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
