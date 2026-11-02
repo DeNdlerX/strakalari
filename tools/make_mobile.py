@@ -14,7 +14,9 @@ data_cache.json, log.txt and other personal files, and ``flet build``
 packages the whole app folder. Only ``main.py``, ``strakalari/`` and the
 launcher icon are copied into ``build/mobile/``, which gets its own
 pyproject.toml (mobile dependency pins, bundle id). After the build, the
-APK/AAB is opened and the build fails if a personal file name is inside.
+APK/AAB is opened and the build fails if a personal file name, or a
+path of this machine (home or repo folder), is inside. The compile
+steps record relative source paths (see PYC_SITECUSTOMIZE).
 
 The ``build/`` cache in the staging dir (Flutter project, downloaded
 packages) is kept between runs; ``--clean`` drops it. Extra arguments
@@ -32,6 +34,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -117,6 +120,11 @@ dependencies = [
 [tool.flet.dev_packages]
 strakalari-android = "{extension_wheel}"
 
+[tool.flet.android.cleanup]
+# pip notes where each package came from; for the local extension wheel
+# that is a file:///C:/Users/<name>/... URL of the build machine.
+package_files = ["**/direct_url.json"]
+
 [tool.flet.android.manifest_application]
 # No OS keyring on a phone: the password key (secret.key) sits next to
 # the encrypted passwords, so neither may go to Google's cloud backup.
@@ -134,6 +142,46 @@ shared_preferences_android = "2.4.28"
 color = "#FFFFFF"
 dark_color = "#121212"
 """
+
+
+#: Imported through PYTHONPATH by the ``python -m compileall`` runs inside
+#: ``flet build``. serious_python compiles the app and site-packages from
+#: absolute paths, so every .pyc (and with it every traceback on the phone,
+#: error reports included) named the build machine's folders:
+#: ``C:\Users\<name>\AppData\Local\Temp\serious_python_temp…\strakalari\…``.
+#: This records each file relative to the folder being compiled instead
+#: (``strakalari/core/refresh.py``, ``httpx/_client.py``). The pip run
+#: sets its own PYTHONPATH, so this never reaches it.
+PYC_SITECUSTOMIZE = '''\
+"""Written by tools/make_mobile.py: relative source paths in compiled .pyc files."""
+import os
+import sys
+
+import py_compile
+
+_compile = py_compile.compile
+
+
+def _relative(file):
+    """``file`` relative to the folder compileall was given, else None."""
+    if not os.path.basename(sys.argv[0] if sys.argv else "").startswith("compileall"):
+        return None
+    full = os.path.abspath(file)
+    for arg in sys.argv[1:]:
+        root = os.path.abspath(arg)
+        if os.path.isdir(root) and full.startswith(os.path.join(root, "")):
+            return os.path.relpath(full, root).replace(os.sep, "/")
+    return None
+
+
+def compile(file, cfile=None, dfile=None, *args, **kwargs):
+    if dfile is None:
+        dfile = _relative(file)
+    return _compile(file, cfile, dfile, *args, **kwargs)
+
+
+py_compile.compile = compile
+'''
 
 
 def read_version() -> str:
@@ -320,20 +368,74 @@ def signing_env(path: str | None = None) -> dict[str, str] | None:
     }
 
 
-def check_package(path: str) -> None:
-    """Fails when a personal file name made it into the APK/AAB."""
-    with zipfile.ZipFile(path) as zf:
-        names = zf.namelist()
-        leaked = [n for n in names if PERSONAL.search(n)]
-        # The Python app itself ships as a nested zip asset.
-        for inner in (n for n in names if n.endswith(".zip")):
+def write_pyc_shim(directory: str, pythonpath: str | None = None) -> str:
+    """Writes :data:`PYC_SITECUSTOMIZE` into ``directory``; returns the
+    PYTHONPATH that loads it (ahead of an existing ``pythonpath``)."""
+    with open(os.path.join(directory, "sitecustomize.py"), "w", encoding="utf-8") as f:
+        f.write(PYC_SITECUSTOMIZE)
+    return os.pathsep.join(p for p in (directory, pythonpath) if p)
+
+
+def build_path_markers(roots: list[str] | None = None) -> list[bytes]:
+    """This machine's home and repo folders (or ``roots``), spelled the ways
+    they could sit inside a package (``\\``, ``/``, JSON-escaped), lowercased.
+
+    Empty on CI: a runner's /home/runner/... is nobody's private folder,
+    and Flet's prebuilt Python (built on a runner) carries such paths.
+    """
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        return []
+    markers = set()
+    for root in roots or (os.path.expanduser("~"), REPO_ROOT):
+        parts = [p for p in re.split(r"[\\/]+", os.path.abspath(root)) if p]
+        if len(parts) < 2:
+            continue  # "/root" or "C:\\" alone would match far too much
+        for sep in ("\\", "/", "\\\\"):
+            markers.add(sep.join(parts).lower().encode("utf-8"))
+    return sorted(markers)
+
+
+def _package_entries(zf: zipfile.ZipFile, prefix: str = "", depth: int = 0):
+    """``(name, inner name, bytes or None)`` for every entry of ``zf``,
+    entries of nested zips included (the Python app and site-packages ship
+    as zips, some named ``*.so``). Bytes are None for directories and for
+    the nested zips themselves (their entries are listed instead)."""
+    for info in zf.infolist():
+        name = prefix + info.filename
+        if info.is_dir():
+            yield name, info.filename, None
+            continue
+        data = zf.read(info)
+        if depth < 4 and data[:4] == b"PK\x03\x04":
             try:
-                with zipfile.ZipFile(io.BytesIO(zf.read(inner))) as nested:
-                    leaked += [f"{inner}!{n}" for n in nested.namelist() if PERSONAL.search(n)]
+                with zipfile.ZipFile(io.BytesIO(data)) as nested:
+                    yield name, info.filename, None
+                    yield from _package_entries(nested, name + "!", depth + 1)
+                    continue
             except zipfile.BadZipFile:
-                continue
+                pass
+        yield name, info.filename, data
+
+
+def check_package(path: str, markers: list[bytes] | None = None) -> None:
+    """Fails when a personal file, or a path of this machine (the home or
+    repo folder, e.g. ``C:\\Users\\<name>\\...``), made it into the APK/AAB."""
+    markers = build_path_markers() if markers is None else markers
+    leaked, paths = [], []
+    with zipfile.ZipFile(path) as zf:
+        for name, inner, data in _package_entries(zf):
+            if PERSONAL.search(inner):
+                leaked.append(name)
+            if data and markers:
+                low = data.lower()
+                if any(m in low for m in markers):
+                    paths.append(name)
     if leaked:
         raise SystemExit(f"{path} contains personal files: {leaked}")
+    if paths:
+        shown = ", ".join(paths[:15]) + (f" (+{len(paths) - 15} more)" if len(paths) > 15 else "")
+        raise SystemExit(f"{path} contains paths of this machine "
+                         f"({os.path.expanduser('~')} or {REPO_ROOT}) in: {shown}")
 
 
 def main() -> int:
@@ -388,7 +490,9 @@ def main() -> int:
         *extra,
     ]
     print("+ " + " ".join(cmd), flush=True)
-    rc = subprocess.call(cmd, cwd=STAGE, env=env)
+    with tempfile.TemporaryDirectory(prefix="strakalari-pyc-") as shim:
+        env["PYTHONPATH"] = write_pyc_shim(shim, env.get("PYTHONPATH"))
+        rc = subprocess.call(cmd, cwd=STAGE, env=env)
     if rc != 0:
         return rc
     packages = [os.path.join(dp, f) for dp, _, fs in os.walk(out)
@@ -396,7 +500,7 @@ def main() -> int:
     for path in packages:
         check_package(path)
         print(f"ok: {os.path.relpath(path, REPO_ROOT)} "
-              f"({os.path.getsize(path) / (1024 * 1024):.1f} MB, no personal files)")
+              f"({os.path.getsize(path) / (1024 * 1024):.1f} MB, no personal files or paths)")
     return 0
 
 

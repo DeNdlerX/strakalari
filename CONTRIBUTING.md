@@ -146,7 +146,7 @@ After building, smoke-test the actual artifact (launch, wizard, one refresh) bef
 
 ### Phone app (Android; iOS later)
 
-The phone app is the same code built with `flet build`. `tools/make_mobile.py` copies only `main.py`, `strakalari/` and the launcher icon into `build/mobile/` (never the repo root, which holds your real `config.json` and data), writes the mobile `pyproject.toml` there (bundle id `io.github.dendlerx.strakalari`, mobile dependency pins), builds, and fails if a personal file name ends up in the APK:
+The phone app is the same code built with `flet build`. `tools/make_mobile.py` copies only `main.py`, `strakalari/` and the launcher icon into `build/mobile/` (never the repo root, which holds your real `config.json` and data), writes the mobile `pyproject.toml` there (bundle id `io.github.dendlerx.strakalari`, mobile dependency pins), builds, and fails if a personal file name or a path of the build machine (your home or repo folder, e.g. `C:\Users\<name>\…`) ends up in the APK; compiled `.pyc` files record relative paths, so phone tracebacks show `strakalari/core/refresh.py`, not your folders:
 
 ```bash
 python tools/make_mobile.py apk -- --arch arm64-v8a
