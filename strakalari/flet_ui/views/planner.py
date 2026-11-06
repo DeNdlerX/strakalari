@@ -11,21 +11,30 @@ planned.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
 import flet as ft
 
 from strakalari.core.helpers import template_name, template_text
-from strakalari.core.models import Lesson, is_class_event, parse_cz_date
-from strakalari.core.planned_skips import entry_end_iso, entry_start_iso, normalize_planned_entry
-from strakalari.core.schedule import future_lessons
+from strakalari.core.models import Lesson, is_class_event
+from strakalari.core.planned_skips import (
+    cancels_lunch,
+    entries_for_selection,
+    entry_covers,
+    entry_end_iso,
+    entry_start_iso,
+    normalize_planned_entry,
+)
+from strakalari.core.schedule import classify_lesson, future_lessons, stable_template_week
 
 from .. import components as C
 from .. import tutorial as T
 from ..overlays import close_dialog, show_dialog, snack
 from ..state import AppState
 from ..strings import S
-from ..theme import border_all, radius_all, tint
+from ..theme import border_all, pad_all, pad_sym, radius_all, tint
+from .timetable import _change_tag
 
 
 def _templates(state: AppState, kind: str | None = None) -> list[str]:
@@ -284,8 +293,20 @@ def _plan_dialog(state: AppState, page: ft.Page, day_iso: str, day_label: str) -
         except Exception:
             pass
 
+    def _choose_lessons(e):
+        close_dialog(page, dlg)
+        try:
+            day = date.fromisoformat(str(day_iso or ""))
+        except ValueError:
+            day = None
+        _custom_plan_dialog(state, page, datetime.now(), preselect=day)
+
     content_rows: list = [choice, preview]
     content_rows.extend(lunch_rows)
+    content_rows.append(ft.Container(
+        ft.TextButton(S("pick_choose_lessons"), icon=ft.Icons.CHECKLIST,
+                      on_click=_choose_lessons),
+        alignment=ft.Alignment(-1, 0)))
     impact = _impact_controls(state, _state_impact(state, day_iso, day_iso))
     if impact:
         content_rows.append(C.divider(tok))
@@ -316,25 +337,6 @@ def _any_day_open(state: AppState, start: date, end: date) -> bool:
             pass
         cursor += timedelta(days=1)
     return False
-
-
-def _max_period(state: AppState) -> int:
-    """Highest period number seen in the timetable (min 8 for free input)."""
-    top = 0
-    try:
-        for lessons in state.timetable().values():
-            for raw in lessons or []:
-                if not isinstance(raw, dict):
-                    continue
-                try:
-                    period = Lesson.from_legacy(raw).period
-                except Exception:
-                    period = None
-                if isinstance(period, int) and period > top:
-                    top = period
-    except Exception:
-        pass
-    return max(8, top)
 
 
 def _period_label(start_period: int | None, end_period: int | None) -> str:
@@ -372,88 +374,546 @@ def _entry_label(entry: dict) -> str:
     return f"{base} · {_period_label(start_p, end_p)}"
 
 
-def _custom_plan_dialog(state: AppState, page: ft.Page, now: datetime) -> None:
-    tok = state.tok
-    named = _template_options(state, kind="day")
-    options = [text for _name, text in named]
-    picked = {"template": 0, "from": "whole", "to": "whole"}
-    default_start = (now.date() + timedelta(days=1)).strftime("%d.%m.%Y")
+# -- custom days off: calendar + lesson picker --------------------------------
+
+#: Height of one day in the picker calendar (finger-sized on a phone).
+_PICK_CELL_H = 44
+
+
+@dataclass
+class _Slot:
+    """One lesson number of a day in the lesson picker."""
+
+    period: int | None
+    subject: str
+    detail: str = ""  # "8:55 – 9:40 · Nováková · P12"
+    tag: str = ""  # change or state, shown in front of the detail
+    tag_color: str | None = None
+    taught: bool = True  # takes place: cancelled lessons and class events don't
+    cancelled: bool = False
+    changed: bool = False
+    past: bool = False  # today's lesson that already started
+    planned: bool = False  # covered by an already planned entry
+
+    @property
+    def pickable(self) -> bool:
+        return self.taught and self.period is not None and not self.past and not self.planned
+
+
+@dataclass
+class _PickDay:
+    day: date
+    slots: list[_Slot] = field(default_factory=list)
+    source: str = ""  # week (fetched, changes included) | stable | guess | ""
+    free: str = ""  # day-off label; "" on a school day
+
+    @property
+    def pickable(self) -> list[int]:
+        return [s.period for s in self.slots if s.pickable and s.period is not None]
+
+    @property
+    def taught(self) -> list[int]:
+        """Every numbered lesson that takes place — these split a selection."""
+        return [s.period for s in self.slots if s.taught and s.period is not None]
+
+    @property
+    def has_change(self) -> bool:
+        return any(s.changed for s in self.slots)
+
+    @property
+    def planned(self) -> bool:
+        return any(s.planned for s in self.slots)
+
+
+@dataclass
+class _PickContext:
+    now: datetime
+    first_day: date
+    last_day: date
+    timetable: dict = field(default_factory=dict)
+    baseline: dict = field(default_factory=dict)
+    complete: bool = False
+    holidays: set = field(default_factory=set)
+    labels: dict = field(default_factory=dict)
+    planned: list = field(default_factory=list)
+    plan: object = None
+
+
+def _pick_context(state: AppState, now: datetime) -> _PickContext:
+    """Everything the picker reads, fetched once per dialog."""
     try:
-        _states, _days = state.subject_states()
-        plannable = _plannable_days(state, sorted(_days), now)
-        if plannable:
-            default_start = plannable[0].strftime("%d.%m.%Y")
+        plan = state.year_plan(now)
     except Exception:
-        pass
-    start_field = ft.TextField(label=S("cal_from"), value=default_start,
-                               hint_text=S("date_hint"))
-    end_field = ft.TextField(label=S("cal_to"), value=default_start,
-                             hint_text=S("date_hint"))
-    preview = ft.Text(options[0], size=tok.fs_small, color=tok.muted,
-                      selectable=True)
-    summary = C.txt("", tok, size=tok.fs_small, muted=True)
-    error = C.txt("", tok, size=tok.fs_small, color=tok.red)
-    max_p = _max_period(state)
-    lesson_opts = [("whole", S("whole_day"))] + [(str(i), str(i)) for i in range(0, max_p + 1)]
-
-    def _selection() -> tuple[date | None, date | None, int | None, int | None]:
-        start = parse_cz_date((start_field.value or "").strip())
-        end = parse_cz_date((end_field.value or "").strip())
+        plan = None
+    holidays = set(getattr(plan, "holidays", None) or ())
+    labels = dict(getattr(plan, "free_labels", None) or {})
+    if plan is None:
         try:
-            start_p = None if picked["from"] == "whole" else int(picked["from"])
-        except (TypeError, ValueError):
-            start_p = None
-        try:
-            end_p = None if picked["to"] == "whole" else int(picked["to"])
-        except (TypeError, ValueError):
-            end_p = None
-        return start, end, start_p, end_p
-
-    def _refresh_summary() -> None:
-        start, end, start_p, end_p = _selection()
-        if start is None or end is None:
-            summary.value = S("plan_custom_hint")
-        else:
-            summary.value = (f"{start.strftime('%d.%m.%Y')} – "
-                             f"{end.strftime('%d.%m.%Y')} · "
-                             f"{_period_label(start_p, end_p)}")
-        try:
-            page.update()
+            dates, labels, _info = state.calendar_data()
+            holidays = set(dates)
         except Exception:
             pass
-
-    def _on_select(key: str):
-        def _handle(e):
-            picked[key] = str(_dropdown_value(e)
-                              or ("0" if key == "template" else "whole"))
-            if key == "template":
-                try:
-                    preview.value = options[max(0, min(len(options) - 1, int(picked["template"])))]
-                except (TypeError, ValueError):
-                    preview.value = options[0]
-            _refresh_summary()
-        return _handle
-
-    from_dd = C.dropdown(tok, S("custom_from_lesson"), lesson_opts, "whole",
-                         on_change=_on_select("from"))
-    to_dd = C.dropdown(tok, S("custom_to_lesson"), lesson_opts, "whole",
-                       on_change=_on_select("to"))
-    choice = C.dropdown(
-        tok, S("choose_template"),
-        _template_labels(named),
-        "0",
-        on_change=_on_select("template"),
+    try:
+        first_day = state.first_plannable_day(now)
+    except Exception:
+        first_day = now.date()
+    # The school year's last day (planning past it means nothing).
+    year = now.year if now.month >= 7 else now.year - 1
+    try:
+        timetable = state.timetable() or {}
+    except Exception:
+        timetable = {}
+    try:
+        baseline = state.stable_baseline() or {}
+    except Exception:
+        baseline = {}
+    try:
+        complete = bool(state.stable_complete())
+    except Exception:
+        complete = False
+    return _PickContext(
+        now=now, first_day=first_day, last_day=date(year + 1, 6, 30),
+        timetable=timetable, baseline=baseline, complete=complete,
+        holidays=holidays, labels=labels,
+        planned=list(getattr(state, "planned_skips", None) or []), plan=plan,
     )
-    start_field.on_change = lambda e: _refresh_summary()
-    end_field.on_change = lambda e: _refresh_summary()
+
+
+def _pick_rows(ctx: _PickContext, day: date) -> tuple[list[dict], str]:
+    """The day's lesson rows and where they come from (``_PickDay.source``).
+
+    Same priority as the planner's budget (``LessonSource``): the fetched
+    week with its changes, then the stable timetable, then a guess.
+    """
+    key = day.strftime("%d.%m.%Y")
+    if key in ctx.timetable:
+        return [r for r in ctx.timetable.get(key) or [] if isinstance(r, dict)], "week"
+    if ctx.baseline:
+        try:
+            return list(stable_template_week(ctx.baseline, day).get(day, [])), "stable"
+        except Exception:
+            return [], "stable"
+    source = getattr(ctx.plan, "source", None)
+    try:
+        lessons = (source.lessons(day) if source is not None else None) or []
+    except Exception:
+        lessons = []
+    rows = [{"subject": l.subject, "period": l.period, "time": l.time,
+             "teacher": l.teacher, "room": l.room} for l in lessons]
+    return rows, "guess" if rows else ""
+
+
+def _pick_day(state: AppState, ctx: _PickContext, day: date) -> _PickDay:
+    """One day of the picker: its lessons per period, changes marked."""
+    tok = state.tok
+    info = _PickDay(day=day)
+    if day.weekday() >= 5:
+        return info
+    if day in ctx.holidays:
+        info.free = str(ctx.labels.get(day) or S("cal_tip_free"))
+        return info
+    rows, info.source = _pick_rows(ctx, day)
+    key = day.strftime("%d.%m.%Y")
+    ahead: set[int] | None = None
+    if day == ctx.now.date():
+        ahead = {id(r) for r in future_lessons(rows, ctx.now, day=key)}
+    groups: dict[int | None, list[tuple[dict, Lesson]]] = {}
+    for raw in rows:
+        lesson = Lesson.from_legacy(raw, day=key)
+        groups.setdefault(lesson.period, []).append((raw, lesson))
+    for period in sorted(groups, key=lambda p: (p is None, p or 0)):
+        members = groups[period]
+        taught = [(r, l) for r, l in members
+                  if not is_class_event(r) and l.status != "cancelled"
+                  and l.subject.strip() not in ("", "?")]
+        shown = taught or members
+        lesson = shown[0][1]
+        subjects: list[str] = []
+        for _raw, item in shown:
+            if item.subject and item.subject not in subjects:
+                subjects.append(item.subject)
+        clock = C.short_time(lesson.time)
+        if ":" not in clock:
+            clock = ""  # a stable-timetable slot without a clock is just "3"
+        detail = " · ".join(p for p in (clock, C.teacher_surname(lesson.teacher),
+                                        lesson.room) if p)
+        slot = _Slot(period=period, subject=" / ".join(subjects) or "?", detail=detail,
+                     taught=bool(taught))
+        if info.source == "week":
+            if not taught:
+                slot.changed = True
+                if any(is_class_event(r) for r, _l in members):
+                    slot.tag, slot.tag_color = S("pick_event"), tok.muted
+                else:
+                    slot.cancelled = True
+                    slot.tag, slot.tag_color = S("status_lesson_cancelled"), tok.muted
+            else:
+                for raw, _l in taught:
+                    try:
+                        diff = classify_lesson(raw, day=day, baseline=ctx.baseline,
+                                               complete=ctx.complete)
+                    except Exception:
+                        continue
+                    if diff.is_change:
+                        slot.changed = True
+                        slot.tag, slot.tag_color = _change_tag(set(diff.changed)), tok.accent
+                        break
+        if taught:
+            if ahead is not None:
+                slot.past = not any(id(r) in ahead for r, _l in taught)
+            slot.planned = any(entry_covers(e, day, period) for e in ctx.planned)
+        info.slots.append(slot)
+    return info
+
+
+def _month_add(month: date, delta: int) -> date:
+    idx = month.year * 12 + month.month - 1 + delta
+    return date(idx // 12, idx % 12 + 1, 1)
+
+
+def _month_title(month: date) -> str:
+    names = S("pick_months").split(",")
+    if len(names) != 12:
+        return f"{month.month}/{month.year}"
+    return f"{names[month.month - 1]} {month.year}"
+
+
+def _runs_label(order: list[int], chosen: set[int]) -> str:
+    """'1.–3., 5.' — the chosen lessons as runs over the day's lessons."""
+    runs: list[list[int]] = []
+    current: list[int] = []
+    for period in order:
+        if period in chosen:
+            current.append(period)
+        elif current:
+            runs.append(current)
+            current = []
+    if current:
+        runs.append(current)
+    return ", ".join(f"{r[0]}." if len(r) == 1 else f"{r[0]}.–{r[-1]}." for r in runs)
+
+
+def _custom_plan_dialog(state: AppState, page: ft.Page, now: datetime,
+                        preselect: date | None = None) -> None:
+    """Custom days off: a month calendar and the picked days' lessons.
+
+    Tapping a day takes it off whole (tap again to undo); the list under
+    the calendar shows each picked day's lessons — from the fetched week
+    with substitutions and cancellations, else the stable timetable — to
+    untick the ones you'll attend. The selection is saved as the fewest
+    planned entries that cover exactly the picked lessons
+    (``entries_for_selection``). ``preselect`` opens with that day picked.
+    """
+    tok = state.tok
+    ctx = _pick_context(state, now)
+    named = _template_options(state, kind="day")
+    options = [text for _name, text in named]
+    picked: dict[date, set[int]] = {}
+    cache: dict[date, _PickDay] = {}
+    first_month = date(ctx.first_day.year, ctx.first_day.month, 1)
+    last_month = max(first_month, date(ctx.last_day.year, ctx.last_day.month, 1))
+    view: dict = {"month": first_month, "open": None, "template": 0}
+
+    def _info(day: date) -> _PickDay:
+        if day not in cache:
+            try:
+                cache[day] = _pick_day(state, ctx, day)
+            except Exception:
+                cache[day] = _PickDay(day=day)
+        return cache[day]
+
+    def _in_range(day: date) -> bool:
+        return ctx.first_day <= day <= ctx.last_day
+
+    def _full(day: date) -> bool:
+        pickable = set(_info(day).pickable)
+        return bool(pickable) and pickable <= picked.get(day, set())
+
+    def _prune() -> None:
+        """Drops emptied days from the list, except the one being edited."""
+        for day in [d for d, sel in picked.items() if not sel and d != view["open"]]:
+            picked.pop(day, None)
+
+    # -- interactions --------------------------------------------------------
+    def _tap_day(day: date) -> None:
+        if _full(day):
+            picked.pop(day, None)
+            if view["open"] == day:
+                view["open"] = None
+        else:
+            picked[day] = set(_info(day).pickable)
+            view["open"] = day
+        _prune()
+        _render()
+
+    def _toggle_whole(day: date) -> None:
+        picked[day] = set() if _full(day) else set(_info(day).pickable)
+        view["open"] = day
+        _render()
+
+    def _toggle_lesson(day: date, period: int) -> None:
+        sel = picked.setdefault(day, set())
+        if period in sel:
+            sel.discard(period)
+        else:
+            sel.add(period)
+        _render()
+
+    def _toggle_open(day: date) -> None:
+        view["open"] = None if view["open"] == day else day
+        _prune()
+        _render()
+
+    def _shift(delta: int) -> None:
+        target = _month_add(view["month"], delta)
+        if first_month <= target <= last_month:
+            view["month"] = target
+            _render()
+
+    # -- calendar ------------------------------------------------------------
+    def _dot(color: str) -> ft.Control:
+        return ft.Container(width=5, height=5, bgcolor=color, border_radius=radius_all(3))
+
+    def _cell(day: date) -> ft.Control:
+        label = f"{C.day_name(day, short=True)} {C.cz_day(day)}"
+        if not _in_range(day):
+            free = day in ctx.holidays
+            tip = f"{label} · {ctx.labels.get(day) or S('cal_tip_free')}" if free else (
+                f"{label} · {S('cal_tip_past')}" if day < ctx.first_day else label)
+            return ft.Container(
+                content=ft.Text(str(day.day), size=tok.fs_small, color=tok.faint),
+                alignment=ft.Alignment(0, 0), height=_PICK_CELL_H, expand=1,
+                border=border_all(1, tok.border) if free else None,
+                border_radius=radius_all(8), tooltip=tip)
+        info = _info(day)
+        sel = picked.get(day, set())
+        pickable = set(info.pickable)
+        full = bool(pickable) and pickable <= sel
+        part = bool(sel) and not full
+        fill: str | None = None
+        border: str | None = None
+        color = tok.faint
+        tip = label
+        on_click = None
+        dots: list[ft.Control] = []
+        if info.free:
+            tip += f" · {info.free}"
+            border = tok.border
+        elif not pickable:
+            if info.planned:
+                tip += f" · {S('cal_tip_planned')}"
+                color = tok.accent
+                dots.append(ft.Icon(ft.Icons.CHECK, size=10, color=tok.accent))
+            else:
+                tip += f" · {S('pick_tip_none')}"
+        else:
+            on_click = (lambda e, d=day: _tap_day(d))
+            tip += f" · {C.lessons_text(len(info.taught))}"
+            if full:
+                fill, color = tok.accent, tok.accent_text
+            elif part:
+                fill, border, color = tint(tok.accent, 0.3), tok.accent, tok.text
+            else:
+                fill, color = tok.overlay, tok.text
+            if info.planned:
+                tip += f" · {S('cal_tip_planned')}"
+                dots.append(_dot(tok.accent_text if full else tok.accent))
+        if info.has_change and not info.free:
+            tip += f" · {S('pick_tip_change')}"
+            dots.insert(0, _dot(tok.orange))
+        if day == ctx.now.date() and border is None:
+            border = tok.text
+        number = ft.Text(str(day.day), size=tok.fs_small, weight=ft.FontWeight.W_600,
+                         color=color)
+        content: ft.Control = number
+        if dots:
+            content = ft.Column(
+                [number, ft.Row(dots, spacing=2, tight=True,
+                                alignment=ft.MainAxisAlignment.CENTER)],
+                spacing=2, tight=True, alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+        return ft.Container(
+            content=content, alignment=ft.Alignment(0, 0), height=_PICK_CELL_H, expand=1,
+            bgcolor=fill,
+            border=border_all(2 if (part or day == ctx.now.date()) else 1, border)
+            if border else None,
+            border_radius=radius_all(8), tooltip=tip, on_click=on_click,
+        )
+
+    def _calendar() -> list[ft.Control]:
+        month = view["month"]
+        bar = ft.Row([
+            ft.IconButton(ft.Icons.CHEVRON_LEFT, tooltip=S("pick_prev_month"),
+                          disabled=month <= first_month, on_click=lambda e: _shift(-1)),
+            ft.Container(C.txt(_month_title(month), tok, bold=True), expand=True,
+                         alignment=ft.Alignment(0, 0)),
+            ft.IconButton(ft.Icons.CHEVRON_RIGHT, tooltip=S("pick_next_month"),
+                          disabled=month >= last_month, on_click=lambda e: _shift(1)),
+        ], vertical_alignment=ft.CrossAxisAlignment.CENTER)
+        monday = month - timedelta(days=month.weekday())
+        header = ft.Row([
+            ft.Container(C.txt(C.day_name(monday + timedelta(days=i), short=True), tok,
+                               size=tok.fs_tiny, faint=True),
+                         expand=1, alignment=ft.Alignment(0, 0))
+            for i in range(5)], spacing=4)
+        rows: list[ft.Control] = [bar, header]
+        end = _month_add(month, 1)
+        while monday < end:
+            week = [monday + timedelta(days=i) for i in range(5)]
+            if any(d.month == month.month for d in week):
+                rows.append(ft.Row(
+                    [_cell(d) if d.month == month.month
+                     else ft.Container(height=_PICK_CELL_H, expand=1) for d in week],
+                    spacing=4))
+            monday += timedelta(days=7)
+
+        def _legend(swatch: ft.Control, text: str) -> ft.Control:
+            return ft.Row([swatch, C.txt(text, tok, size=tok.fs_tiny, muted=True)],
+                          spacing=4, tight=True)
+
+        def _box(fill: str | None, border: str | None = None, width: int = 1) -> ft.Control:
+            return ft.Container(width=12, height=12, bgcolor=fill, border_radius=radius_all(3),
+                                border=border_all(width, border) if border else None)
+
+        rows.append(ft.Row([
+            _legend(_box(tok.accent), S("pick_selected")),
+            _legend(_box(tint(tok.accent, 0.3), tok.accent, 2), S("pick_partial")),
+            _legend(ft.Icon(ft.Icons.CHECK, size=12, color=tok.accent), S("legend_planned")),
+            _legend(_dot(tok.orange), S("pick_change")),
+            _legend(_box(None, tok.border), S("legend_free")),
+        ], spacing=tok.gap, run_spacing=4, wrap=True))
+        return rows
+
+    # -- picked days and their lessons ----------------------------------------
+    def _slot_row(day: date, slot: _Slot, sel: set[int]) -> ft.Control:
+        on = (slot.period in sel) if slot.period is not None else bool(sel)
+        tag, tag_color = slot.tag, slot.tag_color
+        if slot.planned:
+            icon, icon_color = ft.Icons.EVENT_AVAILABLE, tok.accent
+            tag, tag_color = S("legend_planned"), tok.accent
+        elif slot.past:
+            icon, icon_color = ft.Icons.SCHEDULE, tok.faint
+            tag, tag_color = S("pick_started"), tok.faint
+        elif not slot.taught:
+            icon, icon_color = ft.Icons.REMOVE, tok.faint
+        else:
+            icon = ft.Icons.CHECK_BOX if on else ft.Icons.CHECK_BOX_OUTLINE_BLANK
+            icon_color = tok.accent if on else tok.muted
+        title = ft.Text(
+            slot.subject, size=tok.fs_body,
+            weight=ft.FontWeight.BOLD if slot.taught else ft.FontWeight.NORMAL,
+            color=tok.text if slot.pickable else tok.faint,
+            max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
+            style=ft.TextStyle(decoration=ft.TextDecoration.LINE_THROUGH,
+                               decoration_color=tok.faint) if slot.cancelled else None,
+        )
+        spans: list[ft.TextSpan] = []
+        if tag:
+            spans.append(ft.TextSpan(tag, ft.TextStyle(color=tag_color or tok.accent,
+                                                       weight=ft.FontWeight.W_600)))
+        if slot.detail:
+            if spans:
+                spans.append(ft.TextSpan(" · ", ft.TextStyle(color=tok.faint)))
+            spans.append(ft.TextSpan(slot.detail, ft.TextStyle(color=tok.faint)))
+        lines: list[ft.Control] = [title]
+        if spans:
+            lines.append(ft.Text(spans=spans, size=tok.fs_tiny, max_lines=1,
+                                 overflow=ft.TextOverflow.ELLIPSIS))
+        number = f"{slot.period}." if slot.period is not None else "–"
+        return ft.Container(
+            content=ft.Row([
+                ft.Icon(icon, size=20, color=icon_color),
+                ft.Container(C.txt(number, tok, size=tok.fs_small, bold=True, muted=True),
+                             width=22),
+                ft.Column(lines, spacing=0, tight=True, expand=True),
+            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            padding=pad_sym(horizontal=6, vertical=4),
+            border_radius=radius_all(tok.radius_sm),
+            bgcolor=tint(tok.accent, 0.14) if (on and slot.pickable) else None,
+            on_click=(lambda e, d=day, p=slot.period: _toggle_lesson(d, p))
+            if slot.pickable else None,
+        )
+
+    def _day_block(day: date) -> ft.Control:
+        info = _info(day)
+        sel = picked.get(day, set())
+        full = _full(day)
+        is_open = view["open"] == day
+        if not info.pickable:
+            summary = S("pick_no_lessons")
+        elif not sel:
+            summary = S("pick_nothing")
+        elif full:
+            # Planned or started lessons stay out: "the rest" of the day.
+            whole_key = "whole_day" if len(info.pickable) == len(info.taught) else "pick_rest_of_day"
+            summary = f"{S(whole_key)} · {C.lessons_text(len(sel))}"
+        else:
+            summary = f"{_runs_label(info.taught, sel)} · {C.lessons_text(len(sel))}"
+        whole = ft.Container(
+            content=ft.Row([
+                ft.Icon(ft.Icons.CHECK_BOX if full else (
+                    ft.Icons.INDETERMINATE_CHECK_BOX if sel else ft.Icons.CHECK_BOX_OUTLINE_BLANK),
+                    size=18, color=tok.accent if sel else tok.muted),
+                C.txt(S("whole_day"), tok, size=tok.fs_small),
+            ], spacing=4, tight=True),
+            padding=pad_sym(horizontal=8, vertical=4),
+            border=border_all(1, tok.accent if full else tok.border),
+            border_radius=radius_all(tok.radius_sm),
+            on_click=lambda e, d=day: _toggle_whole(d),
+        )
+        head = ft.Container(
+            content=ft.Row([
+                ft.Column([
+                    C.txt(f"{C.day_name(day)} {C.cz_day(day)}", tok, bold=True),
+                    C.txt(summary, tok, size=tok.fs_small,
+                          color=tok.accent if sel else tok.muted),
+                ], spacing=0, tight=True, expand=True),
+                whole,
+                ft.Icon(ft.Icons.EXPAND_LESS if is_open else ft.Icons.EXPAND_MORE,
+                        size=20, color=tok.muted),
+            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            on_click=lambda e, d=day: _toggle_open(d),
+        )
+        parts: list[ft.Control] = [head]
+        if is_open:
+            parts.extend(_slot_row(day, slot, sel) for slot in info.slots)
+            note = {"stable": "pick_from_stable", "guess": "pick_from_guess"}.get(info.source)
+            if note:
+                parts.append(C.txt(S(note), tok, size=tok.fs_tiny, faint=True))
+        return ft.Container(
+            content=ft.Column(parts, spacing=2, tight=True),
+            bgcolor=tok.surface, padding=pad_all(8),
+            border=border_all(1, tok.accent if is_open else tok.border),
+            border_radius=radius_all(tok.radius_md),
+        )
+
+    def _entries(template: str = "", cancel: bool = True) -> list[dict]:
+        chosen = {d: sel for d, sel in picked.items() if sel}
+        return entries_for_selection(chosen, {d: _info(d).taught for d in chosen},
+                                     template=template, cancel_lunch=cancel)
+
+    # -- dialog chrome -------------------------------------------------------
+    preview = ft.Text(options[0], size=tok.fs_small, color=tok.muted, selectable=True)
+
+    def _on_template(e):
+        try:
+            idx = int(_dropdown_value(e) or 0)
+        except (TypeError, ValueError):
+            idx = 0
+        view["template"] = max(0, min(len(options) - 1, idx))
+        preview.value = options[view["template"]]
+        _push(page, dlg)
+
+    choice = C.dropdown(tok, S("choose_template"), _template_labels(named), "0",
+                        on_change=_on_template)
 
     strava_on = state.strava_enabled()
     cancel_pick = {"value": True}
-    lunch_rows: list = []
+    lunch_rows: list[ft.Control] = []
 
     def _on_cancel_pick(e):
         cancel_pick["value"] = bool(e.control.value)
-        _refresh_lunch_note()
+        _render()
 
     if strava_on:
         lunch_rows.append(C.toggle(tok, S("plan_cancel_lunch"), True,
@@ -461,106 +921,119 @@ def _custom_plan_dialog(state: AppState, page: ft.Page, now: datetime) -> None:
     lunch_note = C.txt("", tok, size=tok.fs_small, color=tok.yellow)
 
     def _refresh_lunch_note() -> None:
-        if not strava_on:
-            lunch_note.value = ""
-            return
-        if not cancel_pick["value"]:
-            lunch_note.value = ""
-            _push(page, dlg)
-            return
-        start, end, _sp, _ep = _selection()
-        if start is None or end is None:
-            lunch_note.value = ""
+        lunch_note.value = ""
+        days = sorted(d for d, sel in picked.items() if sel)
+        if not (strava_on and cancel_pick["value"] and days):
             return
         try:
-            if not _any_day_open(state, start, end):
-                deadline = state.lunch_order_deadline(start.strftime("%d.%m.%Y"))
-                detail = (deadline.strftime("%d.%m.%Y %H:%M")
-                          if deadline is not None else "")
+            if not any(_any_day_open(state, d, d) for d in days):
+                deadline = state.lunch_order_deadline(days[0].strftime("%d.%m.%Y"))
+                detail = deadline.strftime("%d.%m.%Y %H:%M") if deadline is not None else ""
                 lunch_note.value = S("lunch_cannot_cancel").format(deadline=detail or "—")
-            else:
-                lunch_note.value = ""
         except Exception:
             lunch_note.value = ""
-        _push(page, dlg)
 
+    cal_box = ft.Container(content=ft.Column([], spacing=4, tight=True), bgcolor=tok.card,
+                           border=border_all(1, tok.border), padding=pad_all(8),
+                           border_radius=radius_all(tok.radius_md))
+    days_box = ft.Column([], spacing=6, tight=True)
+    total = C.txt("", tok, size=tok.fs_small, bold=True)
     impact_box = ft.Column([], spacing=2, tight=True)
-
-    def _refresh_impact() -> None:
-        start, end, start_p, end_p = _selection()
-        if start is None or end is None or end < start or (end - start).days > 31:
-            impact_box.controls = []
-            return
-        impact_box.controls = _impact_controls(
-            state, _state_impact(state, start.isoformat(), end.isoformat(), start_p, end_p))
-
-    _orig_refresh = _refresh_summary
-
-    def _refresh_summary() -> None:
-        _orig_refresh()
-        _refresh_lunch_note()
-        _refresh_impact()
-        _push(page, dlg)
+    error = C.txt("", tok, size=tok.fs_small, color=tok.red)
 
     def _confirm(e):
-        start, end, start_p, end_p = _selection()
-        valid = (
-            start is not None and end is not None
-            and end >= start and (end - start).days <= 31
-            and start >= now.date()
-            and not (start == end and start_p is not None and end_p is not None
-                     and end_p < start_p)
-        )
-        if not valid:
-            error.value = S("custom_invalid")
+        want = bool(cancel_pick["value"]) and strava_on
+        entries = _entries(options[view["template"]], want)
+        if not entries:
+            error.value, error.visible = S("pick_empty"), True
             _push(page, dlg)
             return
-        try:
-            idx = max(0, min(len(options) - 1, int(picked["template"])))
-        except (TypeError, ValueError):
-            idx = 0
-        want_cancel = bool(cancel_pick["value"]) and strava_on
-        if want_cancel:
-            try:
-                # One closed day (e.g. tomorrow past its cutoff) must not
-                # disable cancellation for the still-open rest of the range;
-                # plan_custom_skip itself skips closed days individually.
-                want_cancel = _any_day_open(state, start, end)
-            except Exception:
-                pass
-        ok = state.plan_custom_skip(start.isoformat(), end.isoformat(),
-                                    start_p, end_p, options[idx],
-                                    cancel_lunch=want_cancel)
-        if not ok:
-            error.value = S("custom_invalid")
+        if want:
+            for entry in entries:
+                try:
+                    # Nothing left to cancel in this range: keep the lunch, the
+                    # rest of the selection still cancels its own.
+                    if not _any_day_open(state, date.fromisoformat(entry_start_iso(entry)),
+                                         date.fromisoformat(entry_end_iso(entry))):
+                        entry["cancel_lunch"] = False
+                except Exception:
+                    pass
+        if not state.plan_entries(entries):
+            error.value, error.visible = S("skip_not_planned"), True
             _push(page, dlg)
             return
         close_dialog(page, dlg)
-        snack(page, S("skip_planned"))
+        lunch_gone = want and any(cancels_lunch(entry) for entry in entries)
+        snack(page, S("skip_planned") if lunch_gone else S("skip_planned_keep_lunch"))
         try:
             page.update()
         except Exception:
             pass
 
-    content_rows = [start_field, end_field, from_dd, to_dd, choice, preview,
-                    summary, error]
+    confirm_btn = ft.Button(S("confirm"), on_click=_confirm)
+
+    def _render(push: bool = True) -> None:
+        cal_box.content.controls = _calendar()
+        chosen = sorted(picked)
+        days_box.controls = [_day_block(d) for d in chosen]
+        n_days = sum(1 for d in chosen if picked[d])
+        n_lessons = sum(len(picked[d]) for d in chosen)
+        total.value = (S("pick_total").format(days=_days_text(n_days),
+                                              lessons=C.lessons_text(n_lessons))
+                       if n_lessons else S("pick_empty"))
+        total.color = tok.text if n_lessons else tok.faint
+        entries = _entries()
+        impacts = []
+        fn = getattr(state, "plan_impact_entries", None)
+        if fn is not None and entries:
+            try:
+                impacts = fn(entries)
+            except Exception:
+                impacts = []
+        impact_box.controls = _impact_controls(state, impacts)
+        _refresh_lunch_note()
+        # Empty notes take no room (the dialog's spacing would show a gap).
+        lunch_note.visible = bool(lunch_note.value)
+        impact_box.visible = bool(impact_box.controls)
+        error.value, error.visible = "", False
+        confirm_btn.disabled = not entries
+        if push:
+            _push(page, dlg)
+
+    content_rows: list[ft.Control] = [
+        C.txt(S("pick_how"), tok, size=tok.fs_small, muted=True),
+        cal_box, days_box, total, choice, preview,
+    ]
     content_rows.extend(lunch_rows)
-    content_rows.append(lunch_note)
-    content_rows.append(impact_box)
+    content_rows.extend([lunch_note, impact_box, error])
     dlg = ft.AlertDialog(
         title=ft.Text(S("plan_custom")),
         content=ft.Column(
             content_rows,
             tight=True,
+            spacing=10,
             scroll=ft.ScrollMode.AUTO,
+            width=C.dialog_width(page, 520),
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         ),
         actions=[
             ft.TextButton(S("cancel"), on_click=lambda e: close_dialog(page, dlg)),
-            ft.Button(S("confirm"), on_click=_confirm),
+            confirm_btn,
         ],
     )
-    _refresh_summary()
+    if C.narrow(state):
+        # Phone: the default 40 px side margins would squeeze the calendar
+        # and the lesson rows; the picker gets the screen's width instead.
+        dlg.inset_padding = pad_sym(horizontal=12, vertical=24)
+        dlg.title_padding = ft.Padding(left=16, top=20, right=16, bottom=0)
+        dlg.content_padding = ft.Padding(left=16, top=12, right=16, bottom=8)
+    if preselect is not None and _in_range(preselect):
+        view["month"] = max(first_month, min(last_month,
+                                             date(preselect.year, preselect.month, 1)))
+        if _info(preselect).pickable:
+            picked[preselect] = set(_info(preselect).pickable)
+            view["open"] = preselect
+    _render(push=False)
     show_dialog(page, dlg)
 
 

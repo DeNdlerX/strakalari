@@ -818,16 +818,46 @@ STRINGS: dict[str, dict[str, str]] = {
     "planner_next": {"cs": "Další doporučené volno: {day}", "en": "Next recommended day off: {day}"},
     "plan_custom": {"cs": "Naplánovat vlastní termín", "en": "Plan a custom range"},
     "plan_custom_hint": {
-        "cs": "Vlastní rozsah — od data a hodiny do data a hodiny. Prostřední dny se berou celé.",
-        "en": "Custom range — from date and period to date and period. Days in between count as whole.",
+        "cs": "Vyberte v kalendáři dny volna a případně jednotlivé hodiny.",
+        "en": "Pick your days off in a calendar — or just some of their lessons.",
     },
     "custom_from_lesson": {"cs": "Od hodiny", "en": "From period"},
     "custom_to_lesson": {"cs": "Do hodiny", "en": "To period"},
-    "custom_invalid": {
-        "cs": "Zkontrolujte datum (DD.MM.RRRR) a hodiny — konec nesmí být před začátkem a začátek v minulosti.",
-        "en": "Check the dates (DD.MM.YYYY) and periods — the end must not precede the start, and the start must not be in the past.",
+    "pick_months": {
+        "cs": "Leden,Únor,Březen,Duben,Květen,Červen,Červenec,Srpen,Září,Říjen,Listopad,Prosinec",
+        "en": "January,February,March,April,May,June,July,August,September,October,November,December",
     },
-    "date_hint": {"cs": "DD.MM.RRRR", "en": "DD.MM.YYYY"},
+    "pick_prev_month": {"cs": "Předchozí měsíc", "en": "Previous month"},
+    "pick_next_month": {"cs": "Další měsíc", "en": "Next month"},
+    "pick_how": {
+        "cs": "Klepněte na den — vybere se celý. Hodiny, na které půjdete, pak odklepněte v seznamu pod kalendářem.",
+        "en": "Tap a day to take it off whole. Then untick the lessons you'll attend in the list below the calendar.",
+    },
+    "pick_selected": {"cs": "Vybráno", "en": "Selected"},
+    "pick_partial": {"cs": "Část dne", "en": "Part of the day"},
+    "pick_change": {"cs": "Změna v rozvrhu", "en": "Timetable change"},
+    "pick_tip_change": {"cs": "změna v rozvrhu", "en": "timetable change"},
+    "pick_tip_none": {"cs": "žádné hodiny", "en": "no lessons"},
+    "pick_nothing": {"cs": "Nic nevybráno", "en": "Nothing selected"},
+    "pick_rest_of_day": {"cs": "Zbytek dne", "en": "Rest of the day"},
+    "pick_total": {"cs": "Vybráno: {days} · {lessons}", "en": "Selected: {days} · {lessons}"},
+    "pick_empty": {
+        "cs": "Zatím nic nevybráno — klepněte na den v kalendáři.",
+        "en": "Nothing selected yet — tap a day in the calendar.",
+    },
+    "pick_started": {"cs": "Už začala", "en": "Already started"},
+    "pick_event": {"cs": "Akce třídy", "en": "Class event"},
+    "pick_no_lessons": {"cs": "Tento den nemáte žádné hodiny k vynechání.", "en": "This day has no lessons to skip."},
+    "pick_from_stable": {
+        "cs": "Tento týden ještě není v Bakalářích — hodiny jsou podle stálého rozvrhu. Změny se tu ukážou, až je škola zveřejní.",
+        "en": "This week isn't in Bakaláři yet — lessons come from your usual timetable. Changes show up here once the school publishes them.",
+    },
+    "pick_from_guess": {
+        "cs": "Rozvrh tohoto dne zatím neznám — hodiny jsou odhad podle načtených týdnů.",
+        "en": "This day's timetable isn't known yet — the lessons are guessed from the loaded weeks.",
+    },
+    "pick_choose_lessons": {"cs": "Vybrat jen některé hodiny", "en": "Pick only some lessons"},
+    "skip_planned_keep_lunch": {"cs": "Dovolená naplánována", "en": "Vacation planned"},
 
     # Lunches ------------------------------------------------------------------------
     "pick_hint": {

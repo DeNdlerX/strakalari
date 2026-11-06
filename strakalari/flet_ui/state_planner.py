@@ -183,13 +183,23 @@ class PlannerMixin:
         Returns how many new days were planned (0 when nothing valid was
         given or persistence failed — memory is rolled back then).
         """
+        return self.plan_entries([{"start_date": str(iso or ""), "end_date": str(iso or ""),
+                                   "template": template, "cancel_lunch": bool(cancel_lunch)}
+                                  for iso in day_isos or []])
+
+    def plan_entries(self, raw_entries: list[dict]) -> int:
+        """Plans several entries at once (one save, one repaint).
+
+        Each entry carries its own template and ``cancel_lunch``. Invalid,
+        duplicate, already planned and over-long (> 31 days) entries are
+        skipped. Returns how many were planned (0 when nothing valid was
+        given or persistence failed — memory is rolled back then).
+        """
         entries: list[dict] = []
-        for iso in day_isos or []:
-            entry = normalize_planned_entry({"start_date": str(iso or ""),
-                                             "end_date": str(iso or ""),
-                                             "template": template,
-                                             "cancel_lunch": bool(cancel_lunch)})
-            if entry is not None and entry not in self.planned_skips and entry not in entries:
+        for raw in raw_entries or []:
+            entry = normalize_planned_entry(raw)
+            if (entry is not None and len(entry_days(entry)) <= 31
+                    and entry not in self.planned_skips and entry not in entries):
                 entries.append(entry)
         if not entries:
             return 0
@@ -197,10 +207,10 @@ class PlannerMixin:
         _prev_cancelled = set(self.cancelled_lunches)
         _prev_orders = dict(self.orders)
         _prev_pending = set(self.pending_orders)
-        want_cancel = bool(cancel_lunch) and self.strava_enabled()
+        strava_on = self.strava_enabled()
         for entry in entries:
             self.planned_skips.append(entry)
-            if want_cancel:
+            if strava_on and cancels_lunch(entry):
                 self._stage_lunch_cancel(entry)
         try:
             self.config.set("planned_skips", list(self.planned_skips))
@@ -308,6 +318,16 @@ class PlannerMixin:
             return []
         try:
             return self.year_plan(now).impact_of_entry(entry)
+        except Exception:
+            return []
+
+    def plan_impact_entries(self, entries: list[dict], now: datetime | None = None) -> list:
+        """[(term, impact rows)] for several prospective entries together."""
+        valid = [e for e in (normalize_planned_entry(x) for x in entries or []) if e]
+        if not valid:
+            return []
+        try:
+            return self.year_plan(now).impact_of_entries(valid)
         except Exception:
             return []
 

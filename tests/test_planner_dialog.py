@@ -35,6 +35,7 @@ class FakeTok:
     yellow = "#aa0"
     red = "#f00"
     green = "#0a0"
+    orange = "#f80"
     gap = 8
     pad = 12
     radius_md = 8

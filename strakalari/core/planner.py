@@ -415,7 +415,14 @@ class YearPlan:
         return {d: [l.subject for l in ls] for d, ls in raw.items()}
 
     def impact_of_entry(self, entry: dict) -> list[tuple[TermPlan, list[ImpactRow]]]:
-        by_day = self.entry_breakdown(entry)
+        return self.impact_of_entries([entry])
+
+    def impact_of_entries(self, entries: Iterable[dict]) -> list[tuple[TermPlan, list[ImpactRow]]]:
+        """What planning all ``entries`` together does to each term's budgets."""
+        by_day: dict[date, list[str]] = {}
+        for entry in entries:
+            for day, names in self.entry_breakdown(entry).items():
+                by_day.setdefault(day, []).extend(names)
         out = []
         for term in self.terms:
             part = {d: v for d, v in by_day.items() if term.start <= d <= term.close}
