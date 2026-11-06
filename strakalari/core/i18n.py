@@ -137,6 +137,8 @@ MESSAGES: dict[str, dict[str, str]] = {
     "period_label": {"cs": "{n}. hodina", "en": "period {n}"},
     "news_mark": {"cs": "Nová známka: {items}", "en": "New mark: {items}"},
     "news_marks": {"cs": "Nové známky: {items}", "en": "New marks: {items}"},
+    "news_quarterly": {"cs": "Čtvrtletní známka: {items}", "en": "Quarterly mark: {items}"},
+    "news_quarterlies": {"cs": "Čtvrtletní známky: {items}", "en": "Quarterly marks: {items}"},
     "news_absence": {"cs": "Nová absence: {items}", "en": "New absence: {items}"},
     "news_absences": {"cs": "Nové absence: {items}", "en": "New absences: {items}"},
     "news_change": {"cs": "Změna v rozvrhu: {items}", "en": "Timetable change: {items}"},

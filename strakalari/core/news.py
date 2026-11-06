@@ -33,6 +33,8 @@ def find_news(previous: dict | None, fresh: dict | None,
     fresh = fresh if isinstance(fresh, dict) else {}
     found = (
         ("new_mark", "news_mark", "news_marks", new_marks(previous, fresh)),
+        ("new_quarterly_mark", "news_quarterly", "news_quarterlies",
+         new_quarterly_marks(previous, fresh)),
         ("new_absence", "news_absence", "news_absences", new_absences(previous, fresh)),
         ("timetable_change", "news_change", "news_changes",
          new_changes(previous, fresh, today or date.today())),
@@ -81,6 +83,19 @@ def new_marks(previous: dict, fresh: dict) -> list[str]:
             caption = str(mark.get("Caption") or "").strip()
             items.append(f"{text} ({caption})" if caption else text)
     return items
+
+
+def new_quarterly_marks(previous: dict, fresh: dict) -> list[str]:
+    """Quarterly marks that are new or changed since the previous grades."""
+    old, new = previous.get("quarterly_marks"), fresh.get("quarterly_marks")
+    if not isinstance(old, dict) or not isinstance(new, dict):
+        return []  # first sync (or first since the app read them), or not loaded
+
+    def grade(entry: Any) -> str:
+        return str(entry.get("Grade") or "").strip() if isinstance(entry, dict) else ""
+
+    return [f"{subject} {grade(entry)}" for subject, entry in new.items()
+            if grade(entry) and grade(entry) != grade(old.get(subject))]
 
 
 # -- timetable ---------------------------------------------------------------------

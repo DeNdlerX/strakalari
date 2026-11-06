@@ -79,6 +79,8 @@ class BakalariClient(TimetableMixin, DataMixin, ExcuseFormMixin):
         # Průběžná klasifikace (see get_grades): {subject: [{Grade, Weight, Date}]},
         # each subject list sorted by date (oldest first). Empty until fetched.
         self.grades = {}
+        # Quarterly marks from the same page: {subject: {Grade[, Note]}}.
+        self.quarterly_marks = {}
         # Last grades-scrape failure ("") when fresh; non-empty means the
         # displayed marks are last-known/stale, not freshly scraped.
         self.grades_error = ""

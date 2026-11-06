@@ -253,6 +253,19 @@ and when filled `id`, `caption` (topic), `poznamkakzobrazeni`,
 `VerbalEvaluation`, `strdatum` (test day), `PointsText`, `IsNew`,
 `MarkTooltip` ("plánovaná klasifikace" = announced mark, shown as `?`).
 
+Each subject row (`<div id="…" class="predmet-radek">`, name in its `<h3>`)
+also carries the **quarterly mark** (the interim final grade), empty until
+the teacher gives it, and its note in the row's detail:
+
+```html
+<div class="hlavni">
+  <div title='Čtvrtletní (prozatímní výsledná známka)'>2</div>
+</div>
+…
+<div class="bk-section-title"><span>Poznámka ke čtvrtletní známce</span></div>
+<span data-testid="subjectview-grade-details-note"></span>
+```
+
 ---
 
 ## 6. Komens (excuses)

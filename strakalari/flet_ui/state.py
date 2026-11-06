@@ -460,6 +460,10 @@ class AppState(ExcuseTasksMixin, LunchMixin, MarksMixin, PlannerMixin, ActivityM
             return data
         return {}
 
+    def quarterly_marks(self) -> dict[str, dict]:
+        data = self.data.get("quarterly_marks") if not self.demo_mode else None
+        return data if isinstance(data, dict) else {}
+
     def timetable(self) -> dict:
         data = self.data.get("timetable") if not self.demo_mode else None
         if isinstance(data, dict) and data:

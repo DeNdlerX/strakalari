@@ -115,6 +115,51 @@ def test_get_grades_fetches_parses_and_sorts():
     assert len(server.calls("GET", "/next/prubzna.aspx")) == 1
 
 
+def _subject_row(row_id, subject, quarterly="", note=""):
+    """One subject row as the live page serves it (entities, single-quoted title)."""
+    import html as _html
+
+    name = _html.escape(subject).replace("ý", "&#253;").replace("\xa0", "&#160;")
+    return (f'<div id="{row_id}" class="predmet-radek" data-testid="subjectview-subject-row">\r\n'
+            f'<div class="leva"><div class="obal _subject_detail link">'
+            f'<h3 title="{name}">{name}</h3></div>\r\n'
+            '<div class="hlavni">\r\n'
+            "    <div title='Čtvrtletn&#237; (prozat&#237;mn&#237; v&#253;sledn&#225; "
+            f"zn&#225;mka)'>{quarterly}</div>\r\n</div>\r\n"
+            '<div class="dalsi-dva"><div class="modra-z" title="vážený průměr za pololetí">'
+            '</div></div></div></div>\r\n'
+            f"<div class='vyjeddetail vyjeddetail_{row_id}'>"
+            '<div class="bk-section-title"><span>Pozn&#225;mka ke čtvrtletn&#237; zn&#225;mce'
+            f'</span></div><span data-testid="subjectview-grade-details-note">{note}</span></div>')
+
+
+def test_extract_quarterly_marks():
+    from strakalari.core.extractors.bakalari import extract_quarterly_marks
+
+    html = (_subject_row("70", "Český jazyk a literatura", "3")
+            + _subject_row("4Q", "Finanční gramotnost", " ")
+            + _subject_row("10", "Matematika", "1", note="Za aktivitu")
+            + _subject_row("63", "Seminář z\xa0matematiky S", "2"))
+    assert extract_quarterly_marks(html) == {
+        "Český jazyk a literatura": {"Grade": "3"},
+        "Matematika": {"Grade": "1", "Note": "Za aktivitu"},
+        # Same key as the marks' nazev, no-break space included.
+        "Seminář z\xa0matematiky S": {"Grade": "2"},
+    }
+    assert extract_quarterly_marks("") == {}
+    assert extract_quarterly_marks(None) == {}
+
+
+def test_get_grades_reads_quarterly_marks_from_the_same_page():
+    from tests.fake_bakalari import client as fake_client
+
+    html = _subject_row("10", "Matematika", "2") + _mark("Matematika", "1", 10, "05.09.2026")
+    client, server = fake_client({("GET", "/next/prubzna.aspx"): _grades_page(html)})
+    client.get_grades()
+    assert client.quarterly_marks == {"Matematika": {"Grade": "2"}}
+    assert len(server.calls("GET", "/next/prubzna.aspx")) == 1
+
+
 def test_get_grades_failure_keeps_error_without_raising():
     import httpx
 

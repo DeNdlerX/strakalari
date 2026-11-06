@@ -75,6 +75,20 @@ def test_detail_panel_lists_marks_newest_first_with_topic(state):
     assert newest and oldest and min(newest) < min(oldest)
 
 
+def test_subject_card_chips_oldest_left_newest_right(state):
+    _state(state)
+    texts = _texts(marks._subject_card(state, state.marks_summaries()[1], state.marks_bands()))
+    assert texts[-2:] == ["2", "1"]  # Matematika: 2 (5. 9.), then 1 (12. 9.)
+
+
+def test_subject_card_shows_quarterly_mark(state):
+    _state(state)
+    state.data["quarterly_marks"] = {"Matematika": {"Grade": "1"}}
+    texts = _texts(marks.build(state, None))
+    assert S("marks_quarterly").format(mark="1") in texts
+    assert sum(t.startswith(S("marks_quarterly").format(mark="")) for t in texts) == 1
+
+
 def test_percent_subjects_autodetected(state):
     _state(state, {"Chemie": [{"Grade": "53", "Weight": 5, "Date": "10.09.2026"},
                               {"Grade": "100", "Weight": 1, "Date": "15.09.2026"}]})

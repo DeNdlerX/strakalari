@@ -4,7 +4,13 @@ from datetime import date
 import pytest
 
 from strakalari.core.i18n import set_language
-from strakalari.core.news import find_news, new_absences, new_changes, new_marks
+from strakalari.core.news import (
+    find_news,
+    new_absences,
+    new_changes,
+    new_marks,
+    new_quarterly_marks,
+)
 
 TODAY = date(2099, 10, 1)
 PAST = "29.9.2099 (úterý)"
@@ -39,6 +45,17 @@ def test_marks_need_a_previous_state_and_skip_announced_ones():
     assert new_marks({"grades": {}}, planned) == []
     # The announced mark given later keeps its id: still a new mark.
     assert new_marks(planned, new) == ["M 1"]
+
+
+def test_new_or_changed_quarterly_mark_reported_once():
+    old = {"quarterly_marks": {"M": {"Grade": "2"}, "F": {"Grade": "1"}}}
+    new = {"quarterly_marks": {"M": {"Grade": "1"}, "F": {"Grade": "1"}, "D": {"Grade": "3"}}}
+    assert new_quarterly_marks(old, new) == ["M 1", "D 3"]
+    assert new_quarterly_marks(new, new) == []
+    assert new_quarterly_marks({}, new) == []  # never read before: no flood
+    assert new_quarterly_marks(new, {}) == []  # grades did not load this time
+    news = dict(find_news({"quarterly_marks": {}}, {"quarterly_marks": {"M": {"Grade": "1"}}}))
+    assert news == {"new_quarterly_mark": "Čtvrtletní známka: M 1"}
 
 
 def test_new_absence_only_on_known_days():

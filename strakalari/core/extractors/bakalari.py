@@ -179,6 +179,53 @@ def extract_grades(html_string: str) -> dict:
     return result_dict
 
 
+_SUBJECT_ROW_RE = re.compile(r'<div\s+id="[^"]*"\s+class="predmet-radek"', re.IGNORECASE)
+_ROW_TITLE_RE = re.compile(r"<h3[^>]*>(.*?)</h3>", re.DOTALL | re.IGNORECASE)
+_QUARTERLY_RE = re.compile(
+    r'<div\s+class="hlavni">\s*<div\s+title=(["\'])(.*?)\1[^>]*>(.*?)</div>',
+    re.DOTALL | re.IGNORECASE)
+_QUARTERLY_NOTE_RE = re.compile(
+    r'data-testid="subjectview-grade-details-note"[^>]*>(.*?)</span>', re.DOTALL | re.IGNORECASE)
+
+
+def _plain(fragment: str) -> str:
+    return _clean_name(html.unescape(re.sub(r"<[^>]+>", " ", fragment or "")))
+
+
+def extract_quarterly_marks(html_string: str) -> dict:
+    """Quarterly marks (čtvrtletní, the interim final grade) of the grades page.
+
+    Each subject row holds one in ``<div class="hlavni"><div title=
+    "Čtvrtletní (prozatímní výsledná známka)">2</div>``, its note in the
+    row's detail (``subjectview-grade-details-note``)::
+
+        {"Matematika": {"Grade": "1"}, "Dějepis": {"Grade": "3", "Note": "…"}}
+
+    Subjects without one are left out. Never raises — {} on garbage.
+    """
+    result: dict = {}
+    source = str(html_string or "")
+    starts = [m.start() for m in _SUBJECT_ROW_RE.finditer(source)]
+    for i, start in enumerate(starts):
+        row = source[start:starts[i + 1] if i + 1 < len(starts) else len(source)]
+        title = _ROW_TITLE_RE.search(row)
+        slot = _QUARTERLY_RE.search(row)
+        if not title or not slot or "čtvrtlet" not in html.unescape(slot.group(2)).lower():
+            continue
+        # Unescaped but otherwise as written, like the marks' ``nazev``
+        # ("Seminář z\xa0matematiky S" keeps its no-break space).
+        subject = html.unescape(re.sub(r"<[^>]+>", "", title.group(1))).strip()
+        grade = _plain(slot.group(3))
+        if not subject or not grade:
+            continue
+        entry = {"Grade": grade}
+        note = _QUARTERLY_NOTE_RE.search(row)
+        if note and _plain(note.group(1)):
+            entry["Note"] = _plain(note.group(1))
+        result[subject] = entry
+    return result
+
+
 # -- Web JSON endpoints ---------------------------------------------------------
 
 _SUMMARY_WORDS = ("zameškanost", "zameskanost", "celkem", "součet", "soucet",

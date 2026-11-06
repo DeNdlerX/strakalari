@@ -187,6 +187,8 @@ def _bakalari_payload(app: Any) -> dict:
     grades = app.grades or {}
     if grades or not getattr(client, "grades_error", ""):
         payload["grades"] = dict(grades)
+        # Read from the same page, so it is exactly as fresh as the grades.
+        payload["quarterly_marks"] = dict(getattr(app, "quarterly_marks", None) or {})
     substitutions = getattr(client, "substitutions", None)
     if isinstance(substitutions, list):
         payload["substitutions"] = substitutions

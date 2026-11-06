@@ -57,6 +57,7 @@ EVENT_TYPES: tuple[str, ...] = (
     "planner_suggestion",
     "automation_failed",
     "new_mark",
+    "new_quarterly_mark",
     "new_absence",
     "timetable_change",
     "update_available",

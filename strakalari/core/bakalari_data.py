@@ -8,6 +8,7 @@ from .extractors.bakalari import (
     absence_date_range,
     absence_from_subjects,
     extract_grades,
+    extract_quarterly_marks,
     outbox_excuse_ids,
     sent_excuse_entries,
     store_rows,
@@ -44,6 +45,8 @@ class DataMixin:
             html = self._session().get_html("/next/prubzna.aspx")
             grades = extract_grades(html)
             self.grades = grades
+            # Same page: each subject row also carries its quarterly mark.
+            self.quarterly_marks = extract_quarterly_marks(html)
             if grades:
                 self.grades_error = ""
                 n_marks = sum(len(v) for v in grades.values())
@@ -63,6 +66,7 @@ class DataMixin:
             # Never serve previous marks as fresh: callers treat an empty
             # dict as a failed sync (the refresh keeps the last good cache).
             self.grades = {}
+            self.quarterly_marks = {}
             return {}
 
     def obtain_absence_info(self):
@@ -382,6 +386,7 @@ class DataMixin:
         self.subjectDirectory = {}
         self.absence_error = ""
         self.grades = {}
+        self.quarterly_marks = {}
         self.grades_error = ""
         # NOTE: sentExcuses is deliberately NOT reset here: the outbox sync
         # (fetch_sent_excuses) never runs inside fetch_data(), so clearing
@@ -452,6 +457,7 @@ class DataMixin:
             "timetable": self.timetableData,
             "absence": self.absencePercentages,
             "grades": self.grades,
+            "quarterly_marks": self.quarterly_marks,
             "stable_baseline": serializable_baseline,
             "stable_baseline_source": "scraped" if serializable_baseline else "",
             "changes": self.weekChanges,

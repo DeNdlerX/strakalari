@@ -99,6 +99,19 @@ def _chip(text: str, tok, kind: str, tooltip: str = "", hypothetical: bool = Fal
     )
 
 
+def _quarterly_badge(entry, tok) -> ft.Control | None:
+    """Small badge with the subject's quarterly mark (Bakaláři's interim final grade)."""
+    grade = str(entry.get("Grade") or "").strip() if isinstance(entry, dict) else ""
+    if not grade:
+        return None
+    raw = gr.parse_raw(grade)
+    kind = gr.kind_for(raw.value, "grade") if raw is not None and raw.kind != "percent" else "info"
+    badge = C.badge(S("marks_quarterly").format(mark=grade), tok, kind=kind)
+    note = str(entry.get("Note") or "").strip()
+    badge.tooltip = S("marks_quarterly_tooltip") + (f"\n{note}" if note else "")
+    return badge
+
+
 def _mark_tooltip(row: gr.MarkRow) -> str:
     mark = row.mark
     parts = [str(mark.get("Caption") or "").strip(),
@@ -238,10 +251,12 @@ def _subject_card(state: AppState, summary: gr.SubjectSummary, bands) -> ft.Cont
         sub_parts.append(S("marks_last").format(day=C.cz_day(summary.last_date)))
     if summary.forced:
         sub_parts.append(S("marks_scale_grade") if summary.scale == "grade" else "%")
+    quarterly = _quarterly_badge(state.quarterly_marks().get(summary.name), tok)
     title_col = ft.Column(
         [
             ft.Row(
                 [C.txt(summary.name, tok, bold=True)]
+                + ([quarterly] if quarterly is not None else [])
                 + ([C.badge(S("marks_new_badge").format(n=summary.new_count), tok, kind="ok")]
                    if summary.new_count else []),
                 spacing=6, wrap=True,
@@ -272,15 +287,18 @@ def _subject_card(state: AppState, summary: gr.SubjectSummary, bands) -> ft.Cont
     ))
 
     has_pct = _subject_has_pct(summary)
-    newest = [r for r in reversed(summary.rows) if r.state != "removed"]
-    chips: list[ft.Control] = [
+    # Oldest on the left, newest on the right (as Bakaláři shows them);
+    # past MAX_CHIPS the oldest ones fold into a "+N" at the start.
+    shown = [r for r in summary.rows if r.state != "removed"]
+    chips: list[ft.Control] = []
+    if len(shown) > MAX_CHIPS:
+        chips.append(C.txt(f"+{len(shown) - MAX_CHIPS}", tok, size=tok.fs_small, faint=True))
+    chips += [
         _chip(_mark_label(r.mark, r.raw, summary.scale, has_pct), tok,
               _row_kind(summary, r, bands), tooltip=_mark_tooltip(r),
               hypothetical=r.state in ("added", "edited"))
-        for r in newest[:MAX_CHIPS]
+        for r in shown[-MAX_CHIPS:]
     ]
-    if len(newest) > MAX_CHIPS:
-        chips.append(C.txt(f"+{len(newest) - MAX_CHIPS}", tok, size=tok.fs_small, faint=True))
     if summary.planned:
         chips.append(ft.Container(
             content=ft.Row(

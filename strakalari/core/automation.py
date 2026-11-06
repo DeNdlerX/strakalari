@@ -268,6 +268,10 @@ class Strakalari:
         return self.bakalari_client.grades if self.bakalari_client else {}
 
     @property
+    def quarterly_marks(self):
+        return getattr(self.bakalari_client, "quarterly_marks", {}) if self.bakalari_client else {}
+
+    @property
     def foodDict(self):
         return self.strava_client.foodDict if self.strava_client else {}
 
