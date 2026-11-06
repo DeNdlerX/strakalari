@@ -585,6 +585,21 @@ class AppState(ExcuseTasksMixin, LunchMixin, MarksMixin, PlannerMixin, ActivityM
             print(f"Warning: wake-up alarm lookup failed ({type(exc).__name__}: {exc})")
             return None
 
+    def skipped_wakeup_days(self, now: datetime | None = None) -> list:
+        """Skipped days whose alarm is still ahead, each with the alarm a
+        restore gives back (see :func:`~strakalari.core.wakeup.upcoming_skipped_days`)."""
+        if not self.wakeup_available():
+            return []
+        from strakalari.core.wakeup import skipped_days, upcoming_skipped_days
+
+        try:
+            return upcoming_skipped_days(self._phone_timetable(), self.config.data, now=now,
+                                         stable_baseline=self.stable_baseline())
+        except Exception as exc:  # noqa: BLE001 - every skipped day keeps its button
+            print(f"Warning: skipped alarm lookup failed ({type(exc).__name__}: {exc})")
+            today = (now or datetime.now()).date()
+            return [(d, None) for d in sorted(skipped_days(self.config.data)) if d >= today]
+
     def sync_android_state(self) -> None:
         """Hands the widget data and the alarm queue to the phone (a no-op elsewhere)."""
         from strakalari.core.wakeup import sync_android

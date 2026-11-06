@@ -163,7 +163,7 @@ class AutomationMixin:
                                 C.hint_text(S("wakeup_unavailable"), tok), tok=tok)]
         from strakalari.core import android
         from strakalari.core.wakeup import (
-            clamp_wakeup_minutes, clock_app_weekday, skipped_days, with_skipped_day,
+            clamp_wakeup_minutes, clock_app_weekday, with_skipped_day,
         )
 
         enabled = bool(state.get("wakeup_enabled", False))
@@ -190,6 +190,13 @@ class AutomationMixin:
 
         def _day(day: date) -> str:
             return f"{C.day_name(day, short=True)} {C.cz_day(day)}"
+
+        def _restore_label(day: date, alarm) -> str:
+            """The alarm the button gives back, by the day it rings."""
+            if alarm is None:
+                return S("wakeup_restore_day").format(day=_day(day))
+            return S("wakeup_restore_alarm").format(day=_day(alarm.ring_day),
+                                                    time=alarm.alarm_time_label)
 
         def _open_clock(alarm) -> None:
             if not android.open_system_alarm(alarm.alarm_dt.hour, alarm.alarm_dt.minute,
@@ -226,10 +233,13 @@ class AutomationMixin:
             if alarm is None:
                 rows.append(C.txt(S("wakeup_none"), tok, size=tok.fs_small, muted=True))
             else:
+                # Named by the day it rings; a lesson on another day (the
+                # minutes reach back past midnight) gets its own day.
+                text = S("wakeup_next" if alarm.ring_day == alarm.day else "wakeup_next_eve")
                 rows.append(C.txt(
-                    S("wakeup_next").format(day=_day(alarm.day), alarm=alarm.alarm_time_label,
-                                            subject=alarm.subject,
-                                            lesson=alarm.lesson_time_label),
+                    text.format(day=_day(alarm.ring_day), alarm=alarm.alarm_time_label,
+                                subject=alarm.subject, lesson=alarm.lesson_time_label,
+                                lesson_day=_day(alarm.day)),
                     tok, size=tok.fs_small, color=tok.accent, bold=True,
                 ))
                 rows.append(ft.Row([
@@ -240,16 +250,17 @@ class AutomationMixin:
                 ], spacing=8, run_spacing=8, wrap=True))
                 if clock_app_weekday(alarm, datetime.now()) is not None:
                     rows.append(C.hint_text(S("wakeup_clock_weekly").format(
-                        day=_day(alarm.day), time=alarm.alarm_time_label), tok))
+                        day=_day(alarm.ring_day), time=alarm.alarm_time_label), tok))
 
-            skipped = sorted(d for d in skipped_days(state.config.data) if d >= date.today())
+            # Only skips whose alarm is still ahead: once it would have rung,
+            # restoring the day gives nothing back.
+            skipped = state.skipped_wakeup_days()
             if skipped:
                 rows.append(C.txt(S("wakeup_skipped"), tok, size=tok.fs_small, muted=True))
                 rows.append(ft.Row([
-                    C.ghost_button(S("wakeup_restore_day").format(day=_day(d)), tok,
-                                   icon=ft.Icons.RESTORE,
+                    C.ghost_button(_restore_label(d, a), tok, icon=ft.Icons.RESTORE,
                                    on_click=lambda e, d=d: _set_skipped(d, False))
-                    for d in skipped
+                    for d, a in skipped
                 ], spacing=8, run_spacing=8, wrap=True))
             return rows
 

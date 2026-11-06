@@ -413,11 +413,16 @@ def _next_lesson_card(state: AppState, now: datetime) -> ft.Control:
     alarm = state.next_wakeup_alarm(now)
 
     def _head(label: ft.Control, day: date) -> ft.Control:
-        """The card's heading, with the phone's wake-up alarm when it rings that day."""
+        """The card's heading, with the phone's wake-up alarm for that day's
+        first lesson (and the day it rings when that is the evening before)."""
         if alarm is None or alarm.day != day:
             return label
-        return ft.Row([label, C.badge(S("wakeup_badge").format(time=alarm.alarm_time_label), tok)],
-                      spacing=6)
+        if alarm.ring_day == day:
+            text = S("wakeup_badge").format(time=alarm.alarm_time_label)
+        else:
+            text = S("wakeup_badge_eve").format(day=C.day_name(alarm.ring_day, short=True),
+                                                time=alarm.alarm_time_label)
+        return ft.Row([label, C.badge(text, tok)], spacing=6)
 
     resolved = resolve_day_lessons(todays, now, day=today_key)
     phase = resolved["phase"]

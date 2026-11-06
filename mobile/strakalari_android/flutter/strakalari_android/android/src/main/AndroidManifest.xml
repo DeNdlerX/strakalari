@@ -13,6 +13,10 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <!-- The ringing alarm plays its sound from a foreground service: the
+         alarm stream rings on a phone set to silent, where a notification's
+         own sound is muted. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <!-- Android 13+: asked at runtime before the first notification. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
@@ -33,6 +37,11 @@
         <receiver
             android:name="io.github.dendlerx.strakalari.android.AlarmReceiver"
             android:exported="false" />
+
+        <service
+            android:name="io.github.dendlerx.strakalari.android.AlarmRingService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- Boot / app update end the process: remind the user to open the
              app once (Python, and with it the scheduler, starts with it).

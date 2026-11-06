@@ -72,6 +72,12 @@ class WakeupAlarm:
     minutes_before: int
 
     @property
+    def ring_day(self) -> date:
+        """The day the alarm rings: ``day`` itself, or the day before when
+        ``minutes_before`` reaches back past midnight."""
+        return self.alarm_dt.date()
+
+    @property
     def alarm_time_label(self) -> str:
         return self.alarm_dt.strftime("%H:%M")
 
@@ -241,6 +247,45 @@ def _first_lesson(lessons: list[dict], day: date, planned: list[dict],
     return best[0][0], best[1], best[2]
 
 
+class _DayAlarms:
+    """Each day's alarm, from what all of them share: the minutes, the school
+    calendar, the planned absences and the timetable (read once)."""
+
+    def __init__(self, timetable: dict | None, cfg: dict, stable_baseline: dict | None):
+        self.minutes = clamp_wakeup_minutes(
+            cfg.get("wakeup_minutes_before", DEFAULT_WAKEUP_MINUTES))
+        try:
+            self.free_days = effective_calendar(cfg, clip=False)[0]
+        except Exception:  # noqa: BLE001 - a broken calendar must not stop the alarm
+            self.free_days = set()
+        self.planned = load_planned_skips(cfg)
+        self.days = _index_days(timetable)
+        self.slots = _period_slots(self.days)
+        self.stable_baseline = stable_baseline
+
+    def alarm(self, day: date) -> WakeupAlarm | None:
+        """``day``'s alarm whether or not it is skipped or past; None on a
+        free day or a day without an attended lesson."""
+        if day in self.free_days:
+            return None
+        first = _first_lesson(_lessons_for(self.days, day, self.stable_baseline), day,
+                              self.planned, self.slots)
+        if first is None:
+            return None
+        start, period, raw = first
+        lesson_dt = datetime.combine(day, dtime(start // 60, start % 60))
+        parsed = Lesson.from_legacy(raw, day=day)
+        return WakeupAlarm(
+            day=day,
+            alarm_dt=lesson_dt - timedelta(minutes=self.minutes),
+            lesson_start_dt=lesson_dt,
+            period=period,
+            subject=str(parsed.subject or "?"),
+            room=str(parsed.room or ""),
+            minutes_before=self.minutes,
+        )
+
+
 def upcoming_wakeup_alarms(
     timetable: dict | None,
     config_data: dict | None = None,
@@ -261,40 +306,44 @@ def upcoming_wakeup_alarms(
     if not cfg.get("wakeup_enabled"):
         return []
     now = now or datetime.now()
-    minutes = clamp_wakeup_minutes(cfg.get("wakeup_minutes_before", DEFAULT_WAKEUP_MINUTES))
     skipped = skipped_days(cfg)
-    try:
-        free_days = effective_calendar(cfg, clip=False)[0]
-    except Exception:  # noqa: BLE001 - a broken calendar must not stop the alarm
-        free_days = set()
-    planned = load_planned_skips(cfg)
-    days = _index_days(timetable)
-    slots = _period_slots(days)
-
+    planner = _DayAlarms(timetable, cfg, stable_baseline)
     alarms: list[WakeupAlarm] = []
     for ahead in range(max(0, horizon_days) + 1):
         day = now.date() + timedelta(days=ahead)
-        if day in skipped or day in free_days:
+        if day in skipped:
             continue
-        first = _first_lesson(_lessons_for(days, day, stable_baseline), day, planned, slots)
-        if first is None:
-            continue
-        start, period, raw = first
-        lesson_dt = datetime.combine(day, dtime(start // 60, start % 60))
-        alarm_dt = lesson_dt - timedelta(minutes=minutes)
-        if alarm_dt <= now:
-            continue
-        parsed = Lesson.from_legacy(raw, day=day)
-        alarms.append(WakeupAlarm(
-            day=day,
-            alarm_dt=alarm_dt,
-            lesson_start_dt=lesson_dt,
-            period=period,
-            subject=str(parsed.subject or "?"),
-            room=str(parsed.room or ""),
-            minutes_before=minutes,
-        ))
+        alarm = planner.alarm(day)
+        if alarm is not None and alarm.alarm_dt > now:
+            alarms.append(alarm)
     return alarms
+
+
+def upcoming_skipped_days(
+    timetable: dict | None,
+    config_data: dict | None = None,
+    *,
+    now: datetime | None = None,
+    stable_baseline: dict | None = None,
+) -> list[tuple[date, WakeupAlarm | None]]:
+    """The skipped days a "wake me" button can still give an alarm back to,
+    earliest first, each with that alarm (None when the day has none now).
+
+    A day drops out once its alarm would have rung (no button lingering
+    through the afternoon), a day without an alarm once it has come.
+    """
+    cfg = config_data or {}
+    now = now or datetime.now()
+    planner = _DayAlarms(timetable, cfg, stable_baseline)
+    out: list[tuple[date, WakeupAlarm | None]] = []
+    for day in sorted(skipped_days(cfg)):
+        if day < now.date():
+            continue
+        alarm = planner.alarm(day)
+        still_ahead = alarm.alarm_dt > now if alarm is not None else day > now.date()
+        if still_ahead:
+            out.append((day, alarm))
+    return out
 
 
 def next_wakeup_alarm(
@@ -315,10 +364,11 @@ def clock_app_weekday(alarm: WakeupAlarm, now: datetime | None = None) -> int | 
 
     The Clock app takes a time but no date: a plain alarm rings at the next
     HH:MM, within a day. An alarm further ahead (Monday's, asked on Friday)
-    only lands on its day as a weekly alarm on that weekday.
+    only lands on its day as a weekly alarm on the weekday it rings (the
+    evening before the lesson when the minutes reach back past midnight).
     """
     now = now or datetime.now()
-    return alarm.day.weekday() if alarm.alarm_dt - now >= timedelta(days=1) else None
+    return alarm.ring_day.weekday() if alarm.alarm_dt - now >= timedelta(days=1) else None
 
 
 def alarm_queue(alarms: list[WakeupAlarm], lang: str | None = None) -> list[dict]:

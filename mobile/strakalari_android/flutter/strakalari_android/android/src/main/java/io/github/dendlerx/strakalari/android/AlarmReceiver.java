@@ -26,10 +26,13 @@ import org.json.JSONObject;
  * (and a reboot or app update, see {@link BootReceiver}) arms the next, so
  * the alarm keeps ringing on days the app is never opened.
  *
- * <p>The ring is an insistent alarm notification: the system plays the
- * alarm sound on the alarm stream, repeating with the vibration, until the
- * notification is dismissed or opened (or {@link #RING_MS} passes). No app
- * process has to stay alive while it rings.
+ * <p>{@link AlarmRingService} rings it: the alarm sound on the alarm
+ * stream and an alarm vibration, so also on a phone set to silent or
+ * vibrate, until the user dismisses it or opens the app (or
+ * {@link #RING_MS} passes). Where Android won't start that service from
+ * the background (an inexact alarm on Android 12+), an insistent alarm
+ * notification rings instead: the system repeats its sound and vibration,
+ * which the ringer mode may mute.
  */
 public class AlarmReceiver extends BroadcastReceiver {
     static final String PREFS = "strakalari_alarm";
@@ -40,14 +43,15 @@ public class AlarmReceiver extends BroadcastReceiver {
     static final String ACTION_RESCHEDULE =
             "io.github.dendlerx.strakalari.android.ACTION_RESCHEDULE_ALARM";
     // A channel's sound and vibration can't change once created, so a new
-    // look gets a new id (test builds created "strakalari_wakeup").
+    // look gets a new id (test builds created "strakalari_wakeup"). This
+    // one sounds: only the fallback notification uses it.
     static final String CHANNEL_ID = "strakalari_wakeup_alarm";
     static final int NOTIFICATION_ID = 7303;
     static final int REQUEST_FIRE = 7303;
     static final int REQUEST_DISMISS = 7304;
     /** Rings at most this long, like a clock app's auto-silence. */
     static final long RING_MS = 10 * 60 * 1000L;
-    private static final long[] VIBRATION = {0, 600, 400, 600, 400, 600, 1500};
+    static final long[] VIBRATION = {0, 600, 400, 600, 400, 600, 1500};
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -57,6 +61,7 @@ public class AlarmReceiver extends BroadcastReceiver {
             if (nm != null) {
                 nm.cancel(NOTIFICATION_ID);
             }
+            AlarmRingService.stop(context);
             return;
         }
         long now = System.currentTimeMillis();
@@ -65,7 +70,11 @@ public class AlarmReceiver extends BroadcastReceiver {
             // Delivered after the lesson began (phone was off, inexact
             // fallback): that is no wake-up any more, so stay quiet.
             if (lessonMs <= 0 || now < lessonMs) {
-                ring(context, intent.getStringExtra("title"), intent.getStringExtra("text"));
+                String title = intent.getStringExtra("title");
+                String text = intent.getStringExtra("text");
+                if (!AlarmRingService.ring(context, title, text)) {
+                    ringNotification(context, title, text);
+                }
             }
             // Never re-arm the alarm that just rang.
             now = Math.max(now, intent.getLongExtra("at", 0L));
@@ -142,7 +151,16 @@ public class AlarmReceiver extends BroadcastReceiver {
         return best;
     }
 
-    private static void ring(Context ctx, String title, String text) {
+    /** The Dismiss action (and a swipe of the ringing notification). */
+    static PendingIntent dismissIntent(Context ctx) {
+        Intent dismiss = new Intent(ACTION_DISMISS);
+        dismiss.setClassName(ctx.getPackageName(), AlarmReceiver.class.getName());
+        return PendingIntent.getBroadcast(ctx, REQUEST_DISMISS, dismiss,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    /** The fallback ring: an insistent alarm notification, no service needed. */
+    static void ringNotification(Context ctx, String title, String text) {
         NotificationManager nm = ctx.getSystemService(NotificationManager.class);
         if (nm == null) {
             return;
@@ -166,10 +184,7 @@ public class AlarmReceiver extends BroadcastReceiver {
             ch.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             nm.createNotificationChannel(ch);
         }
-        Intent dismissIntent = new Intent(ACTION_DISMISS);
-        dismissIntent.setClassName(ctx.getPackageName(), AlarmReceiver.class.getName());
-        PendingIntent dismiss = PendingIntent.getBroadcast(ctx, REQUEST_DISMISS, dismissIntent,
-                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        PendingIntent dismiss = dismissIntent(ctx);
 
         Notification.Builder b = Build.VERSION.SDK_INT >= 26
                 ? new Notification.Builder(ctx, CHANNEL_ID)

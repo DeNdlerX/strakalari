@@ -22,6 +22,7 @@ from strakalari.core.wakeup import (
     next_wakeup_alarm,
     skipped_days,
     sync_android,
+    upcoming_skipped_days,
     upcoming_wakeup_alarms,
     with_skipped_day,
 )
@@ -204,6 +205,43 @@ class TestWakeupAlarm:
         assert with_skipped_day(cfg, date(2026, 10, 13), True, today) == [
             "2026-10-13", "2026-10-20"]
         assert with_skipped_day(cfg, date(2026, 10, 20), False, today) == []
+
+    def test_skipped_days_drop_out_once_their_alarm_has_passed(self):
+        """A "wake me" button lasts only while it can still give an alarm
+        back, not until the skipped day is over."""
+        lesson = [{"time": "1 (8:00 - 8:45)", "subject": "M"}]
+        tt = {"12.10.2026": lesson, "13.10.2026": lesson}
+        cfg = {**ON, "wakeup_skip_dates": ["2026-10-11", "2026-10-12", "2026-10-13",
+                                           "2026-10-14"]}
+
+        def _ahead(now):
+            return [(d.day, a.alarm_time_label if a else None)
+                    for d, a in upcoming_skipped_days(tt, cfg, now=now)]
+
+        # Wednesday has no lessons (its week is loaded): no alarm to show.
+        assert _ahead(datetime(2026, 10, 12, 6, 0)) == [(12, "07:00"), (13, "07:00"), (14, None)]
+        assert _ahead(datetime(2026, 10, 12, 15, 0)) == [(13, "07:00"), (14, None)]
+        # A day without an alarm keeps its button until it comes.
+        assert _ahead(datetime(2026, 10, 13, 23, 0)) == [(14, None)]
+        assert _ahead(datetime(2026, 10, 14, 0, 5)) == []
+
+    def test_alarm_reaching_past_midnight_rings_the_day_before(self):
+        """600 min before an 8:00 lesson is 22:00 the evening before: that is
+        the day the alarm rings, for the Clock app and the skip list too."""
+        from strakalari.core.wakeup import clock_app_weekday
+
+        tt = {"13.10.2026": [{"time": "1 (8:00 - 8:45)", "subject": "M"}]}
+        cfg = {**ON, "wakeup_minutes_before": 600}
+        alarm = next_wakeup_alarm(tt, cfg, now=datetime(2026, 10, 12, 12, 0))
+        assert (alarm.day, alarm.ring_day, alarm.alarm_time_label) == (
+            date(2026, 10, 13), date(2026, 10, 12), "22:00")
+        assert next_wakeup_alarm(tt, cfg, now=datetime(2026, 10, 12, 22, 30)) is None
+        # Asked days ahead: a weekly Clock alarm on Monday, not on Tuesday.
+        assert clock_app_weekday(alarm, datetime(2026, 10, 9, 12, 0)) == 0
+        skip = {**cfg, "wakeup_skip_dates": ["2026-10-13"]}
+        assert [d for d, _ in upcoming_skipped_days(
+            tt, skip, now=datetime(2026, 10, 12, 21, 0))] == [date(2026, 10, 13)]
+        assert upcoming_skipped_days(tt, skip, now=datetime(2026, 10, 12, 22, 30)) == []
 
 
 # -- home-screen widget ---------------------------------------------------------------
@@ -542,6 +580,61 @@ class TestWakeupUI:
         # One restore button: the past skipped day is gone.
         assert sum(1 for t in texts if t.startswith(S("wakeup_restore_day").split("{")[0])) == 1
 
+    def test_settings_card_names_the_day_the_alarm_rings(self, monkeypatch, state):
+        """An alarm reaching back past midnight is shown on the evening it
+        rings, with the lesson's own day beside it."""
+        from strakalari.flet_ui import components as C
+        from strakalari.flet_ui.strings import S
+
+        def _day(d):
+            return f"{C.day_name(d, short=True)} {C.cz_day(d)}"
+
+        self._phone(monkeypatch, state)
+        day = date.today() + timedelta(days=2)
+        state.data = {"timetable": {day.strftime("%d.%m.%Y"): [
+            {"time": "1 (8:00 - 8:45)", "subject": "Matematika"}]}}
+        state.demo_mode = False
+        state.config.data.update({**ON, **NO_HOLIDAYS, "wakeup_minutes_before": 600})
+        texts = _texts(self._settings(state))
+        assert S("wakeup_next_eve").format(
+            day=_day(day - timedelta(days=1)), alarm="22:00", lesson_day=_day(day),
+            subject="Matematika", lesson="08:00") in texts
+
+    def test_restore_buttons_only_for_alarms_still_ahead(self, monkeypatch, state):
+        """Today's skipped alarm has passed: no button for it lingers through
+        the day; tomorrow's still gives the alarm back."""
+        from strakalari.flet_ui import components as C
+        from strakalari.flet_ui.strings import S
+
+        self._phone(monkeypatch, state)
+        today, tomorrow = date.today(), date.today() + timedelta(days=1)
+        state.data = {"timetable": {
+            today.strftime("%d.%m.%Y"): [{"time": "1 (0:01 - 0:45)", "subject": "Matematika"}],
+            tomorrow.strftime("%d.%m.%Y"): [{"time": "1 (8:00 - 8:45)", "subject": "Fyzika"}]}}
+        state.demo_mode = False
+        state.config.data.update({**ON, **NO_HOLIDAYS, "wakeup_minutes_before": 1,
+                                  "wakeup_skip_dates": [today.isoformat(), tomorrow.isoformat()]})
+        texts = _texts(self._settings(state))
+        prefix = S("wakeup_restore_day").split("{")[0]
+        assert [t for t in texts if t.startswith(prefix)] == [S("wakeup_restore_alarm").format(
+            day=f"{C.day_name(tomorrow, short=True)} {C.cz_day(tomorrow)}", time="07:59")]
+
+    def test_today_card_names_an_alarm_the_evening_before(self, monkeypatch, state):
+        from strakalari.flet_ui import components as C
+        from strakalari.flet_ui.strings import S
+        from strakalari.flet_ui.views import today
+
+        day = date.today() + timedelta(days=1)
+        state.data = {"timetable": {day.strftime("%d.%m.%Y"): [
+            {"time": "1 (8:00 - 8:45)", "subject": "Matematika", "room": "201"}]}}
+        state.demo_mode = False
+        state.config.data.update({**ON, **NO_HOLIDAYS, "wakeup_minutes_before": 600})
+        self._phone(monkeypatch, state)
+        now = datetime.combine(date.today(), datetime.min.time()).replace(hour=12)
+        assert S("wakeup_badge_eve").format(
+            day=C.day_name(date.today(), short=True), time="22:00") in _texts(
+                today._next_lesson_card(state, now))
+
     def test_today_card_shows_the_alarm_on_its_day(self, monkeypatch, state):
         from strakalari.flet_ui.views import today
 
@@ -612,6 +705,7 @@ def test_extension_wheel_ships_widget_and_alarm(tmp_path):
     java = base + "java/io/github/dendlerx/strakalari/android/"
     assert {
         java + "AlarmReceiver.java",
+        java + "AlarmRingService.java",
         java + "TimetableWidgetProvider.java",
         java + "TimetableWidgetService.java",
         base + "res/xml/timetable_widget_info.xml",

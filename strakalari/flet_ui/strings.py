@@ -73,10 +73,11 @@ STRINGS: dict[str, dict[str, str]] = {
     "wakeup_hint": {
         "cs": "Zazvoní {n} min před první hodinou, která opravdu proběhne — odpadlé "
               "hodiny, volné dny a naplánované absence přeskočí. Budíky na dva týdny "
-              "dopředu zvoní i se zavřenou aplikací.",
+              "dopředu zvoní i se zavřenou aplikací, hlasitostí budíku i v tichém režimu.",
         "en": "Rings {n} min before your first lesson that actually takes place — "
               "cancelled lessons, days off and planned absences are skipped. Alarms "
-              "for the next two weeks ring even with the app closed.",
+              "for the next two weeks ring even with the app closed, at alarm volume "
+              "even in silent mode.",
     },
     "wakeup_minutes": {
         "cs": "Kolik minut před první hodinou budit (min)",
@@ -90,6 +91,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "cs": "Příští budík: {day} v {alarm} ({subject} v {lesson})",
         "en": "Next alarm: {day} at {alarm} ({subject} at {lesson})",
     },
+    "wakeup_next_eve": {
+        "cs": "Příští budík: {day} v {alarm} — na {lesson_day} ({subject} v {lesson})",
+        "en": "Next alarm: {day} at {alarm}, for {lesson_day} ({subject} at {lesson})",
+    },
     "wakeup_none": {
         "cs": "Na dva týdny dopředu není v rozvrhu žádný budík.",
         "en": "No alarm in the timetable for the next two weeks.",
@@ -99,13 +104,16 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Notifications are off — the alarm can't ring.",
     },
     "wakeup_exact_off": {
-        "cs": "Přesné budíky nejsou povolené — budík může zazvonit pozdě (až o hodinu).",
-        "en": "Exact alarms aren't allowed — the alarm may ring late (up to an hour).",
+        "cs": "Přesné budíky nejsou povolené — budík může zazvonit pozdě (až o hodinu) "
+              "a v tichém režimu zůstat potichu.",
+        "en": "Exact alarms aren't allowed — the alarm may ring late (up to an hour) "
+              "and stay quiet in silent mode.",
     },
     "wakeup_exact_allow": {"cs": "Povolit přesné budíky", "en": "Allow exact alarms"},
     "wakeup_skip_next": {"cs": "Tento den nebudit", "en": "Skip this day"},
     "wakeup_skipped": {"cs": "Přeskočené dny:", "en": "Skipped days:"},
     "wakeup_restore_day": {"cs": "Budit {day}", "en": "Wake me {day}"},
+    "wakeup_restore_alarm": {"cs": "Budit {day} v {time}", "en": "Wake me {day} at {time}"},
     "wakeup_set_clock": {
         "cs": "Otevřít v Budíku telefonu",
         "en": "Open in phone Clock",
@@ -121,6 +129,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Couldn't open the Clock app.",
     },
     "wakeup_badge": {"cs": "Budík {time}", "en": "Alarm {time}"},
+    "wakeup_badge_eve": {"cs": "Budík {day} {time}", "en": "Alarm {day} {time}"},
     "wakeup_unavailable": {
         "cs": "Budík teď nejde nastavit — zavřete aplikaci a otevřete ji znovu.",
         "en": "The alarm can't be set right now — close the app and open it again.",
