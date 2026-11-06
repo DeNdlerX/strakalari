@@ -26,6 +26,20 @@ def _task_covered_by_history(task: dict, history: list) -> bool:
     return task_covered(task_day, task_period, history)
 
 
+def _lesson_excuse(kind, day_label: str, period: int) -> dict:
+    """The one-lesson excuse for a pending task of ``kind`` on ``day_label``."""
+    kind = str(kind or "short").lower()
+    return {
+        # "early" (generic předčasný odchod) uses the same hour-based
+        # web form as "soon" (brzký odchod); "income" is late arrival.
+        "type": "soon" if kind in ("soon", "early") else ("income" if kind == "late" else "days and hours"),
+        "starting_day": day_label,
+        "ending_day": day_label,
+        "starting_lesson": period,
+        "ending_lesson": period,
+    }
+
+
 class ExcuseTasksMixin:
     def _all_excuse_tasks(self) -> list[dict]:
         if self.demo_mode:
@@ -211,16 +225,7 @@ class ExcuseTasksMixin:
         except (TypeError, ValueError):
             self.log(f"{S('excuse_failed')}: {task.get('label', key)}")
             return False
-        kind = str((task or {}).get("kind", "short")).lower()
-        excuse = {
-            # "early" (generic předčasný odchod) uses the same hour-based
-            # web form as "soon" (brzký odchod); "income" is late arrival.
-            "type": "soon" if kind in ("soon", "early") else ("income" if kind == "late" else "days and hours"),
-            "starting_day": day_label,
-            "ending_day": day_label,
-            "starting_lesson": period_int,
-            "ending_lesson": period_int,
-        }
+        excuse = _lesson_excuse((task or {}).get("kind"), day_label, period_int)
         with lock:
             if key in self.sending_excuses:
                 return False
@@ -269,13 +274,37 @@ class ExcuseTasksMixin:
             return False
         return all(f"{day.isoformat()}|{ls.period}|{ls.subject}" in absent_keys for ls in held)
 
-    def day_excuse_plan(self, day_iso: str) -> list[dict]:
+    def excuse_day_per_lesson(self) -> bool:
+        """Whether "Excuse day" sends every lesson as its own excuse."""
+        return bool(self.get("excuse_day_per_lesson", False))
+
+    def set_excuse_day_per_lesson(self, on: bool) -> bool:
+        """Remembers the day cards' "each lesson separately" switch.
+
+        Saved (and re-rendered: the cards' button, templates and summary
+        follow it). False when the save failed: the old mode is restored
+        and shown, so the button never sends what the card does not say.
+        """
+        previous = self.excuse_day_per_lesson()
+        if self.save({"excuse_day_per_lesson": bool(on)}):
+            return True
+        try:
+            self.config.set("excuse_day_per_lesson", previous)
+        except Exception as exc:  # noqa: BLE001 - the re-render shows what holds
+            print(f"Warning: could not restore excuse_day_per_lesson: {exc}")
+        self._emit()
+        return False
+
+    def day_excuse_plan(self, day_iso: str, per_lesson: bool = False) -> list[dict]:
         """The excuses that cover every pending task of one day.
 
-        A fully absent day is one "pure days" excuse. Otherwise consecutive
-        absent lessons become "days and hours" ranges, late arrivals
-        "income" and early leaves "soon" (the same shapes automatic
-        excusing sends). [] when the day has no pending task.
+        ``per_lesson``: one single-lesson excuse per pending task, in
+        lesson order — every lesson goes out as its own message.
+        Otherwise a fully absent day is one "pure days" excuse, and on
+        other days consecutive absent lessons become "days and hours"
+        ranges, late arrivals "income" and early leaves "soon" (the same
+        shapes automatic excusing sends). [] when the day has no pending
+        task.
         """
         try:
             day_label = date.fromisoformat(str(day_iso)).strftime("%d.%m.%Y")
@@ -284,6 +313,17 @@ class ExcuseTasksMixin:
         tasks = [t for t in self.excuse_tasks() if str(t.get("date", "")) == str(day_iso)]
         if not tasks:
             return []
+        if per_lesson:
+            singles: list[dict] = []
+            for task in tasks:
+                try:
+                    period = int(task.get("period"))
+                except (TypeError, ValueError):
+                    continue
+                excuse = _lesson_excuse(task.get("kind"), day_label, period)
+                if excuse not in singles:
+                    singles.append(excuse)
+            return sorted(singles, key=lambda e: e["starting_lesson"])
         if self.day_fully_absent(day_iso):
             return [{"type": "pure days", "starting_day": day_label, "ending_day": day_label}]
         plan: list[dict] = []
@@ -314,12 +354,14 @@ class ExcuseTasksMixin:
                          "ending_lesson": run[-1]})
         return plan
 
-    def submit_day_excuse(self, day_iso: str, template: str = "", page=None) -> bool:
+    def submit_day_excuse(self, day_iso: str, template: str = "", page=None,
+                          per_lesson: bool = False) -> bool:
         """Excuses every pending task of one day in one Bakaláři session.
 
         A fully absent day goes out as ONE whole-day request; a partly
         attended day as lesson ranges (see :meth:`day_excuse_plan`) — a
         whole-day excuse would claim lessons the student attended.
+        ``per_lesson`` sends one request (one message) per lesson instead.
         ``template`` is used for the absence excuses; late arrivals and
         early leaves get their configured default text.
         """
@@ -332,7 +374,8 @@ class ExcuseTasksMixin:
         key = f"day|{day_iso}"
         if key in self.sending_excuses:
             return False
-        plan = self.day_excuse_plan(day_iso)
+        per_lesson = bool(per_lesson)
+        plan = self.day_excuse_plan(day_iso, per_lesson=per_lesson)
         if not plan:
             return False
         if self.demo_mode and not self._has_credentials():
@@ -367,7 +410,8 @@ class ExcuseTasksMixin:
         self._spawn(
             lambda: self._excuse_worker(
                 jobs, key, day_label, _on_sent,
-                "excuse (whole day)", {"day": str(day_iso), "excuses": len(jobs)}, page),
+                "excuse (day, per lesson)" if per_lesson else "excuse (whole day)",
+                {"day": str(day_iso), "excuses": len(jobs), "per_lesson": per_lesson}, page),
             name="strakalari-excuse-day")
         return True
 

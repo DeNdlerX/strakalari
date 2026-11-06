@@ -393,6 +393,7 @@ def test_new_canonical_keys():
 
     assert CANONICAL_DEFAULTS["timetable_view"] == "table"
     assert CANONICAL_DEFAULTS["compact_density"] is False
+    assert CANONICAL_DEFAULTS["excuse_day_per_lesson"] is False
     example = json.load(open("config.example.json", encoding="utf-8"))
     assert set(example) == set(CANONICAL_DEFAULTS)
 

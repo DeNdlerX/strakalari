@@ -202,15 +202,21 @@ def _excuse_cards(state: AppState, page: ft.Page, tasks: list[dict]) -> list[ft.
                 whole_day = bool(state.day_fully_absent(day_iso))
             except Exception:
                 whole_day = False
-            day_kind = "day" if whole_day else "short"
+            # The switch sends every lesson as its own excuse (one message
+            # each), so the lesson (short absence) templates fit then.
+            per_lesson = state.excuse_day_per_lesson()
+            day_kind = "day" if whole_day and not per_lesson else "short"
             options = _options_for(state, day_kind)
             key = f"day|{day_iso}"
+            # Each mode lists other templates: keep a pick per mode.
+            pick_key = f"{key}|each" if per_lesson else key
 
-            def _send_day(e, iso=day_iso, k=key, opt_kind=day_kind):
+            def _send_day(e, iso=day_iso, k=key, pk=pick_key, opt_kind=day_kind, each=per_lesson):
                 def _go():
                     # Re-read: the signature may have just been entered.
                     opts = _options_for(state, opt_kind)
-                    if not state.submit_day_excuse(iso, _picked_option(state, k, opts), page):
+                    if not state.submit_day_excuse(iso, _picked_option(state, pk, opts), page,
+                                                   per_lesson=each):
                         if state.demo_mode and not state._has_credentials():
                             pass  # submit_* already toasted need_credentials
                         elif k in state.sending_excuses:
@@ -232,10 +238,25 @@ def _excuse_cards(state: AppState, page: ft.Page, tasks: list[dict]) -> list[ft.
                 elif state.last_ignore_error:
                     _snack(page, state.last_ignore_error)
 
+            def _toggle_each(e):
+                # A saved switch re-renders the cards in the new mode.
+                if not state.set_excuse_day_per_lesson(bool(e.control.value)):
+                    _snack(page, S("save_failed"))
+
             # Key format "<iso>|<period>|<subject>" (excuse_tasks_from_lessons).
             subjects = [s for s in dict.fromkeys(
                 str(t.get("key", "")).split("|", 2)[-1] for t in day_tasks) if s]
-            picker, preview = _template_dropdown(state, key, options)
+            picker, preview = _template_dropdown(state, pick_key, options)
+            # A low-key extra next to the buttons, not a main choice.
+            each_switch = ft.Switch(
+                label=S("excuse_each_lesson"), value=per_lesson, on_change=_toggle_each,
+                active_color=tok.accent, tooltip=S("excuse_each_lesson_tip"),
+                label_text_style=ft.TextStyle(size=tok.fs_small, color=tok.muted),
+            )
+            if per_lesson:
+                send_label = S("excuse_lessons").format(lessons=C.lessons_text(len(day_tasks)))
+            else:
+                send_label = S("excuse_day") if whole_day else S("excuse_all")
             group.append(T.anchor(state, "excuse_card",
                 ft.Column(
                     [
@@ -244,19 +265,19 @@ def _excuse_cards(state: AppState, page: ft.Page, tasks: list[dict]) -> list[ft.
                                 ft.Icon(ft.Icons.EVENT_BUSY_OUTLINED, size=20,
                                         color=tok.accent),
                                 C.txt(day_title, tok, bold=True),
-                                C.kind_badge("long" if whole_day else "short", tok),
+                                C.kind_badge("long" if day_kind == "day" else "short", tok),
                             ],
                             spacing=8,
                             vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         ),
-                        C.txt(S("day_group_covers").format(
+                        C.txt(S("day_group_each" if per_lesson else "day_group_covers").format(
                                   lessons=C.lessons_text(len(day_tasks)),
                                   subjects=", ".join(subjects)),
                               tok, size=tok.fs_small, muted=True),
                         C.picker_with_actions(state, picker, [
-                            C.primary_button(S("excuse_day") if whole_day else S("excuse_all"),
-                                             tok, on_click=_send_day),
+                            C.primary_button(send_label, tok, on_click=_send_day),
                             C.ghost_button(S("ignore_day"), tok, on_click=_ignore_day),
+                            each_switch,
                         ]),
                         preview,
                     ],

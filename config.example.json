@@ -73,6 +73,7 @@
   "tutorials_enabled": true,
   "tutorials_done": [],
   "ignored_excuses": [],
+  "excuse_day_per_lesson": false,
   "timetable_view": "table",
   "compact_density": false,
   "marks_scale": "auto",

@@ -141,6 +141,9 @@ CANONICAL_DEFAULTS: Dict[str, Any] = {
     "tutorials_enabled": True,
     "tutorials_done": [],
     "ignored_excuses": [],
+    # Today: the day card's "Excuse day" sends every lesson as its own
+    # excuse (one message each) instead of one whole-day / range excuse.
+    "excuse_day_per_lesson": False,
     "timetable_view": "table",
     "compact_density": False,
     # Marks view: "auto" detects 1–5 vs percent per subject; a per-subject

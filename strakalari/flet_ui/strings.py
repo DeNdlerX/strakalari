@@ -868,6 +868,14 @@ STRINGS: dict[str, dict[str, str]] = {
     "excuse_all": {"cs": "Omluvit vše z tohoto dne", "en": "Excuse all of this day"},
     "day_group_covers": {"cs": "Najednou {lessons}: {subjects}", "en": "All at once, {lessons}: {subjects}"},
     "or_one_by_one": {"cs": "Nebo jednotlivě ({n})", "en": "Or one by one ({n})"},
+    "excuse_each_lesson": {"cs": "Každou hodinu zvlášť", "en": "Each lesson separately"},
+    "excuse_each_lesson_tip": {
+        "cs": "Omluvenka za každou hodinu odejde jako samostatná zpráva.",
+        "en": "Each lesson's excuse goes out as a message of its own.",
+    },
+    "excuse_lessons": {"cs": "Omluvit {lessons}", "en": "Excuse {lessons}"},
+    "day_group_each": {"cs": "{lessons} zvlášť, každá svou zprávou: {subjects}",
+                       "en": "{lessons} separately, one message each: {subjects}"},
     "excuse_already_covered": {"cs": "Už bylo omluveno", "en": "Already excused"},
     "excuse_day_result": {"cs": "Omluveno {ok} z {n}", "en": "Excused {ok} of {n}"},
     "autostart_failed": {
