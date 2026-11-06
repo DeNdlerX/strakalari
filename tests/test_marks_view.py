@@ -75,18 +75,56 @@ def test_detail_panel_lists_marks_newest_first_with_topic(state):
     assert newest and oldest and min(newest) < min(oldest)
 
 
-def test_subject_card_chips_oldest_left_newest_right(state):
-    _state(state)
-    texts = _texts(marks._subject_card(state, state.marks_summaries()[1], state.marks_bands()))
-    assert texts[-2:] == ["2", "1"]  # Matematika: 2 (5. 9.), then 1 (12. 9.)
-
-
 def test_subject_card_shows_quarterly_mark(state):
     _state(state)
     state.data["quarterly_marks"] = {"Matematika": {"Grade": "1"}}
     texts = _texts(marks.build(state, None))
     assert S("marks_quarterly").format(mark="1") in texts
     assert sum(t.startswith(S("marks_quarterly").format(mark="")) for t in texts) == 1
+
+
+def _card_chips(view, subject):
+    """Texts of the mark-chip row on ``subject``'s card, left to right."""
+    found = []
+
+    def visit(node):
+        if node is None or found:
+            return
+        if getattr(node, "key", None) == f"marks:subject:{subject}":
+            rows = node.content.controls
+            found.append(_texts(rows[1]) if len(rows) > 1 else [])
+            return
+        for attr in ("content",):
+            child = getattr(node, attr, None)
+            if child is not None and not isinstance(child, str):
+                visit(child)
+        for child in getattr(node, "controls", None) or []:
+            visit(child)
+
+    visit(view)
+    assert found, f"no card for {subject}"
+    return found[0]
+
+
+def test_card_chips_run_oldest_left_newest_right(state):
+    _state(state, {"Dějepis": [
+        {"Grade": "3", "Weight": 1, "Date": "20.09.2026"},
+        {"Grade": "1", "Weight": 1, "Date": "01.09.2026"},
+        {"Grade": "2", "Weight": 1, "Date": "10.09.2026"},
+    ]})
+    assert _card_chips(marks.build(state, None), "Dějepis") == ["1", "2", "3"]
+
+
+def test_card_chips_keep_newest_and_count_older_on_the_left(state):
+    n = marks.MAX_CHIPS + 3
+    _state(state, {"Dějepis": [
+        {"Grade": "1" if i < 3 else "2", "Weight": 1, "Date": f"{i + 1:02d}.09.2026"}
+        for i in range(n)
+    ]})
+    state.predict_add("Dějepis", "5", 1)  # a what-if is the newest mark
+    chips = _card_chips(marks.build(state, None), "Dějepis")
+    assert chips[0] == "+4"  # the three 1s and one 2 do not fit
+    assert chips[1:] == ["2"] * (marks.MAX_CHIPS - 1) + ["5"]
 
 
 def test_percent_subjects_autodetected(state):
