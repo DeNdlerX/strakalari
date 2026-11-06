@@ -356,7 +356,71 @@ class AutomationMixin:
                      on_change=_commit),
             C.hint_text(S("run_in_background_hint"), tok),
             tok=tok,
-        )]
+        ), *self._background_overview()]
+
+    def _background_overview(self) -> list:
+        """What the background notification shows (core/status_notification.py):
+        a switch per line and a preview that follows them in place."""
+        from strakalari.core.status_notification import (
+            ITEMS, build_status, selected_items, with_item,
+        )
+
+        state, tok, page = self.state, self.state.tok, self.page
+        head = C.txt("", tok, size=tok.fs_tiny, faint=True)
+        title = C.txt("", tok, bold=True)
+        text = C.txt("", tok, size=tok.fs_small, muted=True)
+
+        def _fill() -> None:
+            try:
+                interval = max(1, int(float(state.get("check_interval_minutes", 60) or 60)))
+                content = build_status(
+                    state.background_status_inputs(),
+                    fallback=(S("bg_notif_title"), S("bg_notif_text").format(n=interval)))
+            except Exception as exc:  # noqa: BLE001 - the switches still work
+                print(f"Warning: notification preview failed ({type(exc).__name__}: {exc})")
+                return
+            head.value = " · ".join(p for p in (S("app_title"), content.sub) if p)
+            title.value = content.title
+            text.value = content.text
+            text.visible = bool(content.text)
+
+        def _toggle(e, item: str) -> None:
+            control = e.control
+            on = bool(control.value) if control is not None else False
+            items = with_item(state.config.data, item, on)
+            if not _save_quiet(state, page, {"background_notification_items": items}):
+                if control is not None:
+                    control.value = not on
+                    try:
+                        control.update()
+                    except Exception:
+                        pass
+                return
+            _fill()
+            for ctl in (head, title, text):
+                try:
+                    ctl.update()
+                except Exception:
+                    pass  # not on the page (tests); the next render shows it
+
+        picked = set(selected_items(state.config.data))
+        switches = [C.toggle(tok, S(f"bg_item_{item}"), item in picked,
+                             on_change=lambda e, i=item: _toggle(e, i))
+                    for item in ITEMS]
+        _fill()
+        return [
+            C.form_card(
+                C.txt(S("bg_overview_title"), tok, bold=True),
+                C.hint_text(S("bg_overview_hint"), tok),
+                *switches,
+                tok=tok,
+            ),
+            C.card(
+                C.txt(S("bg_preview"), tok, size=tok.fs_small, bold=True, muted=True),
+                head, title, text,
+                tok=tok,
+            ),
+        ]
     # -- AI ----------------------------------------------------------------------------
     def _ai(self) -> list:
         state, tok, page = self.state, self.state.tok, self.page

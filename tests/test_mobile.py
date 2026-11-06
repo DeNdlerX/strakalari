@@ -254,6 +254,10 @@ class TestPhoneBackground:
         monkeypatch.setattr(android, "start_background", lambda texts: calls.append(texts))
         monkeypatch.setattr(android, "stop_background", lambda: calls.append("stop"))
         monkeypatch.setattr(android, "schedule_wake", lambda at: calls.append(("wake", at)))
+        monkeypatch.setattr(android, "update_background_notification", lambda *a: True)
+        from strakalari.core.status_notification import StatusNotifier
+
+        monkeypatch.setattr(StatusNotifier, "start", lambda self: None)  # no thread in tests
         app_state.wizard_dismissed = True
         app_state.save({"run_in_background": on, "check_interval_minutes": 30})
         runner = PeriodicRunner(interval_minutes=30)

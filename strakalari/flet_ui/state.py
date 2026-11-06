@@ -611,6 +611,34 @@ class AppState(ExcuseTasksMixin, LunchMixin, MarksMixin, PlannerMixin, ActivityM
         except Exception as exc:  # noqa: BLE001 - never break a save or a reload
             print(f"Warning: phone sync failed ({type(exc).__name__}: {exc})")
 
+    def background_status_inputs(self):
+        """What the phone's background notification shows its overview from
+        (:class:`~strakalari.core.status_notification.StatusInputs`)."""
+        from strakalari.core.status_notification import StatusInputs
+
+        demo = self.demo_mode
+        try:
+            pending = 0 if demo else len(self.excuse_tasks())
+        except Exception as exc:  # noqa: BLE001 - the other lines still show
+            print(f"Warning: pending excuses unavailable ({type(exc).__name__}: {exc})")
+            pending = 0
+        try:
+            updated = datetime.strptime(str(self.data.get("last_updated") or ""),
+                                        "%d.%m.%Y %H:%M:%S")
+        except ValueError:
+            updated = None
+        return StatusInputs(
+            timetable=self._phone_timetable(),
+            food=self.food(),
+            web_orders={} if demo else dict(self.web_orders or {}),
+            config=dict(self.config.data),
+            stable_baseline=self.stable_baseline(),
+            stable_complete=self.stable_complete(),
+            pending_excuses=pending,
+            last_updated=None if demo else updated,
+            free_days=frozenset(self.lunch_free_days()),
+        )
+
     def strava_enabled(self) -> bool:
         """True unless the user turned the Strava integration off."""
         try:

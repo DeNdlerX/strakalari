@@ -117,6 +117,10 @@ CANONICAL_DEFAULTS: Dict[str, Any] = {
     # Phone app: keep refreshing and automating with the app closed
     # (Android foreground service; ignored on desktop and iOS).
     "run_in_background": True,
+    # What that service's always-on notification shows (an overview; see
+    # core/status_notification.ITEMS). Empty = only "running in the background".
+    "background_notification_items": ["lunch", "next_lesson", "lunch_orders", "excuses",
+                                      "updated"],
     "language": "cs",
     "excuse_mode": "confirm",
     "default_excuse_selection": "first",
@@ -310,6 +314,13 @@ def validate_config(data: Dict[str, Any]) -> list:
             problems.append("'wakeup_minutes_before' must be within [1, 720].")
     if not isinstance(data.get("wakeup_skip_dates", []), list):
         problems.append("'wakeup_skip_dates' must be a list of dates (YYYY-MM-DD).")
+    from .status_notification import ITEMS as _status_items
+
+    _picked = data.get("background_notification_items", [])
+    if not isinstance(_picked, list) or any(item not in _status_items for item in _picked):
+        problems.append(
+            f"'background_notification_items' must be a list of {list(_status_items)}."
+        )
     limits = data.get("subject_limits", {})
     if not isinstance(limits, dict):
         problems.append("'subject_limits' must be an object mapping subject -> percent.")

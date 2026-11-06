@@ -30,7 +30,7 @@ Bezplatná aplikace pro studenty na Windows, macOS, Linux a Android. Nic neprogr
 > **Na Windows i z Microsoft Storu.** Strakaláře najdete i v **[Microsoft Storu](https://apps.microsoft.com/detail/9njc9ldmkc3k)**. Store verzi podepisuje Microsoft, takže se varování výše neukáže, a aktualizuje se sama. Do Storu chodí jen stabilní verze, bety ne.
 > Přecházíte z instalátoru? Store verze si při prvním spuštění převezme nastavení, hesla i historii. Starou instalaci pak **odinstalujte**, jinak poběží automatizace dvakrát (dvojí omluvenky i objednávky).
 
-> **Na telefonu** aplikace obnovuje data, omlouvá a objednává i na pozadí (v oznámeních pak trvale svítí „Strakaláři běží na pozadí“; vypnout jde v *Nastavení → Běh na pozadí*). Po restartu telefonu nebo aktualizaci aplikaci jednou otevřete. Telefon a počítač nastavení nesdílejí, přihlaste se v každém zvlášť. Automatické omlouvání a objednávání nechte zapnuté jen na jednom zařízení.
+> **Na telefonu** aplikace obnovuje data, omlouvá a objednává i na pozadí (v oznámeních pak trvale svítí přehled — dnešní oběd, další hodina, neobjednané obědy a čekající omluvenky; co v něm je, nebo celý běh na pozadí, nastavíte v *Nastavení → Běh na pozadí*). Po restartu telefonu nebo aktualizaci aplikaci jednou otevřete. Telefon a počítač nastavení nesdílejí, přihlaste se v každém zvlášť. Automatické omlouvání a objednávání nechte zapnuté jen na jednom zařízení.
 
 ## Aktualizace
 

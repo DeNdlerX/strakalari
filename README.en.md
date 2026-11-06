@@ -30,7 +30,7 @@ A free app for students on Windows, macOS, Linux and Android. No coding: downloa
 > **On Windows, also from the Microsoft Store.** Strakaláři is in the **[Microsoft Store](https://apps.microsoft.com/detail/9njc9ldmkc3k)** too. The Store version is signed by Microsoft, so the warning above doesn't appear, and it updates itself. Only stable versions go to the Store, no betas.
 > Switching from the installer? On first launch the Store version takes over your settings, passwords and history. Then **uninstall** the old install, otherwise automation runs twice (duplicate excuses and orders).
 
-> **On a phone** the app refreshes, excuses and orders in the background too (a "Strakaláři is running in the background" notification then stays in the shade; switch it off under *Settings → Background*). After the phone restarts or the app updates, open it once. The phone and the computer don't share settings, so sign in on each. Keep automatic excusing and ordering switched on on one device only.
+> **On a phone** the app refreshes, excuses and orders in the background too (a notification then stays in the shade with an overview — today's lunch, the next lesson, lunches still to order and excuses waiting; choose what it shows, or switch background running off, under *Settings → Background*). After the phone restarts or the app updates, open it once. The phone and the computer don't share settings, so sign in on each. Keep automatic excusing and ordering switched on on one device only.
 
 ## Updating
 

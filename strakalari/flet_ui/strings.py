@@ -35,13 +35,35 @@ STRINGS: dict[str, dict[str, str]] = {
     "run_in_background_hint": {
         "cs": "Aplikace pak obnovuje data, omlouvá a objednává i se zavřenou obrazovkou, "
               "tak často, jak je nastavená automatická kontrola v Automatizaci. "
-              "V oznámeních zůstane „Strakaláři běží na pozadí“. Po restartu telefonu "
-              "nebo aktualizaci aplikace ji jednou otevřete.",
+              "V oznámeních přitom zůstane přehled — co ukazuje, nastavíte níže. Po restartu "
+              "telefonu nebo aktualizaci aplikace ji jednou otevřete.",
         "en": "The app then refreshes, excuses and orders with its screen closed, as often "
-              "as the auto-check under Automation is set to. A \"Strakaláři is running in "
-              "the background\" notification stays in the shade. After the phone restarts "
-              "or the app updates, open it once.",
+              "as the auto-check under Automation is set to. Meanwhile a notification with "
+              "an overview stays in the shade — choose below what it shows. After the phone "
+              "restarts or the app updates, open it once.",
     },
+    "bg_overview_title": {"cs": "Co ukazovat v oznámení", "en": "What the notification shows"},
+    "bg_overview_hint": {
+        "cs": "Oznámení, které při běhu na pozadí zůstává v liště, ukazuje přehled ze "
+              "stažených dat. Řádky, ke kterým zrovna nic není, se nezobrazí; když nezbude "
+              "žádný, oznámení jen říká, že aplikace běží. Dnešní oběd se ukazuje do konce "
+              "první volné hodiny po 4. hodině, a když žádná není, do konce vyučování; pak "
+              "příští.",
+        "en": "The notification that stays in the shade while the app runs in the background "
+              "shows an overview from the downloaded data. Lines with nothing to say are left "
+              "out; with none left, it just says the app is running. Today's lunch shows until "
+              "the end of the first free period after the 4th lesson, or until classes end "
+              "when there is none; then the next one.",
+    },
+    "bg_item_lunch": {"cs": "Oběd (dnešní, po obědě příští)",
+                      "en": "Lunch (today's, after lunchtime the next one)"},
+    "bg_item_next_lesson": {"cs": "Další hodina", "en": "Next lesson"},
+    "bg_item_lunch_orders": {"cs": "Neobjednané obědy před uzávěrkou",
+                             "en": "Lunches still to order"},
+    "bg_item_excuses": {"cs": "Omluvenky k odeslání", "en": "Excuses waiting to be sent"},
+    "bg_item_wakeup": {"cs": "Příští budík", "en": "Next wake-up alarm"},
+    "bg_item_updated": {"cs": "Čas poslední aktualizace", "en": "Time of the last update"},
+    "bg_preview": {"cs": "Náhled", "en": "Preview"},
     "bg_notif_title": {"cs": "Strakaláři běží na pozadí",
                        "en": "Strakaláři is running in the background"},
     "bg_notif_text": {"cs": "Kontroluje omluvenky a obědy každých {n} min.",

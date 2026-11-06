@@ -35,6 +35,15 @@ public final class Notifications {
 
     static Notification build(Context ctx, String channelId, String channelName,
                               int importance, String title, String text, boolean ongoing) {
+        return build(ctx, channelId, channelName, importance, title, text, "", ongoing);
+    }
+
+    /**
+     * {@code sub}: the small text in the header next to the app name (none
+     * when empty). An ongoing notification never alerts again on a redraw.
+     */
+    static Notification build(Context ctx, String channelId, String channelName, int importance,
+                              String title, String text, String sub, boolean ongoing) {
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationManager nm = ctx.getSystemService(NotificationManager.class);
             if (nm != null) {
@@ -50,8 +59,12 @@ public final class Notifications {
                 .setContentText(text)
                 .setStyle(new Notification.BigTextStyle().bigText(text))
                 .setOngoing(ongoing)
+                .setOnlyAlertOnce(ongoing)
                 .setAutoCancel(!ongoing)
                 .setShowWhen(!ongoing);
+        if (sub != null && !sub.isEmpty()) {
+            b.setSubText(sub);
+        }
         PendingIntent open = openApp(ctx);
         if (open != null) {
             b.setContentIntent(open);

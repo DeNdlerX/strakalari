@@ -97,6 +97,7 @@ strakalari/core/         # business logic (no UI imports)
   secret_store.py        #   password-encryption key in the OS credential store (keyring)
   school_presets.py      #   school calendars (shipped + school_presets/*.json)
   lunch_auto.py          #   auto-mode lunch picks (blacklist filter / Gemini)
+  status_notification.py #   the phone's background notification as an overview (lunch, next lesson, …)
   models.py, schedule.py, forecast.py, planned_skips.py, …
 strakalari/flet_ui/      # Flet desktop UI
   state.py               #   AppState core (+ state_*.py mixins per feature)
@@ -159,7 +160,7 @@ The first build downloads Flutter, a JDK and the Android SDK into your home fold
 
 - **Layout** follows the page width, not the platform: below 720 px the app switches to the phone layout (bottom bar + *More*, stacked panels; `state.narrow`, `C.narrow(state)`). Try it without a phone: `python tools/demo_data.py serve DIR` and a ~390 px wide browser window.
 - **Platform differences** go through `strakalari.core.packaging.is_mobile()` / `mobile_platform()`: data in the app's private storage, no tray/autostart/single-instance, Android Back walks up the screens. Phone-specific wording lives in `MOBILE_STRINGS` in `strings.py`.
-- **Android system features** (notifications, background running, wake-up alarms, the Android Keystore protecting the password key) are called from Python through pyjnius in `strakalari/core/android.py`, without a Flutter channel, so they keep working after the app's screen is closed (Flet keeps Python alive in the process). The few Java classes Android needs in the APK (the foreground service, the alarm and boot receivers, the notification icon) live in the Flet extension `mobile/strakalari_android`; `make_mobile.py` packs it as a wheel. With *Run in the background* off, scheduled refreshes wait while the app is hidden.
+- **Android system features** (notifications, background running, wake-up alarms, the Android Keystore protecting the password key) are called from Python through pyjnius in `strakalari/core/android.py`, without a Flutter channel, so they keep working after the app's screen is closed (Flet keeps Python alive in the process). The few Java classes Android needs in the APK (the foreground service, the alarm, boot and notification-update receivers, the notification icon) live in the Flet extension `mobile/strakalari_android`; `make_mobile.py` packs it as a wheel. With *Run in the background* off, scheduled refreshes wait while the app is hidden.
 
 ## 8. Releases
 

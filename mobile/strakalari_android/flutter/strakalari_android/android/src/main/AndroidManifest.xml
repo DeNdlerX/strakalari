@@ -43,6 +43,12 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
+        <!-- The app redraws the background notification's overview (today's
+             lunch, the next lesson, …) through it. -->
+        <receiver
+            android:name="io.github.dendlerx.strakalari.android.StatusReceiver"
+            android:exported="false" />
+
         <!-- Boot / app update end the process: remind the user to open the
              app once (Python, and with it the scheduler, starts with it).
              Wake-up alarms and the widget are re-armed without Python. -->

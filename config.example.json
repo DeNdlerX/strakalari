@@ -42,6 +42,7 @@
   "sent_excuses_limit": 100,
   "minimize_to_tray": true,
   "run_in_background": true,
+  "background_notification_items": ["lunch", "next_lesson", "lunch_orders", "excuses", "updated"],
   "language": "cs",
   "excuse_mode": "confirm",
   "default_excuse_selection": "first",

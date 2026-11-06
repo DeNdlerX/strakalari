@@ -1037,14 +1037,29 @@ def _setup_phone_background(state: AppState, runner: PeriodicRunner) -> None:
 
     Started while the app's screen is open (Android forbids starting it
     from the background); re-synced after every config save (the switch
-    in Settings, the check interval). Never raises.
+    in Settings, the check interval). Its notification shows the overview
+    picked in Settings (core/status_notification.py), kept current by a
+    StatusNotifier. Never raises.
     """
     from strakalari.core import android
+    from strakalari.core.status_notification import StatusContent, StatusNotifier
 
     if not android.available():
         return
     android.context()  # needs the open screen once; cached for the background
     applied: dict = {}
+
+    def _interval() -> int:
+        return max(1, int(float(state.get("check_interval_minutes", 60) or 60)))
+
+    def _fallback() -> tuple[str, str]:
+        return S("bg_notif_title"), S("bg_notif_text").format(n=_interval())
+
+    notifier = StatusNotifier(
+        gather=lambda: state.background_status_inputs() if _phone_background_on(state) else None,
+        post=lambda c: android.update_background_notification(c.title, c.text, c.sub),
+        fallback=_fallback,
+    )
 
     def _sync() -> None:
         try:
@@ -1054,7 +1069,8 @@ def _setup_phone_background(state: AppState, runner: PeriodicRunner) -> None:
                 # its last save brings us back here.
                 applied["asked"] = True
                 android.request_notification_permission()
-            interval = max(1, int(float(state.get("check_interval_minutes", 60) or 60)))
+            interval = _interval()
+            notifier.poke()  # the overview's items, the language, background off, …
             if applied.get("on") == on and applied.get("interval") == interval:
                 return
             applied.update(on=on, interval=interval)
@@ -1063,14 +1079,23 @@ def _setup_phone_background(state: AppState, runner: PeriodicRunner) -> None:
                 print("Info: background running off.")
                 return
             print(f"Info: background running on (every {interval} min).")
+            try:
+                content = notifier.current()
+            except Exception as exc:  # noqa: BLE001 - the overview never blocks the service
+                print(f"Warning: background notification overview failed ({exc})")
+                content = None
+            if content is None:
+                content = StatusContent(*_fallback())
             android.start_background({
-                "title": S("bg_notif_title"),
-                "text": S("bg_notif_text").format(n=interval),
+                "title": content.title,
+                "text": content.text,
+                "sub": content.sub,
                 "channel": S("bg_channel"),
                 "boot_title": S("bg_boot_title"),
                 "boot_text": S("bg_boot_text"),
                 "events_channel": S("events_channel"),
             })
+            notifier.start()
             _schedule_phone_wake(runner)
         except Exception as exc:  # noqa: BLE001 - background is best effort
             print(f"Warning: background running setup failed ({exc})")
@@ -1090,6 +1115,9 @@ def _setup_phone_background(state: AppState, runner: PeriodicRunner) -> None:
     listen_config = getattr(state, "listen_config", None)
     if callable(listen_config):
         listen_config(_sync)
+    listen = getattr(state, "listen", None)
+    if callable(listen):
+        listen(notifier.poke)  # new data, a sent order or excuse, …
     _sync()
     # Widget and wake-up alarms need no running Python, but the first data
     # comes from here (later ones from each config save and cache reload).

@@ -197,6 +197,21 @@ MESSAGES: dict[str, dict[str, str]] = {
     "widget_substitution": {"cs": "Suplování", "en": "Substitution"},
     "widget_room_change": {"cs": "Jiná učebna", "en": "Room change"},
     "widget_change": {"cs": "Změna", "en": "Change"},
+    # The phone's background notification as an overview (core/status_notification.py).
+    "status_today": {"cs": "dnes", "en": "today"},
+    "status_tomorrow": {"cs": "zítra", "en": "tomorrow"},
+    "status_lunch": {"cs": "Oběd {when}", "en": "Lunch {when}"},
+    "status_lunch_none": {"cs": "Neobjednáno", "en": "Not ordered"},
+    "status_lunch_ordered": {"cs": "Objednáno", "en": "Ordered"},
+    "status_lesson": {"cs": "Další hodina: {lesson}", "en": "Next lesson: {lesson}"},
+    "status_lesson_on": {"cs": "Další hodina {when}: {lesson}",
+                         "en": "Next lesson {when}: {lesson}"},
+    "status_orders": {"cs": "Neobjednané obědy: {days} · uzávěrka {deadline}",
+                      "en": "Lunches not ordered: {days} · order by {deadline}"},
+    "status_orders_more": {"cs": "{days} a další {n}", "en": "{days} and {n} more"},
+    "status_excuses": {"cs": "Omluvenky k odeslání: {n}", "en": "Excuses to send: {n}"},
+    "status_wakeup": {"cs": "Budík: {when} v {time}", "en": "Alarm: {when} at {time}"},
+    "status_updated": {"cs": "Aktualizováno {time}", "en": "Updated {time}"},
 }
 
 

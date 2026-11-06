@@ -309,10 +309,11 @@ def _service_intent(ctx):
 
 def start_background(texts: dict[str, str]) -> bool:
     """Starts (or updates) the background service. ``texts``: the ongoing
-    notification's ``title`` / ``text`` / ``channel`` and the reboot
-    reminder's ``boot_title`` / ``boot_text`` / ``events_channel``.
+    notification's ``title`` / ``text`` / ``sub`` / ``channel`` and the
+    reboot reminder's ``boot_title`` / ``boot_text`` / ``events_channel``.
 
-    Android only allows starting it while the app's screen is open.
+    Android only allows starting it while the app's screen is open; later
+    changes to the notification go through :func:`update_background_notification`.
     """
     ctx = context()
     if ctx is None:
@@ -340,6 +341,33 @@ def stop_background() -> None:
         cancel_wake()
     except Exception as exc:  # noqa: BLE001
         print(f"Warning: could not stop the background service ({exc})")
+
+
+ACTION_UPDATE_STATUS = f"{JAVA_PACKAGE}.ACTION_UPDATE_STATUS"
+
+
+def update_background_notification(title: str, text: str, sub: str = "") -> bool:
+    """Replaces what the background service's notification says.
+
+    Goes to ``StatusReceiver``, which redraws the notification in place
+    while the service runs (and keeps the texts for its next start). Not
+    through the service itself: starting it again from the background is
+    something Android 12+ may refuse.
+    """
+    ctx = context()
+    if ctx is None:
+        return False
+    try:
+        intent = _autoclass("android.content.Intent")(ACTION_UPDATE_STATUS)
+        intent.setClassName(ctx.getPackageName(), f"{JAVA_PACKAGE}.StatusReceiver")
+        for key, value in (("title", title), ("text", text), ("sub", sub)):
+            intent.putExtra(key, str(value or ""))
+        ctx.sendBroadcast(intent)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        print(f"Warning: could not update the background notification "
+              f"({type(exc).__name__}: {exc})")
+        return False
 
 
 # -- waking up for due refreshes -------------------------------------------------------------
