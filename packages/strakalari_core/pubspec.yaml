@@ -1,0 +1,15 @@
+name: strakalari_core
+description: Pure-Dart core of Strakalari (no Flutter import). Behavior parity with strakalari/core.
+version: 0.1.0
+
+environment:
+  sdk: ^3.12.0
+resolution: workspace
+
+dependencies:
+  # Phase 1+ dependencies from PLAN §3.3 (http, cookie_jar, html, crypto,
+  # pointycastle, clock, path) are added together with the ports that need them.
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.0

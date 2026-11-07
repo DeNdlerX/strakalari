@@ -61,3 +61,7 @@ Thumbs.db
 Desktop.ini
 
 strakalari_MOBILE_PLAN.md
+
+# Dart / Flutter (workspace resolution artifacts; every pubspec.lock IS committed)
+.dart_tool/
+!pubspec.lock

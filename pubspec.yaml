@@ -1,0 +1,9 @@
+name: strakalari_workspace
+description: Dart workspace root for the Strakalari Flutter migration (PLAN.md phase 0).
+# Toolchain is pinned: Flutter 3.44.8 / Dart 3.12.2. Never run `flutter upgrade`.
+environment:
+  sdk: ^3.12.0
+
+workspace:
+  - packages/strakalari_core
+  - app

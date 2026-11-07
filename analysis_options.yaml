@@ -1,0 +1,11 @@
+# Shared lints for the whole workspace (PLAN.md §3.1).
+include: package:lints/recommended.yaml
+
+analyzer:
+  exclude:
+    # Flet phone extension (Python side, removed at the switch in phase 10).
+    - mobile/**
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
