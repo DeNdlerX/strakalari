@@ -6,28 +6,36 @@
       "args": [
         "25.12.2026"
       ],
-      "expected": "2026-12-25"
+      "expected": {
+        "__date__": "2026-12-25"
+      }
     },
     {
       "fn": "parseCzDate",
       "args": [
         "10.9.2026 (čtvrtek)"
       ],
-      "expected": "2026-09-10"
+      "expected": {
+        "__date__": "2026-09-10"
+      }
     },
     {
       "fn": "parseCzDate",
       "args": [
         "2026-12-25"
       ],
-      "expected": "2026-12-25"
+      "expected": {
+        "__date__": "2026-12-25"
+      }
     },
     {
       "fn": "parseCzDate",
       "args": [
         "07/09/2026"
       ],
-      "expected": "2026-09-07"
+      "expected": {
+        "__date__": "2026-09-07"
+      }
     },
     {
       "fn": "parseCzDate",

@@ -64,7 +64,7 @@ def helpers_cases() -> list[dict]:
     for text in ["15.09.2026", "1. 9. 2026", "3.9.2026 (čtvrtek)",
                  "Pondělí 1. 9. 2026", "2026-11-25", "25/11/2026",
                  "07.09.26", "2026/09/07"]:
-        cases.append(_case("parseDate", h.parse_date(text).isoformat(), text))
+        cases.append(_case("parseDate", h.parse_date(text), text))
     for text in ["3 (10:05 - 10:50)", "3", "8:00 - 8:45", "", "13:40 - 14:25"]:
         cases.append(_case("extractLessonNum", h.extract_lesson_num(text), text))
     for text in ["1. 8:00 - 8:45", "3 (10:05 - 10:50)", "8:00 - 8:45"]:
@@ -99,9 +99,7 @@ def models_cases() -> list[dict]:
     cases = []
     for text in ["25.12.2026", "10.9.2026 (čtvrtek)", "2026-12-25",
                  "07/09/2026", "nonsense", ""]:
-        result = m.parse_cz_date(text)
-        cases.append(_case("parseCzDate",
-                           result.isoformat() if result else None, text))
+        cases.append(_case("parseCzDate", m.parse_cz_date(text), text))
     for value in ["10.9.2026 (čtvrtek)", "07.09.2026", "nonsense",
                   "2026-09-07"]:
         cases.append(_case("canonicalDayKey", m.canonical_day_key(value), value))
@@ -123,8 +121,7 @@ def models_cases() -> list[dict]:
     cases.append(_case("lessonFromLegacy", {
         "subject": lesson.subject, "period": lesson.period,
         "status": lesson.status, "excused": lesson.excused,
-        "room": lesson.room,
-        "day": lesson.day.isoformat() if lesson.day else None,
+        "room": lesson.room, "day": lesson.day,
     }, "absent-shape"))
     return cases
 
