@@ -4,37 +4,64 @@
     {
       "fn": "t",
       "args": [
-        "period_label:cs:0"
+        "period_label",
+        {
+          "n": 0
+        },
+        "cs"
       ],
       "expected": "0. hodina"
     },
     {
       "fn": "t",
       "args": [
-        "auto_excuses_failed:cs:2"
+        "auto_excuses_failed",
+        {
+          "n": 2
+        },
+        "cs"
       ],
       "expected": "2 omluvenek se nepodařilo odeslat"
     },
     {
       "fn": "t",
       "args": [
-        "period_label:en:0"
+        "period_label",
+        {
+          "n": 0
+        },
+        "en"
       ],
       "expected": "period 0"
     },
     {
       "fn": "t",
       "args": [
-        "auto_excuses_failed:en:2"
+        "auto_excuses_failed",
+        {
+          "n": 2
+        },
+        "en"
       ],
       "expected": "2 excuse(s) could not be sent"
     },
     {
       "fn": "t",
       "args": [
-        "non_existent_key_xyz:en"
+        "non_existent_key_xyz",
+        {},
+        "en"
       ],
       "expected": "non_existent_key_xyz"
+    },
+    {
+      "fn": "t",
+      "args": [
+        "bak_login_rejected",
+        {},
+        "cs"
+      ],
+      "expected": "Přihlášení k Bakalářům selhalo — zkontrolujte jméno a heslo v Nastavení. (Bakaláři: {detail})"
     }
   ]
 }

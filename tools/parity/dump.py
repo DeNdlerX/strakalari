@@ -133,16 +133,26 @@ def i18n_cases() -> list[dict]:
     from strakalari.core import i18n
 
     cases = []
+
+    def _t(key, lang, fmt=None):
+        try:
+            return {"fn": "t", "args": [_jsonable(key), _jsonable(fmt or {}),
+                                        _jsonable(lang)],
+                    "expected": _jsonable(i18n.t(key, lang=lang,
+                                                **(fmt or {})))}
+        finally:
+            i18n.set_language("cs")
+
+    cases.append(_t("period_label", "cs", {"n": 0}))
+    cases.append(_t("auto_excuses_failed", "cs", {"n": 2}))
+    cases.append(_t("period_label", "en", {"n": 0}))
+    cases.append(_t("auto_excuses_failed", "en", {"n": 2}))
+    cases.append(_t("non_existent_key_xyz", "en", None))
+    # Missing fmt: the raw text with the placeholder is returned.
     i18n.set_language("cs")
-    cases.append(_case("t", i18n.t("period_label", n=0), "period_label:cs:0"))
-    cases.append(_case("t", i18n.t("auto_excuses_failed", n=2),
-                       "auto_excuses_failed:cs:2"))
-    i18n.set_language("en")
-    cases.append(_case("t", i18n.t("period_label", n=0), "period_label:en:0"))
-    cases.append(_case("t", i18n.t("auto_excuses_failed", n=2),
-                       "auto_excuses_failed:en:2"))
-    cases.append(_case("t", i18n.t("non_existent_key_xyz"),
-                       "non_existent_key_xyz:en"))
+    cases.append({"fn": "t", "args": [_jsonable("bak_login_rejected"),
+                                      _jsonable({}), _jsonable("cs")],
+                        "expected": _jsonable(i18n.t("bak_login_rejected"))})
     i18n.set_language("cs")
     return cases
 

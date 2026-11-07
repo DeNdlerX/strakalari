@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 1 · Next step: Phase 1 — port strakalari/core/i18n.py.
+Current phase: 1 · Next step: Phase 1 — port strakalari/core/helpers.py (pure part, no crypto).
 
 ## Phase 0 (done)
 
@@ -47,7 +47,7 @@ State: todo = not started, tests = Dart tests written, done = ported + green.
 | strakalari/core/gemini.py | core lunches/gemini.dart | test_gemini_key.py, test_gemini_picks.py, test_ai_recommend.py | todo |
 | strakalari/core/grades.py | core planning/grades.dart | test_grades.py, test_grades_math.py, test_grades_minus.py | todo |
 | strakalari/core/helpers.py | core storage/helpers.dart | test_helpers.py, test_session_lock.py | todo |
-| strakalari/core/i18n.py | core i18n.dart | test_i18n.py, test_tray_language.py | todo |
+| strakalari/core/i18n.py | core i18n.dart | test_i18n.py (core cases) → i18n_test.dart 4 + parity_i18n_test.dart | done |
 | strakalari/core/lunch_auto.py | core lunches/lunch_auto.dart | test_lunch_auto.py, test_lunch_auto_user_choice.py, test_lunch_same_pick.py | todo |
 | strakalari/core/lunch_cutoff.py | core lunches/lunch_cutoff.dart | test_lunch_cutoff.py, test_lunch_day_keys.py, test_lunch_deadline_calendar.py | todo |
 | strakalari/core/matching.py | core planning/matching.dart | test_matching.py | todo |
@@ -147,6 +147,16 @@ tests/fake_bakalari.py, tests/fixtures/, tests/test_imports_resolve.py
 
 Expected drops (decide at port, subject likely absent in Flutter):
 test_tls_bundle.py, test_frozen_ssl.py (frozen CA bundle no longer exists).
+
+## Deferred test cases (not dropped — ported with the phase that owns their SUT)
+
+- test_i18n.py → `test_core_messages_follow_language` moves to phase 4
+  (needs `error_report.timeout_user_message`); `test_new_flet_strings_present`
+  + `test_dead_keys_removed_and_live_keys_kept` move to phase 5 (need
+  `flet_ui.strings`).
+- test_models.py → `test_engine_excuses_neomluveno_day` +
+  `test_engine_excuses_unexcused_type` move to phase 4 (need
+  `automation.Strakalari.generate_excuses`).
 
 ## Dropped (with reason)
 

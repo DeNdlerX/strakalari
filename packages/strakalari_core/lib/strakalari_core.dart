@@ -4,3 +4,4 @@
 // one; each port adds its export here and a `*_test.dart` counterpart under
 // `test/`.
 export 'src/platform/packaging.dart';
+export 'src/i18n.dart';

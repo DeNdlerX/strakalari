@@ -1,0 +1,313 @@
+// Active UI language (``cs`` / ``en``) plus the few core-level texts.
+//
+// Port of strakalari/core/i18n.py. All user-visible UI text lives in the app
+// ARB files; this module only owns the language setting (shared with the UI)
+// and messages the core layer itself shows, so core never imports UI code.
+//
+// The Czech and English wordings below are user-facing copy: keep them
+// byte-identical with the Python MESSAGES table.
+
+// ignore_for_file: lines_longer_than_80_chars
+
+const List<String> languages = ['cs', 'en'];
+
+String _currentLang = 'cs';
+
+/// All core messages, Czech + English. Placeholders (`{name}`) are filled
+/// by [t]; both languages always carry the same placeholder set.
+const Map<String, Map<String, String>> messages = {
+  'error_timeout': {
+    'cs':
+        'Server neodpověděl v časovém limitu — připojení k internetu je nejspíš pomalé nebo nestabilní. Zkuste to znovu, případně zvyšte Časový limit spojení v Nastavení nebo se připojte k rychlejší síti.',
+    'en':
+        'The server did not answer within the time limit — your internet connection is probably slow or unstable. Try again, raise the connection timeout in Settings, or switch to a faster network.',
+  },
+  'bak_login_rejected': {
+    'cs':
+        'Přihlášení k Bakalářům selhalo — zkontrolujte jméno a heslo v Nastavení. (Bakaláři: {detail})',
+    'en':
+        'Bakaláři login failed — check your username and password in Settings. (Bakaláři: {detail})',
+  },
+  'bak_missing_url': {
+    'cs': 'Chybí URL Bakalářů — doplňte ho v Nastavení.',
+    'en': 'The Bakaláři URL is missing — add it in Settings.',
+  },
+  'bak_missing_user': {
+    'cs': 'Chybí uživatelské jméno Bakalářů — doplňte ho v Nastavení.',
+    'en': 'The Bakaláři username is missing — add it in Settings.',
+  },
+  'bak_missing_password': {
+    'cs': 'Chybí heslo Bakalářů — doplňte ho v Nastavení.',
+    'en': 'The Bakaláři password is missing — add it in Settings.',
+  },
+  'bak_unreachable': {
+    'cs':
+        'Nepodařilo se spojit s Bakaláři ({host}). Zkontrolujte připojení k internetu a adresu Bakalářů v Nastavení.',
+    'en':
+        'Could not connect to Bakaláři ({host}). Check your internet connection and the Bakaláři address in Settings.',
+  },
+  'bak_connection_lost': {
+    'cs': 'Spojení s Bakaláři se přerušilo. Zkuste to prosím za chvíli znovu.',
+    'en': 'The connection to Bakaláři was interrupted. Please try again in a moment.',
+  },
+  'bak_no_login_page': {
+    'cs':
+        'Na adrese {host} se nepodařilo najít přihlášení do Bakalářů. Zkontrolujte adresu Bakalářů v Nastavení.',
+    'en':
+        'No Bakaláři login was found at {host}. Check the Bakaláři address in Settings.',
+  },
+  'bak_server_error': {
+    'cs': 'Bakaláři odpověděli chybou (HTTP {status}). Zkuste to prosím později.',
+    'en': 'Bakaláři answered with an error (HTTP {status}). Please try again later.',
+  },
+  'bak_password_undecryptable': {
+    'cs': 'Heslo k Bakalářům nelze rozšifrovat — zadejte ho znovu v Nastavení.',
+    'en': 'The stored Bakaláři password cannot be decrypted — enter it again in Settings.',
+  },
+  'strava_missing_canteen': {
+    'cs': 'Chybí číslo jídelny Stravy — doplňte ho v Nastavení.',
+    'en': 'The Strava canteen number is missing — add it in Settings.',
+  },
+  'strava_missing_user': {
+    'cs': 'Chybí uživatelské jméno Stravy — doplňte ho v Nastavení.',
+    'en': 'The Strava username is missing — add it in Settings.',
+  },
+  'strava_missing_password': {
+    'cs': 'Chybí heslo Stravy — doplňte ho v Nastavení.',
+    'en': 'The Strava password is missing — add it in Settings.',
+  },
+  'strava_password_undecryptable': {
+    'cs': 'Heslo ke Stravě nelze rozšifrovat — zadejte ho znovu v Nastavení.',
+    'en': 'The stored Strava password cannot be decrypted — enter it again in Settings.',
+  },
+  'strava_unreachable': {
+    'cs': 'Nepodařilo se spojit se Stravou. Zkontrolujte připojení k internetu.',
+    'en': 'Could not connect to Strava. Check your internet connection.',
+  },
+  'strava_connection_lost': {
+    'cs': 'Spojení se Stravou se přerušilo. Zkuste to prosím za chvíli znovu.',
+    'en': 'The connection to Strava was interrupted. Please try again in a moment.',
+  },
+  'strava_server_error': {
+    'cs': 'Strava odpověděla chybou (HTTP {status}). Zkuste to prosím později.',
+    'en': 'Strava answered with an error (HTTP {status}). Please try again later.',
+  },
+  'strava_login_failed': {
+    'cs':
+        'Přihlášení ke Stravě selhalo — zkontrolujte číslo jídelny, uživatelské jméno a heslo v Nastavení.',
+    'en':
+        'Strava login failed — check the canteen number, username and password in Settings.',
+  },
+  'strava_login_rejected': {
+    'cs':
+        'Přihlášení ke Stravě selhalo — zkontrolujte číslo jídelny, uživatelské jméno a heslo v Nastavení. (Strava: {detail})',
+    'en':
+        'Strava login failed — check the canteen number, username and password in Settings. (Strava: {detail})',
+  },
+  'strava_menu_failed': {
+    'cs': 'Jídelníček ze Stravy se nenačetl. (Strava: {detail})',
+    'en': 'The Strava menu did not load. (Strava: {detail})',
+  },
+  'test_bak_missing': {
+    'cs': 'Chybí URL nebo uživatelské jméno Bakalářů.',
+    'en': 'The Bakaláři URL or username is missing.',
+  },
+  'test_bak_ok': {
+    'cs': 'Přihlášení k Bakalářům proběhlo úspěšně!',
+    'en': 'Bakaláři login successful!'
+  },
+  'test_bak_failed': {
+    'cs': 'Chyba při přihlašování k Bakalářům: {err}',
+    'en': 'Bakaláři login error: {err}'
+  },
+  'test_strava_missing': {
+    'cs': 'Chybí kód jídelny nebo uživatelské jméno Stravy.',
+    'en': 'The Strava canteen number or username is missing.',
+  },
+  'test_strava_ok': {
+    'cs': 'Přihlášení ke Stravě proběhlo úspěšně!',
+    'en': 'Strava login successful!'
+  },
+  'test_strava_failed': {
+    'cs': 'Chyba při přihlašování ke Stravě: {err}',
+    'en': 'Strava login error: {err}'
+  },
+  'auto_excuses_failed': {
+    'cs': '{n} omluvenek se nepodařilo odeslat',
+    'en': '{n} excuse(s) could not be sent',
+  },
+  'auto_excuse_outbox_unknown': {
+    'cs': 'Automatické omlouvání přeskočeno — Komens → Odeslané se nepodařilo načíst',
+    'en': 'Auto-excuse skipped — Komens → Sent could not be read',
+  },
+  'auto_orders_failed': {
+    'cs': '{n} z {total} objednávek obědů neprošlo (podrobnosti v protokolu)',
+    'en': '{n} of {total} lunch order(s) did not go through (details in the log)',
+  },
+  'strava_low_balance': {
+    'cs':
+        'Na účtu ve Stravě není dost peněz — {n} obědů se neobjednalo. Dobijte kredit, objednávky se zkusí znovu při další aktualizaci.',
+    'en':
+        'Not enough money on the Strava account — {n} lunch(es) were not ordered. Top up the account; the orders are retried on the next refresh.',
+  },
+  'strava_low_balance_manual': {
+    'cs':
+        'Na účtu ve Stravě není dost peněz — {n} obědů se neobjednalo. Dobijte kredit a odešlete znovu.',
+    'en':
+        'Not enough money on the Strava account — {n} lunch(es) were not ordered. Top up and send again.',
+  },
+  'period_label': {'cs': '{n}. hodina', 'en': 'period {n}'},
+  'news_mark': {'cs': 'Nová známka: {items}', 'en': 'New mark: {items}'},
+  'news_marks': {'cs': 'Nové známky: {items}', 'en': 'New marks: {items}'},
+  'news_quarterly': {
+    'cs': 'Čtvrtletní známka: {items}',
+    'en': 'Quarterly mark: {items}'
+  },
+  'news_quarterlies': {
+    'cs': 'Čtvrtletní známky: {items}',
+    'en': 'Quarterly marks: {items}'
+  },
+  'news_absence': {'cs': 'Nová absence: {items}', 'en': 'New absence: {items}'},
+  'news_absences': {
+    'cs': 'Nové absence: {items}',
+    'en': 'New absences: {items}'
+  },
+  'news_change': {
+    'cs': 'Změna v rozvrhu: {items}',
+    'en': 'Timetable change: {items}'
+  },
+  'news_changes': {
+    'cs': 'Změny v rozvrhu: {items}',
+    'en': 'Timetable changes: {items}'
+  },
+  'news_more': {'cs': 'a další ({n})', 'en': 'and {n} more'},
+  'news_cancelled': {'cs': 'odpadá', 'en': 'cancelled'},
+  'news_added': {'cs': 'hodina navíc', 'en': 'extra lesson'},
+  'news_room': {'cs': 'učebna {room}', 'en': 'room {room}'},
+  'news_changed': {'cs': 'změna', 'en': 'changed'},
+  'update_available_notice': {
+    'cs': 'Je dostupná nová verze Strakalářů {version}.',
+    'en': 'Strakaláři {version} is available.',
+  },
+  'cache_age_now': {'cs': 'právě teď', 'en': 'just now'},
+  'cache_age_min': {'cs': 'před {n} min', 'en': '{n} min ago'},
+  'cache_age_hours': {'cs': 'před {n} h', 'en': '{n} h ago'},
+  'cache_age_days': {'cs': 'před {n} dny', 'en': '{n} days ago'},
+  'cache_stale': {'cs': 'zastaralé', 'en': 'stale'},
+  'gemini_no_menu': {
+    'cs': 'Žádný jídelníček k doporučení.',
+    'en': 'No menu to recommend from.'
+  },
+  'gemini_heading': {
+    'cs': '💡 <b>Doporučení Gemini AI:</b><br><br>',
+    'en': '💡 <b>Gemini AI recommendation:</b><br><br>'
+  },
+  'gemini_local_heading': {
+    'cs': 'Lokální doporučení (bez AI):<br><br>',
+    'en': 'Local recommendation (no AI):<br><br>'
+  },
+  'gemini_missing_key': {'cs': 'Chybí API klíč.', 'en': 'Missing API key.'},
+  'gemini_key_ok': {
+    'cs': 'Klíč Gemini funguje ({model}).',
+    'en': 'Gemini key works ({model}).'
+  },
+  'gemini_key_invalid': {
+    'cs': 'Neplatný Gemini API klíč (HTTP {status}).',
+    'en': 'Invalid Gemini API key (HTTP {status}).'
+  },
+  'gemini_bad_request': {
+    'cs': 'Gemini požadavek odmítnut (HTTP 400) — zkontrolujte název modelu.',
+    'en': 'Gemini request rejected (HTTP 400) — check the model name.',
+  },
+  'gemini_key_check_failed': {
+    'cs': 'Kontrola Gemini klíče selhala: {err}',
+    'en': 'Gemini key check failed: {err}'
+  },
+  // Wake-up alarm and home-screen widget (shown by the phone's Java side).
+  'wakeup_channel': {'cs': 'Budík před vyučováním', 'en': 'Wake-up alarm'},
+  'wakeup_dismiss': {'cs': 'Vypnout', 'en': 'Dismiss'},
+  'wakeup_alarm_title': {
+    'cs': 'Budík · {subject} v {time}',
+    'en': 'Wake-up · {subject} at {time}'
+  },
+  'wakeup_alarm_period': {'cs': '{n}. hodina', 'en': 'Period {n}'},
+  'wakeup_alarm_first': {'cs': 'První hodina', 'en': 'First lesson'},
+  'wakeup_alarm_room': {'cs': 'učebna {room}', 'en': 'room {room}'},
+  'widget_today': {'cs': 'Dnes', 'en': 'Today'},
+  'widget_tomorrow': {'cs': 'Zítra', 'en': 'Tomorrow'},
+  'widget_no_lessons': {'cs': 'Žádné vyučování', 'en': 'No lessons'},
+  'widget_no_data': {
+    'cs': 'Zatím žádná data — otevřete Strakaláře',
+    'en': 'No data yet — open Strakaláři'
+  },
+  'widget_day_off': {'cs': 'Volno', 'en': 'Day off'},
+  'widget_lessons_one': {'cs': '{n} hodina', 'en': '{n} lesson'},
+  'widget_lessons_few': {'cs': '{n} hodiny', 'en': '{n} lessons'},
+  'widget_lessons_many': {'cs': '{n} hodin', 'en': '{n} lessons'},
+  'widget_cancelled': {'cs': 'Odpadá', 'en': 'Cancelled'},
+  'widget_absent': {'cs': 'Absence', 'en': 'Absent'},
+  'widget_excused': {'cs': 'Omluveno', 'en': 'Excused'},
+  'widget_late': {'cs': 'Pozdní příchod', 'en': 'Late arrival'},
+  'widget_left_early': {'cs': 'Předčasný odchod', 'en': 'Left early'},
+  'widget_added': {'cs': 'Hodina navíc', 'en': 'Extra lesson'},
+  'widget_substitution': {'cs': 'Suplování', 'en': 'Substitution'},
+  'widget_room_change': {'cs': 'Jiná učebna', 'en': 'Room change'},
+  'widget_change': {'cs': 'Změna', 'en': 'Change'},
+  // The phone's background notification as an overview (core/status_notification.py).
+  'status_today': {'cs': 'dnes', 'en': 'today'},
+  'status_tomorrow': {'cs': 'zítra', 'en': 'tomorrow'},
+  'status_lunch': {'cs': 'Oběd {when}', 'en': 'Lunch {when}'},
+  'status_lunch_none': {'cs': 'Neobjednáno', 'en': 'Not ordered'},
+  'status_lunch_ordered': {'cs': 'Objednáno', 'en': 'Ordered'},
+  'status_lesson': {'cs': 'Další hodina', 'en': 'Next lesson'},
+  'status_lesson_on': {'cs': 'Další hodina {when}', 'en': 'Next lesson {when}'},
+  'status_orders': {'cs': 'Neobjednané obědy', 'en': 'Lunches not ordered'},
+  'status_orders_value': {
+    'cs': '{days} · uzávěrka {deadline}',
+    'en': '{days} · order by {deadline}'
+  },
+  'status_orders_more': {
+    'cs': '{days} a další {n}',
+    'en': '{days} and {n} more'
+  },
+  'status_excuses': {'cs': 'Omluvenky k odeslání', 'en': 'Excuses to send'},
+  'status_wakeup': {'cs': 'Budík', 'en': 'Alarm'},
+  'status_wakeup_value': {'cs': '{when} v {time}', 'en': '{when} at {time}'},
+  'status_updated': {'cs': 'Aktualizováno {time}', 'en': 'Updated {time}'},
+};
+
+/// Sets the active language; unknown codes are ignored.
+void setLanguage(String lang) {
+  if (languages.contains(lang)) {
+    _currentLang = lang;
+  }
+}
+
+/// The active language.
+String getLanguage() => _currentLang;
+
+final _placeholder = RegExp(r'\{([A-Za-z_][A-Za-z0-9_]*)\}');
+
+/// Core message in the active language (Czech fallback, then [defaultValue]/key).
+///
+/// [lang] overrides the active language. [args] fills `{placeholders}`; a bad
+/// placeholder never raises (the raw text is returned, mirroring `str.format`
+/// falling back on `KeyError`/`IndexError`/`ValueError`).
+String t(String key,
+    {String? defaultValue, String? lang, Map<String, Object?>? args}) {
+  final texts = messages[key] ?? const {};
+  final text = texts[lang ?? _currentLang] ??
+      texts['cs'] ??
+      (defaultValue ?? key);
+  final fmt = args;
+  if (fmt == null || fmt.isEmpty) return text;
+  try {
+    return text.replaceAllMapped(_placeholder, (m) {
+      final name = m.group(1)!;
+      if (!fmt.containsKey(name)) throw FormatException('missing {$name}');
+      return '${fmt[name]}';
+    });
+  } on FormatException {
+    return text;
+  }
+}
