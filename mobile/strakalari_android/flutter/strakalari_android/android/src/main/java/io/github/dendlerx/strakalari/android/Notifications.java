@@ -38,12 +38,20 @@ public final class Notifications {
         return build(ctx, channelId, channelName, importance, title, text, "", ongoing);
     }
 
+    static Notification build(Context ctx, String channelId, String channelName, int importance,
+                              String title, String text, String sub, boolean ongoing) {
+        return builder(ctx, channelId, channelName, importance, title, text, sub, ongoing).build();
+    }
+
     /**
      * {@code sub}: the small text in the header next to the app name (none
      * when empty). An ongoing notification never alerts again on a redraw.
+     * The text shows in full when expanded ({@code BigTextStyle}), unless the
+     * caller sets another style.
      */
-    static Notification build(Context ctx, String channelId, String channelName, int importance,
-                              String title, String text, String sub, boolean ongoing) {
+    static Notification.Builder builder(Context ctx, String channelId, String channelName,
+                                        int importance, String title, String text, String sub,
+                                        boolean ongoing) {
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationManager nm = ctx.getSystemService(NotificationManager.class);
             if (nm != null) {
@@ -72,7 +80,7 @@ public final class Notifications {
         if (Build.VERSION.SDK_INT < 26) {
             b.setPriority(ongoing ? Notification.PRIORITY_MIN : Notification.PRIORITY_DEFAULT);
         }
-        return b.build();
+        return b;
     }
 
     /** Opens the app (a notification tap, the alarm clock icon). */

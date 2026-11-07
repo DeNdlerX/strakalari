@@ -1,6 +1,7 @@
-"""The phone's background notification as an overview: today's lunch, the
-next lesson, open lunch orders, pending excuses, the wake-up alarm and the
-last update — what it says, how it stays current, and its settings."""
+"""The phone's background notification as an overview: the next lesson,
+today's lunch, open lunch orders, pending excuses, the wake-up alarm and the
+last update — what it says, how it stays current, its settings, and the
+app's own notification layout that draws it."""
 
 from __future__ import annotations
 
@@ -68,9 +69,14 @@ def _inputs(**over) -> StatusInputs:
 
 
 def _lines(content: StatusContent) -> list[str]:
-    """Title and text lines; dates keep a no-break space ("9.\u00a011."), read as a space."""
-    text = f"{content.title}\n{content.text}".replace("\u00a0", " ")
-    return [line for line in text.split("\n") if line]
+    """The rows as "label: value"; dates keep a no-break space ("9.\u00a011."), read as a space."""
+    return [row.line.replace("\u00a0", " ") for row in content.rows]
+
+
+def _lunch(content: StatusContent) -> tuple[str, str] | None:
+    """The lunch row's label and value."""
+    row = next((row for row in content.rows if row.kind == "lunch"), None)
+    return None if row is None else (row.label, row.value)
 
 
 # -- choosing what to show --------------------------------------------------------------
@@ -84,8 +90,8 @@ class TestItems:
         assert set(DEFAULT_ITEMS) <= set(ITEMS)
 
     def test_selection_keeps_display_order_and_drops_unknown(self):
-        cfg = {"background_notification_items": ["excuses", "bogus", "lunch"]}
-        assert selected_items(cfg) == ["lunch", "excuses"]
+        cfg = {"background_notification_items": ["excuses", "bogus", "lunch", "next_lesson"]}
+        assert selected_items(cfg) == ["next_lesson", "lunch", "excuses"]
         assert selected_items({"background_notification_items": "lunch"}) == list(DEFAULT_ITEMS)
         assert selected_items({"background_notification_items": []}) == []
 
@@ -152,40 +158,40 @@ class TestLunchtime:
     def test_the_lunch_line_follows_it(self):
         tt = {MON: _day(1, 2, 3, 4, 6), TUE: _day(1, 2, 3, 4, 5)}
         before = build_status(_inputs(timetable=tt), datetime(2026, 11, 9, 12, 34), lang="cs")
-        assert _lines(before)[:2] == ["Oběd dnes", "Oběd 1 - Polévka, Kuřecí řízek, kaše"]
+        assert _lunch(before) == ("Oběd dnes", "Oběd 1 - Polévka, Kuřecí řízek, kaše")
         after = build_status(_inputs(timetable=tt), datetime(2026, 11, 9, 12, 35), lang="cs")
-        assert _lines(after)[:2] == ["Oběd zítra", "Neobjednáno"]
+        assert _lunch(after) == ("Oběd zítra", "Neobjednáno")
 
     def test_a_day_without_lessons_switches_at_three(self):
         before = build_status(_inputs(timetable={}), datetime(2026, 11, 9, 14, 59), lang="en")
-        assert _lines(before)[0] == "Lunch today"
+        assert _lunch(before)[0] == "Lunch today"
         after = build_status(_inputs(timetable={}), datetime(2026, 11, 9, 15, 0), lang="en")
-        assert _lines(after)[0] == "Lunch tomorrow"
+        assert _lunch(after)[0] == "Lunch tomorrow"
 
 
 class TestLunch:
     def test_todays_lunch_until_classes_end_then_the_next(self):
         # Monday: periods 1, 2 and 4, so lunch is over when period 4 ends.
         morning = build_status(_inputs(), datetime(2026, 11, 9, 11, 39), lang="cs")
-        assert _lines(morning)[:2] == ["Oběd dnes", "Oběd 1 - Polévka, Kuřecí řízek, kaše"]
+        assert _lunch(morning) == ("Oběd dnes", "Oběd 1 - Polévka, Kuřecí řízek, kaše")
         afternoon = build_status(_inputs(), datetime(2026, 11, 9, 11, 40), lang="cs")
-        assert _lines(afternoon)[:2] == ["Oběd zítra", "Neobjednáno"]
+        assert _lunch(afternoon) == ("Oběd zítra", "Neobjednáno")
 
     def test_weekend_and_gaps_show_the_next_menu_day(self):
         inputs = _inputs(web_orders={FRI: "table4&1&0", NEXT_MON: "table5&1&0"})
         thursday = build_status(inputs, datetime(2026, 11, 12, 9, 0), lang="cs")
-        assert _lines(thursday)[:2] == ["Oběd zítra", "Oběd 1 - Ryba"]  # no menu on Thursday
+        assert _lunch(thursday) == ("Oběd zítra", "Oběd 1 - Ryba")  # no menu on Thursday
         friday = build_status(inputs, datetime(2026, 11, 13, 16, 0), lang="en")
-        assert _lines(friday)[:2] == ["Lunch on Monday", "Oběd 1 - Buchtičky se šodó"]
-        assert _lines(build_status(inputs, datetime(2026, 11, 13, 16, 0), lang="cs"))[0] == (
+        assert _lunch(friday) == ("Lunch on Monday", "Oběd 1 - Buchtičky se šodó")
+        assert _lunch(build_status(inputs, datetime(2026, 11, 13, 16, 0), lang="cs"))[0] == (
             "Oběd v pondělí")
 
     def test_no_lunch_and_unknown_meal(self):
         none = _inputs(web_orders={MON: "table0&-1&0"})
-        assert _lines(build_status(none, datetime(2026, 11, 9, 7, 0), lang="en"))[:2] == [
-            "Lunch today", "Not ordered"]
+        assert _lunch(build_status(none, datetime(2026, 11, 9, 7, 0), lang="en")) == (
+            "Lunch today", "Not ordered")
         gone = _inputs(web_orders={MON: "table0&9&0"})  # ordered, but not on the menu
-        assert _lines(build_status(gone, datetime(2026, 11, 9, 7, 0), lang="cs"))[1] == (
+        assert _lunch(build_status(gone, datetime(2026, 11, 9, 7, 0), lang="cs"))[1] == (
             "Objednáno")
 
     def test_strava_off_hides_the_lunch_lines(self):
@@ -266,12 +272,17 @@ class TestOtherLines:
         assert ("Neobjednané obědy: Út 10. 11., St 11. 11., Čt 12. 11. a další 2 · "
                 "uzávěrka zítra 12:00") in lines
 
-    def test_excuses_only_when_waiting(self):
+    def test_excuses_also_when_none_wait(self):
         now = datetime(2026, 11, 9, 7, 0)
         assert "Omluvenky k odeslání: 2" in _lines(build_status(_inputs(pending_excuses=2), now,
                                                                 lang="cs"))
-        assert not [line for line in _lines(build_status(_inputs(), now, lang="cs"))
-                    if "Omluvenky" in line]
+        assert "Omluvenky k odeslání: 0" in _lines(build_status(_inputs(), now, lang="cs"))
+        # Alone, "none to send" gives way to the plain text.
+        only = {**CFG, "background_notification_items": ["excuses"]}
+        assert build_status(_inputs(config=only), now, fallback=("A", "B")) == (
+            StatusContent("A", "B", ""))
+        assert _lines(build_status(_inputs(config=only, pending_excuses=1), now, lang="en")) == [
+            "Excuses to send: 1"]
 
     def test_wakeup_alarm(self):
         cfg = {**ALL, "wakeup_enabled": True, "wakeup_minutes_before": 60}
@@ -281,6 +292,22 @@ class TestOtherLines:
         lines = _lines(build_status(_inputs(config=cfg), datetime(2026, 11, 9, 6, 0),
                                     lang="en"))
         assert "Alarm: today at 7:00" in lines
+        short = {r.kind: r.short for r in build_status(
+            _inputs(config=cfg), datetime(2026, 11, 9, 6, 0), lang="en").rows}
+        assert short["wakeup"] == "7:00"
+        tt = {**TT, NEXT_MON: [{"time": "1 (8:00 - 8:45)", "subject": "Matematika"}]}
+        friday = build_status(_inputs(config=cfg, timetable=tt), datetime(2026, 11, 13, 9, 0),
+                              lang="cs")
+        assert "Budík: v pondělí v 7:00" in _lines(friday)
+        assert {r.kind: r.short for r in friday.rows}["wakeup"] == "Po 7:00"
+        # Picked by default, shown only while the alarm is on.
+        default = {k: v for k, v in cfg.items() if k != "background_notification_items"}
+        now = datetime(2026, 11, 9, 7, 30)
+        assert "Budík: zítra v 7:00" in _lines(build_status(_inputs(config=default), now,
+                                                            lang="cs"))
+        assert not [line for line in _lines(build_status(
+            _inputs(config={**default, "wakeup_enabled": False}), now, lang="cs"))
+            if line.startswith("Budík")]
 
     def test_updated_goes_to_the_header(self):
         stamp = datetime(2026, 11, 9, 6, 40)
@@ -293,7 +320,7 @@ class TestOtherLines:
         assert build_status(_inputs(last_updated=stamp, config=off), now).sub == ""
 
     def test_nothing_to_show_keeps_the_plain_text(self):
-        inputs = StatusInputs(config=ALL, last_updated=datetime(2026, 11, 9, 6, 40))
+        inputs = StatusInputs(config=ALL, last_updated=datetime(2026, 11, 9, 6, 40))  # no excuses
         content = build_status(inputs, datetime(2026, 11, 9, 7, 0),
                                fallback=("Běží na pozadí", "Každých 30 min"), lang="cs")
         assert content == StatusContent("Běží na pozadí", "Každých 30 min", "Aktualizováno 6:40")
@@ -305,10 +332,42 @@ class TestOtherLines:
         def _boom(*args):
             raise RuntimeError("broken calendar")
 
-        monkeypatch.setattr(sn, "_orders_line", _boom)
-        lines = _lines(build_status(_inputs(pending_excuses=1), datetime(2026, 11, 9, 7, 0),
-                                    lang="en"))
-        assert lines[0] == "Lunch today" and "Excuses to send: 1" in lines
+        monkeypatch.setattr(sn, "_orders_row", _boom)
+        content = build_status(_inputs(pending_excuses=1), datetime(2026, 11, 9, 7, 0), lang="en")
+        assert _lunch(content)[0] == "Lunch today" and "Excuses to send: 1" in _lines(content)
+        assert not [row for row in content.rows if row.kind == "lunch_orders"]
+
+    def test_rows_in_order_and_as_title_and_text(self):
+        content = build_status(_inputs(pending_excuses=2), datetime(2026, 11, 9, 7, 0), lang="cs")
+        assert [row.kind for row in content.rows] == ["next_lesson", "lunch", "lunch_orders",
+                                                      "excuses"]
+        # Where no rows are drawn: the first row's label, its value, the other rows' lines.
+        assert content.title == "Další hodina"
+        text = content.text.split("\n")
+        assert text[0] == "1. Matematika · 8:00 · 214 · Novák"
+        assert text[1] == "Oběd dnes: Oběd 1 - Polévka, Kuřecí řízek, kaše"
+        assert text[-1] == "Omluvenky k odeslání: 2"
+
+    def test_short_values_for_the_collapsed_view(self):
+        content = build_status(_inputs(pending_excuses=2), datetime(2026, 11, 9, 11, 50),
+                               lang="cs")
+        rows = {row["kind"]: row for row in json.loads(content.rows_json())}
+        # Today's lesson is over: the next one says when; so does tomorrow's lunch.
+        assert rows["next_lesson"]["short"] == "zítra: 1. Chemie · 8:00 · L1"
+        assert rows["next_lesson"]["label"] == "Další hodina zítra"
+        assert rows["lunch"]["short"] == "zítra: Neobjednáno"
+        # Counts stand next to their icon (a collapsed line is ~250 dp across).
+        assert rows["excuses"] == {"kind": "excuses", "label": "Omluvenky k odeslání",
+                                   "value": "2", "short": "2"}
+        assert rows["lunch_orders"]["short"] == "4"  # Tuesday open until 12:00
+        friday = build_status(_inputs(web_orders={NEXT_MON: "table5&1&0"}),
+                              datetime(2026, 11, 13, 16, 0), lang="cs")
+        lunch = next(r for r in json.loads(friday.rows_json()) if r["kind"] == "lunch")
+        assert lunch["short"] == "Po: Oběd 1 - Buchtičky se šodó"
+        morning = build_status(_inputs(), datetime(2026, 11, 9, 7, 0), lang="cs")
+        lunch = next(r for r in json.loads(morning.rows_json()) if r["kind"] == "lunch")
+        assert lunch["short"] == lunch["value"] == "Oběd 1 - Polévka, Kuřecí řízek, kaše"
+        assert StatusContent("A", "B").rows_json() == ""
 
 
 # -- keeping the notification current ----------------------------------------------------
@@ -332,7 +391,7 @@ class TestNotifier:
     def test_posts_changes_only_and_moves_with_the_clock(self):
         notifier, state, posted = self._notifier()
         assert notifier.tick(datetime(2026, 11, 9, 8, 50)) is True
-        assert posted[-1].text.split("\n")[1].startswith("Další hodina: 2. Fyzika")
+        assert _lines(posted[-1])[0].startswith("Další hodina: 2. Fyzika")
         assert notifier.tick(datetime(2026, 11, 9, 8, 50, 30)) is False  # same minute
         assert notifier.tick(datetime(2026, 11, 9, 8, 51)) is False  # nothing changed
         assert notifier.tick(datetime(2026, 11, 9, 8, 55)) is True  # Fyzika has begun
@@ -373,7 +432,7 @@ class TestNotifier:
     def test_current_counts_as_delivered(self):
         notifier, state, posted = self._notifier()
         content = notifier.current(datetime(2026, 11, 9, 7, 0))
-        assert content.title == "Oběd dnes"
+        assert content.title == "Další hodina"
         assert notifier.tick(datetime(2026, 11, 9, 7, 0, 10)) is False and posted == []
 
     def test_a_failed_gather_is_retried(self):
@@ -409,7 +468,18 @@ class _FakeIntent:
         self.component = (package, name)
 
     def putExtra(self, key, value):
-        self.extras[key] = value
+        raise AssertionError("pyjnius picks putExtra(String, char[]) for a str: use a Bundle")
+
+    def putExtras(self, bundle):
+        self.extras.update(bundle.values)
+
+
+class _FakeBundle:
+    def __init__(self):
+        self.values = {}
+
+    def putString(self, key, value):
+        self.values[key] = value
 
 
 class TestAndroidBridge:
@@ -421,13 +491,29 @@ class TestAndroidBridge:
                               sendBroadcast=sent.append)
         monkeypatch.setattr(android, "context", lambda: ctx)
         monkeypatch.setattr(android, "_autoclass", lambda name: {
-            "android.content.Intent": _FakeIntent}[name])
-        assert android.update_background_notification("Oběd dnes", "Řízek", "") is True
+            "android.content.Intent": _FakeIntent, "android.os.Bundle": _FakeBundle}[name])
+        assert android.update_background_notification("Oběd dnes", "Řízek", "", "[]") is True
         (intent,) = sent
         assert intent.action == android.ACTION_UPDATE_STATUS
         assert intent.component == ("io.github.dendlerx.strakalari",
                                     f"{android.JAVA_PACKAGE}.StatusReceiver")
-        assert intent.extras == {"title": "Oběd dnes", "text": "Řízek", "sub": ""}
+        assert intent.extras == {"title": "Oběd dnes", "text": "Řízek", "sub": "", "rows": "[]"}
+
+    def test_the_service_start_carries_the_texts_in_a_bundle(self, monkeypatch):
+        from strakalari.core import android
+
+        intents, started = [], []
+        ctx = SimpleNamespace(startForegroundService=started.append,
+                              startService=started.append)
+        monkeypatch.setattr(android, "context", lambda: ctx)
+        monkeypatch.setattr(android, "sdk_int", lambda: 34)
+        monkeypatch.setattr(android, "_service_intent",
+                            lambda c: intents.append(_FakeIntent(None)) or intents[-1])
+        monkeypatch.setattr(android, "_autoclass", lambda name: {
+            "android.os.Bundle": _FakeBundle}[name])
+        assert android.start_background({"title": "Další hodina", "rows": "[]"}) is True
+        assert started == intents and intents[0].extras == {"title": "Další hodina",
+                                                            "rows": "[]"}
 
     def test_no_op_off_android(self, monkeypatch):
         from strakalari.core import android
@@ -441,7 +527,7 @@ class TestAndroidBridge:
         receiver = (JAVA / "java" / "io" / "github" / "dendlerx" / "strakalari" / "android"
                     / "StatusReceiver.java").read_text(encoding="utf-8")
         assert f'"{android.ACTION_UPDATE_STATUS}"' in receiver
-        for key in ("title", "text", "sub"):
+        for key in ("title", "text", "sub", "rows"):
             assert f'getStringExtra("{key}")' in receiver
         manifest = (JAVA / "AndroidManifest.xml").read_text(encoding="utf-8")
         assert re.search(r'android:name="[\w.]+\.StatusReceiver"\s+android:exported="false"',
@@ -451,6 +537,27 @@ class TestAndroidBridge:
         assert '"sub"' in service and "setSubText" in (
             JAVA / "java" / "io" / "github" / "dendlerx" / "strakalari" / "android"
             / "Notifications.java").read_text(encoding="utf-8")
+        assert '"rows"' in service and "StatusViews.apply" in service
+
+    def test_notification_layout_resources_exist(self):
+        """Every resource StatusViews names exists, and every row kind has an icon."""
+        views = (JAVA / "java" / "io" / "github" / "dendlerx" / "strakalari" / "android"
+                 / "StatusViews.java").read_text(encoding="utf-8")
+        res = JAVA / "res"
+        for kind, name in re.findall(r"R\.(layout|drawable)\.(\w+)", views):
+            assert (res / kind / f"{name}.xml").exists(), name
+        layouts = "".join(f.read_text(encoding="utf-8") for f in (res / "layout").glob("*.xml"))
+        for name in set(re.findall(r"R\.id\.(\w+)", views)):
+            assert f'android:id="@+id/{name}"' in layouts, name
+        for item in ITEMS:
+            if item != "updated":  # the header's small text, no row
+                assert f'case "{item}":' in views
+        tint = re.compile(r'android:tint="@color/(\w+)"')
+        colors = (res / "values" / "strakalari_colors.xml").read_text(encoding="utf-8")
+        night = (res / "values-night" / "strakalari_colors.xml").read_text(encoding="utf-8")
+        for icon in (res / "drawable").glob("strakalari_status_*.xml"):
+            (color,) = tint.findall(icon.read_text(encoding="utf-8"))
+            assert f'name="{color}"' in colors and f'name="{color}"' in night
 
     def test_extension_wheel_ships_the_receiver(self, tmp_path):
         import importlib.util
@@ -461,8 +568,11 @@ class TestAndroidBridge:
         spec.loader.exec_module(mm)
         with zipfile.ZipFile(mm.extension_wheel(str(tmp_path))) as zf:
             names = set(zf.namelist())
-        assert ("flutter/strakalari_android/android/src/main/java/io/github/dendlerx/"
-                "strakalari/android/StatusReceiver.java") in names
+        for name in ("java/io/github/dendlerx/strakalari/android/StatusReceiver.java",
+                     "java/io/github/dendlerx/strakalari/android/StatusViews.java",
+                     "res/layout/strakalari_status_collapsed.xml",
+                     "res/values-night/strakalari_colors.xml"):
+            assert f"flutter/strakalari_android/android/src/main/{name}" in names
 
 
 @pytest.fixture()
@@ -491,7 +601,8 @@ def phone_state(app_state, monkeypatch):
     started, updated, notifiers = [], [], []
     monkeypatch.setattr(android, "start_background", lambda texts: started.append(texts))
     monkeypatch.setattr(android, "update_background_notification",
-                        lambda title, text, sub="": updated.append((title, text, sub)) or True)
+                        lambda title, text, sub="", rows="":
+                        updated.append((title, text, sub, rows)) or True)
 
     class _Notifier(RealNotifier):
         def __init__(self, *args, **kwargs):
@@ -519,17 +630,19 @@ class TestPhoneWiring:
     def test_the_service_starts_with_the_overview(self, phone_state):
         self._setup(phone_state)
         (texts,) = phone_state.started
+        rows = {row["kind"]: row for row in json.loads(texts["rows"])}
         if (datetime.now().hour, datetime.now().minute) < (8, 45):  # the day's classes end
-            assert texts["title"] == "Oběd dnes" and texts["text"].startswith("Oběd 1 - Řízek")
-        assert "Omluvenky k odeslání: 1" in f"{texts['title']}\n{texts['text']}"
-        assert texts["sub"].startswith("Aktualizováno") and texts["channel"]
+            assert rows["lunch"]["label"] == "Oběd dnes"
+            assert rows["lunch"]["value"].startswith("Oběd 1 - Řízek")
+        assert rows["excuses"]["value"] == "1"
+        assert texts["title"] and texts["sub"] == "" and texts["channel"]
 
     def test_settings_changes_reach_the_notification(self, phone_state):
         notifier = self._setup(phone_state)
         phone_state.state.save({"background_notification_items": []})
         assert notifier.tick() is True
-        title, text, sub = phone_state.updated[-1]
-        assert "30" in text and sub == ""  # the plain "running in the background" text
+        title, text, sub, rows = phone_state.updated[-1]
+        assert "30" in text and sub == "" and rows == ""  # the plain "running in the background"
         assert len(phone_state.started) == 1  # updated in place, no new start
 
     def test_new_data_reaches_the_notification(self, phone_state, monkeypatch):
@@ -537,7 +650,8 @@ class TestPhoneWiring:
         monkeypatch.setattr(phone_state.state, "excuse_tasks", lambda: [])
         phone_state.state._emit()
         assert notifier.tick() is True
-        assert "Omluvenky" not in phone_state.updated[-1][1]
+        rows = json.loads(phone_state.updated[-1][3] or "[]")
+        assert all(row["value"] == "0" for row in rows if row["kind"] == "excuses")
 
     def test_nothing_is_posted_with_background_running_off(self, phone_state):
         notifier = self._setup(phone_state)

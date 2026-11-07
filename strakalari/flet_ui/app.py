@@ -1057,7 +1057,8 @@ def _setup_phone_background(state: AppState, runner: PeriodicRunner) -> None:
 
     notifier = StatusNotifier(
         gather=lambda: state.background_status_inputs() if _phone_background_on(state) else None,
-        post=lambda c: android.update_background_notification(c.title, c.text, c.sub),
+        post=lambda c: android.update_background_notification(c.title, c.text, c.sub,
+                                                              c.rows_json()),
         fallback=_fallback,
     )
 
@@ -1090,6 +1091,7 @@ def _setup_phone_background(state: AppState, runner: PeriodicRunner) -> None:
                 "title": content.title,
                 "text": content.text,
                 "sub": content.sub,
+                "rows": content.rows_json(),
                 "channel": S("bg_channel"),
                 "boot_title": S("bg_boot_title"),
                 "boot_text": S("bg_boot_text"),

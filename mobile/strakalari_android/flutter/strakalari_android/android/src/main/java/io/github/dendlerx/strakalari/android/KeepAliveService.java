@@ -19,19 +19,20 @@ import android.os.IBinder;
  *
  * Started and stopped from Python; the start intent carries the texts in
  * the app's language: the ongoing notification ("title", "text", "sub",
- * "channel") and the reminder BootReceiver shows after a reboot or an
- * update ("boot_title", "boot_text", "events_channel").
+ * "rows", "channel") and the reminder BootReceiver shows after a reboot or
+ * an update ("boot_title", "boot_text", "events_channel").
  *
- * The ongoing notification doubles as an overview (today's lunch, the next
- * lesson, …: strakalari/core/status_notification.py). Python keeps it
- * current through {@link StatusReceiver}, which redraws it in place with
- * {@link #update}; the texts are kept, so a restart shows the latest ones.
+ * The ongoing notification doubles as an overview (the next lesson, today's
+ * lunch, …: strakalari/core/status_notification.py), its rows drawn by
+ * {@link StatusViews}. Python keeps it current through {@link StatusReceiver},
+ * which redraws it in place with {@link #update}; the texts are kept, so a
+ * restart shows the latest ones.
  */
 public class KeepAliveService extends Service {
     static final String CHANNEL_ID = "strakalari_background";
     static final int NOTIFICATION_ID = 7301;
     static final String PREFS = "strakalari_background";
-    private static final String[] NOTIFICATION_KEYS = {"title", "text", "sub", "channel"};
+    private static final String[] NOTIFICATION_KEYS = {"title", "text", "sub", "rows", "channel"};
     private static final String[] BOOT_KEYS = {"boot_title", "boot_text", "events_channel"};
 
     /** True between the start and the end of this service (in this process). */
@@ -89,11 +90,12 @@ public class KeepAliveService extends Service {
      * notification in place (posting under the service's id updates it; no
      * new start, which Android 12+ may refuse from the background).
      */
-    static void update(Context ctx, String title, String text, String sub) {
+    static void update(Context ctx, String title, String text, String sub, String rows) {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString("title", title != null ? title : "")
                 .putString("text", text != null ? text : "")
                 .putString("sub", sub != null ? sub : "")
+                .putString("rows", rows != null ? rows : "")
                 .commit();
         if (!running) {
             return; // shown with these texts at the next start
@@ -104,14 +106,19 @@ public class KeepAliveService extends Service {
         }
     }
 
-    /** The ongoing notification with the saved texts. */
+    /**
+     * The ongoing notification with the saved texts: the overview's rows in
+     * the app's own layout, the plain title and text without rows.
+     */
     static Notification notification(Context ctx) {
         SharedPreferences prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String title = prefs.getString("title", "");
-        return Notifications.build(
+        Notification.Builder b = Notifications.builder(
                 ctx, CHANNEL_ID, prefs.getString("channel", "Background"),
                 NotificationManager.IMPORTANCE_LOW,
                 title.isEmpty() ? "Strakaláři" : title,
                 prefs.getString("text", ""), prefs.getString("sub", ""), true);
+        StatusViews.apply(ctx, b, prefs.getString("rows", ""));
+        return b.build();
     }
 }

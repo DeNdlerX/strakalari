@@ -119,8 +119,7 @@ CANONICAL_DEFAULTS: Dict[str, Any] = {
     "run_in_background": True,
     # What that service's always-on notification shows (an overview; see
     # core/status_notification.ITEMS). Empty = only "running in the background".
-    "background_notification_items": ["lunch", "next_lesson", "lunch_orders", "excuses",
-                                      "updated"],
+    "background_notification_items": ["next_lesson", "lunch", "excuses", "wakeup"],
     "language": "cs",
     "excuse_mode": "confirm",
     "default_excuse_selection": "first",

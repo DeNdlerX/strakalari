@@ -100,6 +100,20 @@ def _service(ctx, name: str, java_class: str):
     return cast(java_class, ctx.getSystemService(name))
 
 
+def _string_extras(values) -> Any:
+    """A Bundle of string extras (``(key, text)`` pairs) for ``Intent.putExtras``.
+
+    Not ``intent.putExtra(key, text)``: for a Python str pyjnius scores the
+    ``(String, String)`` and ``(String, char[])`` overloads alike and takes
+    the ``char[]`` one, which the receiving side's ``getStringExtra`` reads
+    as null. ``Bundle.putString`` has no such twin.
+    """
+    extras = _autoclass("android.os.Bundle")()
+    for key, value in values:
+        extras.putString(str(key), str(value))
+    return extras
+
+
 def _activity():
     """The app's Activity while its screen exists (set by serious_python)."""
     return _autoclass("com.flet.serious_python_android.PythonActivity").mActivity
@@ -293,7 +307,7 @@ def open_notification_settings() -> None:
         settings = _autoclass("android.provider.Settings")
         intent_class = _autoclass("android.content.Intent")
         intent = intent_class(settings.ACTION_APP_NOTIFICATION_SETTINGS)
-        intent.putExtra(settings.EXTRA_APP_PACKAGE, ctx.getPackageName())
+        intent.putExtras(_string_extras([(settings.EXTRA_APP_PACKAGE, ctx.getPackageName())]))
         intent.addFlags(intent_class.FLAG_ACTIVITY_NEW_TASK)
         ctx.startActivity(intent)
     except Exception as exc:  # noqa: BLE001
@@ -309,8 +323,8 @@ def _service_intent(ctx):
 
 def start_background(texts: dict[str, str]) -> bool:
     """Starts (or updates) the background service. ``texts``: the ongoing
-    notification's ``title`` / ``text`` / ``sub`` / ``channel`` and the
-    reboot reminder's ``boot_title`` / ``boot_text`` / ``events_channel``.
+    notification's ``title`` / ``text`` / ``sub`` / ``rows`` / ``channel``
+    and the reboot reminder's ``boot_title`` / ``boot_text`` / ``events_channel``.
 
     Android only allows starting it while the app's screen is open; later
     changes to the notification go through :func:`update_background_notification`.
@@ -320,8 +334,7 @@ def start_background(texts: dict[str, str]) -> bool:
         return False
     try:
         intent = _service_intent(ctx)
-        for key, value in texts.items():
-            intent.putExtra(key, str(value))
+        intent.putExtras(_string_extras(texts.items()))
         if sdk_int() >= 26:
             ctx.startForegroundService(intent)
         else:
@@ -346,8 +359,10 @@ def stop_background() -> None:
 ACTION_UPDATE_STATUS = f"{JAVA_PACKAGE}.ACTION_UPDATE_STATUS"
 
 
-def update_background_notification(title: str, text: str, sub: str = "") -> bool:
-    """Replaces what the background service's notification says.
+def update_background_notification(title: str, text: str, sub: str = "", rows: str = "") -> bool:
+    """Replaces what the background service's notification says. ``rows``:
+    the overview's rows as JSON (``StatusContent.rows_json``), drawn by the
+    app's own layout; without them the plain ``title`` and ``text`` show.
 
     Goes to ``StatusReceiver``, which redraws the notification in place
     while the service runs (and keeps the texts for its next start). Not
@@ -360,8 +375,9 @@ def update_background_notification(title: str, text: str, sub: str = "") -> bool
     try:
         intent = _autoclass("android.content.Intent")(ACTION_UPDATE_STATUS)
         intent.setClassName(ctx.getPackageName(), f"{JAVA_PACKAGE}.StatusReceiver")
-        for key, value in (("title", title), ("text", text), ("sub", sub)):
-            intent.putExtra(key, str(value or ""))
+        intent.putExtras(_string_extras(
+            (key, value or "") for key, value in (("title", title), ("text", text), ("sub", sub),
+                                                  ("rows", rows))))
         ctx.sendBroadcast(intent)
         return True
     except Exception as exc:  # noqa: BLE001

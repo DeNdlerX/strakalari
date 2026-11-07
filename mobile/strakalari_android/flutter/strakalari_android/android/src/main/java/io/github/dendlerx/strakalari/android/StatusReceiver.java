@@ -8,7 +8,7 @@ import android.content.Intent;
  * New texts for the background service's notification (the overview of
  * today's lunch, the next lesson, …), sent by Python whenever they change
  * (strakalari/core/android.py: update_background_notification). Extras:
- * "title", "text", "sub". See {@link KeepAliveService#update}.
+ * "title", "text", "sub", "rows". See {@link KeepAliveService#update}.
  */
 public class StatusReceiver extends BroadcastReceiver {
     static final String ACTION_UPDATE =
@@ -20,6 +20,7 @@ public class StatusReceiver extends BroadcastReceiver {
             return;
         }
         KeepAliveService.update(context, intent.getStringExtra("title"),
-                intent.getStringExtra("text"), intent.getStringExtra("sub"));
+                intent.getStringExtra("text"), intent.getStringExtra("sub"),
+                intent.getStringExtra("rows"));
     }
 }

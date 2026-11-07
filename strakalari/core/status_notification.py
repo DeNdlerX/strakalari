@@ -2,21 +2,23 @@
 
 While background running is on, Android keeps the background service's
 notification in the shade. Instead of only saying that the app runs, it
-shows what the user picked under Settings → Background (``ITEMS``):
+shows what the user picked under Settings → Background (``ITEMS``), a row
+each (:class:`StatusRow`, drawn with an icon by the app's own notification
+layout, mobile/strakalari_android: StatusViews.java):
 
-- ``lunch``: the lunch ordered for today until lunchtime is over (see
-  :func:`lunch_over_at`), then the next one (the dish as Strava names it,
-  or "not ordered"); the notification's title;
 - ``next_lesson``: the next lesson still ahead (period, subject, start,
   room and teacher, a substitution or room change marked), past today's
   last lesson the next school day's first one;
+- ``lunch``: the lunch ordered for today until lunchtime is over (see
+  :func:`lunch_over_at`), then the next one (the dish as Strava names it,
+  or "not ordered");
 - ``lunch_orders``: menu days still open for ordering with nothing
   ordered, and the earliest deadline;
-- ``excuses``: how many excuses wait to be sent;
-- ``wakeup``: the next wake-up alarm;
+- ``excuses``: how many excuses wait to be sent (also none, next to other rows);
+- ``wakeup``: the next wake-up alarm (none while the alarm is off);
 - ``updated``: when the data was last refreshed (the header's small text).
 
-A line with nothing to say is left out; with no line at all the
+A row with nothing to say is left out; with no row at all the
 notification keeps its plain "running in the background" text.
 
 :func:`build_status` is pure (tests and the Settings preview run it anywhere).
@@ -27,6 +29,7 @@ on to a new minute, and hands over only what changed.
 
 from __future__ import annotations
 
+import json
 import re
 import threading
 from dataclasses import dataclass, field
@@ -37,9 +40,9 @@ from .i18n import get_language, t
 from .models import canonical_day_key, parse_cz_date
 
 #: Everything the notification can show, in the order it shows them.
-ITEMS: tuple[str, ...] = ("lunch", "next_lesson", "lunch_orders", "excuses", "wakeup", "updated")
+ITEMS: tuple[str, ...] = ("next_lesson", "lunch", "lunch_orders", "excuses", "wakeup", "updated")
 #: What a new install shows (``background_notification_items``).
-DEFAULT_ITEMS: tuple[str, ...] = ("lunch", "next_lesson", "lunch_orders", "excuses", "updated")
+DEFAULT_ITEMS: tuple[str, ...] = ("next_lesson", "lunch", "excuses", "wakeup")
 #: Lunch is eaten in the first free period after this one (when lessons follow it).
 LUNCH_AFTER_PERIOD = 4
 #: On a day without lessons, the next lunch is shown from this time on.
@@ -109,12 +112,41 @@ class StatusInputs:
 
 
 @dataclass(frozen=True)
+class StatusRow:
+    """One row of the overview: what it is about (an ``ITEMS`` id, its icon),
+    a label and a value ("Další hodina", "1. Matematika · 8:00 · 214");
+    ``short``: the value in the collapsed notification, where rows show
+    without labels and the short ones (a count, a time) share a line with
+    the lunch (the value itself when empty)."""
+
+    kind: str
+    label: str
+    value: str
+    short: str = ""
+
+    @property
+    def line(self) -> str:
+        return f"{self.label}: {self.value}"
+
+
+@dataclass(frozen=True)
 class StatusContent:
-    """The notification: the title, the text (a line per item) and the header's small text."""
+    """The notification: its rows, the header's small text, and the same
+    as a plain title and text (the first row's label; its value and the
+    other rows' lines) for wherever the rows aren't drawn."""
 
     title: str
     text: str = ""
     sub: str = ""
+    rows: tuple[StatusRow, ...] = ()
+
+    def rows_json(self) -> str:
+        """The rows for the phone's notification layout ("" without rows)."""
+        if not self.rows:
+            return ""
+        return json.dumps([{"kind": r.kind, "label": r.label, "value": r.value,
+                            "short": r.short or r.value} for r in self.rows],
+                          ensure_ascii=False)
 
 
 def _lang(lang: str | None) -> str:
@@ -233,8 +265,23 @@ def lunch_over_at(inputs: StatusInputs, day: date) -> int | None:
 
 # -- the lines ---------------------------------------------------------------------------
 
-def _lunch_lines(inputs: StatusInputs, now: datetime, lang: str) -> list[str]:
-    """``["Oběd dnes", "Oběd 1 - Polévka, Řízek"]``: the title and the dish."""
+def _short_when(day: date, today: date, lang: str) -> str:
+    """When ``day`` is, for the collapsed notification: "" today, "zítra", "Po"."""
+    if day == today:
+        return ""
+    if day == today + timedelta(days=1):
+        return t("status_tomorrow", lang=lang)
+    return _DAY_SHORT[lang][day.weekday()]
+
+
+def _unless_today(day: date, today: date, lang: str, value: str) -> str:
+    """``value``, for another day than today led by when ("zítra: …", "Po: …")."""
+    when = _short_when(day, today, lang)
+    return f"{when}: {value}" if when else value
+
+
+def _lunch_row(inputs: StatusInputs, now: datetime, lang: str) -> StatusRow | None:
+    """"Oběd dnes" / "Oběd 1 - Polévka, Řízek": the day and the dish."""
     today = now.date()
     over = lunch_over_at(inputs, today)
     if over is None:
@@ -243,18 +290,20 @@ def _lunch_lines(inputs: StatusInputs, now: datetime, lang: str) -> list[str]:
     days = _menu_days(inputs)
     upcoming = sorted(d for d in days if first <= d <= today + timedelta(days=LUNCH_AHEAD_DAYS))
     if not upcoming:
-        return []
+        return None
     day = upcoming[0]
     key = days[day]
-    title = t("status_lunch", lang=lang, when=_day_phrase(day, today, lang))
     meal = _ordered_meal(inputs.web_orders, key)
+    name = (inputs.food.get(key) or {}).get(meal) if meal else None
     if not meal:
-        return [title, t("status_lunch_none", lang=lang)]
-    name = (inputs.food.get(key) or {}).get(meal)
-    return [title, meal_text(name) if name else t("status_lunch_ordered", lang=lang)]
+        value = t("status_lunch_none", lang=lang)
+    else:
+        value = meal_text(name) if name else t("status_lunch_ordered", lang=lang)
+    return StatusRow("lunch", t("status_lunch", lang=lang, when=_day_phrase(day, today, lang)),
+                     value, _unless_today(day, today, lang, value))
 
 
-def _next_lesson_line(inputs: StatusInputs, now: datetime, lang: str) -> str:
+def _next_lesson_row(inputs: StatusInputs, now: datetime, lang: str) -> StatusRow | None:
     from .planned_skips import load_planned_skips
     from .wakeup import (
         _index_days, _lessons_for, _period_slots, _planned_off, build_widget_day_rows,
@@ -262,7 +311,7 @@ def _next_lesson_line(inputs: StatusInputs, now: datetime, lang: str) -> str:
 
     days = _index_days(inputs.timetable)
     if not days:
-        return ""
+        return None
     free_days = _free_days(inputs)
     planned = load_planned_skips(inputs.config)
     slots = _period_slots(days)
@@ -291,14 +340,14 @@ def _next_lesson_line(inputs: StatusInputs, now: datetime, lang: str) -> str:
                 parts.append(_clock(row["start"]))
             parts.extend(p for p in (row["meta"], row["badge"]) if p)
             lesson = " · ".join(parts)
-            if ahead == 0:
-                return t("status_lesson", lang=lang, lesson=lesson)
-            return t("status_lesson_on", lang=lang, when=_day_phrase(day, today, lang),
-                     lesson=lesson)
-    return ""
+            label = (t("status_lesson", lang=lang) if ahead == 0 else
+                     t("status_lesson_on", lang=lang, when=_day_phrase(day, today, lang)))
+            return StatusRow("next_lesson", label, lesson,
+                             _unless_today(day, today, lang, lesson))
+    return None
 
 
-def _orders_line(inputs: StatusInputs, now: datetime, lang: str) -> str:
+def _orders_row(inputs: StatusInputs, now: datetime, lang: str) -> StatusRow | None:
     """Menu days still open for ordering with nothing ordered (planned days
     off whose lunch the planner cancels don't count)."""
     from .lunch_cutoff import is_lunch_order_open, lunch_order_deadline
@@ -320,7 +369,7 @@ def _orders_line(inputs: StatusInputs, now: datetime, lang: str) -> str:
         if is_lunch_order_open(day, now, cutoff, free_days):
             open_days.append((day, lunch_order_deadline(day, cutoff, free_days)))
     if not open_days:
-        return ""
+        return None
     open_days.sort()
     names = ", ".join(_short_day(day, lang) for day, _ in open_days[:ORDER_DAYS_LISTED])
     if len(open_days) > ORDER_DAYS_LISTED:
@@ -328,19 +377,28 @@ def _orders_line(inputs: StatusInputs, now: datetime, lang: str) -> str:
                   n=len(open_days) - ORDER_DAYS_LISTED)
     deadline = min(d for _, d in open_days).replace(tzinfo=None)
     by = f"{_day_phrase(deadline.date(), today, lang, plain=True)} {deadline:%H:%M}"
-    return t("status_orders", lang=lang, days=names, deadline=by)
+    return StatusRow("lunch_orders", t("status_orders", lang=lang),
+                     t("status_orders_value", lang=lang, days=names, deadline=by),
+                     str(len(open_days)))
 
 
-def _wakeup_line(inputs: StatusInputs, now: datetime, lang: str) -> str:
+def _excuses_row(inputs: StatusInputs, now: datetime, lang: str) -> StatusRow:
+    n = max(0, int(inputs.pending_excuses or 0))
+    return StatusRow("excuses", t("status_excuses", lang=lang), str(n))
+
+
+def _wakeup_row(inputs: StatusInputs, now: datetime, lang: str) -> StatusRow | None:
     from .wakeup import next_wakeup_alarm
 
     alarm = next_wakeup_alarm(inputs.timetable, inputs.config, now=now,
                               stable_baseline=inputs.stable_baseline)
     if alarm is None:
-        return ""
-    return t("status_wakeup", lang=lang,
-             when=_day_phrase(alarm.day, now.date(), lang, plain=True),
-             time=_clock(alarm.alarm_dt.hour * 60 + alarm.alarm_dt.minute))
+        return None
+    time = _clock(alarm.alarm_dt.hour * 60 + alarm.alarm_dt.minute)
+    return StatusRow("wakeup", t("status_wakeup", lang=lang),
+                     t("status_wakeup_value", lang=lang,
+                       when=_day_phrase(alarm.day, now.date(), lang, plain=True), time=time),
+                     f"{_short_when(alarm.day, now.date(), lang)} {time}".strip())
 
 
 def _updated_text(inputs: StatusInputs, now: datetime, lang: str) -> str:
@@ -360,35 +418,39 @@ def build_status(
     fallback: tuple[str, str] = ("Strakaláři", ""),
     lang: str | None = None,
 ) -> StatusContent:
-    """The notification for ``now``: the first line is the title, the rest
-    the text; without any line, ``fallback`` (title, text). Never raises
-    for a broken item: that line is left out."""
+    """The notification for ``now``: a row per picked item with something
+    to say; without any, ``fallback`` (title, text). Never raises for a
+    broken item: that row is left out."""
     now = now or datetime.now()
     lang = _lang(lang)
     items = selected_items(inputs.config)
     strava = bool(inputs.config.get("use_strava", True))
-    builders: list[tuple[str, Callable[[], Any]]] = [
-        ("lunch", lambda: _lunch_lines(inputs, now, lang) if strava else []),
-        ("next_lesson", lambda: _next_lesson_line(inputs, now, lang)),
-        ("lunch_orders", lambda: _orders_line(inputs, now, lang) if strava else ""),
-        ("excuses", lambda: t("status_excuses", lang=lang, n=inputs.pending_excuses)
-         if inputs.pending_excuses > 0 else ""),
-        ("wakeup", lambda: _wakeup_line(inputs, now, lang)),
-    ]
-    lines: list[str] = []
-    for item, build in builders:
-        if item not in items:
+    builders: dict[str, Callable[[], StatusRow | None]] = {
+        "next_lesson": lambda: _next_lesson_row(inputs, now, lang),
+        "lunch": lambda: _lunch_row(inputs, now, lang) if strava else None,
+        "lunch_orders": lambda: _orders_row(inputs, now, lang) if strava else None,
+        "excuses": lambda: _excuses_row(inputs, now, lang),
+        "wakeup": lambda: _wakeup_row(inputs, now, lang),
+    }
+    rows: list[StatusRow] = []
+    for item in items:
+        build = builders.get(item)
+        if build is None:
             continue
         try:
-            out = build()
-        except Exception as exc:  # noqa: BLE001 - one broken line must not blank the rest
+            row = build()
+        except Exception as exc:  # noqa: BLE001 - one broken row must not blank the rest
             print(f"Warning: notification line {item!r} failed ({type(exc).__name__}: {exc})")
             continue
-        lines.extend(line for line in ([out] if isinstance(out, str) else out) if line)
+        if row is not None and row.value:
+            rows.append(row)
+    if all(row.kind == "excuses" and row.value == "0" for row in rows):
+        rows = []  # "none to send" alone says nothing: the plain text instead
     sub = _updated_text(inputs, now, lang) if "updated" in items else ""
-    if not lines:
+    if not rows:
         return StatusContent(title=fallback[0], text=fallback[1], sub=sub)
-    return StatusContent(title=lines[0], text="\n".join(lines[1:]), sub=sub)
+    text = "\n".join([rows[0].value, *(row.line for row in rows[1:])])
+    return StatusContent(title=rows[0].label, text=text, sub=sub, rows=tuple(rows))
 
 
 # -- keeping the phone's notification current -------------------------------------------

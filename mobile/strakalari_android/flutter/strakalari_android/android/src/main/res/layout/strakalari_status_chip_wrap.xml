@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A short row on the collapsed overview's second line, never shortened. -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/strakalari_status_chip"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:drawablePadding="4dp"
+    android:gravity="center_vertical"
+    android:maxLines="1"
+    android:textAppearance="@android:style/TextAppearance.Material.Notification" />

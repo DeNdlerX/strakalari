@@ -360,15 +360,24 @@ class AutomationMixin:
 
     def _background_overview(self) -> list:
         """What the background notification shows (core/status_notification.py):
-        a switch per line and a preview that follows them in place."""
+        a switch per line and a preview that follows them in place, its rows
+        with the icons the phone's notification draws (StatusViews.java)."""
         from strakalari.core.status_notification import (
             ITEMS, build_status, selected_items, with_item,
         )
 
         state, tok, page = self.state, self.state.tok, self.page
+        icons = {"next_lesson": ft.Icons.SCHEDULE, "lunch": ft.Icons.RESTAURANT,
+                 "lunch_orders": ft.Icons.SHOPPING_CART_OUTLINED,
+                 "excuses": ft.Icons.MAIL_OUTLINE, "wakeup": ft.Icons.ALARM}
         head = C.txt("", tok, size=tok.fs_tiny, faint=True)
-        title = C.txt("", tok, bold=True)
-        text = C.txt("", tok, size=tok.fs_small, muted=True)
+        body = ft.Column([], spacing=4, tight=True)
+
+        def _row(row) -> ft.Row:
+            line = C.txt(row.line, tok, size=tok.fs_small)
+            line.expand = True
+            return ft.Row([ft.Icon(icons.get(row.kind), size=16, color=tok.muted), line],
+                          spacing=8, vertical_alignment=ft.CrossAxisAlignment.START)
 
         def _fill() -> None:
             try:
@@ -380,9 +389,12 @@ class AutomationMixin:
                 print(f"Warning: notification preview failed ({type(exc).__name__}: {exc})")
                 return
             head.value = " · ".join(p for p in (S("app_title"), content.sub) if p)
-            title.value = content.title
-            text.value = content.text
-            text.visible = bool(content.text)
+            if content.rows:
+                body.controls = [_row(row) for row in content.rows]
+            else:  # the plain "running in the background"
+                body.controls = [C.txt(content.title, tok, bold=True)]
+                if content.text:
+                    body.controls.append(C.txt(content.text, tok, size=tok.fs_small, muted=True))
 
         def _toggle(e, item: str) -> None:
             control = e.control
@@ -397,7 +409,7 @@ class AutomationMixin:
                         pass
                 return
             _fill()
-            for ctl in (head, title, text):
+            for ctl in (head, body):
                 try:
                     ctl.update()
                 except Exception:
@@ -417,7 +429,7 @@ class AutomationMixin:
             ),
             C.card(
                 C.txt(S("bg_preview"), tok, size=tok.fs_small, bold=True, muted=True),
-                head, title, text,
+                head, body,
                 tok=tok,
             ),
         ]

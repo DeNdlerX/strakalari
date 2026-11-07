@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The background notification's row icons, as its secondary text
+         (values-night: on the dark shade). -->
+    <color name="strakalari_status_icon">#FF444746</color>
+</resources>
