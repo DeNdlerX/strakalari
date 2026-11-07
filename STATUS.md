@@ -161,9 +161,8 @@ None yet.
 
 - App version is still the flutter-create template `1.0.0+1`; honest versioning
   comes with packaging (phases 7–8).
-- PLAN.md rows 7–8 and docs/flutter-migration/REVIEW_PROMPT.md appeared in the
-  worktree during phase 0; assumed to be your edits and committed as-is —
-  please confirm.
+- (Resolved 2026-11-07: PLAN.md rows 7–8 and REVIEW_PROMPT.md are the owner's
+  intended edits, committed as-is.)
 
 ## Checkpoint notes
 
