@@ -1,0 +1,40 @@
+{
+  "module": "i18n",
+  "cases": [
+    {
+      "fn": "t",
+      "args": [
+        "period_label:cs:0"
+      ],
+      "expected": "0. hodina"
+    },
+    {
+      "fn": "t",
+      "args": [
+        "auto_excuses_failed:cs:2"
+      ],
+      "expected": "2 omluvenek se nepodařilo odeslat"
+    },
+    {
+      "fn": "t",
+      "args": [
+        "period_label:en:0"
+      ],
+      "expected": "period 0"
+    },
+    {
+      "fn": "t",
+      "args": [
+        "auto_excuses_failed:en:2"
+      ],
+      "expected": "2 excuse(s) could not be sent"
+    },
+    {
+      "fn": "t",
+      "args": [
+        "non_existent_key_xyz:en"
+      ],
+      "expected": "non_existent_key_xyz"
+    }
+  ]
+}

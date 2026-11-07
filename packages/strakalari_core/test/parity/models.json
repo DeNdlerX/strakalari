@@ -1,0 +1,203 @@
+{
+  "module": "models",
+  "cases": [
+    {
+      "fn": "parseCzDate",
+      "args": [
+        "25.12.2026"
+      ],
+      "expected": "2026-12-25"
+    },
+    {
+      "fn": "parseCzDate",
+      "args": [
+        "10.9.2026 (čtvrtek)"
+      ],
+      "expected": "2026-09-10"
+    },
+    {
+      "fn": "parseCzDate",
+      "args": [
+        "2026-12-25"
+      ],
+      "expected": "2026-12-25"
+    },
+    {
+      "fn": "parseCzDate",
+      "args": [
+        "07/09/2026"
+      ],
+      "expected": "2026-09-07"
+    },
+    {
+      "fn": "parseCzDate",
+      "args": [
+        "nonsense"
+      ],
+      "expected": null
+    },
+    {
+      "fn": "parseCzDate",
+      "args": [
+        ""
+      ],
+      "expected": null
+    },
+    {
+      "fn": "canonicalDayKey",
+      "args": [
+        "10.9.2026 (čtvrtek)"
+      ],
+      "expected": "10.09.2026"
+    },
+    {
+      "fn": "canonicalDayKey",
+      "args": [
+        "07.09.2026"
+      ],
+      "expected": "07.09.2026"
+    },
+    {
+      "fn": "canonicalDayKey",
+      "args": [
+        "nonsense"
+      ],
+      "expected": "nonsense"
+    },
+    {
+      "fn": "canonicalDayKey",
+      "args": [
+        "2026-09-07"
+      ],
+      "expected": "07.09.2026"
+    },
+    {
+      "fn": "absenceKind",
+      "args": [
+        "Absent",
+        "Absence"
+      ],
+      "expected": "absent"
+    },
+    {
+      "fn": "absenceKind",
+      "args": [
+        "Absent",
+        "Neomluveno"
+      ],
+      "expected": "absent"
+    },
+    {
+      "fn": "absenceKind",
+      "args": [
+        "Unexcused",
+        "Absence"
+      ],
+      "expected": "absent"
+    },
+    {
+      "fn": "absenceKind",
+      "args": [
+        "Excused",
+        "Omluveno"
+      ],
+      "expected": "excused"
+    },
+    {
+      "fn": "absenceKind",
+      "args": [
+        "NoAbsent",
+        "NoAbsent"
+      ],
+      "expected": ""
+    },
+    {
+      "fn": "absenceKind",
+      "args": [
+        "AbsentLate",
+        "x"
+      ],
+      "expected": "late"
+    },
+    {
+      "fn": "absenceKind",
+      "args": [
+        "AbsentSoon",
+        "x"
+      ],
+      "expected": "soon"
+    },
+    {
+      "fn": "absenceKind",
+      "args": [
+        "",
+        ""
+      ],
+      "expected": ""
+    },
+    {
+      "fn": "absenceKind",
+      "args": [
+        "School",
+        "Školní akce"
+      ],
+      "expected": ""
+    },
+    {
+      "fn": "isCancelNotice",
+      "args": [
+        "Odpadá"
+      ],
+      "expected": true
+    },
+    {
+      "fn": "isCancelNotice",
+      "args": [
+        "Zrušeno"
+      ],
+      "expected": true
+    },
+    {
+      "fn": "isCancelNotice",
+      "args": [
+        "Neodpadá - beze změny"
+      ],
+      "expected": false
+    },
+    {
+      "fn": "isCancelNotice",
+      "args": [
+        "Nezrušeno"
+      ],
+      "expected": false
+    },
+    {
+      "fn": "isCancelNotice",
+      "args": [
+        "Hodina beze změny"
+      ],
+      "expected": false
+    },
+    {
+      "fn": "isCancelNotice",
+      "args": [
+        ""
+      ],
+      "expected": false
+    },
+    {
+      "fn": "lessonFromLegacy",
+      "args": [
+        "absent-shape"
+      ],
+      "expected": {
+        "subject": "Matematika",
+        "period": 1,
+        "status": "absent",
+        "excused": false,
+        "room": "4A",
+        "day": null
+      }
+    }
+  ]
+}

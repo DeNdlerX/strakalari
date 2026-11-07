@@ -7,8 +7,12 @@ environment:
 resolution: workspace
 
 dependencies:
-  # Phase 1+ dependencies from PLAN §3.3 (http, cookie_jar, html, crypto,
-  # pointycastle, clock, path) are added together with the ports that need them.
+  # Phase 1+ dependencies from PLAN §3.3 (http, cookie_jar, html, clock, ...).
+  # http + cookie_jar arrive with the client ports (phase 2).
+  clock: ^1.1.0
+  crypto: ^3.0.0
+  path: ^1.9.0
+  pointycastle: ^4.0.0
 
 dev_dependencies:
   lints: ^6.0.0

@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 1 · Next step: Phase 1 — create tools/parity/dump.py, then port strakalari/core/models.py.
+Current phase: 1 · Next step: Phase 1 — port strakalari/core/i18n.py.
 
 ## Phase 0 (done)
 
@@ -54,7 +54,7 @@ State: todo = not started, tests = Dart tests written, done = ported + green.
 | strakalari/core/models.py | core models/ | test_models.py | todo |
 | strakalari/core/news.py | core news.dart | test_news.py | todo |
 | strakalari/core/notify.py | core platform/notifier.dart + app impl | test_notify.py | todo |
-| strakalari/core/packaging.py | core platform/packaging.dart + app impl | test_mobile.py, test_store_package.py, test_packaging_privacy.py | todo |
+| strakalari/core/packaging.py | core platform/packaging.dart | test_mobile.py (predicates) → packaging_test.dart 9 | done |
 | strakalari/core/planned_skips.py | core planning/planned_skips.dart | test_planned_skips.py, test_early_leave.py | todo |
 | strakalari/core/planner.py | core planning/planner.dart | test_plan_picker.py, test_plan_reserve.py, test_year_planner.py | todo |
 | strakalari/core/refresh.py | core automation/refresh.dart | test_refresh_pipeline.py, test_data_safety.py | todo |

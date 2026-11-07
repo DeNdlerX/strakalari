@@ -1,0 +1,315 @@
+{
+  "module": "helpers",
+  "cases": [
+    {
+      "fn": "parseDate",
+      "args": [
+        "15.09.2026"
+      ],
+      "expected": "2026-09-15T00:00:00"
+    },
+    {
+      "fn": "parseDate",
+      "args": [
+        "1. 9. 2026"
+      ],
+      "expected": "2026-09-01T00:00:00"
+    },
+    {
+      "fn": "parseDate",
+      "args": [
+        "3.9.2026 (čtvrtek)"
+      ],
+      "expected": "2026-09-03T00:00:00"
+    },
+    {
+      "fn": "parseDate",
+      "args": [
+        "Pondělí 1. 9. 2026"
+      ],
+      "expected": "2026-09-01T00:00:00"
+    },
+    {
+      "fn": "parseDate",
+      "args": [
+        "2026-11-25"
+      ],
+      "expected": "2026-11-25T00:00:00"
+    },
+    {
+      "fn": "parseDate",
+      "args": [
+        "25/11/2026"
+      ],
+      "expected": "2026-11-25T00:00:00"
+    },
+    {
+      "fn": "parseDate",
+      "args": [
+        "07.09.26"
+      ],
+      "expected": "2026-09-07T00:00:00"
+    },
+    {
+      "fn": "parseDate",
+      "args": [
+        "2026/09/07"
+      ],
+      "expected": "2026-09-07T00:00:00"
+    },
+    {
+      "fn": "extractLessonNum",
+      "args": [
+        "3 (10:05 - 10:50)"
+      ],
+      "expected": 3
+    },
+    {
+      "fn": "extractLessonNum",
+      "args": [
+        "3"
+      ],
+      "expected": 3
+    },
+    {
+      "fn": "extractLessonNum",
+      "args": [
+        "8:00 - 8:45"
+      ],
+      "expected": null
+    },
+    {
+      "fn": "extractLessonNum",
+      "args": [
+        ""
+      ],
+      "expected": null
+    },
+    {
+      "fn": "extractLessonNum",
+      "args": [
+        "13:40 - 14:25"
+      ],
+      "expected": null
+    },
+    {
+      "fn": "shortTime",
+      "args": [
+        "1. 8:00 - 8:45"
+      ],
+      "expected": "8:00 - 8:45"
+    },
+    {
+      "fn": "shortTime",
+      "args": [
+        "3 (10:05 - 10:50)"
+      ],
+      "expected": "10:05 - 10:50"
+    },
+    {
+      "fn": "shortTime",
+      "args": [
+        "8:00 - 8:45"
+      ],
+      "expected": "8:00 - 8:45"
+    },
+    {
+      "fn": "teacherSurname",
+      "args": [
+        "Mgr. Jana Tláskalová"
+      ],
+      "expected": "Tláskalová"
+    },
+    {
+      "fn": "teacherSurname",
+      "args": [
+        "Novák"
+      ],
+      "expected": "Novák"
+    },
+    {
+      "fn": "teacherSurname",
+      "args": [
+        "Bc. Jan Malý, Ph.D."
+      ],
+      "expected": "Malý"
+    },
+    {
+      "fn": "teacherSurname",
+      "args": [
+        ""
+      ],
+      "expected": ""
+    },
+    {
+      "fn": "isExcusedMarker",
+      "args": [
+        "Omluveno"
+      ],
+      "expected": true
+    },
+    {
+      "fn": "isExcusedMarker",
+      "args": [
+        "Neomluveno"
+      ],
+      "expected": false
+    },
+    {
+      "fn": "isExcusedMarker",
+      "args": [
+        "Unexcused Absence"
+      ],
+      "expected": false
+    },
+    {
+      "fn": "isExcusedMarker",
+      "args": [
+        "Excused"
+      ],
+      "expected": true
+    },
+    {
+      "fn": "isExcusedMarker",
+      "args": [
+        ""
+      ],
+      "expected": false
+    },
+    {
+      "fn": "isExcusedMarker",
+      "args": [
+        "Omluvená absence"
+      ],
+      "expected": true
+    },
+    {
+      "fn": "shortRoomName",
+      "args": [
+        "4A - (104)"
+      ],
+      "expected": "4A"
+    },
+    {
+      "fn": "shortRoomName",
+      "args": [
+        "III - (P06)"
+      ],
+      "expected": "III"
+    },
+    {
+      "fn": "shortRoomName",
+      "args": [
+        "U12"
+      ],
+      "expected": "U12"
+    },
+    {
+      "fn": "shortRoomName",
+      "args": [
+        ""
+      ],
+      "expected": ""
+    },
+    {
+      "fn": "shortRoomName",
+      "args": [
+        "4A (104)"
+      ],
+      "expected": "4A"
+    },
+    {
+      "fn": "formatExcuseTemplate",
+      "args": [
+        "Dobrý den, omluvte absenci dne {date} na hodině {lessons} z předmětu {subject}.",
+        "15.09.2026",
+        "2. hodina",
+        "Matematika",
+        "Jan Novák"
+      ],
+      "expected": "Dobrý den, omluvte absenci dne 15.09.2026 na hodině 2. hodina z předmětu Matematika.\nJan Novák"
+    },
+    {
+      "fn": "templateText",
+      "args": [
+        "plain"
+      ],
+      "expected": "plain"
+    },
+    {
+      "fn": "templateText",
+      "args": [
+        {
+          "name": "N",
+          "text": "T"
+        }
+      ],
+      "expected": "T"
+    },
+    {
+      "fn": "templateText",
+      "args": [
+        {
+          "name": "N"
+        }
+      ],
+      "expected": ""
+    },
+    {
+      "fn": "templateText",
+      "args": [
+        null
+      ],
+      "expected": ""
+    },
+    {
+      "fn": "templateText",
+      "args": [
+        5
+      ],
+      "expected": "5"
+    },
+    {
+      "fn": "isEncryptedFlag",
+      "args": [
+        true
+      ],
+      "expected": true
+    },
+    {
+      "fn": "isEncryptedFlag",
+      "args": [
+        "1"
+      ],
+      "expected": true
+    },
+    {
+      "fn": "isEncryptedFlag",
+      "args": [
+        "yes"
+      ],
+      "expected": true
+    },
+    {
+      "fn": "isEncryptedFlag",
+      "args": [
+        false
+      ],
+      "expected": false
+    },
+    {
+      "fn": "isEncryptedFlag",
+      "args": [
+        ""
+      ],
+      "expected": false
+    },
+    {
+      "fn": "isEncryptedFlag",
+      "args": [
+        "0"
+      ],
+      "expected": false
+    }
+  ]
+}
