@@ -159,8 +159,8 @@ None yet.
 
 ## Questions for the owner / reviewer
 
-- App version is still the flutter-create template `1.0.0+1`; honest versioning
-  comes with packaging (phases 7–8).
+- App version stays the flutter-create template `1.0.0+1` (resolved 2026-11-07:
+  CI stamps the real version from the tag at build time).
 - (Resolved 2026-11-07: PLAN.md rows 7–8 and REVIEW_PROMPT.md are the owner's
   intended edits, committed as-is.)
 
