@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 1 · Next step: Phase 1 — port strakalari/core/models.py.
+Current phase: 1 · Next step: Phase 1 — port strakalari/core/cache.py.
 
 ## Phase 0 (done)
 
@@ -51,7 +51,7 @@ State: todo = not started, tests = Dart tests written, done = ported + green.
 | strakalari/core/lunch_auto.py | core lunches/lunch_auto.dart | test_lunch_auto.py, test_lunch_auto_user_choice.py, test_lunch_same_pick.py | todo |
 | strakalari/core/lunch_cutoff.py | core lunches/lunch_cutoff.dart | test_lunch_cutoff.py, test_lunch_day_keys.py, test_lunch_deadline_calendar.py | todo |
 | strakalari/core/matching.py | core planning/matching.dart | test_matching.py | todo |
-| strakalari/core/models.py | core models/ | test_models.py | todo |
+| strakalari/core/models.py | core models.dart | test_models.py (minus 2 automation cases → phase 4) → models_test.dart (14) + parity_models_test.dart | done |
 | strakalari/core/news.py | core news.dart | test_news.py | todo |
 | strakalari/core/notify.py | core platform/notifier.dart + app impl | test_notify.py | todo |
 | strakalari/core/packaging.py | core platform/packaging.dart | test_mobile.py (predicates) → packaging_test.dart 9 | done |
@@ -183,6 +183,8 @@ test_tls_bundle.py, test_frozen_ssl.py (frozen CA bundle no longer exists).
     (dart:io has no chmod API); Windows unchanged.
   - Tests set `STRAKALARI_DATA_DIR` (hermetic tmp) instead of using the
     ambient dir like the Python suite.
+  - `lessonStatusFromLegacy` is public (Python: `_lesson_status_from_legacy`);
+    the ported tests call it directly.
 
 ## Questions for the owner / reviewer
 
