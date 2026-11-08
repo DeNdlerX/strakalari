@@ -1,0 +1,415 @@
+/// Settings state. Port of the settings-related AppState surface used by
+/// views/settings/*: navigation, drafts, quiet saves, calendar ops,
+/// automation rules, autostart handling and credential gating.
+///
+/// Plain-Dart controller; persistence/confirm dialogs/OS calls are
+/// injectable so widget tests use fakes and never touch disk or servers.
+class SettingsController {
+  final Map<String, dynamic> config;
+  final List<void Function()> _listeners = [];
+  final List<void Function()> _configListeners = [];
+  final Map<String, String> drafts = {};
+
+  /// Persist [updates] into [config]. False/throw = save failed.
+  /// Null = write into [config] directly (tests).
+  final bool Function(Map<String, dynamic> updates)? persist;
+
+  /// Confirm switching a mode to auto. Return 'confirm' | 'dry_run' |
+  /// 'cancel' (mirrors safety.confirm_auto_mode callbacks).
+  final String Function(String key)? confirmAutoMode;
+
+  /// OS autostart hooks: (isEnabled, setAutostart). Null = unavailable.
+  final bool Function()? autostartEnabled;
+  final bool Function(bool wanted)? setAutostart;
+  final bool storeManaged;
+
+  /// Phone-only flags.
+  final bool isAndroid;
+  final bool wakeupAvailable;
+
+  String settingsSection = 'accounts';
+  bool settingsOpen = false;
+  String testing = '';
+  Map<String, dynamic> lastTest = {};
+  String updateChannel = 'stable';
+
+  SettingsController(
+    this.config, {
+    this.persist,
+    this.confirmAutoMode,
+    this.autostartEnabled,
+    this.setAutostart,
+    this.storeManaged = false,
+    this.isAndroid = false,
+    this.wakeupAvailable = false,
+  });
+
+  void addListener(void Function() fn) => _listeners.add(fn);
+  void removeListener(void Function() fn) => _listeners.remove(fn);
+  void addConfigListener(void Function() fn) => _configListeners.add(fn);
+
+  void _emit() {
+    for (final fn in List.of(_listeners)) {
+      fn();
+    }
+  }
+
+  void _emitConfig() {
+    for (final fn in List.of(_configListeners)) {
+      fn();
+    }
+  }
+
+  dynamic get(String key, [dynamic fallback]) =>
+      config.containsKey(key) ? config[key] : fallback;
+
+  // -- saves ---------------------------------------------------------------------
+  /// Full save: updates memory, persists, notifies config listeners,
+  /// re-renders. Returns false when persistence failed.
+  bool save(Map<String, dynamic> updates) {
+    config.addAll(updates);
+    try {
+      if (persist != null && persist!(updates) == false) return false;
+    } catch (_) {
+      return false;
+    }
+    _emitConfig();
+    _emit();
+    return true;
+  }
+
+  /// Quiet save: updates memory, persists and notifies config listeners,
+  /// but does NOT re-render (mirrors `save_quiet`: no lost clicks/focus
+  /// on blur-saves).
+  bool saveQuiet(Map<String, dynamic> updates) {
+    config.addAll(updates);
+    try {
+      if (persist != null && persist!(updates) == false) return false;
+    } catch (_) {
+      return false;
+    }
+    _emitConfig();
+    return true;
+  }
+
+  // -- drafts ----------------------------------------------------------------------
+  String draft(String key, [String fallback = '']) =>
+      drafts.containsKey(key) ? drafts[key]! : fallback;
+
+  void setDraft(String key, String value) {
+    drafts[key] = value;
+  }
+
+  void clearDrafts(String prefix) {
+    drafts.removeWhere((k, _) => k.startsWith(prefix));
+  }
+
+  // -- navigation -------------------------------------------------------------------
+  static const List<(String, String)> sections = [
+    ('accounts', 'sec_accounts'),
+    ('limits', 'sec_limits'),
+    ('calendar', 'sec_calendar'),
+    ('alarm', 'sec_alarm'),
+    ('templates', 'sec_templates'),
+    ('rules', 'sec_rules'),
+    ('browser', 'sec_browser'),
+    ('appearance', 'sec_appearance'),
+    ('ai', 'sec_ai'),
+    ('advanced', 'sec_advanced'),
+    ('notifications', 'sec_notifications'),
+    ('diagnostics', 'sec_diagnostics'),
+  ];
+
+  static const List<(String, List<String>)> navGroups = [
+    ('sec_group_school', ['accounts', 'limits', 'calendar', 'alarm']),
+    ('sec_group_automation', ['rules', 'templates', 'ai', 'browser']),
+    ('sec_group_app', ['appearance', 'notifications']),
+    ('sec_group_advanced', ['advanced', 'diagnostics']),
+  ];
+
+  static const Map<String, String> sectionIcons = {
+    'accounts': 'person',
+    'limits': 'percent',
+    'calendar': 'calendar',
+    'alarm': 'alarm',
+    'templates': 'description',
+    'rules': 'bolt',
+    'browser': 'sync',
+    'appearance': 'palette',
+    'ai': 'auto_awesome',
+    'advanced': 'tune',
+    'notifications': 'notifications',
+    'diagnostics': 'bug',
+  };
+
+  /// Sections visible on this platform (iOS hides browser/notifications,
+  /// non-Android hides the alarm section).
+  List<(String, String)> sectionsHere({String platform = ''}) {
+    var ids = sections.map((s) => s.$1).toSet();
+    if (platform == 'ios') {
+      ids.removeAll({'browser', 'notifications'});
+    }
+    if (platform != 'android') {
+      ids.remove('alarm');
+    }
+    return [for (final s in sections) if (ids.contains(s.$1)) s];
+  }
+
+  void setSettingsSection(String section) {
+    settingsSection = section;
+    settingsOpen = true;
+    _emit();
+  }
+
+  void closeSettingsSection() {
+    settingsOpen = false;
+    _emit();
+  }
+
+  // -- quiet-save helpers (port of settings/common.py) ------------------------------
+  /// True when a stored config value already equals the new one.
+  static bool sameValue(Object? a, Object? b) {
+    if (a == b) return true;
+    if (a is String && b is String) {
+      // Text stays text: '0123' is not '123'.
+      return false;
+    }
+    try {
+      return double.parse('$a') == double.parse('$b');
+    } catch (_) {
+      final sa = a == null ? '' : '$a';
+      final sb = b == null ? '' : '$b';
+      return sa == sb;
+    }
+  }
+
+  // -- automation rules ----------------------------------------------------------------
+  bool automationPaused() => get('automation_paused', false) == true;
+
+  bool setAutomationPaused(bool paused) {
+    return save({'automation_paused': paused});
+  }
+
+  /// Mode picker commit. Switching to `auto` needs explicit confirmation;
+  /// other modes save without asking (port of `_commit_guarded`).
+  /// Returns 'saved' | 'unchanged' | 'cancelled'.
+  String commitMode(String key, String value, String fallback) {
+    value = value.isEmpty ? fallback : value;
+    final previous = '${get(key, fallback) ?? fallback}';
+    if (value != 'auto' || previous == 'auto') {
+      saveQuiet({key: value});
+      return 'saved';
+    }
+    final answer = confirmAutoMode?.call(key) ?? 'cancel';
+    if (answer == 'confirm') {
+      saveQuiet({key: 'auto'});
+      return 'saved';
+    }
+    if (answer == 'dry_run') {
+      saveQuiet({key: 'dry_run'});
+      return 'saved';
+    }
+    return 'cancelled';
+  }
+
+  /// `0` → 1 clamp and parse for the check-interval field
+  /// (port of the `rule:interval` handler: 0→1, '2,7'→2).
+  int clampInterval(String raw) {
+    try {
+      return (double.parse(raw.replaceAll(',', '.'))).toInt().clamp(1, 1 << 30);
+    } catch (_) {
+      return 1;
+    }
+  }
+
+  bool commitInterval(String raw) {
+    return saveQuiet({'check_interval_minutes': clampInterval(raw)});
+  }
+
+  static final _cutoffRe = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
+
+  static bool isValidCutoff(String raw) =>
+      _cutoffRe.hasMatch(raw.trim());
+
+  /// Empty = inherit preset; otherwise must be HH:MM.
+  bool commitCutoff(String raw) {
+    final cleaned = raw.trim();
+    if (cleaned.isNotEmpty && !isValidCutoff(cleaned)) return false;
+    return saveQuiet({'lunch_order_cutoff_time': cleaned});
+  }
+
+  // -- autostart ------------------------------------------------------------------
+  /// Toggles autostart; on failure the switch must NOT claim the new
+  /// state (returns false, caller reverts the switch).
+  bool toggleAutostart(bool wanted) {
+    if (setAutostart == null) return false;
+    try {
+      return setAutostart!(wanted);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool readAutostart() {
+    if (storeManaged) return false;
+    try {
+      return autostartEnabled?.call() ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // -- school calendar ---------------------------------------------------------------
+  DateTime? parseCzDate(String raw) {
+    final m =
+        RegExp(r'^(\d{1,2})\.(\d{1,2})\.(\d{4})$').firstMatch(raw.trim());
+    if (m == null) return null;
+    try {
+      final d = DateTime(int.parse(m.group(3)!),
+          int.parse(m.group(2)!), int.parse(m.group(1)!));
+      if (d.day != int.parse(m.group(1)!) ||
+          d.month != int.parse(m.group(2)!)) {
+        return null;
+      }
+      return d;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  List<Map<String, String>> userFreeDays() {
+    final out = <Map<String, String>>[];
+    final raw = get('user_free_days', []);
+    if (raw is List) {
+      for (final e in raw) {
+        if (e is Map) {
+          out.add({
+            'date': '${e['date'] ?? ''}',
+            'label': '${e['label'] ?? ''}',
+          });
+        } else if ('$e'.isNotEmpty) {
+          out.add({'date': '$e', 'label': ''});
+        }
+      }
+    }
+    return out;
+  }
+
+  /// Adds a single free day from drafts (`cal:add_date`, `cal:add_label`).
+  /// Invalid dates save nothing. Returns true when stored.
+  bool addSingleDay() {
+    final day = parseCzDate(draft('cal:add_date', ''));
+    if (day == null) return false;
+    final label = draft('cal:add_label', '').trim();
+    final days = userFreeDays();
+    final key =
+        '${day.day.toString().padLeft(2, '0')}.${day.month.toString().padLeft(2, '0')}.${day.year}';
+    if (days.any((d) => d['date'] == key)) return true; // duplicate
+    days.add({'date': key, 'label': label});
+    if (!save({'user_free_days': _packDays(days)})) return false;
+    clearDrafts('cal:add_');
+    return true;
+  }
+
+  /// Adds a date range from drafts. Reversed/invalid ranges save nothing.
+  bool addDayRange() {
+    final start = parseCzDate(draft('cal:from_', ''));
+    final end = parseCzDate(draft('cal:to', ''));
+    if (start == null || end == null || end.isBefore(start)) return false;
+    final label = draft('cal:range_label', '').trim();
+    final days = userFreeDays();
+    var added = 0;
+    for (var d = start;
+        !d.isAfter(end);
+        d = d.add(const Duration(days: 1))) {
+      final key =
+          '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
+      if (days.any((x) => x['date'] == key)) continue;
+      days.add({'date': key, 'label': label});
+      added++;
+    }
+    if (added == 0) return true;
+    if (!save({'user_free_days': _packDays(days)})) return false;
+    clearDrafts('cal:from_');
+    clearDrafts('cal:to');
+    clearDrafts('cal:range_label');
+    return true;
+  }
+
+  bool deleteFreeDay(String dateKey) {
+    final days = userFreeDays()
+        .where((d) => d['date'] != dateKey)
+        .toList();
+    return save({'user_free_days': _packDays(days)});
+  }
+
+  List<dynamic> _packDays(List<Map<String, String>> days) {
+    days.sort((a, b) => '${a['date']}'.compareTo('${b['date']}'));
+    return [
+      for (final d in days)
+        if ((d['label'] ?? '').isNotEmpty) d else d['date']!,
+    ];
+  }
+
+  /// Closure field commit: invalid dates are not saved.
+  bool commitClosure(String key, String raw) {
+    final cleaned = raw.trim();
+    if (cleaned.isNotEmpty && parseCzDate(cleaned) == null) return false;
+    return saveQuiet({key: cleaned});
+  }
+
+  // -- template editor -----------------------------------------------------------------
+  /// Commits one template-list edit (port of `_tpl_editor._commit`).
+  bool commitTemplates(String key, List<Map<String, String>> values) {
+    final cleaned = <dynamic>[];
+    for (final v in values) {
+      final text = (v['text'] ?? '').trim();
+      if (text.isEmpty) continue;
+      final name = (v['name'] ?? '').trim();
+      cleaned.add(name.isNotEmpty
+          ? {'name': name, 'text': v['text']}
+          : v['text']);
+    }
+    final current = get(key, []);
+    if (_deepEquals(cleaned, current)) return true; // nothing to save
+    return saveQuiet({key: cleaned});
+  }
+
+  static bool _deepEquals(Object? a, Object? b) {
+    if (a is List && b is List) {
+      if (a.length != b.length) return false;
+      for (var i = 0; i < a.length; i++) {
+        if (!_deepEquals(a[i], b[i])) return false;
+      }
+      return true;
+    }
+    if (a is Map && b is Map) {
+      if (a.length != b.length) return false;
+      for (final k in a.keys) {
+        if (!b.containsKey(k) || !_deepEquals(a[k], b[k])) return false;
+      }
+      return true;
+    }
+    return a == b;
+  }
+
+  // -- credential gating (settings half of test_wizard_setup) ----------------------------
+  bool hasBakalariCredentials() {
+    return '${get('bakalari_url', '')}'.isNotEmpty &&
+        '${get('bakalari_username', '')}'.isNotEmpty &&
+        '${get('bakalari_password', '')}'.isNotEmpty;
+  }
+
+  bool hasStravaCredentials() {
+    return '${get('strava_username', '')}'.isNotEmpty &&
+        '${get('strava_password', '')}'.isNotEmpty &&
+        '${get('strava_canteen_id', '')}'.isNotEmpty;
+  }
+
+  bool hasAnyCredentials() =>
+      hasBakalariCredentials() || hasStravaCredentials();
+
+  bool needsSetup() => !hasAnyCredentials();
+
+  bool stravaEnabledFlag() => get('use_strava', true) == true;
+}
