@@ -1,0 +1,820 @@
+import 'package:flutter/foundation.dart';
+
+import '../common/app_strings.dart';
+import '../common/format.dart';
+import '../common/lesson_model.dart';
+import '../common/schedule_logic.dart';
+import 'excuse_logic.dart';
+import 'excuse_logic.dart' as excuses;
+
+export 'excuse_logic.dart' show ExcuseTask;
+
+/// One template option as a `(name, text)` pair — like
+/// `planner._template_options`.
+class TemplateOption {
+  final String name;
+  final String text;
+  const TemplateOption(this.name, this.text);
+}
+
+/// A send job: one Bakaláři excuse plus the user-chosen text (null =
+/// configured default) — mirrors the `(excuse, custom_text)` pairs the
+/// Python `_excuse_worker` sends in one session.
+class ExcuseJob {
+  final Map<String, Object?> excuse;
+  final String? customText;
+  const ExcuseJob(this.excuse, this.customText);
+}
+
+/// A send request handed to the shell's send path (which holds the
+/// session lock, writes history and calls back into [markSent]).
+class ExcuseSendRequest {
+  /// `'single'` or `'day'`.
+  final String scope;
+  final String key;
+  final String label;
+  final List<ExcuseJob> jobs;
+  final bool perLesson;
+
+  const ExcuseSendRequest({
+    required this.scope,
+    required this.key,
+    required this.label,
+    required this.jobs,
+    this.perLesson = false,
+  });
+}
+
+/// Next-lesson card content — like `today._next_lesson_card`.
+class NextLessonInfo {
+  /// `running | before | between | next-day | empty`.
+  final String phase;
+  final String headline;
+  final String meta;
+  final String? deltaText;
+  final String? statusLabel;
+  final String? headingLabel;
+  final String? upcomingHeadline;
+  final String? alarmBadge;
+
+  const NextLessonInfo({
+    required this.phase,
+    required this.headline,
+    required this.meta,
+    this.deltaText,
+    this.statusLabel,
+    this.headingLabel,
+    this.upcomingHeadline,
+    this.alarmBadge,
+  });
+}
+
+/// One item of the week-changes / notes blocks.
+class TodayChange {
+  final String title;
+  final String? note;
+  final bool isNote;
+  const TodayChange({required this.title, this.note, this.isNote = false});
+}
+
+/// Wake-up alarm info for one day (port of the fields
+/// `today._next_lesson_card._head` reads: [day], [ringDay], [timeLabel]).
+class AlarmInfo {
+  final DateTime day;
+  final DateTime ringDay;
+  final String timeLabel;
+  const AlarmInfo(
+      {required this.day, required this.ringDay, required this.timeLabel});
+}
+
+/// Today (Dnes) screen state + logic — a `ChangeNotifier` port of
+/// `views/today.py` and the `ExcuseTasksMixin` pieces it uses.
+///
+/// The shell wires the data inputs (timetable, food, history, config)
+/// and the send path ([onSend]); everything else — task filtering,
+/// ignore list, template picks, day plans, the clock-aware next lesson,
+/// week changes, lunch text and the planner tip — lives here.
+class TodayController extends ChangeNotifier {
+  final AppStrings s;
+
+  /// Reads config values (same keys as Python: `your_signature`,
+  /// `excuse_day_per_lesson`, `ignored_excuses`, template lists …).
+  final Map<String, Object?> config;
+
+  /// Persists config updates. Same keys/formats as Python `state.save`.
+  /// Returns false when the write failed (the caller rolls back).
+  final bool Function(Map<String, Object?> updates) onSave;
+
+  /// Starts a refresh (`state.start_refresh("all")`); true = started.
+  final bool Function() onRefreshRequest;
+
+  /// Asks the shell to navigate (`state.go("settings"|"planner")`).
+  final void Function(String route) onGo;
+
+  /// Sends one request in a Bakaláři session (holds the session lock,
+  /// writes history, then calls [markSent]). Defaults to a no-op that
+  /// reports failure — the shell must provide the real path.
+  Future<bool> Function(ExcuseSendRequest request) onSend;
+
+  TodayController({
+    this.s = const AppStrings(),
+    Map<String, Object?>? config,
+    bool Function(Map<String, Object?> updates)? onSave,
+    bool Function()? onRefreshRequest,
+    void Function(String route)? onGo,
+    Future<bool> Function(ExcuseSendRequest request)? onSend,
+  })  : config = config ?? {},
+        onSave = onSave ?? ((_) => false),
+        onRefreshRequest = onRefreshRequest ?? (() => false),
+        onGo = onGo ?? ((_) {}),
+        onSend = onSend ?? ((_) async => false);
+
+  // -- inputs (set by the shell, like AppState.data/config) -----------------
+
+  /// `{dayKey: [lessonDict, ...]}` with `DD.MM.YYYY` keys.
+  Map<String, List<Object?>> timetable = {};
+
+  /// `{dayKey: {orderCode: meal}}`.
+  Map<String, Map<String, String>> food = {};
+
+  /// Orders by day (`orders` then `web_orders` fallback in Python).
+  Map<String, String> orders = {};
+  Map<String, String> webOrders = {};
+
+  /// Days with a cancelled lunch (`cancelled_lunches`).
+  Set<String> cancelledLunches = {};
+
+  /// Persisted excuse history (`already_excused_lessons.json` rows).
+  List<Object?> excuseHistory = [];
+
+  /// Start of the range Komens → Odeslané actually showed
+  /// (`sent_excuses_from`), or null.
+  DateTime? outboxFrom;
+
+  /// Stable baseline for change detection (`stable_baseline()`).
+  Map<String, List<SlotBaseline>> stableBaseline = {};
+  bool stableComplete = false;
+
+  /// Keys of tasks already sent this session (`excuse_log` keys).
+  final Set<String> sentTaskKeys = {};
+
+  /// `demo_mode` + credential presence.
+  bool demoMode = false;
+  bool hasCredentials = false;
+
+  /// `updated_label` text.
+  String updatedLabel = '';
+
+  /// Next wake-up alarm (`state.next_wakeup_alarm(now)`), if any.
+  AlarmInfo? nextAlarm;
+
+  /// Planner's recommended days off within the term (`term.recommended`).
+  List<DateTime> plannerRecommended = [];
+
+  /// Template lists for the dropdowns
+  /// (`late_income_excuses`, `left_soon_excuses`, `short_absence_excuses`,
+  /// `long_absence_excuses`; plain strings or `{name, text}` maps).
+  List<Object?> Function(String configKey) templateSource =
+      (_) => const [];
+
+  // -- in-memory UI state (like AppState fields) ------------------------------
+
+  /// Ignored excuse keys (`ignored_excuses`, persisted).
+  final Set<String> ignoredKeys = {};
+
+  /// Tasks currently sending (`sending_excuses`).
+  final Set<String> sendingKeys = {};
+
+  /// Template pick per card key (`picked_templates`).
+  final Map<String, int> pickedTemplates = {};
+
+  /// Day cards folded open (`tt:`/`excuse:` keys in Python; same map).
+  final Map<String, bool> expandedDays = {};
+
+  /// Last ignore error (`last_ignore_error`).
+  String lastIgnoreError = '';
+
+  /// Last user-facing message (snackbar text equivalent).
+  String lastMessage = '';
+
+  /// Pending signature-gated send (the `_when_signed` dialog state).
+  ExcuseSendRequest? pendingUnsignedRequest;
+
+  // -- config helpers -----------------------------------------------------------
+
+  Object? get(String key, [Object? fallback]) =>
+      config.containsKey(key) ? config[key] : fallback;
+
+  String get signature => '${get('your_signature', '') ?? ''}'.trim();
+
+  bool get excuseDayPerLesson =>
+      (get('excuse_day_per_lesson', false) == true);
+
+  int intSetting(String key, int fallback) {
+    final v = get(key, fallback);
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse('$v') ?? fallback;
+  }
+
+  // -- tasks ----------------------------------------------------------------------
+
+  List<ExcuseTask> get _unexcused => unexcusedTasks(
+        demoMode: demoMode,
+        timetable: timetable,
+        periodWord: s.get('period').toLowerCase(),
+        sentKeys: sentTaskKeys,
+        history: excuseHistory,
+      );
+
+  /// Pending excuse tasks — like `state.excuse_tasks()`.
+  List<ExcuseTask> excuseTasks({DateTime? today}) {
+    final now = today ?? DateTime.now();
+    final day = DateTime(now.year, now.month, now.day);
+    return pendingTasks(
+      unexcused: _unexcused,
+      today: day,
+      outboxFrom: outboxFrom,
+      ignoredKeys: ignoredKeys,
+    );
+  }
+
+  /// Currently ignored tasks — like `state.ignored_tasks()`.
+  List<ExcuseTask> ignoredTasks() =>
+      excuses.ignoredTasks(_unexcused, ignoredKeys);
+
+  /// Groups tasks by day ISO, capped at 12 with the overflow count —
+  /// like the `tasks[:12]` slice in `_excuse_cards`.
+  ({Map<String, List<ExcuseTask>> byDay, int overflow}) groupedTasks(
+      {DateTime? today}) {
+    final tasks = excuseTasks(today: today);
+    final byDay = <String, List<ExcuseTask>>{};
+    for (final t in tasks.take(12)) {
+      (byDay[isoDayOf(t.date)] ??= []).add(t);
+    }
+    return (
+      byDay: byDay,
+      overflow: tasks.length > 12 ? tasks.length - 12 : 0
+    );
+  }
+
+  // -- ignore list (persisted, with rollback) ---------------------------------------
+
+  bool _persistIgnored(Set<String> previous) {
+    lastIgnoreError = '';
+    try {
+      final sorted = ignoredKeys.toList()..sort();
+      if (!onSave({'ignored_excuses': sorted})) throw StateError('save');
+      return true;
+    } catch (e) {
+      ignoredKeys
+        ..clear()
+        ..addAll(previous);
+      lastIgnoreError = s.get('ignore_save_failed');
+      return false;
+    }
+  }
+
+  bool _changeIgnored({List<String> add = const [], List<String> remove = const []}) {
+    final previous = Set<String>.of(ignoredKeys);
+    for (final k in add) {
+      if (k.isNotEmpty) ignoredKeys.add(k);
+    }
+    for (final k in remove) {
+      ignoredKeys.remove(k);
+    }
+    if (ignoredKeys.length == previous.length &&
+        ignoredKeys.containsAll(previous)) {
+      return true;
+    }
+    final ok = _persistIgnored(previous);
+    if (ok) notifyListeners();
+    return ok;
+  }
+
+  /// Hides one task — like `state.ignore_excuse`. Returns the hidden
+  /// key, or `''` when nothing was hidden.
+  String ignoreExcuse(String key) {
+    lastIgnoreError = '';
+    if (key.isEmpty) return '';
+    if (!_changeIgnored(add: [key])) return '';
+    lastMessage = s.get('ignored_msg');
+    notifyListeners();
+    return key;
+  }
+
+  /// Hides every pending task of one day — like `state.ignore_day`.
+  /// Returns the hidden keys ([] when nothing was hidden / save failed).
+  List<String> ignoreDay(String dayIso, {DateTime? today}) {
+    lastIgnoreError = '';
+    final added = excuseTasks(today: today)
+        .where((t) =>
+            isoDayOf(t.date) == dayIso && !ignoredKeys.contains(t.key))
+        .map((t) => t.key)
+        .toList();
+    if (added.isEmpty || !_changeIgnored(add: added)) return [];
+    lastMessage = s.get('ignored_msg');
+    notifyListeners();
+    return added;
+  }
+
+  /// Like `state.unignore_excuse` / `state.unignore_keys`.
+  bool unignoreKeys(List<String> keys) =>
+      _changeIgnored(remove: keys.where((k) => k.isNotEmpty).toList());
+
+  // -- templates ----------------------------------------------------------------------
+
+  /// Kind-matched templates as `(name, text)` pairs — like
+  /// `today._options_for` over `planner._template_options`.
+  List<TemplateOption> templateOptions(String kind) {
+    final k = kind.toLowerCase();
+    List<String> keys;
+    if (k == 'late') {
+      keys = const ['late_income_excuses'];
+    } else if (k == 'soon' || k == 'early') {
+      keys = const ['left_soon_excuses'];
+    } else if (k == 'short') {
+      keys = const ['short_absence_excuses'];
+    } else if (k == 'long' || k == 'day') {
+      keys = const ['long_absence_excuses'];
+    } else {
+      keys = const [
+        'long_absence_excuses',
+        'short_absence_excuses',
+        'late_income_excuses',
+        'left_soon_excuses'
+      ];
+    }
+
+    List<TemplateOption> collect(List<String> listKeys) {
+      final out = <TemplateOption>[];
+      for (final key in listKeys) {
+        final values = templateSource(key);
+        for (final v in values) {
+          String name;
+          String text;
+          if (v is Map) {
+            name = '${v['name'] ?? ''}'.trim();
+            text = '${v['text'] ?? ''}';
+          } else {
+            name = '';
+            text = '$v';
+          }
+          if (text.trim().isNotEmpty) out.add(TemplateOption(name, text));
+        }
+      }
+      return out;
+    }
+
+    var found = collect(keys);
+    if (found.isEmpty && keys.length == 1) {
+      found = collect(const [
+        'long_absence_excuses',
+        'short_absence_excuses',
+        'late_income_excuses',
+        'left_soon_excuses'
+      ]);
+    }
+    final sig = signature;
+    if (sig.isNotEmpty) {
+      // Never duplicate a signature the template already ends with
+      // (case-insensitive, mirroring format_excuse_template).
+      found = [
+        for (final o in found)
+          TemplateOption(
+              o.name,
+              o.text.toLowerCase().contains(sig.toLowerCase())
+                  ? o.text
+                  : '${o.text.trimRight()}\n$sig')
+      ];
+    }
+    if (found.isEmpty) {
+      found = [TemplateOption('', s.get('default_excuse_template'))];
+    }
+    return found;
+  }
+
+  /// Dropdown labels: the user's name, `Šablona N` for unnamed ones —
+  /// like `planner._template_labels`.
+  List<String> templateLabels(List<TemplateOption> options) => [
+        for (var i = 0; i < options.length; i++)
+          options[i].name.isNotEmpty
+              ? options[i].name
+              : '${s.get('template_n')} ${i + 1}',
+      ];
+
+  /// Clamps a template pick into range — like `today._choose`.
+  void chooseTemplate(String key, String? value, int n) {
+    pickedTemplates[key] =
+        (int.tryParse(value ?? '') ?? 0).clamp(0, (n - 1).clamp(0, 1 << 30));
+    notifyListeners();
+  }
+
+  /// The excuse text of the template picked for `key` —
+  /// like `today._picked_option`.
+  String pickedOption(String key, List<TemplateOption> options) {
+    if (options.isEmpty) return '';
+    final idx =
+        (pickedTemplates[key] ?? 0).clamp(0, options.length - 1);
+    return options[idx].text;
+  }
+
+  // -- day cards ------------------------------------------------------------------------
+
+  /// Like `state.day_fully_absent`.
+  bool dayFullyAbsent(String dayIso, {DateTime? today}) => dayFullyAbsentOf(
+      dayIso: dayIso,
+      pending: excuseTasks(today: today),
+      timetable: timetable);
+
+  bool dayFullyAbsentOf({
+    required String dayIso,
+    required List<ExcuseTask> pending,
+    required Map<String, List<Object?>> timetable,
+  }) =>
+      excuses.dayFullyAbsent(
+          dayIso: dayIso, pending: pending, timetable: timetable);
+
+  /// Like `state.excuse_day_per_lesson` + `set_excuse_day_per_lesson`
+  /// (saved; false restores the old mode when the save fails).
+  bool setExcuseDayPerLesson(bool on) {
+    final previous = excuseDayPerLesson;
+    config['excuse_day_per_lesson'] = on;
+    if (onSave({'excuse_day_per_lesson': on})) {
+      notifyListeners();
+      return true;
+    }
+    config['excuse_day_per_lesson'] = previous;
+    lastMessage = s.get('save_failed');
+    notifyListeners();
+    return false;
+  }
+
+  bool isDayExpanded(String key, {bool defaultValue = false}) =>
+      expandedDays[key] ?? defaultValue;
+
+  void setDayExpanded(String key, bool expanded) {
+    expandedDays[key] = expanded;
+    notifyListeners();
+  }
+
+  // -- sending ----------------------------------------------------------------------------
+
+  /// Builds the single-lesson send request — like the `_send` closures
+  /// in `_excuse_cards` (validation only; `onSend` does the session).
+  ExcuseSendRequest? singleRequest(ExcuseTask task, String template) {
+    final key = task.key;
+    if (key.isEmpty || sendingKeys.contains(key)) return null;
+    if (task.date == null || task.period == null) return null;
+    final dayLabel = dayKey(task.date!);
+    final excuse =
+        lessonExcuse(task.kind, dayLabel, task.period!);
+    final text = template.trim().isEmpty ? null : template;
+    return ExcuseSendRequest(
+      scope: 'single',
+      key: key,
+      label: task.label,
+      jobs: [ExcuseJob(excuse, text)],
+    );
+  }
+
+  /// Builds the day send request — like `state.submit_day_excuse`
+  /// (plan via [dayExcusePlan]; template only on absence excuses).
+  ExcuseSendRequest? dayRequest(String dayIso, String template,
+      {bool perLesson = false, DateTime? today}) {
+    if (dayIso.isEmpty || sendingKeys.contains('day|$dayIso')) {
+      return null;
+    }
+    final pending = excuseTasks(today: today);
+    final plan = dayExcusePlan(
+        dayIso: dayIso,
+        pending: pending,
+        timetable: timetable,
+        perLesson: perLesson);
+    if (plan.isEmpty) return null;
+    final text = template.trim().isEmpty ? null : template;
+    return ExcuseSendRequest(
+      scope: 'day',
+      key: 'day|$dayIso',
+      label: dayKey(parseCzDate(dayIso) ?? DateTime.now()),
+      jobs: [
+        for (final excuse in plan)
+          ExcuseJob(
+              excuse,
+              const {'pure days', 'days and hours'}
+                      .contains('${excuse['type']}')
+                  ? text
+                  : null),
+      ],
+      perLesson: perLesson,
+    );
+  }
+
+  /// Starts a send via [onSend] (marks the key as sending while the
+  /// worker runs). When no signature is configured the request is
+  /// parked in [pendingUnsignedRequest] for the signature dialog —
+  /// like `today._when_signed`.
+  Future<bool> send(ExcuseSendRequest request) async {
+    if (sendingKeys.contains(request.key)) {
+      lastMessage = s.get('already_running');
+      notifyListeners();
+      return false;
+    }
+    if (demoMode && !hasCredentials) {
+      lastMessage = s.get('need_credentials');
+      notifyListeners();
+      return false;
+    }
+    if (signature.isEmpty) {
+      pendingUnsignedRequest = request;
+      notifyListeners();
+      return false;
+    }
+    sendingKeys.add(request.key);
+    lastMessage = s.get('excuse_sending');
+    notifyListeners();
+    try {
+      final ok = await onSend(request);
+      if (!ok && !sendingKeys.contains(request.key)) {
+        // Already settled by a concurrent markSent.
+      }
+      if (!ok) {
+        lastMessage = s.get('excuse_failed');
+      }
+      return ok;
+    } finally {
+      sendingKeys.remove(request.key);
+      notifyListeners();
+    }
+  }
+
+  /// Saves the signature from the dialog, then sends the parked
+  /// request — like `_when_signed._save`.
+  Future<bool> saveSignatureAndSend(String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      lastMessage = s.get('wiz_need_signature');
+      notifyListeners();
+      return false;
+    }
+    if (!onSave({'your_signature': trimmed})) {
+      lastMessage = s.get('save_failed');
+      notifyListeners();
+      return false;
+    }
+    config['your_signature'] = trimmed;
+    final request = pendingUnsignedRequest;
+    pendingUnsignedRequest = null;
+    if (request == null) {
+      notifyListeners();
+      return true;
+    }
+    return send(request);
+  }
+
+  /// Marks tasks sent after the server confirms — like
+  /// `state.mark_excused` (never optimistic).
+  void markSent(Iterable<String> keys) {
+    sentTaskKeys.addAll(keys.where((k) => k.isNotEmpty));
+    for (final k in keys) {
+      sendingKeys.remove(k);
+    }
+    notifyListeners();
+  }
+
+  // -- next lesson --------------------------------------------------------------------------
+
+  /// Clock-aware next lesson card — like `today._next_lesson_card`.
+  NextLessonInfo nextLesson(DateTime now) {
+    final today = DateTime(now.year, now.month, now.day);
+    final todayKey = dayKey(today);
+    String headline(LessonRow l) {
+      var h = l.subject.isEmpty ? '?' : l.subject;
+      if (l.period != null) {
+        h += ' · ${l.period}. ${s.get('period').toLowerCase()}';
+      }
+      return h;
+    }
+
+    String meta(LessonRow l) {
+      final clock = lessonClock(
+          {'time': l.time}, todayKey);
+      final String timeLabel;
+      if (clock != null) {
+        final sh = clock.start ~/ 60;
+        final sm = clock.start % 60;
+        final eh = clock.end ~/ 60;
+        final em = clock.end % 60;
+        timeLabel =
+            '$sh:${sm.toString().padLeft(2, '0')} – $eh:${em.toString().padLeft(2, '0')}';
+      } else {
+        timeLabel = shortTime(l.time);
+      }
+      return [l.teacher, l.room, timeLabel]
+          .where((p) => p.isNotEmpty)
+          .join(' · ');
+    }
+
+    String? alarmBadge(DateTime day) {
+      final alarm = nextAlarm;
+      if (alarm == null) return null;
+      if (alarm.day != day) return null;
+      if (alarm.ringDay == day) {
+        return s.tr('wakeup_badge', {'time': alarm.timeLabel});
+      }
+      return s.tr('wakeup_badge_eve', {
+        'day': dayName(alarm.ringDay, s.lang, short: true),
+        'time': alarm.timeLabel,
+      });
+    }
+
+    String? statusLabel(String status) {
+      const keys = {
+        'late': 'status_late',
+        'soon': 'status_soon',
+        'early': 'status_early',
+        'absent': 'status_absent',
+        'cancelled': 'status_lesson_cancelled',
+        'excused': 'status_excused',
+      };
+      final key = keys[status.toLowerCase()];
+      if (key == null && status.isEmpty) return null;
+      return key == null ? status : s.get(key);
+    }
+
+    final todays = [
+      for (final item in (timetable[todayKey] ?? const []))
+        if (item is Map) item.cast<String, Object?>(),
+    ];
+    final resolved = resolveDayLessons(todays, now, todayKey);
+    if (resolved.phase == 'running' && resolved.current != null) {
+      final parsed = LessonRow.fromLegacy(resolved.current!, todayKey);
+      final clock = lessonClock(resolved.current!, todayKey);
+      final nowMin = now.hour * 60 + now.minute;
+      final left = clock == null
+          ? 1
+          : (clock.end - nowMin).clamp(1, 1 << 30);
+      return NextLessonInfo(
+        phase: 'running',
+        headline: headline(parsed),
+        meta: meta(parsed),
+        deltaText: s.tr('ends_in', {'m': left}),
+        statusLabel: statusLabel(parsed.status),
+        headingLabel: s.get('now_running'),
+      );
+    }
+    if ((resolved.phase == 'before' || resolved.phase == 'between') &&
+        resolved.upcoming != null) {
+      final parsed = LessonRow.fromLegacy(resolved.upcoming!, todayKey);
+      final clock = lessonClock(resolved.upcoming!, todayKey);
+      final nowMin = now.hour * 60 + now.minute;
+      final wait = clock == null
+          ? 1
+          : (clock.start - nowMin).clamp(1, 1 << 30);
+      return NextLessonInfo(
+        phase: resolved.phase,
+        headline: headline(parsed),
+        meta: meta(parsed),
+        deltaText: s.tr('starts_in', {'m': wait}),
+        statusLabel: statusLabel(parsed.status),
+        headingLabel: s.get(
+            resolved.phase == 'before' ? 'before_school' : 'up_next'),
+        alarmBadge: alarmBadge(today),
+      );
+    }
+    // Evening / weekend / holiday: the next school day's first lesson.
+    for (var ahead = 1; ahead <= 7; ahead++) {
+      final day = today.add(Duration(days: ahead));
+      final key = dayKey(day);
+      final rows = [
+        for (final item in (timetable[key] ?? const []))
+          if (item is Map) item.cast<String, Object?>(),
+      ].where((r) =>
+          LessonRow.fromLegacy(r, key).status != 'cancelled').toList();
+      if (rows.isEmpty) continue;
+      rows.sort((a, b) {
+        final ca = lessonClock(a, key);
+        final cb = lessonClock(b, key);
+        return (ca?.start ?? 9999).compareTo(cb?.start ?? 9999);
+      });
+      final parsed = LessonRow.fromLegacy(rows.first, key);
+      return NextLessonInfo(
+        phase: 'next-day',
+        headline: headline(parsed),
+        meta: meta(parsed),
+        headingLabel:
+            '${s.get('next_school_day')}: ${dayName(day, s.lang)} ${czDay(day)}',
+        alarmBadge: alarmBadge(day),
+      );
+    }
+    return NextLessonInfo(
+        phase: 'empty',
+        headline: demoMode ? s.get('no_data') : s.get('no_lessons_today'),
+        meta: '');
+  }
+
+  // -- week changes ---------------------------------------------------------------------------
+
+  /// Real schedule changes (diffed vs stable) + teacher notes, this
+  /// week only, in timetable order — like `today._changes_block`.
+  ({List<TodayChange> changes, List<TodayChange> notes}) weekChanges(
+      DateTime now) {
+    List<ChangeItem> changes;
+    List<ChangeItem> notes;
+    try {
+      changes = iterChanges(timetable,
+          baseline: stableBaseline, complete: stableComplete);
+      notes = iterNotes(timetable,
+          baseline: stableBaseline, complete: stableComplete);
+    } catch (_) {
+      return (changes: const [], notes: const []);
+    }
+    final today = DateTime(now.year, now.month, now.day);
+    final monday = today.subtract(Duration(days: today.weekday - 1));
+    final sunday = monday.add(const Duration(days: 6));
+
+    int orderOf(ChangeItem item) {
+      final period =
+          LessonRow.fromLegacy(item.lesson, item.day).period;
+      return period ?? 99;
+    }
+
+    final weekChanges = changes
+        .where((c) =>
+            c.day != null &&
+            !c.day!.isBefore(monday) &&
+            !c.day!.isAfter(sunday))
+        .toList()
+      ..sort((a, b) {
+        final c = a.day!.compareTo(b.day!);
+        return c != 0 ? c : orderOf(a).compareTo(orderOf(b));
+      });
+    final weekNotes = notes
+        .where((n) =>
+            n.day != null &&
+            !n.day!.isBefore(monday) &&
+            !n.day!.isAfter(sunday))
+        .toList()
+      ..sort((a, b) {
+        final c = a.day!.compareTo(b.day!);
+        return c != 0 ? c : orderOf(a).compareTo(orderOf(b));
+      });
+    String titleOf(ChangeItem item) {
+      final parsed =
+          LessonRow.fromLegacy(item.lesson, item.day);
+      var title = '${parsed.subject.isEmpty ? '?' : parsed.subject} — '
+          '${czDay(item.dayKey)}';
+      if (parsed.period != null) title += ' · ${parsed.period}.';
+      return title;
+    }
+
+    return (
+      changes: [
+        for (final item in weekChanges.take(5))
+          TodayChange(title: titleOf(item), note: item.diff.note)
+      ],
+      notes: [
+        for (final item in weekNotes.take(3))
+          TodayChange(
+              title:
+                  '${LessonRow.fromLegacy(item.lesson, item.day).subject.isEmpty ? '?' : LessonRow.fromLegacy(item.lesson, item.day).subject} — ${czDay(item.dayKey)}: ${item.diff.note}',
+              note: item.diff.note,
+              isNote: true)
+      ],
+    );
+  }
+
+  /// Lunch line — like the lunch block in `today.build`.
+  String lunchText(DateTime now) {
+    final key = dayKey(DateTime(now.year, now.month, now.day));
+    final menu = food[key] ?? const {};
+    final order = orders[key] ?? webOrders[key];
+    if (cancelledLunches.contains(key) ||
+        (order != null && order.contains('&-1&'))) {
+      return s.get('no_lunch');
+    }
+    if (order != null && order.isNotEmpty) {
+      return '${s.get('ordered')}: ${menu[order] ?? order}';
+    }
+    if (menu.isNotEmpty) {
+      return menu.values.take(3).join(', ');
+    }
+    return demoMode ? s.get('no_data') : s.get('no_lunch');
+  }
+
+  /// Planner tip: next recommended day off within two weeks —
+  /// like `today._planner_tip`.
+  String? plannerTip(DateTime now) {
+    if (demoMode) return null;
+    final today = DateTime(now.year, now.month, now.day);
+    final limit = today.add(const Duration(days: 14));
+    final upcoming = plannerRecommended
+        .where((d) => !d.isBefore(today) && !d.isAfter(limit))
+        .toList()
+      ..sort();
+    if (upcoming.isEmpty) return null;
+    final day = upcoming.first;
+    return s.tr('planner_next',
+        {'day': '${dayName(day, s.lang)} ${czDay(day)}'});
+  }
+}
