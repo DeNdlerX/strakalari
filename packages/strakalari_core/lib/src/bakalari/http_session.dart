@@ -651,10 +651,7 @@ class BakalariSession {
           );
           _storeCookies(resp);
         } on IOException catch (e) {
-          if (once) rethrow;
-          // A refused/unreachable host is not a dropped kept-alive
-          // connection: retrying cannot help.
-          if (e is ConnectFailure) rethrow;
+          if (once || !isDroppedReadError(e)) rethrow;
           log('Bakaláři connection dropped (${e.runtimeType}), '
               'retrying once: $currentMethod $path');
           raiseIfCancelled(isCancelled);
@@ -885,3 +882,13 @@ class BakalariSession {
 /// timeouts, resets, ETIMEDOUT on an established connection, …) may
 /// already have arrived, so the post must never be repeated.
 bool isNeverSentCause(Object? error) => error is ConnectFailure;
+
+/// True when [error] is a dropped-connection / protocol read failure
+/// (`HttpException` or `SocketException` after connect, mirroring
+/// `httpx.RemoteProtocolError` / `httpx.ReadError`). Excludes
+/// [ConnectFailure], [TlsException] / [HandshakeException] /
+/// [CertificateException], and unrelated [IOException]s.
+bool isDroppedReadError(Object? error) =>
+    (error is HttpException || error is SocketException) &&
+    error is! ConnectFailure &&
+    error is! TlsException;

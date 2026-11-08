@@ -275,7 +275,7 @@ class StravaClientBase {
       try {
         resp = await attempt();
       } on IOException catch (e) {
-        if (once || isNeverSentCause(e)) rethrow;
+        if (once || !isDroppedReadError(e)) rethrow;
         log('Strava connection dropped (${e.runtimeType}), retrying once: $path');
         raiseIfCancelledNow();
         resp = await attempt();

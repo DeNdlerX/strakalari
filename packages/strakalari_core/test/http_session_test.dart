@@ -179,7 +179,45 @@ void main() {
       expect(flaky.calls, 5);
       expect(server.logins, 1);
     });
+
+    test('tlsAndConnectErrorsAreNotRetried', () async {
+      var tlsCalls = 0;
+      final tlsTransport = _CountingErrorTransport(
+        HandshakeException('certificate verify failed'),
+        () => tlsCalls++,
+      );
+      final bakTls = session(tlsTransport);
+      await expectLater(bakTls.login(), throwsA(isA<UserError>()));
+      expect(tlsCalls, 1);
+
+      var connectCalls = 0;
+      final connectTransport = _CountingErrorTransport(
+        ConnectFailure(SocketException('Connection refused')),
+        () => connectCalls++,
+      );
+      final bakConn = session(connectTransport);
+      await expectLater(bakConn.login(), throwsA(isA<UserError>()));
+      expect(connectCalls, 1);
+    });
   });
+}
+
+class _CountingErrorTransport implements HttpTransport {
+  final Object error;
+  final void Function() onCall;
+  _CountingErrorTransport(this.error, this.onCall);
+
+  @override
+  Future<HttpResponseData> send(String method, Uri url,
+      {Map<String, String>? headers,
+      List<int>? body,
+      Duration timeout = const Duration(seconds: 60)}) {
+    onCall();
+    return Future.error(error);
+  }
+
+  @override
+  void close() {}
 }
 
 class _FixedTransport implements HttpTransport {
