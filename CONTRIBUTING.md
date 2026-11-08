@@ -4,6 +4,31 @@ Thanks for wanting to help! This guide covers local development, testing, buildi
 
 End-user documentation lives in [README.md](README.md) / [README.en.md](README.en.md) — this file is for developers only.
 
+> **Flutter migration in progress (branch `flutter-migration`, PLAN in
+> `docs/flutter-migration/PLAN.md`).** The Python app below stays the
+> reference until phase 10: do not edit it, except for parity scripts in
+> `tools/parity/` and merges from `main`. New Dart code goes to
+> `packages/strakalari_core/` (pure Dart, never imports Flutter) and
+> `app/` (the Flutter UI). Pin **Flutter 3.44.8**, commit every
+> `pubspec.lock`, and never release from this branch without the owner's
+> go-ahead. Verify with:
+>
+> ```bash
+> PYTHONUTF8=1 python -m pytest tests/ -q   # Python reference suite
+> cd packages/strakalari_core && dart analyze && dart test   # core
+> cd app && flutter analyze                  # app (widget tests from phase 5)
+> PYTHONUTF8=1 python tools/parity/dump.py   # then git diff --exit-code on test/parity/
+> ```
+>
+> Side-by-side parity against the demo server (never real servers or
+> accounts) is scripted in `tools/parity/soak_refresh.py` (+
+> `bin/refresh_dryrun.dart`, compared with `tools/parity/soak_compare.py`);
+> the daily routine lives in [docs/flutter-migration/SOAK.md](docs/flutter-migration/SOAK.md).
+> The safety rules in §5 carry over word for word: one `runRefresh`
+> pipeline, one `session.lock`, one send path with the history coverage
+> check, everything audited, `automation_paused` stops every auto phase,
+> fail loudly.
+
 ---
 
 ## 1. Prerequisites

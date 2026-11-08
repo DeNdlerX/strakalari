@@ -30,11 +30,13 @@ A free app for students on Windows, macOS, Linux and Android. No coding: downloa
 > **On Windows, also from the Microsoft Store.** Strakaláři is in the **[Microsoft Store](https://apps.microsoft.com/detail/9njc9ldmkc3k)** too. The Store version is signed by Microsoft, so the warning above doesn't appear, and it updates itself. Only stable versions go to the Store, no betas.
 > Switching from the installer? On first launch the Store version takes over your settings, passwords and history. Then **uninstall** the old install, otherwise automation runs twice (duplicate excuses and orders).
 
-> **On a phone** the app refreshes, excuses and orders in the background too (a notification then stays in the shade with an overview — the next lesson, today's lunch, how many excuses wait to be sent and the wake-up alarm when it's on; choose what it shows, or switch background running off, under *Settings → Background*). After the phone restarts or the app updates, open it once. The phone and the computer don't share settings, so sign in on each. Keep automatic excusing and ordering switched on on one device only.
+> **On a phone** the app refreshes, excuses and orders in the background too (a notification then stays in the shade with an overview — the next lesson, today's lunch, how many excuses wait to be sent and the wake-up alarm when it's on; choose what it shows, or switch background running off, under *Settings → Background*). After the phone restarts or the app updates, scheduled refreshing turns itself back on — no need to open the app. The phone and the computer don't share settings, so sign in on each. Keep automatic excusing and ordering switched on on one device only.
 
 ## Updating
 
 When a new version comes out, the app tells you. Download the new installer from [Releases](https://github.com/DeNdlerX/strakalari/releases) and run it over your current install (on a phone, install the new `.apk` over the app). **Your settings, passwords and history are kept.** There is no need to uninstall first.
+
+> **Moving to the new (Flutter) build:** it carries the same application identity, so it installs over the previous version as a regular update into the same data folder. **Settings, passwords and history carry over on their own, with no migration step.**
 
 The Microsoft Store version is updated by the Store itself; the app doesn't announce new versions there.
 

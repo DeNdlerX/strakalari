@@ -30,11 +30,13 @@ Bezplatná aplikace pro studenty na Windows, macOS, Linux a Android. Nic neprogr
 > **Na Windows i z Microsoft Storu.** Strakaláře najdete i v **[Microsoft Storu](https://apps.microsoft.com/detail/9njc9ldmkc3k)**. Store verzi podepisuje Microsoft, takže se varování výše neukáže, a aktualizuje se sama. Do Storu chodí jen stabilní verze, bety ne.
 > Přecházíte z instalátoru? Store verze si při prvním spuštění převezme nastavení, hesla i historii. Starou instalaci pak **odinstalujte**, jinak poběží automatizace dvakrát (dvojí omluvenky i objednávky).
 
-> **Na telefonu** aplikace obnovuje data, omlouvá a objednává i na pozadí (v oznámeních pak trvale svítí přehled — další hodina, dnešní oběd, počet omluvenek k odeslání a zapnutý budík; co v něm je, nebo celý běh na pozadí, nastavíte v *Nastavení → Běh na pozadí*). Po restartu telefonu nebo aktualizaci aplikaci jednou otevřete. Telefon a počítač nastavení nesdílejí, přihlaste se v každém zvlášť. Automatické omlouvání a objednávání nechte zapnuté jen na jednom zařízení.
+> **Na telefonu** aplikace obnovuje data, omlouvá a objednává i na pozadí (v oznámeních pak trvale svítí přehled — další hodina, dnešní oběd, počet omluvenek k odeslání a zapnutý budík; co v něm je, nebo celý běh na pozadí, nastavíte v *Nastavení → Běh na pozadí*). Po restartu telefonu nebo po aktualizaci se naplánované obnovování zapne samo, aplikaci otevírat nemusíte. Telefon a počítač nastavení nesdílejí, přihlaste se v každém zvlášť. Automatické omlouvání a objednávání nechte zapnuté jen na jednom zařízení.
 
 ## Aktualizace
 
 Když vyjde nová verze, aplikace vám to sama oznámí. Stáhněte nový instalátor ze stránky [Releases](https://github.com/DeNdlerX/strakalari/releases) a spusťte ho přes stávající instalaci (v telefonu nainstalujte nový `.apk` přes stávající aplikaci). **Nastavení, hesla i historie zůstanou.** Nic nemusíte odinstalovávat.
+
+> **Přechod na nové (Flutter) sestavení:** má stejnou identitu aplikace, takže se nainstaluje přes původní verzi jako běžná aktualizace do stejné datové složky. **Nastavení, hesla i historie se převezmou samy, bez jakéhokoli převodu.**
 
 Verzi z Microsoft Storu aktualizuje sám Store, aplikace na nové verze neupozorňuje.
 
