@@ -14,10 +14,12 @@ import '../planning/schedule.dart' show
     applySubstitutionFeed,
     backfillStableFacts,
     baselineFromStableTimetable,
+    baselineToDict,
     iterChanges;
 import '../storage/helpers.dart';
 import 'client.dart';
 import 'extractors.dart';
+import 'timetable.dart';
 import 'http_session.dart';
 
 /// Komens → Odeslané (the menu's own link), its list callback control and
@@ -37,7 +39,7 @@ String utcIso(DateTime day, {int hour = 0, int minute = 0}) {
 }
 
 /// Mixin of [BakalariClientBase]; uses its session state.
-mixin DataMixin on BakalariClientBase {
+mixin DataMixin on BakalariClientBase, TimetableMixin {
   /// Fetches průběžná klasifikace (Klasifikace → Průběžná).
   ///
   /// Parses the `data-clasif` marks of the grades page and stores them
@@ -384,6 +386,109 @@ mixin DataMixin on BakalariClientBase {
       log('Could not sync substitution feed: $e — will retry next time.');
       return null;
     }
+  }
+
+  /// Full Bakaláři read: resets the per-run state, logs in, then loads
+  /// weeks → details → stable view → substitution feed → baseline →
+  /// absence → grades → subject directory (Python `fetch_data`).
+  ///
+  /// Returns the same dict Python does; the stable baseline is converted
+  /// with [baselineToDict] so it is always JSON-serializable.
+  Future<Map<String, Object?>> fetchData() async {
+    timetableSources = [];
+    timetableData = {};
+    absencePercentages = {};
+    // Elapsed hours per subject from the same absence data.
+    absenceDetails = {};
+    // School-official subject set; empty until fetched.
+    subjectDirectory = {};
+    absenceError = '';
+    grades = {};
+    quarterlyMarks = {};
+    gradesError = '';
+    // sentExcuses is deliberately NOT reset: the outbox sync never runs
+    // inside fetchData(), so clearing would report "nothing sent" for
+    // state that is simply unknown.
+    stableBaseline = {};
+    stableComplete = false;
+    weekChanges = [];
+    stableTimetableData = {};
+    // Tri-state like sentExcuses: null = unknown until the feed sync
+    // below actually reads it (never [] = "no changes" by default).
+    substitutions = null;
+    substitutionsError = '';
+
+    raiseIfCancelledNow();
+    await login();
+    await fetchTimetableWeeks();
+    for (final details in timetableSources) {
+      if (details is List) {
+        addTimetableDetails(details.cast<Object?>());
+      }
+    }
+    try {
+      await extractStableTimetable();
+    } on CancelledError {
+      rethrow;
+    } on Object catch (e) {
+      log('Warning: stable timetable failed to load ($e), '
+          'no stable timetable this run.');
+    }
+    // Personal substitution feed rides along the same loop so the
+    // authoritative change list is available when the baseline is built.
+    // Best effort only: it must never fail the run.
+    try {
+      await fetchSubstitutions();
+    } on CancelledError {
+      rethrow;
+    } on Object catch (e) {
+      log('Warning: substitution feed failed ($e), continuing without it.');
+      substitutions = null;
+      final first = '$e'.split('\n').first;
+      substitutionsError = '$e'.isEmpty
+          ? 'failed'
+          : (first.length > 200 ? first.substring(0, 200) : first);
+    }
+    updateStableBaseline();
+    await obtainAbsenceInfo();
+    // Průběžná klasifikace rides along; a changed grades page must never
+    // fail the run.
+    try {
+      await getGrades();
+    } on CancelledError {
+      rethrow;
+    } on Object catch (e) {
+      log('Warning: grades failed to load ($e), '
+          'continuing without fresh grades.');
+    }
+    // Subject directory: an empty one just disables the tracked-subject
+    // filter downstream.
+    try {
+      await fetchSubjectDirectory();
+    } on CancelledError {
+      rethrow;
+    } on Object catch (e) {
+      log('Warning: subject directory failed ($e), continuing without it.');
+    }
+    Map<String, Object?> serializableBaseline;
+    try {
+      serializableBaseline = baselineToDict(stableBaseline);
+    } on Object {
+      serializableBaseline = {};
+    }
+    return {
+      'timetable': timetableData,
+      'absence': absencePercentages,
+      'grades': grades,
+      'quarterly_marks': quarterlyMarks,
+      'stable_baseline': serializableBaseline,
+      'stable_baseline_source':
+          serializableBaseline.isNotEmpty ? 'scraped' : '',
+      'changes': weekChanges,
+      'substitutions': substitutions,
+      'absence_details': absenceDetails,
+      'subject_directory': subjectDirectory,
+    };
   }
 
   /// Builds the stable baseline and diffs the loaded weeks against it.

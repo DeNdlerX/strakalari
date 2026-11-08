@@ -63,6 +63,49 @@ void main() {
       BakalariClient(Map.of(fakeConfig),
           transport: FakeBakalari(routes));
 
+  group('fetchData', () {
+    test('aSecondRunSeesOnlyFreshData', () async {
+      var subject = 'Matematika';
+      final logs = <String>[];
+      final server = FakeBakalari({
+        'POST /Timetable/GetContentData': (FakeRequest req) {
+          final payload = jsonDecode(utf8.decode(req.body)) as Map;
+          final date = DateTime.parse('${payload['date']}');
+          return weekContent([
+            {
+              'day': '${date.day}.${date.month}.${date.year}',
+              'teacher': 'Novák',
+              'subjecttext': subject,
+              'time': '1 (8:00 - 8:45)',
+            }
+          ]);
+        },
+      });
+      final bak = BakalariClient(
+          {...fakeConfig, 'go_back_weeks': 1, 'go_forward_weeks': 0},
+          logger: logs.add, transport: server);
+      // Stale state a previous run (or the UI) left behind.
+      bak.absencePercentages = {'Stará': 9.0};
+      bak.grades = {
+        'Stará': [
+          {'Grade': '1'}
+        ]
+      };
+      bak.weekChanges = ['stale'];
+      final first = await bak.fetchData();
+      expect(jsonEncode(first['timetable']), contains('Matematika'));
+      expect(first['absence'], isNot(contains('Stará')));
+      expect(first['grades'], isNot(contains('Stará')));
+      expect(first['changes'], isNot(contains('stale')));
+
+      subject = 'Fyzika';
+      final second = await bak.fetchData();
+      final text = jsonEncode(second['timetable']);
+      expect(text, contains('Fyzika'));
+      expect(text, isNot(contains('Matematika')));
+    });
+  });
+
   group('sentExcuses', () {
     test('outboxReadsEveryExcuseDetail', () async {
       final bak = client(outboxRoutes(

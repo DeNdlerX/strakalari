@@ -653,27 +653,7 @@ class Strakalari implements RefreshApp {
     if (client == null) return;
     client.cancelRequested = cancelRequested;
     client.cancelCallback = cancelCallback;
-    // Same order as bakalari_data.fetch_data: weeks (+ details), the
-    // stable view, the substitution feed, the baseline, then the rest.
-    await client.fetchTimetableWeeks();
-    for (final details in client.timetableSources) {
-      if (details is List) {
-        client.addTimetableDetails(details.cast<Object?>());
-      }
-    }
-    try {
-      await client.extractStableTimetable();
-    } on CancelledError {
-      rethrow;
-    } on Object catch (e) {
-      client.log('Warning: stable timetable failed to load ($e), '
-          'no stable timetable this run.');
-    }
-    await client.fetchSubstitutions();
-    client.updateStableBaseline();
-    await client.obtainAbsenceInfo();
-    await client.getGrades();
-    await client.fetchSubjectDirectory();
+    await client.fetchData();
   }
 
   @override
