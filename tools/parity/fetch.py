@@ -20,6 +20,7 @@ from datetime import date
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, REPO_ROOT)
+os.environ["STRAKALARI_NO_KEYRING"] = "1"
 
 from strakalari.core.bakalari_client import BakalariClient
 

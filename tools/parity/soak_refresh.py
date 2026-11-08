@@ -28,6 +28,7 @@ from datetime import datetime, timedelta
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, REPO_ROOT)
+os.environ["STRAKALARI_NO_KEYRING"] = "1"
 
 
 def canonical(value):
