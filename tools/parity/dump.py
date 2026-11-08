@@ -265,6 +265,90 @@ def audit_cases() -> list[dict]:
     return cases
 
 
+def history_cases() -> list[dict]:
+    from datetime import date, datetime, timedelta
+
+    from strakalari.core import excuse_history as h
+
+    cases = []
+    week = {"type": "pure days", "starting_day": "07.09.2026",
+            "ending_day": "11.09.2026"}
+    hours = {"type": "days and hours", "starting_day": "14.09.2026",
+             "ending_day": "14.09.2026",
+             "starting_lesson": 2, "ending_lesson": 4}
+    cases.append(_case(
+        "normalizeHistoryItem",
+        h.normalize_history_item({"type": "pure days",
+                                  "starting_day": "7.9.2026",
+                                  "ending_day": "8.9.2026"}),
+        {"type": "pure days", "starting_day": "7.9.2026",
+         "ending_day": "8.9.2026"}))
+    cases.append(_case(
+        "baseExcuse",
+        h.base_excuse({"type": "soon", "starting_day": "3.9.2026",
+                       "ending_day": "3.9.2026", "starting_lesson": 5,
+                       "ending_lesson": 5, "templates": ["ui-only"]}),
+        {"type": "soon", "starting_day": "3.9.2026",
+         "ending_day": "3.9.2026", "starting_lesson": 5,
+         "ending_lesson": 5, "templates": ["ui-only"]}))
+    today = date(2026, 9, 25)
+    cases.append(_case("excuseWindowStart",
+                       h.excuse_window_start(today), today, None))
+    cases.append(_case("excuseWindowStart",
+                       h.excuse_window_start(today, date(2026, 9, 10)),
+                       today, date(2026, 9, 10)))
+    sent = {"type": "soon", "starting_day": "3.9.2026",
+            "ending_day": "3.9.2026", "starting_lesson": 5,
+            "ending_lesson": 5, "templates": ["ui-only"]}
+    cases.append(_case("historyEntries", h.history_entries(sent), sent))
+    old_hist = [dict(week)]
+    web = [dict(hours),
+           {"type": "pure days", "starting_day": "7.9.2026",
+            "ending_day": "11.9.2026"}]
+    merged, added = h.merge_sent_excuses(old_hist, web)
+    cases.append(_case("mergeSentExcuses", [merged, added],
+                       old_hist, web))
+    cases.append(_case(
+        "excuseCovered",
+        h.excuse_covered({"type": "days and hours",
+                          "starting_day": "14.09.2026",
+                          "ending_day": "14.09.2026",
+                          "starting_lesson": 3, "ending_lesson": 4},
+                         [dict(hours)]),
+        {"type": "days and hours", "starting_day": "14.09.2026",
+         "ending_day": "14.09.2026", "starting_lesson": 3,
+         "ending_lesson": 4}, [dict(hours)]))
+    cases.append(_case(
+        "taskCovered",
+        h.task_covered(date(2026, 9, 14), 2, [dict(hours)]),
+        date(2026, 9, 14), 2, [dict(hours)]))
+    cases.append(_case(
+        "unconfirmedPath",
+        h.unconfirmed_path("/d/already_excused_lessons.json"),
+        "/d/already_excused_lessons.json"))
+    lesson = {"type": "days and hours", "starting_day": "21.09.2026",
+              "ending_day": "21.09.2026",
+              "starting_lesson": 3, "ending_lesson": 4}
+    now = datetime(2026, 9, 25, 12, 0)
+    cases.append(_case("unconfirmedEntry",
+                       h.unconfirmed_entry(lesson, now), lesson, now))
+    pending = [h.unconfirmed_entry(lesson, now)]
+    probe = dict(lesson, starting_lesson=6, ending_lesson=6)
+    cases.append(_case("unconfirmedBlocks",
+                       h.unconfirmed_blocks(probe, pending), probe, pending))
+    old_ts = now - timedelta(minutes=6)
+    sent_e = h.unconfirmed_entry(lesson, old_ts)
+    day_e = h.unconfirmed_entry({"type": "pure days",
+                                 "starting_day": "22.09.2026",
+                                 "ending_day": "22.09.2026"}, old_ts)
+    still, confirmed, not_sent = h.resolve_unconfirmed(
+        [sent_e, day_e], [dict(lesson)], date(2026, 8, 26), now=now)
+    cases.append(_case("resolveUnconfirmed", [still, confirmed, not_sent],
+                       [sent_e, day_e], [dict(lesson)],
+                       date(2026, 8, 26), now))
+    return cases
+
+
 def main() -> None:
     _dump("helpers", helpers_cases())
     _dump("models", models_cases())
@@ -272,6 +356,7 @@ def main() -> None:
     _dump("cache", cache_cases())
     _dump("config", config_cases())
     _dump("audit", audit_cases())
+    _dump("history", history_cases())
 
 
 if __name__ == "__main__":

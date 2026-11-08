@@ -1,7 +1,9 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 1 · Next step: Phase 1 — port strakalari/core/excuse_history.py.
+Current phase: 2 · Next step: Phase 2 — port bakalari_common + extractors/bakalari.
+Phase 1 (core foundation) is done: models, helpers, config, cache, i18n,
+audit, excuse_history, Fernet + secret_store, parity harness.
 
 ## Phase 0 (done)
 
@@ -39,7 +41,7 @@ State: todo = not started, tests = Dart tests written, done = ported + green.
 | strakalari/core/cancel.py | core automation/cancel.dart | test_cancel_responsive.py, test_refresh_cancel_keeps_data.py | todo |
 | strakalari/core/config.py | core storage/config.dart | test_config.py, test_config_save_lock.py → config_test.dart (34) + parity_config_test.dart | done |
 | strakalari/core/error_report.py | core error_report.dart | test_error_report.py, test_log_redaction.py | todo |
-| strakalari/core/excuse_history.py | core automation/excuse_history.dart | test_excuse_history.py, test_excuse_day_scope.py, test_excuse_ignore_list.py, test_unconfirmed_excuses.py | todo |
+| strakalari/core/excuse_history.py | core automation/excuse_history.dart | test_excuse_history.py, test_unconfirmed_excuses.py (pure cases) → excuse_history_test.dart (17) + parity_excuse_history_test.dart | done |
 | strakalari/core/extractors/__init__.py | core bakalari/ + strava/ barrels | — | todo |
 | strakalari/core/extractors/bakalari.py | core bakalari/extractors.dart | (covered by client/data tests) | todo |
 | strakalari/core/extractors/strava.py | core strava/extractors.dart | (covered by strava tests) | todo |
@@ -164,6 +166,23 @@ test_tls_bundle.py, test_frozen_ssl.py (frozen CA bundle no longer exists).
   `test_integer_strava_id_handling`, `TestStravaEnableDefault` (incl.
   `test_partial_config_without_use_strava_stays_enabled`) move to phase 4
   (need `automation.Strakalari`).
+- test_excuse_history.py → `test_concurrent_sends_submit_once`,
+  `test_covered_excuse_is_not_resent`,
+  `TestExampleHistoryFilter::test_automation_filters_example`,
+  `TestHistoryCoverage` (needs `flet_ui.state_excuses`, phase 5),
+  `test_excuse_dry_run_fills_without_submitting` move to phase 4
+  (need `automation.Strakalari`); `test_manager_filters_example_fallback`
+  + `test_history_quarantine` are ported in excuse_history_test.dart
+  (they test `ConfigManager.getExcuseHistory`).
+- test_excuse_day_scope.py → whole file moves to phase 5
+  (needs `AppState.day_excuse_plan` / `submit_day_excuse`).
+- test_excuse_ignore_list.py → `TestIgnoredExcuses` (needs
+  `automation.generate_excuses`, phase 4), the rest moves to phase 5
+  (needs `AppState` ignore list).
+- test_unconfirmed_excuses.py → `TestSendPath`, `TestOutboxSettles`,
+  `TestRefreshGate` move to phase 4 (need `Strakalari` / `run_refresh`).
+- `HistoryLock` is ported with excuse_history but its test lands in
+  phase 4 (`test_concurrent_sends_submit_once`).
 
 ## Dropped (with reason)
 
@@ -200,6 +219,15 @@ test_tls_bundle.py, test_frozen_ssl.py (frozen CA bundle no longer exists).
   - `test_config_save_lock.py` is proven with a real held
     `InterProcessLock` instead of monkeypatching `acquire` (waits the
     10 s save timeout once per suite run).
+  - `normalizeHistoryItem` takes a typed map (Python passes non-dicts
+    through; all callers guard with `isinstance` first, and no test
+    passes a non-dict).
+  - Map equality is deep (`_jsonEquals`): Dart maps compare by identity,
+    Python dicts by value — needed for merge dedup and coverage checks.
+  - `HistoryLock` replaces the `threading.RLock` + context manager: Dart
+    runs one event loop per isolate, so a static depth counter gives the
+    same re-entrant semantics; callers use `acquire()` / `release()`
+    instead of `with`.
 
 ## Questions for the owner / reviewer
 

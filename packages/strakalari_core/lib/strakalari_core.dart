@@ -14,3 +14,4 @@ export 'src/storage/secret_store.dart';
 export 'src/models.dart';
 export 'src/i18n.dart';
 export 'src/automation/audit.dart';
+export 'src/automation/excuse_history.dart';
