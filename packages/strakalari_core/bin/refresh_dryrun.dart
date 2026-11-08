@@ -20,9 +20,11 @@ import 'dart:io';
 
 import 'package:strakalari_core/src/automation/audit.dart';
 import 'package:strakalari_core/src/automation/automation.dart';
+import 'package:strakalari_core/src/automation/excuse_history.dart';
 import 'package:strakalari_core/src/automation/refresh.dart';
 import 'package:strakalari_core/src/platform/packaging.dart';
 import 'package:strakalari_core/src/storage/cache.dart';
+import 'package:strakalari_core/src/storage/helpers.dart';
 
 /// Recursively sorted copy (map keys as strings, ascending), so the JSON
 /// below is canonical no matter what order either side iterated in.
@@ -103,9 +105,43 @@ Future<void> main(List<String> args) async {
       configFile: '$dataDir/config.json', configData: config);
   final result = await runRefresh(app, app.configData);
 
+  // Seed a deterministic unexcused lesson on the latest loaded school
+  // day at least 3 days before today so excusePending() exercises
+  // generateExcuses + sendExcuse in dry_run mode against the server.
+  var pendingSent = 0;
+  if (sendDay == null) {
+    final now = DateTime.now();
+    final todayD = DateTime(now.year, now.month, now.day);
+    final eligibleDays = <(DateTime, String, List<Object?>)>[];
+    for (final entry in app.timetableData.entries) {
+      final lessons = entry.value;
+      if (lessons is! List || lessons.isEmpty) continue;
+      DateTime parsed;
+      try {
+        final p = parseDate(entry.key);
+        parsed = DateTime(p.year, p.month, p.day);
+      } on Object {
+        continue;
+      }
+      if (daysBetween(parsed, todayD) >= 3) {
+        eligibleDays.add((parsed, entry.key, lessons));
+      }
+    }
+    if (eligibleDays.isNotEmpty) {
+      eligibleDays.sort((a, b) => b.$1.compareTo(a.$1));
+      final firstLesson = eligibleDays.first.$3.first;
+      if (firstLesson is Map) {
+        firstLesson['absenceType'] = 'Absent';
+        firstLesson['absencetext'] = 'neomluveno';
+      }
+    }
+    pendingSent = await app.excusePending();
+  }
+
   // A dry-run one-click excuse for a synthetic past absence (fill only),
   // or a REAL whole-day submit when --send-day is given (demo server only).
-  final past = DateTime.now().subtract(const Duration(days: 5));
+  final now = DateTime.now();
+  final past = addDays(DateTime(now.year, now.month, now.day), -5);
   String two(int n) => n.toString().padLeft(2, '0');
   final day = sendDay ??
       '${two(past.day)}.${two(past.month)}.${past.year}';
@@ -128,6 +164,7 @@ Future<void> main(List<String> args) async {
   if (File(historyFile).existsSync()) {
     history = jsonDecode(File(historyFile).readAsStringSync()) as List;
   }
+  final cache = loadDataCache();
   final data = <String, Object?>{
     'result': {
       'scope': result.scope,
@@ -144,11 +181,14 @@ Future<void> main(List<String> args) async {
       'news': [for (final n in result.news) '${n.$1}: ${n.$2}'],
       'saved_keys': (result.saved.keys.toList()..sort()),
     },
+    'dry_run_pending_sent': pendingSent,
     'dry_run_single_filled': singleOutcome,
     'audit': recent(limit: 2000),
     'outbox': await app.bakalariClient!.fetchSentExcuses(limit: 100),
     'history': history,
-    'cache_keys': (loadDataCache().keys.toList()..sort()),
+    'sidecar': loadUnconfirmed(historyFile),
+    'cache_keys': (cache.keys.toList()..sort()),
+    'cache': cache,
   };
   stdout.write('${jsonEncode(canonical(data))}\n');
   app.close();

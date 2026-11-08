@@ -21,7 +21,8 @@ import sys
 
 def strip_ts(value):
     if isinstance(value, dict):
-        return {k: strip_ts(v) for k, v in value.items() if k != "ts"}
+        return {k: strip_ts(v) for k, v in value.items()
+                if k not in ("ts", "last_updated")}
     if isinstance(value, list):
         return [strip_ts(v) for v in value]
     return value

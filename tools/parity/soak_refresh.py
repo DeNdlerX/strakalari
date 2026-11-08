@@ -52,6 +52,8 @@ def main() -> None:
     from strakalari.core.audit import recent
     from strakalari.core.automation import Strakalari
     from strakalari.core.cache import load_data_cache
+    from strakalari.core.excuse_history import load_unconfirmed
+    from strakalari.core.helpers import parse_date
     from strakalari.core.refresh import run_refresh
 
     data_dir = args.data_dir or os.environ.get("STRAKALARI_DATA_DIR", "")
@@ -75,6 +77,28 @@ def main() -> None:
     try:
         result = run_refresh(app, app.config_data)
 
+        # Seed a deterministic unexcused lesson on the latest loaded school
+        # day at least 3 days before today so excuse_pending() exercises
+        # generate_excuses + send_excuse in dry_run mode against the server.
+        today_d = datetime.now().date()
+        eligible_days = []
+        for day_key, lessons in (app.timetableData or {}).items():
+            if not isinstance(lessons, list) or not lessons:
+                continue
+            try:
+                parsed = parse_date(day_key).date()
+            except ValueError:
+                continue
+            if (today_d - parsed).days >= 3:
+                eligible_days.append((parsed, day_key, lessons))
+        if eligible_days:
+            eligible_days.sort(key=lambda item: item[0], reverse=True)
+            _, _, target_lessons = eligible_days[0]
+            if isinstance(target_lessons[0], dict):
+                target_lessons[0]["absenceType"] = "Absent"
+                target_lessons[0]["absencetext"] = "neomluveno"
+        pending_sent = app.excuse_pending()
+
         # A dry-run one-click excuse for a synthetic past absence (fill
         # only, mirrors refresh_dryrun.dart).
         past = datetime.now() - timedelta(days=5)
@@ -94,6 +118,7 @@ def main() -> None:
         except (OSError, ValueError):
             history = []
 
+        cache = load_data_cache()
         data = {
             "result": {
                 "scope": result.scope,
@@ -110,11 +135,14 @@ def main() -> None:
                 "news": [f"{event}: {message}" for event, message in result.news],
                 "saved_keys": sorted(result.saved.keys()),
             },
+            "dry_run_pending_sent": pending_sent,
             "dry_run_single_filled": single_outcome,
             "audit": recent(limit=2000),
             "outbox": app.bakalari_client.fetch_sent_excuses(limit=100),
             "history": history,
-            "cache_keys": sorted(load_data_cache().keys()),
+            "sidecar": load_unconfirmed(app.already_excused_file),
+            "cache_keys": sorted(cache.keys()),
+            "cache": cache,
         }
         sys.stdout.buffer.write(
             (json.dumps(canonical(data), ensure_ascii=False,
