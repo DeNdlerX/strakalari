@@ -15,6 +15,7 @@ import '../error_report.dart';
 import '../storage/helpers.dart';
 import '../i18n.dart';
 import 'http_session.dart';
+import 'timetable.dart';
 
 export 'common.dart' show parseTimetableDetail, weekOffsets;
 
@@ -26,7 +27,10 @@ const String userAgent =
 /// Bakaláři web session: login and requests; data fetching and the
 /// excuse form live in the mixins (`timetable.dart` / `data.dart` /
 /// `excuse.dart`).
-class BakalariClient {
+/// Shared base of [BakalariClient]: the mixins (`timetable.dart` /
+/// `data.dart` / `excuse.dart`) constrain on this, so the client can mix
+/// them in without a cyclic `mixin ... on BakalariClient`.
+abstract class BakalariClientBase {
   /// HTTP session, created on first use; [transportOverride] is a test
   /// hook (a transport replacing the network).
   BakalariSession? session;
@@ -115,7 +119,7 @@ class BakalariClient {
   List<Map<String, Object?>>? substitutions;
   String substitutionsError = '';
 
-  BakalariClient(Map<String, Object?>? configData,
+  BakalariClientBase(Map<String, Object?>? configData,
       {this.logger, HttpTransport? transport})
       : config = Map<String, Object?>.of(configData ?? {}),
         _transportOverride = transport {
@@ -258,6 +262,12 @@ class BakalariClient {
       session = null;
     }
   }
+}
+
+/// Bakaláři web session: login and requests; data fetching and the
+/// excuse form live in the mixins below.
+class BakalariClient extends BakalariClientBase with TimetableMixin {
+  BakalariClient(super.configData, {super.logger, super.transport});
 }
 
 int _clampInt(Object? value, int fallback, int min, int max) {

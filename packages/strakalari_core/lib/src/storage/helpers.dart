@@ -411,6 +411,29 @@ String describeSwallowed(String what, Object exc) {
   return 'Debug: $what — ${exc.runtimeType}$detail';
 }
 
+/// Deep equality for JSON-shaped values (Dart maps compare by identity,
+/// Python dicts by value). Used for history/timetable dedup and coverage.
+bool jsonEquals(Object? a, Object? b) {
+  if (a is Map && b is Map) {
+    if (a.length != b.length) return false;
+    for (final key in a.keys) {
+      if (!b.containsKey(key) || !jsonEquals(a[key], b[key])) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (a is List && b is List) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!jsonEquals(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  if (a is num && b is num) return a == b;
+  return a == b;
+}
+
 /// Writes JSON atomically (temp file + rename) so a crash or kill can
 /// never leave a truncated file behind. Creates parent dirs as needed.
 void atomicWriteJson(String path, Object? data,

@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 2 · Next step: Phase 2 — port bakalari_timetable.
+Current phase: 2 · Next step: Phase 2 — port bakalari_data.
 Phase 1 (core foundation) is done: models, helpers, config, cache, i18n,
 audit, excuse_history, Fernet + secret_store, parity harness.
 
@@ -36,7 +36,7 @@ State: todo = not started, tests = Dart tests written, done = ported + green.
 | strakalari/core/bakalari_data.py | core bakalari/data.dart | test_absence_details.py, test_marks_view.py, test_sent_excuses.py, test_substitution_feed_days.py | todo |
 | strakalari/core/bakalari_excuse.py | core bakalari/excuse.dart | test_bakalari_excuse.py, test_excuse_generation.py | todo |
 | strakalari/core/bakalari_http.py | core bakalari/http_session.dart | test_bakalari_http.py (session cases) → http_session_test.dart (10) + parity_http_session_test.dart | done |
-| strakalari/core/bakalari_timetable.py | core bakalari/timetable.dart | test_timetable_cache_merge.py | todo |
+| strakalari/core/bakalari_timetable.py | core bakalari/timetable.dart (TimetableMixin on BakalariClientBase) | test_bakalari_client.py (add/perm/stable/week cases) → timetable_test.dart | done |
 | strakalari/core/cache.py | core storage/cache.dart | test_cache.py + merge/seed/busy cases from test_timetable_cache_merge, test_data_safety, test_scheduler → cache_test.dart (21) + parity_cache_test.dart | done |
 | strakalari/core/cancel.py | core automation/cancel.dart | ported with the session (covered by http_session_test); test_cancel_responsive.py, test_refresh_cancel_keeps_data.py → phase 5/4 | done |
 | strakalari/core/config.py | core storage/config.dart | test_config.py, test_config_save_lock.py → config_test.dart (34) + parity_config_test.dart | done |
@@ -243,10 +243,16 @@ test_tls_bundle.py, test_frozen_ssl.py (frozen CA bundle no longer exists).
   - `cancel.dart` is ported with the session; its dedicated tests
     (`test_cancel_responsive.py`) need `AppState` and land in phase 5 —
     both branches are covered by `http_session_test.dart`.
-  - `BakalariClient` lands as the base class now; `timetable.dart`,
-    `data.dart` and `excuse.dart` attach as mixins in later commits.
-    Password validation is eager like Python (constructor argument),
-    while the provider still re-reads on every login.
+  - `test_timetable_cache_merge.py` merge cases live in `cache_test.dart`
+  (the SUT `merge_timetable_days` is in `cache.dart`); the file's
+  dry-run send cases belong to phase 4/5.
+- `BakalariClient` mixes in `TimetableMixin` via an abstract
+  `BakalariClientBase` (a mixin constrained on its own class is a
+  compile error in Dart); `data.dart` / `excuse.dart` attach the same way.
+- `jsonEquals` (deep JSON equality) is shared in `helpers.dart`;
+  `excuse_history.dart` keeps its identical private copy (no churn).
+- Password validation is eager like Python (constructor argument),
+  while the provider still re-reads on every login.
 
 ## Questions for the owner / reviewer
 
