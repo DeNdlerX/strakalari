@@ -8,6 +8,7 @@ export 'src/platform/keystore.dart';
 export 'src/platform/android_bridge.dart';
 export 'src/storage/fernet.dart';
 export 'src/storage/helpers.dart';
+export 'src/storage/cache.dart';
 export 'src/storage/secret_store.dart';
 export 'src/models.dart';
 export 'src/i18n.dart';

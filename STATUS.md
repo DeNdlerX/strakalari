@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 1 · Next step: Phase 1 — port strakalari/core/cache.py.
+Current phase: 1 · Next step: Phase 1 — port strakalari/core/config.py.
 
 ## Phase 0 (done)
 
@@ -35,7 +35,7 @@ State: todo = not started, tests = Dart tests written, done = ported + green.
 | strakalari/core/bakalari_excuse.py | core bakalari/excuse.dart | test_bakalari_excuse.py, test_excuse_generation.py | todo |
 | strakalari/core/bakalari_http.py | core bakalari/http_session.dart | test_bakalari_http.py | todo |
 | strakalari/core/bakalari_timetable.py | core bakalari/timetable.dart | test_timetable_cache_merge.py | todo |
-| strakalari/core/cache.py | core storage/cache.dart | test_cache.py | todo |
+| strakalari/core/cache.py | core storage/cache.dart | test_cache.py + merge/seed/busy cases from test_timetable_cache_merge, test_data_safety, test_scheduler → cache_test.dart (21) + parity_cache_test.dart | done |
 | strakalari/core/cancel.py | core automation/cancel.dart | test_cancel_responsive.py, test_refresh_cancel_keeps_data.py | todo |
 | strakalari/core/config.py | core storage/config.dart | test_config.py, test_config_save_lock.py | todo |
 | strakalari/core/error_report.py | core error_report.dart | test_error_report.py, test_log_redaction.py | todo |

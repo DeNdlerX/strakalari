@@ -154,10 +154,50 @@ def i18n_cases() -> list[dict]:
     return cases
 
 
+def cache_cases() -> list[dict]:
+    from datetime import date
+
+    from strakalari.core import cache as c
+
+    cases = []
+    old = {"18.09.2026": [{"subject": "M"}],
+           "19.09.2026": [{"subject": "F"}]}
+    fresh = {"19.09.2026": [{"subject": "F2"}],
+             "20.09.2026": []}
+    cases.append(_case(
+        "mergeTimetableDays",
+        c.merge_timetable_days(old, fresh,
+                               window_start=date(2026, 9, 1)),
+        old, fresh, date(2026, 9, 1)))
+    cases.append(_case(
+        "mergeTimetableDays",
+        c.merge_timetable_days({"19.09.2026": [{"subject": "F"}]},
+                               {"19.09.2026": []},
+                               window_start=date(2026, 9, 1)),
+        {"19.09.2026": [{"subject": "F"}]},
+        {"19.09.2026": []}, date(2026, 9, 1)))
+    old_garbage = {"10.8.2026 (pondělí)": [{"subject": "old"}],
+                   "01.09.2026": [{"subject": "boundary"}],
+                   "not-a-date": [{"subject": "kept"}]}
+    cases.append(_case(
+        "mergeTimetableDays",
+        c.merge_timetable_days(old_garbage, {},
+                               window_start=date(2026, 9, 1)),
+        old_garbage, {}, date(2026, 9, 1)))
+    cases.append(_case(
+        "mergeTimetableDays",
+        c.merge_timetable_days({"10.8.2026 (pondělí)": []}, {}),
+        {"10.8.2026 (pondělí)": []}, {}))
+    cases.append(_case("mergeTimetableDays",
+                       c.merge_timetable_days(None, None), None, None))
+    return cases
+
+
 def main() -> None:
     _dump("helpers", helpers_cases())
     _dump("models", models_cases())
     _dump("i18n", i18n_cases())
+    _dump("cache", cache_cases())
 
 
 if __name__ == "__main__":

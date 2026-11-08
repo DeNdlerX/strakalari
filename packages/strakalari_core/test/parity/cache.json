@@ -1,0 +1,125 @@
+{
+  "module": "cache",
+  "cases": [
+    {
+      "fn": "mergeTimetableDays",
+      "args": [
+        {
+          "18.09.2026": [
+            {
+              "subject": "M"
+            }
+          ],
+          "19.09.2026": [
+            {
+              "subject": "F"
+            }
+          ]
+        },
+        {
+          "19.09.2026": [
+            {
+              "subject": "F2"
+            }
+          ],
+          "20.09.2026": []
+        },
+        {
+          "__date__": "2026-09-01"
+        }
+      ],
+      "expected": {
+        "18.09.2026": [
+          {
+            "subject": "M"
+          }
+        ],
+        "19.09.2026": [
+          {
+            "subject": "F2"
+          }
+        ],
+        "20.09.2026": []
+      }
+    },
+    {
+      "fn": "mergeTimetableDays",
+      "args": [
+        {
+          "19.09.2026": [
+            {
+              "subject": "F"
+            }
+          ]
+        },
+        {
+          "19.09.2026": []
+        },
+        {
+          "__date__": "2026-09-01"
+        }
+      ],
+      "expected": {
+        "19.09.2026": []
+      }
+    },
+    {
+      "fn": "mergeTimetableDays",
+      "args": [
+        {
+          "10.8.2026 (pondělí)": [
+            {
+              "subject": "old"
+            }
+          ],
+          "01.09.2026": [
+            {
+              "subject": "boundary"
+            }
+          ],
+          "not-a-date": [
+            {
+              "subject": "kept"
+            }
+          ]
+        },
+        {},
+        {
+          "__date__": "2026-09-01"
+        }
+      ],
+      "expected": {
+        "01.09.2026": [
+          {
+            "subject": "boundary"
+          }
+        ],
+        "not-a-date": [
+          {
+            "subject": "kept"
+          }
+        ]
+      }
+    },
+    {
+      "fn": "mergeTimetableDays",
+      "args": [
+        {
+          "10.8.2026 (pondělí)": []
+        },
+        {}
+      ],
+      "expected": {
+        "10.8.2026 (pondělí)": []
+      }
+    },
+    {
+      "fn": "mergeTimetableDays",
+      "args": [
+        null,
+        null
+      ],
+      "expected": {}
+    }
+  ]
+}
