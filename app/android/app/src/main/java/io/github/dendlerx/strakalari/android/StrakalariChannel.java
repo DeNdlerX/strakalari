@@ -1,0 +1,537 @@
+package io.github.dendlerx.strakalari.android;
+
+import android.app.AlarmManager;
+import android.app.PendingIntent;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.provider.AlarmClock;
+import android.provider.Settings;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
+import io.flutter.embedding.engine.plugins.FlutterPlugin;
+import io.flutter.embedding.engine.plugins.activity.ActivityAware;
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
+import io.flutter.plugin.common.BinaryMessenger;
+import io.flutter.plugin.common.MethodCall;
+import io.flutter.plugin.common.MethodChannel;
+
+import java.security.KeyStore;
+import java.util.ArrayList;
+import java.util.Map;
+
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.spec.GCMParameterSpec;
+
+/**
+ * The MethodChannel behind {@code app/lib/platform/android/}:
+ * {@code strakalari/android}.
+ *
+ * <p>One method per function in {@code strakalari/core/android.py} (same names,
+ * same argument names, same behavior), so the Dart port maps one-to-one:
+ *
+ * <ul>
+ *   <li>notifications: {@code notify}, {@code notificationsEnabled},
+ *       {@code requestNotificationPermission}, {@code openNotificationSettings}
+ *   <li>background service: {@code startBackground}, {@code stopBackground},
+ *       {@code updateBackgroundNotification}
+ *   <li>refresh wake: {@code scheduleWake}, {@code cancelWake}
+ *   <li>wake-up alarm: {@code setWakeupAlarms}, {@code exactAlarmsAllowed},
+ *       {@code openExactAlarmSettings}, {@code openSystemAlarm}
+ *   <li>widget: {@code updateTimetableWidget}
+ *   <li>Keystore: {@code keystoreWrap}, {@code keystoreUnwrap}
+ *   <li>misc: {@code available}, {@code sdkInt}
+ *   <li>headless: {@code registerBackgroundCallback}, {@code backgroundDone}
+ * </ul>
+ *
+ * <p>Where Python went through pyjnius with process-aborting lookups, this
+ * runs plain framework calls on the engine's thread. The app's own classes
+ * are named directly (no lookup problem: this <em>is</em> one of them).
+ */
+public class StrakalariChannel implements FlutterPlugin, ActivityAware,
+        MethodChannel.MethodCallHandler {
+    static final String CHANNEL = "strakalari/android";
+    static final String ACTION_UPDATE_STATUS =
+            "io.github.dendlerx.strakalari.android.ACTION_UPDATE_STATUS";
+    static final String ACTION_REFRESH_WIDGET =
+            "io.github.dendlerx.strakalari.android.ACTION_REFRESH_WIDGET";
+    static final String EVENTS_CHANNEL = "strakalari_events";
+    static final int NOTIFICATION_PERMISSION_REQUEST = 7301;
+    /** The Keystore alias; identical to {@code core/android.py}. */
+    static final String KEYSTORE_ALIAS = "strakalari-secret-key";
+
+    /** Reason the current headless run started ({@code "boot"} or
+     * {@code "alarm"}); read once by Dart through
+     * {@code takeHeadlessReason}. Same process, so a static is enough. */
+    static volatile String headlessReason = "";
+    @Nullable
+    private Runnable releaseHook;
+
+    /** Runs when Dart reports {@code backgroundDone} (drops the engine). */
+    void setReleaseHook(@Nullable Runnable hook) {
+        releaseHook = hook;
+    }
+
+    private static int nextId = 1000;
+
+    @Nullable
+    private Context appContext;
+    @Nullable
+    private android.app.Activity activity;
+    @Nullable
+    private MethodChannel channel;
+
+    @Override
+    public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
+        attach(binding.getApplicationContext(), binding.getBinaryMessenger());
+    }
+
+    /** Attaches to an engine (also a headless one: no activity there). */
+    public void attach(@NonNull Context context, @NonNull BinaryMessenger messenger) {
+        appContext = context.getApplicationContext();
+        channel = new MethodChannel(messenger, CHANNEL);
+        channel.setMethodCallHandler(this);
+    }
+
+    public void detach() {
+        if (channel != null) {
+            channel.setMethodCallHandler(null);
+            channel = null;
+        }
+        appContext = null;
+    }
+
+    @Override
+    public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
+        detach();
+    }
+
+    // -- ActivityAware: only the permission prompt needs the screen --------
+
+    @Override
+    public void onAttachedToActivity(@NonNull ActivityPluginBinding binding) {
+        activity = binding.getActivity();
+    }
+
+    @Override
+    public void onDetachedFromActivityForConfigChanges() {
+        activity = null;
+    }
+
+    @Override
+    public void onReattachedToActivityForConfigChanges(
+            @NonNull ActivityPluginBinding binding) {
+        activity = binding.getActivity();
+    }
+
+    @Override
+    public void onDetachedFromActivity() {
+        activity = null;
+    }
+
+    // -- dispatch ----------------------------------------------------------
+
+    @Override
+    public void onMethodCall(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
+        try {
+            switch (call.method) {
+                case "available":
+                    result.success(true);
+                    return;
+                case "sdkInt":
+                    result.success(Build.VERSION.SDK_INT);
+                    return;
+                case "notify":
+                    result.success(notify(
+                            stringArg(call, "title"),
+                            stringArg(call, "text"),
+                            stringArg(call, "channelName")));
+                    return;
+                case "notificationsEnabled":
+                    result.success(notificationsEnabled());
+                    return;
+                case "requestNotificationPermission":
+                    requestNotificationPermission();
+                    result.success(null);
+                    return;
+                case "openNotificationSettings":
+                    openNotificationSettings();
+                    result.success(null);
+                    return;
+                case "startBackground":
+                    result.success(startBackground(mapArg(call, "texts")));
+                    return;
+                case "stopBackground":
+                    stopBackground();
+                    result.success(null);
+                    return;
+                case "updateBackgroundNotification":
+                    result.success(updateBackgroundNotification(
+                            stringArg(call, "title"),
+                            stringArg(call, "text"),
+                            stringArg(call, "sub"),
+                            stringArg(call, "rows")));
+                    return;
+                case "scheduleWake":
+                    result.success(scheduleWake(doubleArg(call, "epochSeconds")));
+                    return;
+                case "cancelWake":
+                    cancelWake();
+                    result.success(null);
+                    return;
+                case "setWakeupAlarms":
+                    result.success(setWakeupAlarms(
+                            stringArg(call, "queueJson"),
+                            stringArg(call, "channelName"),
+                            stringArg(call, "dismissLabel")));
+                    return;
+                case "exactAlarmsAllowed":
+                    result.success(exactAlarmsAllowed());
+                    return;
+                case "openExactAlarmSettings":
+                    openExactAlarmSettings();
+                    result.success(null);
+                    return;
+                case "openSystemAlarm": {
+                    Object weekday = call.argument("weekday");
+                    result.success(openSystemAlarm(
+                            intArg(call, "hour"),
+                            intArg(call, "minute"),
+                            stringArg(call, "message"),
+                            weekday instanceof Number ? ((Number) weekday).intValue() : null));
+                    return;
+                }
+                case "updateTimetableWidget":
+                    result.success(updateTimetableWidget(stringArg(call, "payloadJson")));
+                    return;
+                case "keystoreWrap":
+                    result.success(keystoreWrap(bytesArg(call, "data")));
+                    return;
+                case "keystoreUnwrap":
+                    try {
+                        result.success(keystoreUnwrap(bytesArg(call, "blob")));
+                    } catch (IllegalArgumentException e) {
+                        result.error("BAD_BLOB", e.getMessage(), null);
+                    } catch (Exception e) {
+                        result.error("UNWRAP_FAILED", e.toString(), null);
+                    }
+                    return;
+                case "registerBackgroundCallback":
+                    RefreshReceiver.storeCallback(requireContext(),
+                            longArg(call, "handle"));
+                    result.success(null);
+                    return;
+                case "backgroundDone": {
+                    Runnable hook = releaseHook;
+                    releaseHook = null;
+                    if (hook != null) {
+                        hook.run();
+                    } else {
+                        RefreshReceiver.release(requireContext());
+                    }
+                    result.success(null);
+                    return;
+                }
+                case "takeHeadlessReason": {
+                    String reason = headlessReason;
+                    headlessReason = "";
+                    result.success(reason);
+                    return;
+                }
+                default:
+                    result.notImplemented();
+            }
+        } catch (Exception e) {
+            result.error("ANDROID_FAILED", e.toString(), null);
+        }
+    }
+
+    // -- arguments ----------------------------------------------------------
+
+    private Context requireContext() throws IllegalStateException {
+        if (appContext == null) {
+            throw new IllegalStateException("channel not attached");
+        }
+        return appContext;
+    }
+
+    private static String stringArg(MethodCall call, String name) {
+        Object value = call.argument(name);
+        return value != null ? String.valueOf(value) : "";
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> mapArg(MethodCall call, String name) {
+        Object value = call.argument(name);
+        return value instanceof Map ? (Map<String, Object>) value : null;
+    }
+
+    private static double doubleArg(MethodCall call, String name) {
+        Object value = call.argument(name);
+        return value instanceof Number ? ((Number) value).doubleValue() : 0;
+    }
+
+    private static int intArg(MethodCall call, String name) {
+        Object value = call.argument(name);
+        return value instanceof Number ? ((Number) value).intValue() : 0;
+    }
+
+    private static long longArg(MethodCall call, String name) {
+        Object value = call.argument(name);
+        return value instanceof Number ? ((Number) value).longValue() : 0L;
+    }
+
+    private static byte[] bytesArg(MethodCall call, String name) {
+        Object value = call.argument(name);
+        if (value instanceof byte[]) {
+            return (byte[]) value;
+        }
+        throw new IllegalArgumentException(name + " must be bytes");
+    }
+
+    // -- notifications -------------------------------------------------------
+
+    private boolean notify(String title, String text, String channelName) {
+        Context ctx = requireContext();
+        synchronized (StrakalariChannel.class) {
+            nextId = 1000 + (nextId - 1000 + 1) % 5000;
+        }
+        Notifications.show(ctx, EVENTS_CHANNEL,
+                channelName.isEmpty() ? "Strakaláři" : channelName,
+                title, text, nextId);
+        return notificationsEnabled();
+    }
+
+    private boolean notificationsEnabled() {
+        return Notifications.enabled(requireContext());
+    }
+
+    private void requestNotificationPermission() {
+        // Android 13+ asks once; after two declines only the settings help.
+        if (Build.VERSION.SDK_INT < 33 || notificationsEnabled() || activity == null) {
+            return;
+        }
+        activity.requestPermissions(
+                new String[]{"android.permission.POST_NOTIFICATIONS"},
+                NOTIFICATION_PERMISSION_REQUEST);
+    }
+
+    private void openNotificationSettings() {
+        Context ctx = requireContext();
+        Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+        intent.putExtra(Settings.EXTRA_APP_PACKAGE, ctx.getPackageName());
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        ctx.startActivity(intent);
+    }
+
+    // -- background service ----------------------------------------------------
+
+    private boolean startBackground(@Nullable Map<String, Object> texts) {
+        Context ctx = requireContext();
+        Intent intent = new Intent(ctx, KeepAliveService.class);
+        if (texts != null) {
+            for (Map.Entry<String, Object> entry : texts.entrySet()) {
+                if (entry.getValue() != null) {
+                    intent.putExtra(entry.getKey(), String.valueOf(entry.getValue()));
+                }
+            }
+        }
+        if (Build.VERSION.SDK_INT >= 26) {
+            ctx.startForegroundService(intent);
+        } else {
+            ctx.startService(intent);
+        }
+        return true;
+    }
+
+    private void stopBackground() {
+        Context ctx = requireContext();
+        ctx.stopService(new Intent(ctx, KeepAliveService.class));
+        cancelWake();
+    }
+
+    private boolean updateBackgroundNotification(
+            String title, String text, String sub, String rows) {
+        Context ctx = requireContext();
+        Intent intent = new Intent(ACTION_UPDATE_STATUS);
+        intent.setClassName(ctx.getPackageName(), StatusReceiver.class.getName());
+        intent.putExtra("title", title);
+        intent.putExtra("text", text);
+        intent.putExtra("sub", sub);
+        intent.putExtra("rows", rows);
+        ctx.sendBroadcast(intent);
+        return true;
+    }
+
+    // -- refresh wake ----------------------------------------------------------
+
+    private boolean scheduleWake(double epochSeconds) {
+        Context ctx = requireContext();
+        AlarmManager alarms = ctx.getSystemService(AlarmManager.class);
+        if (alarms == null) {
+            return false;
+        }
+        long atMs = (long) (Math.max(epochSeconds,
+                System.currentTimeMillis() / 1000.0 + 5) * 1000);
+        alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMs,
+                RefreshReceiver.wakeIntent(ctx));
+        return true;
+    }
+
+    private void cancelWake() {
+        Context ctx = requireContext();
+        AlarmManager alarms = ctx.getSystemService(AlarmManager.class);
+        if (alarms != null) {
+            alarms.cancel(RefreshReceiver.wakeIntent(ctx));
+        }
+    }
+
+    // -- wake-up alarm before the first lesson -----------------------------------
+
+    private boolean setWakeupAlarms(String queueJson, String channelName, String dismissLabel) {
+        Context ctx = requireContext();
+        SharedPreferences prefs = ctx.getSharedPreferences(
+                AlarmReceiver.PREFS, Context.MODE_PRIVATE);
+        prefs.edit()
+                .putString("queue", queueJson)
+                .putString("channel", channelName)
+                .putString("dismiss", dismissLabel)
+                .commit();
+        Intent intent = new Intent(AlarmReceiver.ACTION_RESCHEDULE);
+        intent.setClassName(ctx.getPackageName(), AlarmReceiver.class.getName());
+        ctx.sendBroadcast(intent);
+        return true;
+    }
+
+    private boolean exactAlarmsAllowed() {
+        if (Build.VERSION.SDK_INT < 31) {
+            return true;
+        }
+        AlarmManager alarms = requireContext().getSystemService(AlarmManager.class);
+        return alarms == null || alarms.canScheduleExactAlarms();
+    }
+
+    private void openExactAlarmSettings() {
+        if (Build.VERSION.SDK_INT < 31) {
+            return;
+        }
+        Context ctx = requireContext();
+        Intent intent = new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                Uri.parse("package:" + ctx.getPackageName()));
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        ctx.startActivity(intent);
+    }
+
+    // Python's weekday (Monday = 0) -> java.util.Calendar's (Sunday = 1).
+    private static final int[] CALENDAR_DAYS = {2, 3, 4, 5, 6, 7, 1};
+
+    private boolean openSystemAlarm(
+            int hour, int minute, String message, @Nullable Integer weekday) {
+        Context ctx = requireContext();
+        Bundle extras = new Bundle();
+        extras.putInt(AlarmClock.EXTRA_HOUR, hour);
+        extras.putInt(AlarmClock.EXTRA_MINUTES, minute);
+        extras.putString(AlarmClock.EXTRA_MESSAGE, message);
+        extras.putBoolean(AlarmClock.EXTRA_SKIP_UI, false);
+        if (weekday != null) {
+            ArrayList<Integer> days = new ArrayList<>(1);
+            days.add(CALENDAR_DAYS[weekday % 7]);
+            extras.putIntegerArrayList(AlarmClock.EXTRA_DAYS, days);
+        }
+        Intent setAlarm = new Intent(AlarmClock.ACTION_SET_ALARM);
+        setAlarm.putExtras(extras);
+        setAlarm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            ctx.startActivity(setAlarm);
+            return true;
+        } catch (RuntimeException e) {
+            // No Clock app takes a new alarm: at least show the alarm list.
+            try {
+                Intent show = new Intent(AlarmClock.ACTION_SHOW_ALARMS);
+                show.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(show);
+                return true;
+            } catch (RuntimeException ignored) {
+                return false;
+            }
+        }
+    }
+
+    // -- home-screen timetable widget ----------------------------------------------
+
+    private boolean updateTimetableWidget(String payloadJson) {
+        Context ctx = requireContext();
+        ctx.getSharedPreferences(TimetableWidgetProvider.PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString("payload", payloadJson)
+                .commit();
+        Intent intent = new Intent(ACTION_REFRESH_WIDGET);
+        intent.setClassName(ctx.getPackageName(),
+                TimetableWidgetProvider.class.getName());
+        ctx.sendBroadcast(intent);
+        return true;
+    }
+
+    // -- Android Keystore (protects the password key) ------------------------------
+    //
+    // Identical to core/android.py: alias "strakalari-secret-key",
+    // AES/GCM/NoPadding, a 12-byte IV prefix. The key never leaves the
+    // secure hardware and is lost when the app is uninstalled (then the
+    // Dart side quarantines the wrapped blob and starts over, like Python).
+
+    private javax.crypto.SecretKey keystoreKey() throws Exception {
+        KeyStore keystore = KeyStore.getInstance("AndroidKeyStore");
+        keystore.load(null);
+        if (keystore.containsAlias(KEYSTORE_ALIAS)) {
+            KeyStore.Entry entry = keystore.getEntry(KEYSTORE_ALIAS, null);
+            if (entry instanceof KeyStore.SecretKeyEntry) {
+                return ((KeyStore.SecretKeyEntry) entry).getSecretKey();
+            }
+        }
+        KeyGenerator generator = KeyGenerator.getInstance(
+                "AES", "AndroidKeyStore");
+        android.security.keystore.KeyGenParameterSpec spec =
+                new android.security.keystore.KeyGenParameterSpec.Builder(
+                        KEYSTORE_ALIAS,
+                        android.security.keystore.KeyProperties.PURPOSE_ENCRYPT
+                                | android.security.keystore.KeyProperties.PURPOSE_DECRYPT)
+                        .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+                        .setEncryptionPaddings(
+                                android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
+                        .setKeySize(256)
+                        .build();
+        generator.init(spec);
+        return generator.generateKey();
+    }
+
+    private byte[] keystoreWrap(byte[] data) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.ENCRYPT_MODE, keystoreKey());
+        byte[] iv = cipher.getIV();
+        byte[] out = cipher.doFinal(data);
+        byte[] blob = new byte[iv.length + out.length];
+        System.arraycopy(iv, 0, blob, 0, iv.length);
+        System.arraycopy(out, 0, blob, iv.length, out.length);
+        return blob;
+    }
+
+    private byte[] keystoreUnwrap(byte[] blob) throws Exception {
+        if (blob.length < 12 + 16) {
+            throw new IllegalArgumentException("wrapped key too short");
+        }
+        byte[] iv = new byte[12];
+        byte[] cipherText = new byte[blob.length - 12];
+        System.arraycopy(blob, 0, iv, 0, 12);
+        System.arraycopy(blob, 12, cipherText, 0, cipherText.length);
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.DECRYPT_MODE, keystoreKey(),
+                new GCMParameterSpec(128, iv));
+        return cipher.doFinal(cipherText);
+    }
+}

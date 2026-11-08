@@ -1,4 +1,24 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Background running: a foreground service keeps the process alive
+         while the screen is closed; alarms wake the CPU when a refresh or
+         a wake-up alarm is due. No network state is read by the manifest. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Wake-up alarm before the first lesson: exact alarms (Android 12+
+         asks the user in "Alarms & reminders"; USE_EXACT_ALARM is reserved
+         for clock apps on Google Play), a Clock app shortcut. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <!-- The ringing alarm plays its sound from a foreground service: the
+         alarm stream rings on a phone set to silent, where a notification's
+         own sound is muted. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Android 13+: asked at runtime before the first notification. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:label="app"
         android:name="${applicationName}"
@@ -30,6 +50,84 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <service
+            android:name="io.github.dendlerx.strakalari.android.KeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the user's scheduled sync with their school information system and canteen running in the background (sending absence excuses, ordering lunches), which the user switches on in the app." />
+        </service>
+
+        <receiver
+            android:name="io.github.dendlerx.strakalari.android.WakeReceiver"
+            android:exported="false" />
+
+        <!-- Headless refresh (new in the Flutter app): the alarm the Dart
+             side arms through scheduleWake, plus reboot / app update, land
+             here and boot a headless FlutterEngine running one runRefresh.
+             The wake-up alarms and the widget need no Dart: BootReceiver
+             re-arms them, unchanged. -->
+        <receiver
+            android:name="io.github.dendlerx.strakalari.android.RefreshReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="io.github.dendlerx.strakalari.android.ACTION_REFRESH_RUN" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name="io.github.dendlerx.strakalari.android.AlarmReceiver"
+            android:exported="false" />
+
+        <service
+            android:name="io.github.dendlerx.strakalari.android.AlarmRingService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <!-- The app redraws the background notification's overview (today's
+             lunch, the next lesson, …) through it. -->
+        <receiver
+            android:name="io.github.dendlerx.strakalari.android.StatusReceiver"
+            android:exported="false" />
+
+        <!-- Boot / app update end the process: remind the user to open the
+             app once (the refresh wake is re-armed headless instead, see
+             RefreshReceiver). Wake-up alarms and the widget are re-armed
+             without Dart. -->
+        <receiver
+            android:name="io.github.dendlerx.strakalari.android.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Home-screen timetable widget (the app reaches it by explicit
+             intents; the clock and date broadcasts move "today"). -->
+        <receiver
+            android:name="io.github.dendlerx.strakalari.android.TimetableWidgetProvider"
+            android:exported="true"
+            android:label="@string/strakalari_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/timetable_widget_info" />
+        </receiver>
+
+        <service
+            android:name="io.github.dendlerx.strakalari.android.TimetableWidgetService"
+            android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

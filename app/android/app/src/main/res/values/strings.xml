@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Widget picker texts follow the phone's language (values-en: English). -->
+    <string name="strakalari_widget_name">Strakaláři · Rozvrh</string>
+    <string name="strakalari_widget_desc">Rozvrh hodin včetně volných hodin</string>
+    <string name="strakalari_widget_no_data">Zatím žádná data — otevřete Strakaláře</string>
+</resources>

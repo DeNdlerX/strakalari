@@ -1,0 +1,207 @@
+package io.github.dendlerx.strakalari.android;
+
+import android.app.AlarmManager;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.PowerManager;
+
+import androidx.annotation.NonNull;
+
+import io.flutter.FlutterInjector;
+import io.flutter.embedding.engine.FlutterEngine;
+import io.flutter.embedding.engine.dart.DartExecutor;
+import io.flutter.embedding.engine.dart.DartExecutor.DartCallback;
+import io.flutter.view.FlutterCallbackInformation;
+
+/**
+ * Runs one headless refresh without the screen.
+ *
+ * <p>{@link WakeReceiver} (unchanged) only holds a wakelock for the Python
+ * scheduler that no longer exists. This receiver is what the Dart side arms
+ * through {@code scheduleWake}: it boots a headless {@link FlutterEngine}
+ * running the background callback the UI isolate registered
+ * ({@code registerBackgroundCallback}), which runs one {@code runRefresh},
+ * updates the status notification and the widget through the channel, re-arms
+ * the next wake, and exits.
+ *
+ * <p>On a reboot or an app update it runs the same entry with reason
+ * {@code "boot"}: that re-arms the refresh wake (the one intended behavior
+ * change of PLAN.md §3.4 — the old build only reminded the user to open the
+ * app). The wake-up alarms and the widget are still re-armed by the
+ * unchanged {@link BootReceiver}.
+ *
+ * <p>Only one run at a time: a second wake while one runs is dropped (the
+ * next armed wake retries). The CPU is held until Dart reports
+ * {@code backgroundDone}, or a ten-minute timeout releases everything.
+ */
+public class RefreshReceiver extends BroadcastReceiver {
+    static final String ACTION_WAKE =
+            "io.github.dendlerx.strakalari.android.ACTION_REFRESH_RUN";
+    private static final String PREFS = "strakalari_background";
+    private static final String KEY_CALLBACK = "bg_callback";
+    private static final long HOLD_MS = 10 * 60 * 1000L;
+    private static final int REQUEST_WAKE = 7305;
+
+    private static FlutterEngine engine;
+    private static StrakalariChannel headlessChannel;
+    private static PowerManager.WakeLock lock;
+    private static final Handler handler = new Handler(Looper.getMainLooper());
+    private static final Runnable timeout = RefreshReceiver::giveUp;
+
+    /** The wake alarm the Dart side arms (also used to cancel it). */
+    static PendingIntent wakeIntent(@NonNull Context ctx) {
+        Intent intent = new Intent(ACTION_WAKE);
+        intent.setClassName(ctx.getPackageName(), RefreshReceiver.class.getName());
+        return PendingIntent.getBroadcast(ctx, REQUEST_WAKE, intent,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    /** Persists the UI isolate's background-callback handle for headless runs. */
+    static void storeCallback(@NonNull Context ctx, long handle) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putLong(KEY_CALLBACK, handle)
+                .apply();
+    }
+
+    /** Dart's end-of-run signal: releases the wakelock and the engine. */
+    static void release(@NonNull Context ctx) {
+        synchronized (RefreshReceiver.class) {
+            handler.removeCallbacks(timeout);
+            if (lock != null) {
+                try {
+                    if (lock.isHeld()) {
+                        lock.release();
+                    }
+                } catch (RuntimeException ignored) {
+                    // Already released.
+                }
+                lock = null;
+            }
+            if (headlessChannel != null) {
+                headlessChannel.detach();
+                headlessChannel = null;
+            }
+            if (engine != null) {
+                engine.destroy();
+                engine = null;
+            }
+        }
+    }
+
+    @Override
+    public void onReceive(Context context, Intent intent) {
+        String action = intent != null ? intent.getAction() : null;
+        if (Intent.ACTION_BOOT_COMPLETED.equals(action)
+                || Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
+            runHeadless(context.getApplicationContext(), "boot");
+        } else if (ACTION_WAKE.equals(action)) {
+            runHeadless(context.getApplicationContext(), "alarm");
+        }
+    }
+
+    private static void runHeadless(@NonNull Context appCtx, @NonNull String reason) {
+        synchronized (RefreshReceiver.class) {
+            if (engine != null) {
+                return; // one run at a time; the next armed wake retries
+            }
+            PowerManager pm = appCtx.getSystemService(PowerManager.class);
+            if (pm == null) {
+                return;
+            }
+            lock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
+                    "strakalari:headless-refresh");
+            lock.setReferenceCounted(false);
+            lock.acquire(HOLD_MS);
+
+            SharedPreferences prefs = appCtx.getSharedPreferences(
+                    PREFS, Context.MODE_PRIVATE);
+            long handle = prefs.getLong(KEY_CALLBACK, 0L);
+
+            FlutterEngine created = new FlutterEngine(appCtx);
+            try {
+                io.flutter.plugins.GeneratedPluginRegistrant.registerWith(created);
+            } catch (Exception | Error ignored) {
+                // No plugins to register in this build flavor; the channel
+                // below is attached by hand either way.
+            }
+            headlessChannel = new StrakalariChannel();
+            headlessChannel.attach(appCtx,
+                    created.getDartExecutor().getBinaryMessenger());
+            StrakalariChannel.headlessReason = reason;
+            headlessChannel.setReleaseHook(() -> release(appCtx));
+            try {
+                if (handle != 0L) {
+                    FlutterCallbackInformation info =
+                            FlutterCallbackInformation.lookupCallbackInformation(handle);
+                    DartCallback callback = new DartCallback(
+                            appCtx.getAssets(),
+                            FlutterInjector.instance().flutterLoader()
+                                    .findAppBundlePath(),
+                            info);
+                    created.getDartExecutor().executeDartCallback(callback);
+                } else {
+                    // Never registered (fresh install, never opened): the
+                    // named entry point in the main library. Missing there
+                    // too: give up until the app runs once.
+                    created.getDartExecutor().executeDartEntrypoint(
+                            new DartExecutor.DartEntrypoint(
+                                    FlutterInjector.instance().flutterLoader()
+                                            .findAppBundlePath(),
+                                    "backgroundMain"));
+                }
+            } catch (Exception | Error e) {
+                release(appCtx);
+                return;
+            }
+            engine = created;
+            handler.removeCallbacks(timeout);
+            handler.postDelayed(timeout, HOLD_MS);
+        }
+    }
+
+    private static void giveUp() {
+        synchronized (RefreshReceiver.class) {
+            if (engine == null) {
+                return;
+            }
+            // Dart never reported back; drop the run. The armed wake retries.
+            releaseStatic();
+        }
+    }
+
+    private static void releaseStatic() {
+        handler.removeCallbacks(timeout);
+        if (lock != null) {
+            try {
+                if (lock.isHeld()) {
+                    lock.release();
+                }
+            } catch (RuntimeException ignored) {
+            }
+            lock = null;
+        }
+        if (headlessChannel != null) {
+            headlessChannel.detach();
+            headlessChannel = null;
+        }
+        if (engine != null) {
+            engine.destroy();
+            engine = null;
+        }
+    }
+
+    /** AlarmManager clock check shared with the widget's tick (unused here). */
+    static boolean exactAllowed(@NonNull Context ctx) {
+        AlarmManager alarms = ctx.getSystemService(AlarmManager.class);
+        return Build.VERSION.SDK_INT < 31
+                || alarms == null
+                || alarms.canScheduleExactAlarms();
+    }
+}

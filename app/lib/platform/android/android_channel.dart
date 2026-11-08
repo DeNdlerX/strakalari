@@ -1,0 +1,298 @@
+// MethodChannel client for the Android platform side (`strakalari/android`).
+//
+// One method per function in `strakalari/core/android.py` (same names, same
+// argument names), so the Dart port maps one-to-one. Off Android every call
+// reports failure, exactly like the Python no-ops; nothing throws for a
+// missing backend (a refresh must never die on a notification).
+//
+// Owned by the Android platform port (phase 8). The app registers the
+// backends built on this channel at startup (see android_keystore.dart and
+// android_notifications.dart); the headless entry point lives in
+// background.dart.
+import 'dart:async';
+
+import 'package:flutter/services.dart';
+
+/// The channel the Java side serves (`StrakalariChannel`).
+const String androidChannelName = 'strakalari/android';
+
+/// Typed client for the `strakalari/android` MethodChannel.
+class AndroidChannel {
+  /// The UI isolate's channel (the background isolate builds its own).
+  static const MethodChannel channel = MethodChannel(androidChannelName);
+
+  final MethodChannel _channel;
+
+  /// Wraps [_channel]; defaults to the shared UI-isolate channel.
+  const AndroidChannel([this._channel = channel]);
+
+  /// True inside the Android app once the Java side answers.
+  Future<bool> available() async {
+    try {
+      return await _channel.invokeMethod<bool>('available') ?? false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  Future<int> sdkInt() async {
+    try {
+      return await _channel.invokeMethod<int>('sdkInt') ?? 0;
+    } on MissingPluginException {
+      return 0;
+    } on PlatformException {
+      return 0;
+    }
+  }
+
+  /// Shows a notification (a tap opens the app). True when posted.
+  Future<bool> notify({
+    required String title,
+    required String text,
+    required String channelName,
+  }) async {
+    try {
+      return await _channel.invokeMethod<bool>('notify', {
+            'title': title,
+            'text': text,
+            'channelName': channelName,
+          }) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  Future<bool> notificationsEnabled() async {
+    try {
+      return await _channel.invokeMethod<bool>('notificationsEnabled') ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  /// Shows Android 13+'s "allow notifications?" prompt when it applies.
+  Future<void> requestNotificationPermission() async {
+    try {
+      await _channel.invokeMethod<void>('requestNotificationPermission');
+    } on MissingPluginException {
+      // No backend: nothing to ask through.
+    } on PlatformException {
+      // Must never break a job.
+    }
+  }
+
+  /// Opens the system's notification settings for this app.
+  Future<void> openNotificationSettings() async {
+    try {
+      await _channel.invokeMethod<void>('openNotificationSettings');
+    } on MissingPluginException {
+      // Ignore.
+    } on PlatformException {
+      // Ignore.
+    }
+  }
+
+  /// Starts (or updates) the background service. [texts]: the ongoing
+  /// notification's `title`/`text`/`sub`/`rows`/`channel` and the reboot
+  /// reminder's `boot_title`/`boot_text`/`events_channel`.
+  Future<bool> startBackground(Map<String, String> texts) async {
+    try {
+      return await _channel.invokeMethod<bool>(
+              'startBackground', {'texts': texts}) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  Future<void> stopBackground() async {
+    try {
+      await _channel.invokeMethod<void>('stopBackground');
+    } on MissingPluginException {
+      // Ignore.
+    } on PlatformException {
+      // Ignore.
+    }
+  }
+
+  /// Replaces what the background service's notification says. [rows]: the
+  /// overview's rows as JSON (`StatusContent.rowsJson`), drawn by the app's
+  /// own layout; without them the plain [title] and [text] show.
+  Future<bool> updateBackgroundNotification({
+    required String title,
+    required String text,
+    String sub = '',
+    String rows = '',
+  }) async {
+    try {
+      return await _channel.invokeMethod<bool>(
+              'updateBackgroundNotification', {
+            'title': title,
+            'text': text,
+            'sub': sub,
+            'rows': rows,
+          }) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  /// Wakes the CPU at about [epochSeconds] (also in Doze; replaces the
+  /// previous alarm).
+  Future<bool> scheduleWake(DateTime at) async {
+    try {
+      return await _channel.invokeMethod<bool>('scheduleWake', {
+            'epochSeconds': at.millisecondsSinceEpoch / 1000.0,
+          }) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  Future<void> cancelWake() async {
+    try {
+      await _channel.invokeMethod<void>('cancelWake');
+    } on MissingPluginException {
+      // Ignore.
+    } on PlatformException {
+      // Ignore.
+    }
+  }
+
+  /// Hands the upcoming wake-up alarms to `AlarmReceiver` (`[]` cancels
+  /// them). [queueJson]: a JSON list of `at`/`lesson` (epoch ms), `title`,
+  /// `text`.
+  Future<bool> setWakeupAlarms({
+    required String queueJson,
+    required String channelName,
+    required String dismissLabel,
+  }) async {
+    try {
+      return await _channel.invokeMethod<bool>('setWakeupAlarms', {
+            'queueJson': queueJson,
+            'channelName': channelName,
+            'dismissLabel': dismissLabel,
+          }) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  /// False when Android 12+ withholds exact alarms ("Alarms & reminders"
+  /// off): the wake-up alarm then rings a few minutes late at worst.
+  Future<bool> exactAlarmsAllowed() async {
+    try {
+      return await _channel.invokeMethod<bool>('exactAlarmsAllowed') ?? false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  /// Opens the system's "Alarms & reminders" switch (Android 12+).
+  Future<void> openExactAlarmSettings() async {
+    try {
+      await _channel.invokeMethod<void>('openExactAlarmSettings');
+    } on MissingPluginException {
+      // Ignore.
+    } on PlatformException {
+      // Ignore.
+    }
+  }
+
+  /// Opens the phone's Clock app on a new alarm at [hour]:[minute]
+  /// ([weekday]: Monday = 0, for a weekly alarm further ahead). True when
+  /// an app was opened.
+  Future<bool> openSystemAlarm(
+    int hour,
+    int minute, {
+    String message = 'Strakaláři',
+    int? weekday,
+  }) async {
+    try {
+      return await _channel.invokeMethod<bool>('openSystemAlarm', {
+            'hour': hour,
+            'minute': minute,
+            'message': message,
+            'weekday': weekday,
+          }) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  /// Saves the widget data and redraws the timetable widget.
+  Future<bool> updateTimetableWidget(String payloadJson) async {
+    try {
+      return await _channel.invokeMethod<bool>(
+              'updateTimetableWidget', {'payloadJson': payloadJson}) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  /// Persists the UI isolate's background-callback handle for headless runs.
+  Future<void> registerBackgroundCallback(int handle) async {
+    try {
+      await _channel.invokeMethod<void>(
+          'registerBackgroundCallback', {'handle': handle});
+    } on MissingPluginException {
+      // Ignore.
+    } on PlatformException {
+      // Ignore.
+    }
+  }
+
+  /// Reads and clears why the current headless run started
+  /// (`"boot"`, `"alarm"` or empty).
+  Future<String> takeHeadlessReason() async {
+    try {
+      return await _channel.invokeMethod<String>('takeHeadlessReason') ?? '';
+    } on MissingPluginException {
+      return '';
+    } on PlatformException {
+      return '';
+    }
+  }
+
+  /// End-of-run signal: releases the wakelock and drops the headless engine.
+  Future<void> backgroundDone() async {
+    try {
+      await _channel.invokeMethod<void>('backgroundDone');
+    } on MissingPluginException {
+      // Ignore: nothing holds us then.
+    } on PlatformException {
+      // Ignore.
+    }
+  }
+
+  /// Whether [error] means "no Android backend here" (safe to ignore).
+  static bool isNoBackend(Object error) =>
+      error is MissingPluginException || error is PlatformException;
+}
