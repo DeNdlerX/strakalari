@@ -1119,39 +1119,41 @@ class Strakalari implements RefreshApp {
     }
     if (discovered == null) return 0; // unknown, not "nothing sent"
     final guard = HistoryLock(alreadyExcusedFile);
-    if (!guard.acquire()) {
+    if (!await guard.acquire()) {
       writeLog('Warning: excuse history is busy, web sync postponed.');
       return 0;
     }
     var added = 0;
     var addedRows = const <Object?>[];
     try {
-      late final List<Map<String, Object?>> history;
-      late final String historyFilepath;
-      try {
-        final loaded = _loadHistoryImpl();
-        history = loaded.$1;
-        historyFilepath = loaded.$2;
-      } on Object catch (e) {
-        writeLog('Warning: $e — web sync postponed.');
-        return 0;
-      }
-      final merged = mergeSentExcuses(history, discovered);
-      added = merged.$2;
-      if (added > 0) {
-        addedRows =
-            merged.$1.sublist(merged.$1.length - added);
+      await guard.scope(() async {
+        late final List<Map<String, Object?>> history;
+        late final String historyFilepath;
         try {
-          atomicWriteJson(historyFilepath, merged.$1, encoding: utf8);
+          final loaded = _loadHistoryImpl();
+          history = loaded.$1;
+          historyFilepath = loaded.$2;
         } on Object catch (e) {
-          writeLog(
-              'Warning: Failed to write history file: ${e.runtimeType}: $e');
-          return 0;
+          writeLog('Warning: $e — web sync postponed.');
+          return;
         }
-      }
-      lastOutboxSyncOk = true;
-      _settleUnconfirmed(
-          merged.$1, client.sentExcusesFrom);
+        final merged = mergeSentExcuses(history, discovered);
+        if (merged.$2 > 0) {
+          try {
+            atomicWriteJson(historyFilepath, merged.$1, encoding: utf8);
+          } on Object catch (e) {
+            writeLog(
+                'Warning: Failed to write history file: ${e.runtimeType}: $e');
+            return;
+          }
+          added = merged.$2;
+          addedRows =
+              merged.$1.sublist(merged.$1.length - merged.$2);
+        }
+        lastOutboxSyncOk = true;
+        _settleUnconfirmed(
+            merged.$1, client.sentExcusesFrom);
+      });
     } finally {
       guard.release();
     }
@@ -1257,12 +1259,6 @@ class Strakalari implements RefreshApp {
     return false;
   }
 
-  // Same-isolate send serialization. Python threads block on the file
-  // lock; Dart runs one event loop per isolate, where HistoryLock is
-  // re-entrant — without this, two overlapping sends in one isolate
-  // would both pass the coverage check and submit twice.
-  static Future<void> _sendTail = Future<void>.value();
-
   /// Sends one excuse unless the history already covers it.
   ///
   /// Returns `"sent"`, `"covered"`, `"dry_run"`, `"unconfirmed"`,
@@ -1312,18 +1308,14 @@ class Strakalari implements RefreshApp {
       }
       return filled ? 'dry_run' : 'failed';
     }
-    final previous = _sendTail;
-    final done = Completer<void>();
-    _sendTail = done.future;
+    final guard = HistoryLock(alreadyExcusedFile);
+    if (!await guard.acquire()) {
+      writeLog(
+          'Warning: another excuse is being sent right now — try again later.');
+      return 'failed';
+    }
     try {
-      await previous;
-      final guard = HistoryLock(alreadyExcusedFile);
-      if (!guard.acquire()) {
-        writeLog(
-            'Warning: another excuse is being sent right now — try again later.');
-        return 'failed';
-      }
-      try {
+      return await guard.scope(() async {
         late final List<Map<String, Object?>> history;
         late final String historyFilepath;
         try {
@@ -1391,11 +1383,9 @@ class Strakalari implements RefreshApp {
               'from the web on the next refresh.');
         }
         return 'sent';
-      } finally {
-        guard.release();
-      }
+      });
     } finally {
-      done.complete();
+      guard.release();
     }
   }
 

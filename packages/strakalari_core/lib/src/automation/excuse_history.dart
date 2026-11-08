@@ -7,15 +7,19 @@
 // Duplicate detection is *coverage*, not equality: an absence is already
 // excused when every one of its lessons falls inside some history entry.
 //
-// Every read-check-send-write sequence runs under [HistoryLock] (a
-// re-entrant in-process guard + a lock file shared with the tray
-// process), so two senders can neither excuse the same absence twice nor
-// lose each other's history entries. (Python uses a thread RLock; Dart
-// runs one event loop per isolate, so a plain counter is enough.)
+// Every read-check-send-write sequence runs under [HistoryLock] (one
+// async mutex per path in this isolate + a lock file shared with the
+// tray process), so two senders can neither excuse the same absence
+// twice nor lose each other's history entries. (Python uses a thread
+// RLock; Dart tasks interleave on one event loop, so a static depth
+// counter would let any concurrent task in as "re-entrant".)
+import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:clock/clock.dart';
+import 'package:path/path.dart' as p;
 
 import '../models.dart';
 import '../storage/helpers.dart';
@@ -363,52 +367,115 @@ bool taskCovered(DateTime day, int? period, List<Object?>? history) {
 
 /// Serializes history read-check-send-write sequences.
 ///
-/// Yields (returns) true when the lock is held, false when another
+/// Returns (resolves) true when the lock is held, false when another
 /// process kept it for [timeoutS] (callers must then not send). Stale
 /// lock files from killed processes are reclaimed after 15 minutes.
+///
+/// One async FIFO mutex per path serializes the concurrent tasks of
+/// this isolate: a second task waits instead of walking in while a send
+/// is awaiting login or submit (Python blocks its threads on the file
+/// lock; a static depth counter would treat any interleaved task as
+/// re-entrant). Re-entrancy is only for the same logical task: the
+/// outer holder runs its critical section in [scope], which marks the
+/// path in the current [Zone], and a nested [HistoryLock] for that path
+/// then succeeds immediately without touching the mutex or the file.
 class HistoryLock {
-  static final Map<String, int> _depths = {};
+  static final Map<String, _HistoryMutex> _mutexes = {};
+
+  /// Zone key for the set of canonical history paths the current logical
+  /// task already owns (populated by [scope] of the outer holder).
+  static final Object _zoneKey = Object();
 
   final String historyPath;
   String? _token;
   bool _outer = false;
+  bool _reentrant = false;
 
   HistoryLock(this.historyPath);
 
+  static String _canon(String path) {
+    var key = p.normalize(p.absolute(path));
+    if (Platform.isWindows) key = key.toLowerCase();
+    return key;
+  }
+
   /// True once held; false when still busy after [timeoutS].
-  bool acquire({double timeoutS = 600.0}) {
-    if ((_depths[historyPath] ?? 0) > 0) {
-      // Re-entrant within one isolate: the outer holder has the file.
-      _depths[historyPath] = _depths[historyPath]! + 1;
+  ///
+  /// Waits on the per-path isolate mutex first (no timeout, like Python
+  /// threads blocking on the in-process lock), then polls the lock file
+  /// with `await Future.delayed`, so the event loop — and the UI — stays
+  /// alive while another process holds the file.
+  Future<bool> acquire({double timeoutS = 600.0}) async {
+    final key = _canon(historyPath);
+    final held = Zone.current[_zoneKey];
+    if (held is Set<String> && held.contains(key)) {
+      _reentrant = true;
       return true;
     }
-    final deadline = DateTime.now()
-        .add(Duration(microseconds: (timeoutS * 1e6).round()));
+    final mutex = _mutexes.putIfAbsent(key, () => _HistoryMutex());
+    await mutex.acquire();
+    final stopwatch = Stopwatch()..start();
+    final timeout = Duration(microseconds: (timeoutS * 1e6).round());
     String? token;
     while (true) {
-      token =
-          tryFileLock('$historyPath.lock', staleAfterS: 900.0);
-      if (token != null || !DateTime.now().isBefore(deadline)) break;
-      sleep(const Duration(milliseconds: 500));
+      token = tryFileLock('$historyPath.lock', staleAfterS: 900.0);
+      if (token != null) break;
+      if (stopwatch.elapsed >= timeout) break;
+      await Future<void>.delayed(const Duration(milliseconds: 500));
     }
     if (token != null) {
-      _depths[historyPath] = 1;
       _token = token;
       _outer = true;
       return true;
     }
+    mutex.release();
     return false;
+  }
+
+  /// Runs [body] with this path marked as held for the current logical
+  /// task, so a nested [HistoryLock] for the same path is re-entrant.
+  /// Call after a successful [acquire], before [release].
+  Future<T> scope<T>(Future<T> Function() body) {
+    final key = _canon(historyPath);
+    final held = Zone.current[_zoneKey];
+    final next = <String>{if (held is Set<String>) ...held, key};
+    return runZoned(body, zoneValues: {_zoneKey: next});
   }
 
   /// Releases a lock acquired with [acquire].
   void release() {
-    if (!_outer && (_depths[historyPath] ?? 0) > 0) {
-      _depths[historyPath] = _depths[historyPath]! - 1;
+    if (_reentrant) {
+      _reentrant = false;
       return;
     }
-    _depths[historyPath] = 0;
+    if (!_outer) return;
     _outer = false;
     releaseFileLock(_token);
     _token = null;
+    _mutexes[_canon(historyPath)]?.release();
+  }
+}
+
+/// FIFO in-isolate mutex: one logical task holds it, the rest wait.
+class _HistoryMutex {
+  bool _held = false;
+  final Queue<Completer<void>> _waiters = Queue<Completer<void>>();
+
+  Future<void> acquire() {
+    if (!_held) {
+      _held = true;
+      return Future<void>.value();
+    }
+    final waiter = Completer<void>();
+    _waiters.add(waiter);
+    return waiter.future;
+  }
+
+  void release() {
+    if (_waiters.isEmpty) {
+      _held = false;
+      return;
+    }
+    _waiters.removeFirst().complete();
   }
 }

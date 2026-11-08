@@ -16,6 +16,7 @@
 // delivery report): AppState/tray/dialog cases, the gemini fallback,
 // and the pure excuse_history/config/cache cases already covered by
 // excuse_history_test.dart, config_test.dart, cache_test.dart.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -43,6 +44,7 @@ class FakeBak extends BakalariClient {
   bool executeUncertain = false;
   bool fillResult = true;
   Duration executeDelay = Duration.zero;
+  Completer<void>? executeGate;
   List<List<Object?>> executeArgs = [];
   List<Map<String, Object?>>? sentExcusesResult = [];
 
@@ -61,6 +63,8 @@ class FakeBak extends BakalariClient {
     executeCalls++;
     executeArgs.add(
         [dayStart, dayEnd, startLesson, endLesson, customText, isDays, excuseType]);
+    final gate = executeGate;
+    if (gate != null) await gate.future;
     if (executeDelay > Duration.zero) {
       await Future<void>.delayed(executeDelay);
     }
@@ -944,6 +948,60 @@ void main() {
           (a.bakalariClient as FakeBak)..executeResult = false;
       expect(await app2.excusePending(), 0);
       expect(app2.lastExcuseFailures, 1);
+    });
+
+    test('concurrentSyncWaitsForSendAndKeepsBoth', () async {
+      // A-M1: a send blocked mid-submit plus a concurrent web sync. The
+      // sync must wait for the send's history lock (not rewrite the
+      // history mid-send), and afterwards the history holds both.
+      final gate = Completer<void>();
+      final (a, client) = app(uncertain: false);
+      client.executeResult = true;
+      client.executeGate = gate;
+      client.sentExcusesResult = [
+        {
+          'type': 'pure days',
+          'starting_day': '22.09.2026',
+          'ending_day': '22.09.2026',
+        },
+      ];
+      client.sentExcusesFrom = DateTime(2026, 8, 26);
+      final sendFuture =
+          a.sendExcuse(Map<String, Object?>.of(lesson()), 'x');
+      // Wait until the send holds the lock inside the submit.
+      final spinDeadline = DateTime.now().add(const Duration(seconds: 5));
+      while (client.executeCalls == 0) {
+        if (!DateTime.now().isBefore(spinDeadline)) {
+          throw StateError('the send never reached the submit');
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      var syncDone = false;
+      final syncFuture =
+          a.syncWebExcusesToHistory().whenComplete(() => syncDone = true);
+      // The sync must still be waiting while the submit is gated.
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(syncDone, isFalse);
+      gate.complete();
+      final results = await Future.wait([sendFuture, syncFuture]);
+      expect(results[0], 'sent');
+      expect(results[1], 1);
+      expect(client.executeCalls, 1);
+      final stored = (jsonDecode(
+              await File('${tmp.path}/history.json').readAsString())
+          as List)
+          .whereType<Map<String, Object?>>()
+          .toList();
+      expect(
+          stored.any((h) =>
+              h['type'] == 'days and hours' &&
+              h['starting_day'] == '21.09.2026'),
+          isTrue);
+      expect(
+          stored.any((h) =>
+              h['type'] == 'pure days' &&
+              h['starting_day'] == '22.09.2026'),
+          isTrue);
     });
   });
 
