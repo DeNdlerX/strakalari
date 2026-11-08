@@ -1,0 +1,41 @@
+{
+  "module": "audit",
+  "cases": [
+    {
+      "fn": "describeExcuse",
+      "args": [
+        {
+          "type": "days and hours",
+          "starting_day": "01.09.2026",
+          "ending_day": "01.09.2026",
+          "starting_lesson": 2,
+          "ending_lesson": 4
+        }
+      ],
+      "expected": "01.09.2026 (2.–4.)"
+    },
+    {
+      "fn": "describeExcuse",
+      "args": [
+        {
+          "type": "days and hours",
+          "starting_day": "01.09.2026",
+          "ending_day": "03.09.2026"
+        }
+      ],
+      "expected": "01.09.2026 – 03.09.2026"
+    },
+    {
+      "fn": "describeExcuse",
+      "args": [
+        {
+          "type": "single",
+          "starting_day": "01.09.2026",
+          "starting_lesson": 2,
+          "ending_lesson": 2
+        }
+      ],
+      "expected": "01.09.2026 (2.)"
+    }
+  ]
+}

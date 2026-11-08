@@ -236,12 +236,42 @@ def config_cases() -> list[dict]:
     return cases
 
 
+def audit_cases() -> list[dict]:
+    from strakalari.core import audit as a
+
+    cases = []
+    cases.append(_case(
+        "describeExcuse",
+        a.describe_excuse({"type": "days and hours",
+                           "starting_day": "01.09.2026",
+                           "ending_day": "01.09.2026",
+                           "starting_lesson": 2, "ending_lesson": 4}),
+        {"type": "days and hours", "starting_day": "01.09.2026",
+         "ending_day": "01.09.2026", "starting_lesson": 2,
+         "ending_lesson": 4}))
+    cases.append(_case(
+        "describeExcuse",
+        a.describe_excuse({"type": "days and hours",
+                           "starting_day": "01.09.2026",
+                           "ending_day": "03.09.2026"}),
+        {"type": "days and hours", "starting_day": "01.09.2026",
+         "ending_day": "03.09.2026"}))
+    cases.append(_case(
+        "describeExcuse",
+        a.describe_excuse({"type": "single", "starting_day": "01.09.2026",
+                           "starting_lesson": 2, "ending_lesson": 2}),
+        {"type": "single", "starting_day": "01.09.2026",
+         "starting_lesson": 2, "ending_lesson": 2}))
+    return cases
+
+
 def main() -> None:
     _dump("helpers", helpers_cases())
     _dump("models", models_cases())
     _dump("i18n", i18n_cases())
     _dump("cache", cache_cases())
     _dump("config", config_cases())
+    _dump("audit", audit_cases())
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 1 · Next step: Phase 1 — port strakalari/core/audit.py.
+Current phase: 1 · Next step: Phase 1 — port strakalari/core/excuse_history.py.
 
 ## Phase 0 (done)
 
@@ -26,7 +26,7 @@ State: todo = not started, tests = Dart tests written, done = ported + green.
 | strakalari/__main__.py | app/lib/main.dart | — | todo |
 | strakalari/core/__init__.py | core barrel | — | todo |
 | strakalari/core/android.py | core platform/android_bridge.dart + app MethodChannel | test_notify.py, test_wake_ui.py, test_wakeup_and_widget.py | todo |
-| strakalari/core/audit.py | core automation/audit.dart | test_refresh_pipeline.py (audit entries) | todo |
+| strakalari/core/audit.py | core automation/audit.dart | test_automation_safety.py (audit cases) → audit_test.dart (3) + parity_audit_test.dart | done |
 | strakalari/core/automation.py | core automation/automation.dart | test_automation_safety.py | todo |
 | strakalari/core/autostart.py | core platform/autostart.dart + app impl | test_autostart.py, test_autostart_platforms.py | todo |
 | strakalari/core/bakalari_client.py | core bakalari/client.dart | test_bakalari_client.py | todo |
