@@ -1,0 +1,327 @@
+{
+  "module": "news",
+  "cases": [
+    {
+      "fn": "newMarks",
+      "args": [
+        {
+          "grades": {
+            "M": [
+              {
+                "Id": "1",
+                "Grade": "2",
+                "Date": "1.9.2099"
+              }
+            ]
+          }
+        },
+        {
+          "grades": {
+            "M": [
+              {
+                "Id": "1",
+                "Grade": "2",
+                "Date": "1.9.2099"
+              },
+              {
+                "Id": "2",
+                "Grade": "1",
+                "Date": "2.9.2099",
+                "Caption": "Test"
+              }
+            ],
+            "F": [
+              {
+                "Grade": "3",
+                "Date": "2.9.2099"
+              }
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "M 1 (Test)",
+        "F 3"
+      ]
+    },
+    {
+      "fn": "newMarks",
+      "args": [
+        {
+          "grades": {
+            "M": [
+              {
+                "Id": "1",
+                "Grade": "2",
+                "Date": "1.9.2099"
+              },
+              {
+                "Id": "2",
+                "Grade": "1",
+                "Date": "2.9.2099",
+                "Caption": "Test"
+              }
+            ],
+            "F": [
+              {
+                "Grade": "3",
+                "Date": "2.9.2099"
+              }
+            ]
+          }
+        },
+        {
+          "grades": {
+            "M": [
+              {
+                "Id": "1",
+                "Grade": "2",
+                "Date": "1.9.2099"
+              },
+              {
+                "Id": "2",
+                "Grade": "1",
+                "Date": "2.9.2099",
+                "Caption": "Test"
+              }
+            ],
+            "F": [
+              {
+                "Grade": "3",
+                "Date": "2.9.2099"
+              }
+            ]
+          }
+        }
+      ],
+      "expected": []
+    },
+    {
+      "fn": "newQuarterlyMarks",
+      "args": [
+        {
+          "quarterly_marks": {
+            "M": {
+              "Grade": "2"
+            },
+            "F": {
+              "Grade": "1"
+            }
+          }
+        },
+        {
+          "quarterly_marks": {
+            "M": {
+              "Grade": "1"
+            },
+            "F": {
+              "Grade": "1"
+            },
+            "D": {
+              "Grade": "3"
+            }
+          }
+        }
+      ],
+      "expected": [
+        "M 1",
+        "D 3"
+      ]
+    },
+    {
+      "fn": "newAbsences",
+      "args": [
+        {
+          "timetable": {
+            "29.9.2099 (úterý)": [
+              {
+                "subject": "M",
+                "time": "1 (8:00 - 8:45)"
+              },
+              {
+                "subject": "M",
+                "time": "2 (8:00 - 8:45)",
+                "absenceType": "Absent"
+              }
+            ]
+          }
+        },
+        {
+          "timetable": {
+            "29.9.2099 (úterý)": [
+              {
+                "subject": "M",
+                "time": "1 (8:00 - 8:45)",
+                "absenceType": "Absent"
+              },
+              {
+                "subject": "M",
+                "time": "2 (8:00 - 8:45)",
+                "absenceType": "Excused",
+                "absencetext": "Omluveno"
+              }
+            ],
+            "1.9.2099": [
+              {
+                "subject": "M",
+                "time": "1 (8:00 - 8:45)",
+                "absenceType": "Absent"
+              }
+            ]
+          }
+        }
+      ],
+      "expected": [
+        "M 29. 9., 1. hodina"
+      ]
+    },
+    {
+      "fn": "newChanges",
+      "args": [
+        {
+          "timetable": {
+            "29.9.2099 (úterý)": [
+              {
+                "subject": "M",
+                "time": "1 (8:00 - 8:45)"
+              }
+            ],
+            "5.10.2099 (pondělí)": [
+              {
+                "subject": "M",
+                "time": "1 (8:00 - 8:45)"
+              },
+              {
+                "subject": "M",
+                "time": "2 (8:00 - 8:45)"
+              }
+            ]
+          }
+        },
+        {
+          "timetable": {
+            "29.9.2099 (úterý)": [
+              {
+                "subject": "M",
+                "time": "1 (8:00 - 8:45)",
+                "infoChangeCode": "Removed",
+                "type": "removed"
+              }
+            ],
+            "5.10.2099 (pondělí)": [
+              {
+                "subject": "M",
+                "time": "1 (8:00 - 8:45)"
+              },
+              {
+                "subject": "M",
+                "time": "2 (8:00 - 8:45)",
+                "infoChangeCode": "Removed",
+                "type": "removed"
+              }
+            ]
+          }
+        },
+        {
+          "__date__": "2099-10-01"
+        }
+      ],
+      "expected": [
+        "M 5. 10., 2. hodina: odpadá"
+      ]
+    },
+    {
+      "fn": "findNews",
+      "args": [
+        {
+          "grades": {},
+          "timetable": {
+            "5.10.2099 (pondělí)": [
+              {
+                "subject": "M",
+                "time": "1 (8:00 - 8:45)"
+              }
+            ]
+          }
+        },
+        {
+          "grades": {
+            "M": [
+              {
+                "Id": "0",
+                "Grade": "1"
+              },
+              {
+                "Id": "1",
+                "Grade": "1"
+              },
+              {
+                "Id": "2",
+                "Grade": "1"
+              },
+              {
+                "Id": "3",
+                "Grade": "1"
+              },
+              {
+                "Id": "4",
+                "Grade": "1"
+              },
+              {
+                "Id": "5",
+                "Grade": "1"
+              }
+            ]
+          },
+          "timetable": {
+            "5.10.2099 (pondělí)": [
+              {
+                "subject": "M",
+                "time": "1 (8:00 - 8:45)",
+                "infoChangeCode": "Removed",
+                "type": "removed"
+              }
+            ]
+          }
+        },
+        {
+          "__date__": "2099-10-01"
+        }
+      ],
+      "expected": [
+        [
+          "new_mark",
+          "Nové známky: M 1; M 1; M 1; M 1 a další (2)"
+        ],
+        [
+          "timetable_change",
+          "Změna v rozvrhu: M 5. 10., 1. hodina: odpadá"
+        ]
+      ]
+    },
+    {
+      "fn": "findNews",
+      "args": [
+        {
+          "quarterly_marks": {}
+        },
+        {
+          "quarterly_marks": {
+            "M": {
+              "Grade": "1"
+            }
+          }
+        },
+        {
+          "__date__": "2099-10-01"
+        }
+      ],
+      "expected": [
+        [
+          "new_quarterly_mark",
+          "Čtvrtletní známka: M 1"
+        ]
+      ]
+    }
+  ]
+}

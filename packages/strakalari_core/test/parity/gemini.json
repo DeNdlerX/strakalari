@@ -1,0 +1,143 @@
+{
+  "module": "gemini",
+  "cases": [
+    {
+      "fn": "buildMenuBlock",
+      "args": [
+        {
+          "07.09.2026": {
+            "table0&1&101": "Kuřecí řízek s bramborem",
+            "table0&1&102": "Smažený sýr s hranolky",
+            "table0&-1&0": "Odhlásit oběd"
+          },
+          "08.09.2026": {
+            "table0&1&201": "Hovězí guláš"
+          }
+        }
+      ],
+      "expected": "Den 07.09.2026:\n  ID: table0&1&101 | Kuřecí řízek s bramborem\n  ID: table0&1&102 | Smažený sýr s hranolky\n\nDen 08.09.2026:\n  ID: table0&1&201 | Hovězí guláš"
+    },
+    {
+      "fn": "buildPrompt",
+      "args": [
+        "no pork",
+        "Den 07.09.2026:\n  ID: table0&1&101 | Kuřecí řízek s bramborem\n  ID: table0&1&102 | Smažený sýr s hranolky\n\nDen 08.09.2026:\n  ID: table0&1&201 | Hovězí guláš",
+        "en"
+      ],
+      "expected": "You are a lunch picker assistant. User preferences: 'no pork'.\nPick the single best meal for each day from this menu:\nDen 07.09.2026:\n  ID: table0&1&101 | Kuřecí řízek s bramborem\n  ID: table0&1&102 | Smažený sýr s hranolky\n\nDen 08.09.2026:\n  ID: table0&1&201 | Hovězí guláš\n\nAnswer with bullet points explaining the nutritional benefits and end with a valid JSON block ```json {\"DD.MM.YYYY\": \"meal_ID\"} ```."
+    },
+    {
+      "fn": "buildPrompt",
+      "args": [
+        "bez vepřového",
+        "Den 07.09.2026:\n  ID: table0&1&101 | Kuřecí řízek s bramborem\n  ID: table0&1&102 | Smažený sýr s hranolky\n\nDen 08.09.2026:\n  ID: table0&1&201 | Hovězí guláš",
+        "cs"
+      ],
+      "expected": "Jsi asistent pro výběr obědů. Uživatel má preference: 'bez vepřového'.\nVyber pro každý den jedno nejvhodnější jídlo z následující nabídky:\nDen 07.09.2026:\n  ID: table0&1&101 | Kuřecí řízek s bramborem\n  ID: table0&1&102 | Smažený sýr s hranolky\n\nDen 08.09.2026:\n  ID: table0&1&201 | Hovězí guláš\n\nOdpověz ve formátu odrážek s českým vysvětlením nutričních výhod a na konci uveď platný JSON blok ```json {\"DD.MM.YYYY\": \"ID_jidla\"} ```."
+    },
+    {
+      "fn": "parseRecommendationResponse",
+      "args": [
+        "Nejlepší volba:\n```json {\"07.09.2026\": \"table0&1&101\"}```"
+      ],
+      "expected": [
+        "Nejlepší volba:",
+        {
+          "07.09.2026": "table0&1&101"
+        }
+      ]
+    },
+    {
+      "fn": "parseRecommendationResponse",
+      "args": [
+        "no json here"
+      ],
+      "expected": [
+        "no json here",
+        {}
+      ]
+    },
+    {
+      "fn": "parseRecommendationResponse",
+      "args": [
+        "<script>alert(1)</script>```json {\"08.09.2026\": \"table0&1&201\"}```"
+      ],
+      "expected": [
+        "alert(1)",
+        {
+          "08.09.2026": "table0&1&201"
+        }
+      ]
+    },
+    {
+      "fn": "validateRecommendation",
+      "args": [
+        {
+          "07.09.2026": "table0&1&101",
+          "08.09.2026": "table0&9&999"
+        },
+        {
+          "07.09.2026": {
+            "table0&1&101": "Kuřecí řízek s bramborem",
+            "table0&1&102": "Smažený sýr s hranolky",
+            "table0&-1&0": "Odhlásit oběd"
+          },
+          "08.09.2026": {
+            "table0&1&201": "Hovězí guláš"
+          }
+        }
+      ],
+      "expected": {
+        "07.09.2026": "table0&1&101"
+      }
+    },
+    {
+      "fn": "localFallbackRecommendation",
+      "args": [
+        {
+          "07.09.2026": {
+            "table0&1&101": "Kuřecí řízek s bramborem",
+            "table0&1&102": "Smažený sýr s hranolky",
+            "table0&-1&0": "Odhlásit oběd"
+          },
+          "08.09.2026": {
+            "table0&1&201": "Hovězí guláš"
+          }
+        },
+        "maso protein",
+        "cs"
+      ],
+      "expected": [
+        "Lokální doporučení (bez AI):<br><br>• <b>07.09.2026</b>: Kuřecí řízek s bramborem<br>• <b>08.09.2026</b>: Hovězí guláš",
+        {
+          "07.09.2026": "table0&1&101",
+          "08.09.2026": "table0&1&201"
+        }
+      ]
+    },
+    {
+      "fn": "localFallbackRecommendation",
+      "args": [
+        {
+          "07.09.2026": {
+            "table0&1&101": "Kuřecí řízek s bramborem",
+            "table0&1&102": "Smažený sýr s hranolky",
+            "table0&-1&0": "Odhlásit oběd"
+          },
+          "08.09.2026": {
+            "table0&1&201": "Hovězí guláš"
+          }
+        },
+        "bez vepřového",
+        "cs"
+      ],
+      "expected": [
+        "Lokální doporučení (bez AI):<br><br>• <b>07.09.2026</b>: Kuřecí řízek s bramborem<br>• <b>08.09.2026</b>: Hovězí guláš",
+        {
+          "07.09.2026": "table0&1&101",
+          "08.09.2026": "table0&1&201"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,154 @@
+{
+  "module": "error_report",
+  "cases": [
+    {
+      "fn": "timeoutUserMessage",
+      "args": [],
+      "expected": "Server neodpověděl v časovém limitu — připojení k internetu je nejspíš pomalé nebo nestabilní. Zkuste to znovu, případně zvyšte Časový limit spojení v Nastavení nebo se připojte k rychlejší síti."
+    },
+    {
+      "fn": "isTimeoutError",
+      "args": [
+        "none"
+      ],
+      "expected": false
+    },
+    {
+      "fn": "isTimeoutError",
+      "args": [
+        "timeout-builtin"
+      ],
+      "expected": true
+    },
+    {
+      "fn": "isTimeoutError",
+      "args": [
+        "timeout-msg"
+      ],
+      "expected": true
+    },
+    {
+      "fn": "isTimeoutError",
+      "args": [
+        "user"
+      ],
+      "expected": false
+    },
+    {
+      "fn": "isTimeoutError",
+      "args": [
+        "other"
+      ],
+      "expected": false
+    },
+    {
+      "fn": "redactConfig",
+      "args": [
+        {
+          "bakalari_username": "novak",
+          "bakalari_password": "secret123",
+          "strava_username": "",
+          "plain": "x",
+          "wakeup_enabled": true
+        }
+      ],
+      "expected": {
+        "bakalari_username": "set",
+        "bakalari_password": "set",
+        "strava_username": "empty",
+        "plain": "set",
+        "wakeup_enabled": "set"
+      }
+    },
+    {
+      "fn": "secretValues",
+      "args": [
+        {
+          "bakalari_username": "novak",
+          "bakalari_password": "secret123",
+          "strava_username": "",
+          "plain": "x",
+          "wakeup_enabled": true
+        }
+      ],
+      "expected": [
+        "secret123"
+      ]
+    },
+    {
+      "fn": "redactValues",
+      "args": [
+        "login novak with secret123",
+        [
+          "secret123",
+          "novak"
+        ]
+      ],
+      "expected": "login *** with ***"
+    },
+    {
+      "fn": "redactText",
+      "args": [
+        "login novak with secret123",
+        {
+          "bakalari_username": "novak",
+          "bakalari_password": "secret123",
+          "strava_username": "",
+          "plain": "x",
+          "wakeup_enabled": true
+        }
+      ],
+      "expected": "login *** with ***"
+    },
+    {
+      "fn": "shortSummary",
+      "args": [
+        null,
+        "something broke"
+      ],
+      "expected": "something broke"
+    },
+    {
+      "fn": "shortSummary",
+      "args": [
+        null,
+        "line one\nline two",
+        4
+      ],
+      "expected": "line"
+    },
+    {
+      "fn": "formatReport",
+      "args": [
+        {
+          "at": "09.11.2026 07:00:00",
+          "operation": "refresh",
+          "summary": "boom",
+          "traceback": "Traceback X",
+          "log_tail": [
+            "a",
+            "b"
+          ],
+          "config": {
+            "u": "set"
+          },
+          "context": {
+            "os": "windows"
+          },
+          "extra": {
+            "k": "v"
+          },
+          "user_message": ""
+        }
+      ],
+      "expected": "Strakalari error report\ntime: 09.11.2026 07:00:00\noperation: refresh\nerror: boom\nenvironment: os=windows\ndetails: k=v\ntraceback:\nTraceback X\nrecent log (2 lines):\na\nb\nconfig (values hidden, filled status only):\n  u=set\n"
+    },
+    {
+      "fn": "formatReport",
+      "args": [
+        null
+      ],
+      "expected": ""
+    }
+  ]
+}

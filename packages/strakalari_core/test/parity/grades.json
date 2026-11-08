@@ -1,0 +1,1356 @@
+{
+  "module": "grades",
+  "cases": [
+    {
+      "fn": "parseRaw",
+      "args": [
+        "1"
+      ],
+      "expected": {
+        "kind": "small",
+        "value": 1.0
+      }
+    },
+    {
+      "fn": "parseRaw",
+      "args": [
+        "1-"
+      ],
+      "expected": {
+        "kind": "grade",
+        "value": 1.5
+      }
+    },
+    {
+      "fn": "parseRaw",
+      "args": [
+        "5-"
+      ],
+      "expected": {
+        "kind": "grade",
+        "value": 5.0
+      }
+    },
+    {
+      "fn": "parseRaw",
+      "args": [
+        "2+"
+      ],
+      "expected": {
+        "kind": "grade",
+        "value": 2.0
+      }
+    },
+    {
+      "fn": "parseRaw",
+      "args": [
+        "85"
+      ],
+      "expected": {
+        "kind": "percent",
+        "value": 85.0
+      }
+    },
+    {
+      "fn": "parseRaw",
+      "args": [
+        "85 %"
+      ],
+      "expected": {
+        "kind": "percent",
+        "value": 85.0
+      }
+    },
+    {
+      "fn": "parseRaw",
+      "args": [
+        "72,5%"
+      ],
+      "expected": {
+        "kind": "percent",
+        "value": 72.5
+      }
+    },
+    {
+      "fn": "parseRaw",
+      "args": [
+        "17/20"
+      ],
+      "expected": {
+        "kind": "percent",
+        "value": 85.0
+      }
+    },
+    {
+      "fn": "parseRaw",
+      "args": [
+        "0"
+      ],
+      "expected": {
+        "kind": "percent",
+        "value": 0.0
+      }
+    },
+    {
+      "fn": "parseRaw",
+      "args": [
+        "N"
+      ],
+      "expected": null
+    },
+    {
+      "fn": "parseRaw",
+      "args": [
+        "?"
+      ],
+      "expected": null
+    },
+    {
+      "fn": "parseRaw",
+      "args": [
+        ""
+      ],
+      "expected": null
+    },
+    {
+      "fn": "parseRaw",
+      "args": [
+        "X"
+      ],
+      "expected": null
+    },
+    {
+      "fn": "parseRaw",
+      "args": [
+        "3/0"
+      ],
+      "expected": null
+    },
+    {
+      "fn": "parseRaw",
+      "args": [
+        null
+      ],
+      "expected": null
+    },
+    {
+      "fn": "parseRaw",
+      "args": [
+        "",
+        "9/10"
+      ],
+      "expected": {
+        "kind": "percent",
+        "value": 90.0
+      }
+    },
+    {
+      "fn": "parseWeight",
+      "args": [
+        null
+      ],
+      "expected": 1.0
+    },
+    {
+      "fn": "parseWeight",
+      "args": [
+        "2,5"
+      ],
+      "expected": 2.5
+    },
+    {
+      "fn": "parseWeight",
+      "args": [
+        -3
+      ],
+      "expected": 1.0
+    },
+    {
+      "fn": "parseWeight",
+      "args": [
+        0
+      ],
+      "expected": 0.0
+    },
+    {
+      "fn": "parseWeight",
+      "args": [
+        "abc"
+      ],
+      "expected": 1.0
+    },
+    {
+      "fn": "parseWeight",
+      "args": [
+        2
+      ],
+      "expected": 2.0
+    },
+    {
+      "fn": "isPlanned",
+      "args": [
+        {
+          "Grade": "?"
+        }
+      ],
+      "expected": true
+    },
+    {
+      "fn": "isPlanned",
+      "args": [
+        {
+          "Grade": "1"
+        }
+      ],
+      "expected": false
+    },
+    {
+      "fn": "isPlanned",
+      "args": [
+        {
+          "Grade": "1",
+          "Planned": true
+        }
+      ],
+      "expected": true
+    },
+    {
+      "fn": "isPlanned",
+      "args": [
+        {}
+      ],
+      "expected": false
+    },
+    {
+      "fn": "bandsValid",
+      "args": [
+        [
+          90,
+          75,
+          50,
+          30
+        ]
+      ],
+      "expected": true
+    },
+    {
+      "fn": "bandsValid",
+      "args": [
+        [
+          90,
+          90,
+          50,
+          30
+        ]
+      ],
+      "expected": false
+    },
+    {
+      "fn": "bandsValid",
+      "args": [
+        [
+          90,
+          75,
+          50
+        ]
+      ],
+      "expected": false
+    },
+    {
+      "fn": "bandsValid",
+      "args": [
+        [
+          "a",
+          75,
+          50,
+          30
+        ]
+      ],
+      "expected": false
+    },
+    {
+      "fn": "bandsValid",
+      "args": [
+        "90,75,50,30"
+      ],
+      "expected": false
+    },
+    {
+      "fn": "bandsValid",
+      "args": [
+        null
+      ],
+      "expected": false
+    },
+    {
+      "fn": "normalizeBands",
+      "args": [
+        [
+          95.0,
+          80.0,
+          60.0,
+          40.0
+        ]
+      ],
+      "expected": [
+        95.0,
+        80.0,
+        60.0,
+        40.0
+      ]
+    },
+    {
+      "fn": "normalizeBands",
+      "args": [
+        null
+      ],
+      "expected": [
+        90.0,
+        75.0,
+        50.0,
+        30.0
+      ]
+    },
+    {
+      "fn": "normalizeBands",
+      "args": [
+        "junk"
+      ],
+      "expected": [
+        90.0,
+        75.0,
+        50.0,
+        30.0
+      ]
+    },
+    {
+      "fn": "pctToGrade",
+      "args": [
+        90.1
+      ],
+      "expected": 1
+    },
+    {
+      "fn": "pctToGrade",
+      "args": [
+        90
+      ],
+      "expected": 2
+    },
+    {
+      "fn": "pctToGrade",
+      "args": [
+        29
+      ],
+      "expected": 5
+    },
+    {
+      "fn": "pctToGrade",
+      "args": [
+        100
+      ],
+      "expected": 1
+    },
+    {
+      "fn": "pctToGrade",
+      "args": [
+        80.5,
+        [
+          95.0,
+          80.0,
+          60.0,
+          40.0
+        ]
+      ],
+      "expected": 2
+    },
+    {
+      "fn": "pctToGrade",
+      "args": [
+        87,
+        [
+          87.0,
+          72.0,
+          55.0,
+          40.0
+        ]
+      ],
+      "expected": 2
+    },
+    {
+      "fn": "gradeToPct",
+      "args": [
+        1
+      ],
+      "expected": 95.0
+    },
+    {
+      "fn": "gradeToPct",
+      "args": [
+        1.5
+      ],
+      "expected": 88.75
+    },
+    {
+      "fn": "gradeToPct",
+      "args": [
+        2,
+        [
+          87.0,
+          72.0,
+          55.0,
+          40.0
+        ]
+      ],
+      "expected": 79.5
+    },
+    {
+      "fn": "roundGrade",
+      "args": [
+        1.49
+      ],
+      "expected": 1
+    },
+    {
+      "fn": "roundGrade",
+      "args": [
+        1.5
+      ],
+      "expected": 2
+    },
+    {
+      "fn": "roundGrade",
+      "args": [
+        2.5
+      ],
+      "expected": 3
+    },
+    {
+      "fn": "roundGrade",
+      "args": [
+        5.9
+      ],
+      "expected": 5
+    },
+    {
+      "fn": "finalGrade",
+      "args": [
+        1.6,
+        "grade"
+      ],
+      "expected": 2
+    },
+    {
+      "fn": "finalGrade",
+      "args": [
+        null,
+        "grade"
+      ],
+      "expected": null
+    },
+    {
+      "fn": "finalGrade",
+      "args": [
+        82.4,
+        "percent"
+      ],
+      "expected": 2
+    },
+    {
+      "fn": "finalGrade",
+      "args": [
+        null,
+        "percent"
+      ],
+      "expected": null
+    },
+    {
+      "fn": "gradeEquivalent",
+      "args": [
+        82.4,
+        "percent"
+      ],
+      "expected": 2.0
+    },
+    {
+      "fn": "gradeEquivalent",
+      "args": [
+        1.5,
+        "grade"
+      ],
+      "expected": 1.5
+    },
+    {
+      "fn": "gradeEquivalent",
+      "args": [
+        null,
+        "grade"
+      ],
+      "expected": null
+    },
+    {
+      "fn": "kindFor",
+      "args": [
+        1.0,
+        "grade"
+      ],
+      "expected": "ok"
+    },
+    {
+      "fn": "kindFor",
+      "args": [
+        3.0,
+        "grade"
+      ],
+      "expected": "warning"
+    },
+    {
+      "fn": "kindFor",
+      "args": [
+        5.0,
+        "grade"
+      ],
+      "expected": "critical"
+    },
+    {
+      "fn": "kindFor",
+      "args": [
+        null,
+        "grade"
+      ],
+      "expected": "info"
+    },
+    {
+      "fn": "kindFor",
+      "args": [
+        88.0,
+        "percent"
+      ],
+      "expected": "ok"
+    },
+    {
+      "fn": "formatValue",
+      "args": [
+        1.83333,
+        "grade",
+        null
+      ],
+      "expected": "1.83"
+    },
+    {
+      "fn": "formatValue",
+      "args": [
+        84.45,
+        "percent",
+        null
+      ],
+      "expected": "84.5 %"
+    },
+    {
+      "fn": "formatValue",
+      "args": [
+        84.0,
+        "percent",
+        0
+      ],
+      "expected": "84 %"
+    },
+    {
+      "fn": "formatValue",
+      "args": [
+        null,
+        "grade",
+        null
+      ],
+      "expected": "—"
+    },
+    {
+      "fn": "formatGradeStep",
+      "args": [
+        1.5
+      ],
+      "expected": "1-"
+    },
+    {
+      "fn": "formatGradeStep",
+      "args": [
+        2.0
+      ],
+      "expected": "2"
+    },
+    {
+      "fn": "formatGradeStep",
+      "args": [
+        2.3
+      ],
+      "expected": "2-"
+    },
+    {
+      "fn": "resolve",
+      "args": [
+        "85",
+        "percent",
+        true
+      ],
+      "expected": 85.0
+    },
+    {
+      "fn": "resolve",
+      "args": [
+        "2",
+        "percent",
+        false
+      ],
+      "expected": 82.5
+    },
+    {
+      "fn": "resolve",
+      "args": [
+        "2",
+        "grade",
+        true
+      ],
+      "expected": 2.0
+    },
+    {
+      "fn": "detectScale",
+      "args": [
+        [
+          {
+            "Grade": "53"
+          },
+          {
+            "Grade": "100"
+          },
+          {
+            "Grade": "?"
+          }
+        ]
+      ],
+      "expected": "percent"
+    },
+    {
+      "fn": "detectScale",
+      "args": [
+        [
+          {
+            "Grade": "1"
+          },
+          {
+            "Grade": "2-"
+          }
+        ]
+      ],
+      "expected": "grade"
+    },
+    {
+      "fn": "detectScale",
+      "args": [
+        [
+          {
+            "Grade": "N"
+          }
+        ],
+        "percent"
+      ],
+      "expected": "percent"
+    },
+    {
+      "fn": "detectSchoolScale",
+      "args": [
+        {
+          "M": [
+            {
+              "Grade": "1"
+            }
+          ],
+          "F": [
+            {
+              "Grade": "85"
+            }
+          ]
+        }
+      ],
+      "expected": "percent"
+    },
+    {
+      "fn": "weightedAverage",
+      "args": [
+        [
+          [
+            1.0,
+            1.0
+          ],
+          [
+            null,
+            2.0
+          ],
+          [
+            3.0,
+            0.0
+          ]
+        ]
+      ],
+      "expected": 1.0
+    },
+    {
+      "fn": "weightedAverage",
+      "args": [
+        []
+      ],
+      "expected": null
+    },
+    {
+      "fn": "markKeys",
+      "args": [
+        [
+          {
+            "Grade": "1",
+            "Date": "1.9.2026"
+          },
+          {
+            "Grade": "1",
+            "Date": "1.9.2026"
+          },
+          {
+            "Id": "7",
+            "Grade": "2"
+          }
+        ]
+      ],
+      "expected": [
+        "1.9.2026|1||",
+        "1.9.2026|1||#1",
+        "id:7"
+      ]
+    },
+    {
+      "fn": "emptyPrediction",
+      "args": [],
+      "expected": {
+        "added": [],
+        "edits": {},
+        "removed": []
+      }
+    },
+    {
+      "fn": "predictionActive",
+      "args": [
+        {
+          "added": [
+            {
+              "Grade": "1"
+            }
+          ]
+        }
+      ],
+      "expected": true
+    },
+    {
+      "fn": "predictionActive",
+      "args": [
+        {}
+      ],
+      "expected": false
+    },
+    {
+      "fn": "summarize",
+      "args": [
+        "M",
+        [
+          {
+            "Grade": "1",
+            "Weight": 10,
+            "Date": "05.09.2026"
+          },
+          {
+            "Grade": "5",
+            "Weight": 1,
+            "Date": "10.09.2026"
+          }
+        ],
+        {
+          "today": {
+            "__date__": "2026-09-13"
+          }
+        }
+      ],
+      "expected": {
+        "name": "M",
+        "scale": "grade",
+        "detected": "grade",
+        "forced": false,
+        "rows": [
+          {
+            "key": "05.09.2026|1|10|",
+            "mark": {
+              "Grade": "1",
+              "Weight": 10,
+              "Date": "05.09.2026"
+            },
+            "state": "real",
+            "value": 1.0,
+            "weight": 10.0,
+            "raw": {
+              "kind": "small",
+              "value": 1.0
+            },
+            "original": null,
+            "date": {
+              "__date__": "2026-09-05"
+            }
+          },
+          {
+            "key": "10.09.2026|5|1|",
+            "mark": {
+              "Grade": "5",
+              "Weight": 1,
+              "Date": "10.09.2026"
+            },
+            "state": "real",
+            "value": 5.0,
+            "weight": 1.0,
+            "raw": {
+              "kind": "small",
+              "value": 5.0
+            },
+            "original": null,
+            "date": {
+              "__date__": "2026-09-10"
+            }
+          }
+        ],
+        "planned": [],
+        "average": 1.3636363636363635,
+        "predicted": null,
+        "predicting": false,
+        "trend": 0.36363636363636354,
+        "newCount": 1,
+        "lastDate": {
+          "__date__": "2026-09-10"
+        },
+        "history": [
+          [
+            {
+              "__date__": "2026-09-05"
+            },
+            1.0
+          ],
+          [
+            {
+              "__date__": "2026-09-10"
+            },
+            1.3636363636363635
+          ]
+        ]
+      }
+    },
+    {
+      "fn": "summarize",
+      "args": [
+        "M",
+        [
+          {
+            "Grade": "1"
+          },
+          {
+            "Grade": "2"
+          }
+        ],
+        {
+          "scalePref": "percent",
+          "today": {
+            "__date__": "2026-09-13"
+          }
+        }
+      ],
+      "expected": {
+        "name": "M",
+        "scale": "percent",
+        "detected": "grade",
+        "forced": true,
+        "rows": [
+          {
+            "key": "|1||",
+            "mark": {
+              "Grade": "1"
+            },
+            "state": "real",
+            "value": 95.0,
+            "weight": 1.0,
+            "raw": {
+              "kind": "small",
+              "value": 1.0
+            },
+            "original": null,
+            "date": null
+          },
+          {
+            "key": "|2||",
+            "mark": {
+              "Grade": "2"
+            },
+            "state": "real",
+            "value": 82.5,
+            "weight": 1.0,
+            "raw": {
+              "kind": "small",
+              "value": 2.0
+            },
+            "original": null,
+            "date": null
+          }
+        ],
+        "planned": [],
+        "average": 88.75,
+        "predicted": null,
+        "predicting": false,
+        "trend": -6.25,
+        "newCount": 0,
+        "lastDate": null,
+        "history": [
+          [
+            null,
+            95.0
+          ],
+          [
+            null,
+            88.75
+          ]
+        ]
+      }
+    },
+    {
+      "fn": "summarize",
+      "args": [
+        "M",
+        [
+          {
+            "Grade": "95"
+          },
+          {
+            "Grade": "60"
+          }
+        ],
+        {
+          "scalePref": "grade",
+          "today": {
+            "__date__": "2026-09-13"
+          }
+        }
+      ],
+      "expected": {
+        "name": "M",
+        "scale": "grade",
+        "detected": "percent",
+        "forced": true,
+        "rows": [
+          {
+            "key": "|95||",
+            "mark": {
+              "Grade": "95"
+            },
+            "state": "real",
+            "value": 1.0,
+            "weight": 1.0,
+            "raw": {
+              "kind": "percent",
+              "value": 95.0
+            },
+            "original": null,
+            "date": null
+          },
+          {
+            "key": "|60||",
+            "mark": {
+              "Grade": "60"
+            },
+            "state": "real",
+            "value": 3.0,
+            "weight": 1.0,
+            "raw": {
+              "kind": "percent",
+              "value": 60.0
+            },
+            "original": null,
+            "date": null
+          }
+        ],
+        "planned": [],
+        "average": 2.0,
+        "predicted": null,
+        "predicting": false,
+        "trend": 1.0,
+        "newCount": 0,
+        "lastDate": null,
+        "history": [
+          [
+            null,
+            1.0
+          ],
+          [
+            null,
+            2.0
+          ]
+        ]
+      }
+    },
+    {
+      "fn": "summarize",
+      "args": [
+        "M",
+        [
+          {
+            "Grade": "1",
+            "Weight": 1,
+            "Date": "1.9.2026"
+          },
+          {
+            "Grade": "3",
+            "Weight": 1,
+            "Date": "2.9.2026"
+          }
+        ],
+        {
+          "ops": {
+            "added": [
+              {
+                "Grade": "1",
+                "Weight": 2
+              }
+            ]
+          },
+          "today": {
+            "__date__": "2026-09-13"
+          }
+        }
+      ],
+      "expected": {
+        "name": "M",
+        "scale": "grade",
+        "detected": "grade",
+        "forced": false,
+        "rows": [
+          {
+            "key": "1.9.2026|1|1|",
+            "mark": {
+              "Grade": "1",
+              "Weight": 1,
+              "Date": "1.9.2026"
+            },
+            "state": "real",
+            "value": 1.0,
+            "weight": 1.0,
+            "raw": {
+              "kind": "small",
+              "value": 1.0
+            },
+            "original": null,
+            "date": {
+              "__date__": "2026-09-01"
+            }
+          },
+          {
+            "key": "2.9.2026|3|1|",
+            "mark": {
+              "Grade": "3",
+              "Weight": 1,
+              "Date": "2.9.2026"
+            },
+            "state": "real",
+            "value": 3.0,
+            "weight": 1.0,
+            "raw": {
+              "kind": "small",
+              "value": 3.0
+            },
+            "original": null,
+            "date": {
+              "__date__": "2026-09-02"
+            }
+          },
+          {
+            "key": "add:0",
+            "mark": {
+              "Grade": "1",
+              "Weight": 2
+            },
+            "state": "added",
+            "value": 1.0,
+            "weight": 2.0,
+            "raw": {
+              "kind": "small",
+              "value": 1.0
+            },
+            "original": null,
+            "date": null
+          }
+        ],
+        "planned": [],
+        "average": 2.0,
+        "predicted": 1.5,
+        "predicting": true,
+        "trend": 1.0,
+        "newCount": 0,
+        "lastDate": {
+          "__date__": "2026-09-02"
+        },
+        "history": [
+          [
+            {
+              "__date__": "2026-09-01"
+            },
+            1.0
+          ],
+          [
+            {
+              "__date__": "2026-09-02"
+            },
+            2.0
+          ]
+        ]
+      }
+    },
+    {
+      "fn": "summarizeAll",
+      "args": [
+        {
+          "M": [
+            {
+              "Grade": "1",
+              "Weight": 10,
+              "Date": "05.09.2026"
+            },
+            {
+              "Grade": "5",
+              "Weight": 1,
+              "Date": "10.09.2026"
+            }
+          ],
+          "F": [
+            {
+              "Grade": "85"
+            },
+            {
+              "Grade": "60"
+            }
+          ]
+        },
+        {
+          "today": {
+            "__date__": "2026-09-13"
+          }
+        }
+      ],
+      "expected": [
+        {
+          "name": "F",
+          "scale": "percent",
+          "detected": "percent",
+          "forced": false,
+          "rows": [
+            {
+              "key": "|85||",
+              "mark": {
+                "Grade": "85"
+              },
+              "state": "real",
+              "value": 85.0,
+              "weight": 1.0,
+              "raw": {
+                "kind": "percent",
+                "value": 85.0
+              },
+              "original": null,
+              "date": null
+            },
+            {
+              "key": "|60||",
+              "mark": {
+                "Grade": "60"
+              },
+              "state": "real",
+              "value": 60.0,
+              "weight": 1.0,
+              "raw": {
+                "kind": "percent",
+                "value": 60.0
+              },
+              "original": null,
+              "date": null
+            }
+          ],
+          "planned": [],
+          "average": 72.5,
+          "predicted": null,
+          "predicting": false,
+          "trend": -12.5,
+          "newCount": 0,
+          "lastDate": null,
+          "history": [
+            [
+              null,
+              85.0
+            ],
+            [
+              null,
+              72.5
+            ]
+          ]
+        },
+        {
+          "name": "M",
+          "scale": "grade",
+          "detected": "grade",
+          "forced": false,
+          "rows": [
+            {
+              "key": "05.09.2026|1|10|",
+              "mark": {
+                "Grade": "1",
+                "Weight": 10,
+                "Date": "05.09.2026"
+              },
+              "state": "real",
+              "value": 1.0,
+              "weight": 10.0,
+              "raw": {
+                "kind": "small",
+                "value": 1.0
+              },
+              "original": null,
+              "date": {
+                "__date__": "2026-09-05"
+              }
+            },
+            {
+              "key": "10.09.2026|5|1|",
+              "mark": {
+                "Grade": "5",
+                "Weight": 1,
+                "Date": "10.09.2026"
+              },
+              "state": "real",
+              "value": 5.0,
+              "weight": 1.0,
+              "raw": {
+                "kind": "small",
+                "value": 5.0
+              },
+              "original": null,
+              "date": {
+                "__date__": "2026-09-10"
+              }
+            }
+          ],
+          "planned": [],
+          "average": 1.3636363636363635,
+          "predicted": null,
+          "predicting": false,
+          "trend": 0.36363636363636354,
+          "newCount": 1,
+          "lastDate": {
+            "__date__": "2026-09-10"
+          },
+          "history": [
+            [
+              {
+                "__date__": "2026-09-05"
+              },
+              1.0
+            ],
+            [
+              {
+                "__date__": "2026-09-10"
+              },
+              1.3636363636363635
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "fn": "validMarkText",
+      "args": [
+        "100"
+      ],
+      "expected": true
+    },
+    {
+      "fn": "validMarkText",
+      "args": [
+        "101"
+      ],
+      "expected": false
+    },
+    {
+      "fn": "validMarkText",
+      "args": [
+        "21/20"
+      ],
+      "expected": false
+    },
+    {
+      "fn": "validMarkText",
+      "args": [
+        "abc"
+      ],
+      "expected": false
+    },
+    {
+      "fn": "defaultWeight",
+      "args": [
+        [
+          {
+            "Grade": "1",
+            "Weight": 10,
+            "Date": "05.09.2026"
+          },
+          {
+            "Grade": "5",
+            "Weight": 1,
+            "Date": "10.09.2026"
+          }
+        ]
+      ],
+      "expected": 10.0
+    },
+    {
+      "fn": "formatWeight",
+      "args": [
+        1.0
+      ],
+      "expected": "1"
+    },
+    {
+      "fn": "formatWeight",
+      "args": [
+        2.5
+      ],
+      "expected": "2.5"
+    },
+    {
+      "fn": "neededFor",
+      "args": [
+        [
+          {
+            "Grade": "1",
+            "Weight": 1
+          },
+          {
+            "Grade": "3",
+            "Weight": 1
+          }
+        ],
+        "grade",
+        2,
+        1.0
+      ],
+      "expected": {
+        "status": "need",
+        "value": 3.0,
+        "count": 0
+      }
+    }
+  ]
+}

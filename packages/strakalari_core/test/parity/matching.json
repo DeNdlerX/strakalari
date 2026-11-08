@@ -1,0 +1,196 @@
+{
+  "module": "matching",
+  "cases": [
+    {
+      "fn": "stripDiacritics",
+      "args": [
+        "Příliš žluťoučký kůň"
+      ],
+      "expected": "Prilis zlutoucky kun"
+    },
+    {
+      "fn": "stripDiacritics",
+      "args": [
+        "ČESKÁ LÍPA"
+      ],
+      "expected": "CESKA LIPA"
+    },
+    {
+      "fn": "stripDiacritics",
+      "args": [
+        ""
+      ],
+      "expected": ""
+    },
+    {
+      "fn": "stripDiacritics",
+      "args": [
+        null
+      ],
+      "expected": ""
+    },
+    {
+      "fn": "normalizeWord",
+      "args": [
+        "  Vepřové  "
+      ],
+      "expected": "veprove"
+    },
+    {
+      "fn": "normalizeWord",
+      "args": [
+        "Čočka"
+      ],
+      "expected": "cocka"
+    },
+    {
+      "fn": "normalizeWord",
+      "args": [
+        "RYBA"
+      ],
+      "expected": "ryba"
+    },
+    {
+      "fn": "prefsBanKeywords",
+      "args": [
+        "nemám rád vepřové, preferuji lehká jídla"
+      ],
+      "expected": [
+        "vepřové"
+      ]
+    },
+    {
+      "fn": "prefsBanKeywords",
+      "args": [
+        "mám rád kuřecí"
+      ],
+      "expected": []
+    },
+    {
+      "fn": "prefsBanKeywords",
+      "args": [
+        "bez hub a česneku"
+      ],
+      "expected": [
+        "hub",
+        "česneku"
+      ]
+    },
+    {
+      "fn": "prefsBanKeywords",
+      "args": [
+        ""
+      ],
+      "expected": []
+    },
+    {
+      "fn": "prefsBanKeywords",
+      "args": [
+        null
+      ],
+      "expected": []
+    },
+    {
+      "fn": "isFoodBanned",
+      "args": [
+        "Vepřové maso s knedlíkem",
+        [
+          "vepřové"
+        ]
+      ],
+      "expected": [
+        true,
+        "vepřové"
+      ]
+    },
+    {
+      "fn": "isFoodBanned",
+      "args": [
+        "Kuřecí řízek",
+        [
+          "vepřové"
+        ]
+      ],
+      "expected": [
+        false,
+        ""
+      ]
+    },
+    {
+      "fn": "isFoodBanned",
+      "args": [
+        "Rybí filé",
+        [
+          "ryb"
+        ]
+      ],
+      "expected": [
+        true,
+        "ryb"
+      ]
+    },
+    {
+      "fn": "isFoodBanned",
+      "args": [
+        "Rybízový koláč",
+        [
+          "ryb"
+        ]
+      ],
+      "expected": [
+        false,
+        ""
+      ]
+    },
+    {
+      "fn": "isFoodBanned",
+      "args": [
+        "Guláš",
+        [
+          "YOUR_BLACKLIST_EXAMPLE"
+        ]
+      ],
+      "expected": [
+        false,
+        ""
+      ]
+    },
+    {
+      "fn": "isFoodBanned",
+      "args": [
+        "",
+        [
+          "vepřové"
+        ]
+      ],
+      "expected": [
+        false,
+        ""
+      ]
+    },
+    {
+      "fn": "isFoodBanned",
+      "args": [
+        "Svíčková",
+        []
+      ],
+      "expected": [
+        false,
+        ""
+      ]
+    },
+    {
+      "fn": "isFoodBanned",
+      "args": [
+        "Čočková polévka",
+        [
+          "cocka"
+        ]
+      ],
+      "expected": [
+        true,
+        "cocka"
+      ]
+    }
+  ]
+}

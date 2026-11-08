@@ -1,0 +1,321 @@
+{
+  "module": "lunch_auto",
+  "cases": [
+    {
+      "fn": "clampGeminiInterval",
+      "args": [
+        null
+      ],
+      "expected": 2
+    },
+    {
+      "fn": "clampGeminiInterval",
+      "args": [
+        0
+      ],
+      "expected": 1
+    },
+    {
+      "fn": "clampGeminiInterval",
+      "args": [
+        3
+      ],
+      "expected": 3
+    },
+    {
+      "fn": "clampGeminiInterval",
+      "args": [
+        "7"
+      ],
+      "expected": 7
+    },
+    {
+      "fn": "clampGeminiInterval",
+      "args": [
+        99
+      ],
+      "expected": 30
+    },
+    {
+      "fn": "clampGeminiInterval",
+      "args": [
+        "garbage"
+      ],
+      "expected": 2
+    },
+    {
+      "fn": "clampGeminiInterval",
+      "args": [
+        -2
+      ],
+      "expected": 1
+    },
+    {
+      "fn": "clampGeminiInterval",
+      "args": [
+        2.5
+      ],
+      "expected": 2
+    },
+    {
+      "fn": "parseLastRun",
+      "args": [
+        null
+      ],
+      "expected": null
+    },
+    {
+      "fn": "parseLastRun",
+      "args": [
+        ""
+      ],
+      "expected": null
+    },
+    {
+      "fn": "parseLastRun",
+      "args": [
+        "2026-09-20"
+      ],
+      "expected": {
+        "__date__": "2026-09-20"
+      }
+    },
+    {
+      "fn": "parseLastRun",
+      "args": [
+        "2026-09-20T10:00:00"
+      ],
+      "expected": {
+        "__date__": "2026-09-20"
+      }
+    },
+    {
+      "fn": "parseLastRun",
+      "args": [
+        "garbage"
+      ],
+      "expected": null
+    },
+    {
+      "fn": "parseLastRun",
+      "args": [
+        {
+          "__date__": "2026-09-20"
+        }
+      ],
+      "expected": {
+        "__date__": "2026-09-20"
+      }
+    },
+    {
+      "fn": "shouldRunGeminiAuto",
+      "args": [
+        false,
+        null,
+        7,
+        {
+          "__date__": "2026-09-25"
+        }
+      ],
+      "expected": false
+    },
+    {
+      "fn": "shouldRunGeminiAuto",
+      "args": [
+        true,
+        null,
+        7,
+        {
+          "__date__": "2026-09-25"
+        }
+      ],
+      "expected": true
+    },
+    {
+      "fn": "shouldRunGeminiAuto",
+      "args": [
+        true,
+        "2026-09-20",
+        7,
+        {
+          "__date__": "2026-09-25"
+        }
+      ],
+      "expected": false
+    },
+    {
+      "fn": "shouldRunGeminiAuto",
+      "args": [
+        true,
+        "2026-09-24",
+        7,
+        {
+          "__date__": "2026-09-25"
+        }
+      ],
+      "expected": false
+    },
+    {
+      "fn": "shouldRunGeminiAuto",
+      "args": [
+        true,
+        "garbage",
+        7,
+        {
+          "__date__": "2026-09-25"
+        }
+      ],
+      "expected": true
+    },
+    {
+      "fn": "shouldRunGeminiAuto",
+      "args": [
+        "",
+        null,
+        7,
+        {
+          "__date__": "2026-09-25"
+        }
+      ],
+      "expected": false
+    },
+    {
+      "fn": "filterPicks",
+      "args": [
+        {
+          "28.09.2026": {
+            "table0&1&101": "Vepřový guláš",
+            "table0&1&102": "Kuřecí řízek",
+            "table0&-1&0": "Odhlásit"
+          },
+          "29.09.2026": {
+            "table0&1&201": "Smažený sýr",
+            "table0&-1&0": "Odhlásit"
+          },
+          "20.09.2026": {
+            "table0&1&301": "Rajská polévka"
+          },
+          "01.10.2026": {
+            "table0&1&401": "Vepřo knedlo",
+            "table0&-1&0": "Odhlásit"
+          }
+        },
+        {
+          "blacklist": [
+            "vepřové"
+          ],
+          "today": {
+            "__date__": "2026-09-25"
+          }
+        }
+      ],
+      "expected": {
+        "28.09.2026": "table0&1&102",
+        "29.09.2026": "table0&1&201",
+        "01.10.2026": "table0&-1&0"
+      }
+    },
+    {
+      "fn": "filterPicks",
+      "args": [
+        {
+          "28.09.2026": {
+            "table0&1&101": "Vepřový guláš",
+            "table0&1&102": "Kuřecí řízek",
+            "table0&-1&0": "Odhlásit"
+          },
+          "29.09.2026": {
+            "table0&1&201": "Smažený sýr",
+            "table0&-1&0": "Odhlásit"
+          },
+          "20.09.2026": {
+            "table0&1&301": "Rajská polévka"
+          },
+          "01.10.2026": {
+            "table0&1&401": "Vepřo knedlo",
+            "table0&-1&0": "Odhlásit"
+          }
+        },
+        {
+          "blacklist": [
+            "vepřové"
+          ],
+          "cancelledDays": [
+            "01.10.2026"
+          ],
+          "today": {
+            "__date__": "2026-09-25"
+          }
+        }
+      ],
+      "expected": {
+        "28.09.2026": "table0&1&102",
+        "29.09.2026": "table0&1&201"
+      }
+    },
+    {
+      "fn": "mergeGeminiWithFilter",
+      "args": [
+        {
+          "28.09.2026": "table0&1&101",
+          "29.09.2026": "table0&1&201"
+        },
+        {
+          "28.09.2026": {
+            "table0&1&101": "Vepřový guláš",
+            "table0&1&102": "Kuřecí řízek",
+            "table0&-1&0": "Odhlásit"
+          },
+          "29.09.2026": {
+            "table0&1&201": "Smažený sýr",
+            "table0&-1&0": "Odhlásit"
+          },
+          "20.09.2026": {
+            "table0&1&301": "Rajská polévka"
+          },
+          "01.10.2026": {
+            "table0&1&401": "Vepřo knedlo",
+            "table0&-1&0": "Odhlásit"
+          }
+        },
+        {
+          "blacklist": [
+            "vepřové"
+          ],
+          "today": {
+            "__date__": "2026-09-25"
+          }
+        }
+      ],
+      "expected": {
+        "29.09.2026": "table0&1&201",
+        "28.09.2026": "table0&1&102",
+        "01.10.2026": "table0&-1&0"
+      }
+    },
+    {
+      "fn": "updateHandledDays",
+      "args": [
+        [
+          "20.09.2026",
+          "01.09.2026"
+        ],
+        {
+          "28.09.2026": "table0&1&102",
+          "29.09.2026": "table0&-1&0"
+        },
+        [
+          "29.09.2026"
+        ],
+        {
+          "__date__": "2026-09-25"
+        }
+      ],
+      "expected": [
+        "20.09.2026",
+        "28.09.2026",
+        "29.09.2026"
+      ]
+    }
+  ]
+}

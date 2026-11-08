@@ -1,0 +1,623 @@
+{
+  "module": "planner",
+  "cases": [
+    {
+      "fn": "schoolYearTerms",
+      "args": [
+        {
+          "__date__": "2026-10-01"
+        },
+        {
+          "sem1Close": "25.01.2027",
+          "sem2Close": "26.04.2027"
+        }
+      ],
+      "expected": [
+        [
+          "sem1",
+          {
+            "__date__": "2026-09-01"
+          },
+          {
+            "__date__": "2027-01-25"
+          }
+        ],
+        [
+          "sem2",
+          {
+            "__date__": "2027-02-01"
+          },
+          {
+            "__date__": "2027-04-26"
+          }
+        ]
+      ]
+    },
+    {
+      "fn": "schoolYearTerms",
+      "args": [
+        {
+          "__date__": "2027-02-01"
+        },
+        {}
+      ],
+      "expected": [
+        [
+          "sem1",
+          {
+            "__date__": "2026-09-01"
+          },
+          {
+            "__date__": "2027-01-31"
+          }
+        ],
+        [
+          "sem2",
+          {
+            "__date__": "2027-02-01"
+          },
+          {
+            "__date__": "2027-06-30"
+          }
+        ]
+      ]
+    },
+    {
+      "fn": "entryLessons",
+      "args": [
+        {
+          "start_date": "2026-09-14",
+          "end_date": "2026-09-14",
+          "template": "ill"
+        },
+        {
+          "timetable": {
+            "31.08.2026": [
+              {
+                "subject": "M",
+                "teacher": "T",
+                "room": "R",
+                "time": "1 (8:00 - 8:45)"
+              },
+              {
+                "subject": "X",
+                "teacher": "T",
+                "room": "R",
+                "time": "2 (8:55 - 9:40)"
+              }
+            ],
+            "14.09.2026": [
+              {
+                "subject": "M",
+                "teacher": "T",
+                "room": "R",
+                "time": "1 (8:00 - 8:45)"
+              },
+              {
+                "subject": "G",
+                "teacher": "T",
+                "room": "R",
+                "time": "3 (10:05 - 10:50)",
+                "notice": "Suplování"
+              }
+            ]
+          },
+          "baseline": {
+            "0|1": {
+              "weekday": 0,
+              "period": 1,
+              "subject": "M",
+              "teacher": "T",
+              "room": "R",
+              "start_min": 480,
+              "support": 1
+            }
+          },
+          "holidays": [],
+          "fromDay": {
+            "__date__": "2026-09-01"
+          }
+        }
+      ],
+      "expected": {
+        "2026-09-14": [
+          {
+            "subject": "M",
+            "day": {
+              "__date__": "2026-09-14"
+            },
+            "period": 1,
+            "time": "1 (8:00 - 8:45)",
+            "room": "R",
+            "teacher": "T",
+            "status": "",
+            "change": "",
+            "excused": false
+          },
+          {
+            "subject": "G",
+            "day": {
+              "__date__": "2026-09-14"
+            },
+            "period": 3,
+            "time": "3 (10:05 - 10:50)",
+            "room": "R",
+            "teacher": "T",
+            "status": "",
+            "change": "Suplování",
+            "excused": false
+          }
+        ]
+      }
+    },
+    {
+      "fn": "entryLessons",
+      "args": [
+        {
+          "start_date": "2026-09-21",
+          "end_date": "2026-09-21",
+          "template": "ill"
+        },
+        {
+          "timetable": {
+            "31.08.2026": [
+              {
+                "subject": "M",
+                "teacher": "T",
+                "room": "R",
+                "time": "1 (8:00 - 8:45)"
+              },
+              {
+                "subject": "X",
+                "teacher": "T",
+                "room": "R",
+                "time": "2 (8:55 - 9:40)"
+              }
+            ],
+            "14.09.2026": [
+              {
+                "subject": "M",
+                "teacher": "T",
+                "room": "R",
+                "time": "1 (8:00 - 8:45)"
+              },
+              {
+                "subject": "G",
+                "teacher": "T",
+                "room": "R",
+                "time": "3 (10:05 - 10:50)",
+                "notice": "Suplování"
+              }
+            ]
+          },
+          "baseline": {
+            "0|1": {
+              "weekday": 0,
+              "period": 1,
+              "subject": "M",
+              "teacher": "T",
+              "room": "R",
+              "start_min": 480,
+              "support": 1
+            }
+          },
+          "holidays": [],
+          "fromDay": {
+            "__date__": "2026-09-01"
+          }
+        }
+      ],
+      "expected": {
+        "2026-09-21": [
+          {
+            "subject": "M",
+            "day": null,
+            "period": 1,
+            "time": "",
+            "room": "",
+            "teacher": "",
+            "status": "",
+            "change": "",
+            "excused": false
+          }
+        ]
+      }
+    },
+    {
+      "fn": "spreadPlan",
+      "args": [
+        [
+          {
+            "day": {
+              "__date__": "2026-10-05"
+            },
+            "term": "sem1",
+            "lessons": [
+              "M"
+            ],
+            "cost": {
+              "m": 1
+            },
+            "names": {
+              "m": "Matematika"
+            },
+            "streak": 1,
+            "finalWeek": false,
+            "lateWeek": false,
+            "feasible": true,
+            "blockedBy": [],
+            "score": 0.0
+          },
+          {
+            "day": {
+              "__date__": "2026-10-06"
+            },
+            "term": "sem1",
+            "lessons": [
+              "M",
+              "F"
+            ],
+            "cost": {
+              "m": 1,
+              "f": 1
+            },
+            "names": {
+              "m": "Matematika",
+              "f": "Fyzika"
+            },
+            "streak": 1,
+            "finalWeek": false,
+            "lateWeek": false,
+            "feasible": true,
+            "blockedBy": [],
+            "score": 0.0
+          },
+          {
+            "day": {
+              "__date__": "2026-10-07"
+            },
+            "term": "sem1",
+            "lessons": [],
+            "cost": {},
+            "names": {},
+            "streak": 1,
+            "finalWeek": false,
+            "lateWeek": false,
+            "feasible": true,
+            "blockedBy": [],
+            "score": 0.0
+          }
+        ],
+        {
+          "m": 3.0,
+          "f": 2.0
+        },
+        1,
+        [
+          {
+            "__date__": "2026-10-05"
+          },
+          {
+            "__date__": "2026-10-06"
+          },
+          {
+            "__date__": "2026-10-07"
+          }
+        ]
+      ],
+      "expected": [
+        {
+          "day": {
+            "__date__": "2026-10-07"
+          },
+          "term": "sem1",
+          "lessons": [],
+          "cost": {},
+          "names": {},
+          "streak": 1,
+          "finalWeek": false,
+          "lateWeek": false,
+          "feasible": true,
+          "blockedBy": [],
+          "score": 0.0
+        }
+      ]
+    },
+    {
+      "fn": "buildYearPlan",
+      "args": [
+        {
+          "states": [
+            {
+              "name": "M",
+              "currentPct": 20.0,
+              "limitPct": 25.0,
+              "weeklyHours": 5,
+              "safeHoursLeft": 0,
+              "projectedPct": 0.0,
+              "warnPct": 0.0,
+              "planLimitPct": null,
+              "planSafeHoursLeft": null,
+              "approaching": false,
+              "unclassifiable": false,
+              "taughtHours": 15.0
+            },
+            {
+              "name": "F",
+              "currentPct": 0.0,
+              "limitPct": 25.0,
+              "weeklyHours": 6,
+              "safeHoursLeft": 0,
+              "projectedPct": 0.0,
+              "warnPct": 0.0,
+              "planLimitPct": null,
+              "planSafeHoursLeft": null,
+              "approaching": false,
+              "unclassifiable": false,
+              "taughtHours": 0.0
+            }
+          ],
+          "timetable": {
+            "07.09.2026": [
+              {
+                "subject": "M",
+                "time": "1 (8:00 - 8:45)"
+              }
+            ]
+          },
+          "baseline": {
+            "0|1": {
+              "weekday": 0,
+              "period": 1,
+              "subject": "M",
+              "teacher": "T",
+              "room": "R",
+              "start_min": 480,
+              "support": 1
+            }
+          },
+          "holidays": [],
+          "planned": [
+            {
+              "start_date": "2026-10-05",
+              "end_date": "2026-10-05",
+              "template": "ill"
+            }
+          ],
+          "today": {
+            "__date__": "2026-09-21"
+          },
+          "sem1Close": "25.01.2027",
+          "sem2Close": "30.06.2027",
+          "targetDays": 0
+        }
+      ],
+      "expected": {
+        "terms": [
+          {
+            "key": "sem1",
+            "start": {
+              "__date__": "2026-09-01"
+            },
+            "close": {
+              "__date__": "2027-01-25"
+            },
+            "hasData": true,
+            "active": true,
+            "capacity": 2,
+            "target": 3,
+            "budgets": {
+              "m": {
+                "name": "M",
+                "canon": "m",
+                "limitPct": 25.0,
+                "reservePct": 10.0,
+                "currentPct": 20.0,
+                "taught": 15.0,
+                "missed": 3.0,
+                "future": 19.0,
+                "planned": 1.0,
+                "blocked": false,
+                "weekly": 5.0,
+                "peak": 1
+              },
+              "f": {
+                "name": "F",
+                "canon": "f",
+                "limitPct": 25.0,
+                "reservePct": 10.0,
+                "currentPct": 0.0,
+                "taught": 16.8,
+                "missed": 0.0,
+                "future": 0.0,
+                "planned": 0.0,
+                "blocked": false,
+                "weekly": 6.0,
+                "peak": 1
+              }
+            },
+            "recommended": [
+              {
+                "day": {
+                  "__date__": "2026-11-16"
+                },
+                "term": "sem1",
+                "lessons": [
+                  "M"
+                ],
+                "cost": {
+                  "m": 1
+                },
+                "names": {
+                  "m": "M"
+                },
+                "streak": 3,
+                "finalWeek": false,
+                "lateWeek": false,
+                "feasible": true,
+                "blockedBy": [],
+                "score": 2.1961538461538463
+              },
+              {
+                "day": {
+                  "__date__": "2026-12-28"
+                },
+                "term": "sem1",
+                "lessons": [
+                  "M"
+                ],
+                "cost": {
+                  "m": 1
+                },
+                "names": {
+                  "m": "M"
+                },
+                "streak": 3,
+                "finalWeek": false,
+                "lateWeek": false,
+                "feasible": true,
+                "blockedBy": [],
+                "score": 2.1961538461538463
+              }
+            ],
+            "planned": [
+              {
+                "entry": {
+                  "start_date": "2026-10-05",
+                  "end_date": "2026-10-05",
+                  "template": "ill"
+                },
+                "days": {
+                  "2026-10-05": [
+                    "M"
+                  ]
+                },
+                "cost": {
+                  "m": 1
+                },
+                "over": [],
+                "reserve": []
+              }
+            ]
+          },
+          {
+            "key": "sem2",
+            "start": {
+              "__date__": "2027-02-01"
+            },
+            "close": {
+              "__date__": "2027-06-30"
+            },
+            "hasData": false,
+            "active": false,
+            "capacity": 3,
+            "target": 3,
+            "budgets": {
+              "f": {
+                "name": "F",
+                "canon": "f",
+                "limitPct": 25.0,
+                "reservePct": 10.0,
+                "currentPct": 0.0,
+                "taught": 0.0,
+                "missed": 0.0,
+                "future": 0.0,
+                "planned": 0.0,
+                "blocked": false,
+                "weekly": 6.0,
+                "peak": 1
+              },
+              "m": {
+                "name": "M",
+                "canon": "m",
+                "limitPct": 25.0,
+                "reservePct": 10.0,
+                "currentPct": 0.0,
+                "taught": 0.0,
+                "missed": 0.0,
+                "future": 22.0,
+                "planned": 0.0,
+                "blocked": false,
+                "weekly": 5.0,
+                "peak": 1
+              }
+            },
+            "recommended": [
+              {
+                "day": {
+                  "__date__": "2027-02-01"
+                },
+                "term": "sem2",
+                "lessons": [
+                  "M"
+                ],
+                "cost": {
+                  "m": 1
+                },
+                "names": {
+                  "m": "M"
+                },
+                "streak": 3,
+                "finalWeek": false,
+                "lateWeek": false,
+                "feasible": true,
+                "blockedBy": [],
+                "score": 1.3803030303030304
+              },
+              {
+                "day": {
+                  "__date__": "2027-03-22"
+                },
+                "term": "sem2",
+                "lessons": [
+                  "M"
+                ],
+                "cost": {
+                  "m": 1
+                },
+                "names": {
+                  "m": "M"
+                },
+                "streak": 3,
+                "finalWeek": false,
+                "lateWeek": false,
+                "feasible": true,
+                "blockedBy": [],
+                "score": 1.3803030303030304
+              },
+              {
+                "day": {
+                  "__date__": "2027-05-10"
+                },
+                "term": "sem2",
+                "lessons": [
+                  "M"
+                ],
+                "cost": {
+                  "m": 1
+                },
+                "names": {
+                  "m": "M"
+                },
+                "streak": 3,
+                "finalWeek": false,
+                "lateWeek": false,
+                "feasible": true,
+                "blockedBy": [],
+                "score": 1.3803030303030304
+              }
+            ],
+            "planned": []
+          }
+        ],
+        "today": {
+          "__date__": "2026-09-21"
+        },
+        "firstDay": {
+          "__date__": "2026-09-21"
+        },
+        "defaultTerm": "sem1"
+      }
+    }
+  ]
+}

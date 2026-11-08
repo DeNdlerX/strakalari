@@ -1,0 +1,330 @@
+{
+  "module": "planned_skips",
+  "cases": [
+    {
+      "fn": "normalizePlannedEntry",
+      "args": [
+        {
+          "date": "2026-10-05",
+          "template": "dentist"
+        }
+      ],
+      "expected": {
+        "start_date": "2026-10-05",
+        "end_date": "2026-10-05",
+        "template": "dentist"
+      }
+    },
+    {
+      "fn": "normalizePlannedEntry",
+      "args": [
+        {
+          "start_date": "2026-10-05",
+          "end_date": "2026-10-07",
+          "start_period": 2,
+          "end_period": 4,
+          "template": "trip",
+          "cancel_lunch": false
+        }
+      ],
+      "expected": {
+        "start_date": "2026-10-05",
+        "end_date": "2026-10-07",
+        "template": "trip",
+        "start_period": 2,
+        "end_period": 4,
+        "cancel_lunch": false
+      }
+    },
+    {
+      "fn": "normalizePlannedEntry",
+      "args": [
+        {
+          "start_date": "2026-10-07",
+          "end_date": "2026-10-05",
+          "template": "swap"
+        }
+      ],
+      "expected": {
+        "start_date": "2026-10-05",
+        "end_date": "2026-10-07",
+        "template": "swap"
+      }
+    },
+    {
+      "fn": "normalizePlannedEntry",
+      "args": [
+        {
+          "start_date": "nonsense",
+          "template": "bad"
+        }
+      ],
+      "expected": null
+    },
+    {
+      "fn": "normalizePlannedEntry",
+      "args": [
+        null
+      ],
+      "expected": null
+    },
+    {
+      "fn": "normalizePlannedEntry",
+      "args": [
+        "garbage"
+      ],
+      "expected": null
+    },
+    {
+      "fn": "normalizePlannedEntry",
+      "args": [
+        {}
+      ],
+      "expected": null
+    },
+    {
+      "fn": "cancelsLunch",
+      "args": [
+        {
+          "start_date": "2026-10-05",
+          "end_date": "2026-10-07",
+          "template": "trip"
+        }
+      ],
+      "expected": true
+    },
+    {
+      "fn": "cancelsLunch",
+      "args": [
+        {
+          "start_date": "2026-10-05",
+          "end_date": "2026-10-05",
+          "template": "x",
+          "cancel_lunch": false
+        }
+      ],
+      "expected": false
+    },
+    {
+      "fn": "entryStartIso",
+      "args": [
+        {
+          "start_date": "2026-10-05",
+          "end_date": "2026-10-07",
+          "template": "trip"
+        }
+      ],
+      "expected": "2026-10-05"
+    },
+    {
+      "fn": "entryEndIso",
+      "args": [
+        {
+          "start_date": "2026-10-05",
+          "end_date": "2026-10-07",
+          "template": "trip"
+        }
+      ],
+      "expected": "2026-10-07"
+    },
+    {
+      "fn": "entryDays",
+      "args": [
+        {
+          "start_date": "2026-10-05",
+          "end_date": "2026-10-07",
+          "template": "trip"
+        }
+      ],
+      "expected": [
+        {
+          "__date__": "2026-10-05"
+        },
+        {
+          "__date__": "2026-10-06"
+        },
+        {
+          "__date__": "2026-10-07"
+        }
+      ]
+    },
+    {
+      "fn": "entryDays",
+      "args": [
+        {
+          "start_date": "2026-10-05",
+          "end_date": "2026-10-07",
+          "template": "trip"
+        },
+        2
+      ],
+      "expected": [
+        {
+          "__date__": "2026-10-05"
+        },
+        {
+          "__date__": "2026-10-06"
+        }
+      ]
+    },
+    {
+      "fn": "entryCovers",
+      "args": [
+        {
+          "start_date": "2026-10-05",
+          "end_date": "2026-10-06",
+          "start_period": 2,
+          "end_period": 4,
+          "template": "t"
+        },
+        {
+          "__date__": "2026-10-05"
+        },
+        1
+      ],
+      "expected": false
+    },
+    {
+      "fn": "entryCovers",
+      "args": [
+        {
+          "start_date": "2026-10-05",
+          "end_date": "2026-10-06",
+          "start_period": 2,
+          "end_period": 4,
+          "template": "t"
+        },
+        {
+          "__date__": "2026-10-05"
+        },
+        3
+      ],
+      "expected": true
+    },
+    {
+      "fn": "entryCovers",
+      "args": [
+        {
+          "start_date": "2026-10-05",
+          "end_date": "2026-10-06",
+          "start_period": 2,
+          "end_period": 4,
+          "template": "t"
+        },
+        {
+          "__date__": "2026-10-06"
+        },
+        9
+      ],
+      "expected": false
+    },
+    {
+      "fn": "entryCovers",
+      "args": [
+        {
+          "start_date": "2026-10-05",
+          "end_date": "2026-10-06",
+          "start_period": 2,
+          "end_period": 4,
+          "template": "t"
+        },
+        {
+          "__date__": "2026-10-08"
+        },
+        null
+      ],
+      "expected": false
+    },
+    {
+      "fn": "entriesForSelection",
+      "args": [
+        {
+          "2026-10-05": [
+            1,
+            2
+          ],
+          "2026-10-06": [
+            1
+          ]
+        },
+        {
+          "2026-10-05": [
+            1,
+            2,
+            3
+          ],
+          "2026-10-06": [
+            1,
+            2
+          ]
+        },
+        "ill",
+        true
+      ],
+      "expected": [
+        {
+          "start_date": "2026-10-05",
+          "end_date": "2026-10-05",
+          "template": "ill",
+          "end_period": 2
+        },
+        {
+          "start_date": "2026-10-06",
+          "end_date": "2026-10-06",
+          "template": "ill",
+          "end_period": 1
+        }
+      ]
+    },
+    {
+      "fn": "loadPlannedSkips",
+      "args": [
+        {
+          "planned_skips": [
+            {
+              "date": "2026-10-05",
+              "template": "ill"
+            },
+            {
+              "start_date": "bad",
+              "template": "x"
+            },
+            "junk"
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "start_date": "2026-10-05",
+          "end_date": "2026-10-05",
+          "template": "ill"
+        }
+      ]
+    },
+    {
+      "fn": "plannedLunchDays",
+      "args": [
+        {
+          "planned_skips": [
+            {
+              "start_date": "2026-10-05",
+              "end_date": "2026-10-07",
+              "template": "trip"
+            },
+            {
+              "start_date": "2026-10-05",
+              "end_date": "2026-10-05",
+              "template": "x",
+              "cancel_lunch": false
+            }
+          ]
+        }
+      ],
+      "expected": [
+        "05.10.2026",
+        "06.10.2026",
+        "07.10.2026"
+      ]
+    }
+  ]
+}

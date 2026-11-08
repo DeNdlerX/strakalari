@@ -1,0 +1,1075 @@
+{
+  "module": "schedule",
+  "cases": [
+    {
+      "fn": "parseTimeRange",
+      "args": [
+        "3 (10:05 - 10:50)"
+      ],
+      "expected": [
+        10,
+        5,
+        10,
+        50
+      ]
+    },
+    {
+      "fn": "parseTimeRange",
+      "args": [
+        "1. 8:00 - 8:45"
+      ],
+      "expected": [
+        8,
+        0,
+        8,
+        45
+      ]
+    },
+    {
+      "fn": "parseTimeRange",
+      "args": [
+        "8:00 - 8:45"
+      ],
+      "expected": [
+        8,
+        0,
+        8,
+        45
+      ]
+    },
+    {
+      "fn": "parseTimeRange",
+      "args": [
+        ""
+      ],
+      "expected": null
+    },
+    {
+      "fn": "parseTimeRange",
+      "args": [
+        "nonsense"
+      ],
+      "expected": null
+    },
+    {
+      "fn": "lessonClock",
+      "args": [
+        {
+          "subject": "M",
+          "teacher": "T",
+          "room": "U12",
+          "time": "3 (10:05 - 10:50)"
+        },
+        "07.09.2026"
+      ],
+      "expected": [
+        605,
+        650
+      ]
+    },
+    {
+      "fn": "lessonClock",
+      "args": [
+        {
+          "subject": "M",
+          "time": "bez čísla"
+        },
+        "07.09.2026"
+      ],
+      "expected": null
+    },
+    {
+      "fn": "periodOf",
+      "args": [
+        {
+          "hourIndex": 5
+        },
+        "07.09.2026"
+      ],
+      "expected": 3
+    },
+    {
+      "fn": "periodOf",
+      "args": [
+        {
+          "subject": "M",
+          "teacher": "T",
+          "room": "U12",
+          "time": "3 (10:05 - 10:50)"
+        },
+        "07.09.2026"
+      ],
+      "expected": 3
+    },
+    {
+      "fn": "resolveDayLessons",
+      "args": [
+        [
+          {
+            "subject": "M",
+            "time": "1 (8:00 - 8:45)"
+          },
+          {
+            "subject": "F",
+            "time": "2 (8:55 - 9:40)"
+          }
+        ],
+        {
+          "__datetime__": "2026-09-07T07:30:00"
+        },
+        "07.09.2026"
+      ],
+      "expected": {
+        "phase": "before",
+        "current": null,
+        "upcoming": {
+          "subject": "M",
+          "time": "1 (8:00 - 8:45)"
+        },
+        "remaining": [
+          {
+            "subject": "M",
+            "time": "1 (8:00 - 8:45)"
+          },
+          {
+            "subject": "F",
+            "time": "2 (8:55 - 9:40)"
+          }
+        ]
+      }
+    },
+    {
+      "fn": "resolveDayLessons",
+      "args": [
+        [
+          {
+            "subject": "M",
+            "time": "1 (8:00 - 8:45)"
+          },
+          {
+            "subject": "F",
+            "time": "2 (8:55 - 9:40)"
+          }
+        ],
+        {
+          "__datetime__": "2026-09-07T08:30:00"
+        },
+        "07.09.2026"
+      ],
+      "expected": {
+        "phase": "running",
+        "current": {
+          "subject": "M",
+          "time": "1 (8:00 - 8:45)"
+        },
+        "upcoming": null,
+        "remaining": [
+          {
+            "subject": "F",
+            "time": "2 (8:55 - 9:40)"
+          }
+        ]
+      }
+    },
+    {
+      "fn": "resolveDayLessons",
+      "args": [
+        [
+          {
+            "subject": "M",
+            "time": "1 (8:00 - 8:45)"
+          },
+          {
+            "subject": "F",
+            "time": "2 (8:55 - 9:40)"
+          }
+        ],
+        {
+          "__datetime__": "2026-09-07T18:00:00"
+        },
+        "07.09.2026"
+      ],
+      "expected": {
+        "phase": "done",
+        "current": null,
+        "upcoming": null,
+        "remaining": []
+      }
+    },
+    {
+      "fn": "resolveDayLessons",
+      "args": [
+        [],
+        {
+          "__datetime__": "2026-09-07T07:30:00"
+        },
+        "07.09.2026"
+      ],
+      "expected": {
+        "phase": "empty",
+        "current": null,
+        "upcoming": null,
+        "remaining": []
+      }
+    },
+    {
+      "fn": "futureLessons",
+      "args": [
+        [
+          {
+            "subject": "M",
+            "time": "1 (8:00 - 8:45)"
+          },
+          {
+            "subject": "F",
+            "time": "2 (8:55 - 9:40)"
+          }
+        ],
+        {
+          "__datetime__": "2026-09-07T07:30:00"
+        },
+        "07.09.2026"
+      ],
+      "expected": [
+        {
+          "subject": "M",
+          "time": "1 (8:00 - 8:45)"
+        },
+        {
+          "subject": "F",
+          "time": "2 (8:55 - 9:40)"
+        }
+      ]
+    },
+    {
+      "fn": "futureLessons",
+      "args": [
+        [
+          {
+            "subject": "M",
+            "time": "1 (8:00 - 8:45)"
+          },
+          {
+            "subject": "F",
+            "time": "2 (8:55 - 9:40)"
+          }
+        ],
+        {
+          "__datetime__": "2026-09-07T18:00:00"
+        },
+        "07.09.2026"
+      ],
+      "expected": []
+    },
+    {
+      "fn": "stableWeeklyHours",
+      "args": [
+        {
+          "0|1": {
+            "weekday": 0,
+            "period": 1,
+            "subject": "M",
+            "teacher": "Novák",
+            "room": "U12",
+            "start_min": 480,
+            "support": 2
+          },
+          "0|2": {
+            "weekday": 0,
+            "period": 2,
+            "subject": "F",
+            "teacher": "Dvořák",
+            "room": "F11",
+            "start_min": 535,
+            "support": 2
+          }
+        }
+      ],
+      "expected": {
+        "M": 1,
+        "F": 1
+      }
+    },
+    {
+      "fn": "stableWeeklyHours",
+      "args": [
+        {
+          "0|1": {
+            "weekday": 0,
+            "period": 1,
+            "subject": "M",
+            "teacher": "Novák",
+            "room": "U12",
+            "start_min": 480,
+            "support": 1
+          },
+          "0|2": [
+            {
+              "weekday": 0,
+              "period": 2,
+              "subject": "AJ",
+              "teacher": "Bílá",
+              "room": "J1",
+              "start_min": 535,
+              "support": 1
+            },
+            {
+              "weekday": 0,
+              "period": 2,
+              "subject": "NJ",
+              "teacher": "Černý",
+              "room": "J2",
+              "start_min": 535,
+              "support": 1
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "M": 1,
+        "NJ": 1,
+        "AJ": 1
+      }
+    },
+    {
+      "fn": "baselineToDict",
+      "args": [
+        {
+          "0|1": {
+            "weekday": 0,
+            "period": 1,
+            "subject": "M",
+            "teacher": "Novák",
+            "room": "U12",
+            "start_min": 480,
+            "support": 2
+          },
+          "0|2": {
+            "weekday": 0,
+            "period": 2,
+            "subject": "F",
+            "teacher": "Dvořák",
+            "room": "F11",
+            "start_min": 535,
+            "support": 2
+          }
+        }
+      ],
+      "expected": {
+        "0|1": {
+          "weekday": 0,
+          "period": 1,
+          "subject": "M",
+          "teacher": "Novák",
+          "room": "U12",
+          "start_min": 480,
+          "support": 2
+        },
+        "0|2": {
+          "weekday": 0,
+          "period": 2,
+          "subject": "F",
+          "teacher": "Dvořák",
+          "room": "F11",
+          "start_min": 535,
+          "support": 2
+        }
+      }
+    },
+    {
+      "fn": "baselineFromDict",
+      "args": [
+        {
+          "0|1": {
+            "weekday": 0,
+            "period": 1,
+            "subject": "M",
+            "teacher": "Novák",
+            "room": "U12",
+            "start_min": 480,
+            "support": 2
+          },
+          "0|2": {
+            "weekday": 0,
+            "period": 2,
+            "subject": "F",
+            "teacher": "Dvořák",
+            "room": "F11",
+            "start_min": 535,
+            "support": 2
+          }
+        }
+      ],
+      "expected": {
+        "0|1": {
+          "weekday": 0,
+          "period": 1,
+          "subject": "M",
+          "teacher": "Novák",
+          "room": "U12",
+          "start_min": 480,
+          "support": 2
+        },
+        "0|2": {
+          "weekday": 0,
+          "period": 2,
+          "subject": "F",
+          "teacher": "Dvořák",
+          "room": "F11",
+          "start_min": 535,
+          "support": 2
+        }
+      }
+    },
+    {
+      "fn": "stableTemplateWeek",
+      "args": [
+        {
+          "0|1": {
+            "weekday": 0,
+            "period": 1,
+            "subject": "M",
+            "teacher": "Novák",
+            "room": "U12",
+            "start_min": 480,
+            "support": 2
+          },
+          "0|2": {
+            "weekday": 0,
+            "period": 2,
+            "subject": "F",
+            "teacher": "Dvořák",
+            "room": "F11",
+            "start_min": 535,
+            "support": 2
+          }
+        },
+        {
+          "__date__": "2026-09-07"
+        }
+      ],
+      "expected": {
+        "2026-09-07": [
+          {
+            "subject": "M",
+            "teacher": "Novák",
+            "room": "U12",
+            "time": "1 (8:00)"
+          },
+          {
+            "subject": "F",
+            "teacher": "Dvořák",
+            "room": "F11",
+            "time": "2 (8:55)"
+          }
+        ]
+      }
+    },
+    {
+      "fn": "closestVariant",
+      "args": [
+        {
+          "weekday": 0,
+          "period": 2,
+          "subject": "F",
+          "teacher": "Dvořák",
+          "room": "F11",
+          "startMin": 535,
+          "support": 2
+        },
+        {
+          "subject": "F",
+          "teacher": "Dvořák",
+          "room": "F11",
+          "time": "2 (8:55 - 9:40)"
+        },
+        "07.09.2026"
+      ],
+      "expected": {
+        "weekday": 0,
+        "period": 2,
+        "subject": "F",
+        "teacher": "Dvořák",
+        "room": "F11",
+        "startMin": 535,
+        "support": 2
+      }
+    },
+    {
+      "fn": "closestVariant",
+      "args": [
+        null,
+        {
+          "subject": "F",
+          "teacher": "Dvořák",
+          "room": "F11",
+          "time": "2 (8:55 - 9:40)"
+        },
+        "07.09.2026"
+      ],
+      "expected": null
+    },
+    {
+      "fn": "classifyLesson",
+      "args": [
+        {
+          "subject": "F",
+          "teacher": "Dvořák",
+          "room": "F11",
+          "time": "2 (8:55 - 9:40)",
+          "notice": "Písemka z minulé látky"
+        },
+        "14.09.2026",
+        {
+          "0|1": {
+            "weekday": 0,
+            "period": 1,
+            "subject": "M",
+            "teacher": "Novák",
+            "room": "U12",
+            "start_min": 480,
+            "support": 2
+          },
+          "0|2": {
+            "weekday": 0,
+            "period": 2,
+            "subject": "F",
+            "teacher": "Dvořák",
+            "room": "F11",
+            "start_min": 535,
+            "support": 2
+          }
+        }
+      ],
+      "expected": {
+        "isChange": false,
+        "changed": [],
+        "note": "Písemka z minulé látky"
+      }
+    },
+    {
+      "fn": "classifyLesson",
+      "args": [
+        {
+          "subject": "F",
+          "teacher": "Král",
+          "room": "F11",
+          "time": "2 (8:55 - 9:40)",
+          "notice": "Suplování (Král)"
+        },
+        "14.09.2026",
+        {
+          "0|1": {
+            "weekday": 0,
+            "period": 1,
+            "subject": "M",
+            "teacher": "Novák",
+            "room": "U12",
+            "start_min": 480,
+            "support": 2
+          },
+          "0|2": {
+            "weekday": 0,
+            "period": 2,
+            "subject": "F",
+            "teacher": "Dvořák",
+            "room": "F11",
+            "start_min": 535,
+            "support": 2
+          }
+        }
+      ],
+      "expected": {
+        "isChange": true,
+        "changed": [
+          "teacher"
+        ],
+        "note": "Suplování (Král)"
+      }
+    },
+    {
+      "fn": "classifyLesson",
+      "args": [
+        {
+          "subject": "M",
+          "teacher": "Novák",
+          "room": "U12",
+          "time": "1 (8:00 - 8:45)",
+          "status": "cancelled"
+        },
+        "07.09.2026",
+        {
+          "0|1": {
+            "weekday": 0,
+            "period": 1,
+            "subject": "M",
+            "teacher": "Novák",
+            "room": "U12",
+            "start_min": 480,
+            "support": 2
+          },
+          "0|2": {
+            "weekday": 0,
+            "period": 2,
+            "subject": "F",
+            "teacher": "Dvořák",
+            "room": "F11",
+            "start_min": 535,
+            "support": 2
+          }
+        }
+      ],
+      "expected": {
+        "isChange": true,
+        "changed": [
+          "status"
+        ],
+        "note": ""
+      }
+    },
+    {
+      "fn": "classifyLesson",
+      "args": [
+        {
+          "subject": "X",
+          "teacher": "T",
+          "room": "R",
+          "time": "7 (14:35 - 15:20)"
+        },
+        "07.09.2026",
+        {
+          "0|1": {
+            "weekday": 0,
+            "period": 1,
+            "subject": "M",
+            "teacher": "Novák",
+            "room": "U12",
+            "start_min": 480,
+            "support": 2
+          },
+          "0|2": {
+            "weekday": 0,
+            "period": 2,
+            "subject": "F",
+            "teacher": "Dvořák",
+            "room": "F11",
+            "start_min": 535,
+            "support": 2
+          }
+        },
+        true
+      ],
+      "expected": {
+        "isChange": true,
+        "changed": [
+          "added"
+        ],
+        "note": ""
+      }
+    },
+    {
+      "fn": "iterChanges",
+      "args": [
+        {
+          "07.09.2026": [
+            {
+              "subject": "M",
+              "teacher": "Novák",
+              "room": "U12",
+              "time": "1 (8:00 - 8:45)"
+            },
+            {
+              "subject": "F",
+              "teacher": "Dvořák",
+              "room": "F11",
+              "time": "2 (8:55 - 9:40)"
+            }
+          ],
+          "14.09.2026": [
+            {
+              "subject": "M",
+              "teacher": "Novák",
+              "room": "U12",
+              "time": "1 (8:00 - 8:45)"
+            },
+            {
+              "subject": "F",
+              "teacher": "Král",
+              "room": "F11",
+              "time": "2 (8:55 - 9:40)",
+              "notice": "Suplování (Král)"
+            }
+          ]
+        },
+        {
+          "0|1": {
+            "weekday": 0,
+            "period": 1,
+            "subject": "M",
+            "teacher": "Novák",
+            "room": "U12",
+            "start_min": 480,
+            "support": 2
+          },
+          "0|2": {
+            "weekday": 0,
+            "period": 2,
+            "subject": "F",
+            "teacher": "Dvořák",
+            "room": "F11",
+            "start_min": 535,
+            "support": 2
+          }
+        }
+      ],
+      "expected": [
+        {
+          "day_key": "14.09.2026",
+          "day": {
+            "__date__": "2026-09-14"
+          },
+          "lesson": {
+            "subject": "F",
+            "teacher": "Král",
+            "room": "F11",
+            "time": "2 (8:55 - 9:40)",
+            "notice": "Suplování (Král)"
+          },
+          "diff": {
+            "isChange": true,
+            "changed": [
+              "teacher"
+            ],
+            "note": "Suplování (Král)"
+          }
+        }
+      ]
+    },
+    {
+      "fn": "iterNotes",
+      "args": [
+        {
+          "07.09.2026": [
+            {
+              "subject": "M",
+              "teacher": "Novák",
+              "room": "U12",
+              "time": "1 (8:00 - 8:45)"
+            },
+            {
+              "subject": "F",
+              "teacher": "Dvořák",
+              "room": "F11",
+              "time": "2 (8:55 - 9:40)"
+            }
+          ],
+          "14.09.2026": [
+            {
+              "subject": "M",
+              "teacher": "Novák",
+              "room": "U12",
+              "time": "1 (8:00 - 8:45)"
+            },
+            {
+              "subject": "F",
+              "teacher": "Král",
+              "room": "F11",
+              "time": "2 (8:55 - 9:40)",
+              "notice": "Suplování (Král)"
+            }
+          ]
+        },
+        {
+          "0|1": {
+            "weekday": 0,
+            "period": 1,
+            "subject": "M",
+            "teacher": "Novák",
+            "room": "U12",
+            "start_min": 480,
+            "support": 2
+          },
+          "0|2": {
+            "weekday": 0,
+            "period": 2,
+            "subject": "F",
+            "teacher": "Dvořák",
+            "room": "F11",
+            "start_min": 535,
+            "support": 2
+          }
+        }
+      ],
+      "expected": []
+    },
+    {
+      "fn": "iterChanges",
+      "args": [
+        {
+          "07.09.2026": [
+            {
+              "subject": "M",
+              "teacher": "Novák",
+              "room": "U12",
+              "time": "1 (8:00 - 8:45)"
+            },
+            {
+              "subject": "F",
+              "teacher": "Dvořák",
+              "room": "F11",
+              "time": "2 (8:55 - 9:40)"
+            }
+          ],
+          "14.09.2026": [
+            {
+              "subject": "M",
+              "teacher": "Novák",
+              "room": "U12",
+              "time": "1 (8:00 - 8:45)"
+            },
+            {
+              "subject": "F",
+              "teacher": "Král",
+              "room": "F11",
+              "time": "2 (8:55 - 9:40)",
+              "notice": "Suplování (Král)"
+            }
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "day_key": "14.09.2026",
+          "day": {
+            "__date__": "2026-09-14"
+          },
+          "lesson": {
+            "subject": "F",
+            "teacher": "Král",
+            "room": "F11",
+            "time": "2 (8:55 - 9:40)",
+            "notice": "Suplování (Král)"
+          },
+          "diff": {
+            "isChange": true,
+            "changed": [
+              "notice"
+            ],
+            "note": "Suplování (Král)"
+          }
+        }
+      ]
+    },
+    {
+      "fn": "backfillStableFacts",
+      "args": [
+        {
+          "07.09.2026": [
+            {
+              "subject": "M",
+              "teacher": "Novák",
+              "room": "U12",
+              "time": "1 (8:00 - 8:45)"
+            },
+            {
+              "subject": "F",
+              "teacher": "Dvořák",
+              "room": "F11",
+              "time": "2 (8:55 - 9:40)"
+            },
+            {
+              "type": "removed",
+              "subject": "?",
+              "teacher": "",
+              "room": "",
+              "time": "2 (8:55 - 9:40)",
+              "removedinfo": "Zrušeno"
+            }
+          ],
+          "14.09.2026": [
+            {
+              "subject": "M",
+              "teacher": "Novák",
+              "room": "U12",
+              "time": "1 (8:00 - 8:45)"
+            },
+            {
+              "subject": "F",
+              "teacher": "Dvořák",
+              "room": "F11",
+              "time": "2 (8:55 - 9:40)"
+            }
+          ]
+        },
+        {
+          "0|1": {
+            "weekday": 0,
+            "period": 1,
+            "subject": "M",
+            "teacher": "Novák",
+            "room": "U12",
+            "start_min": 480,
+            "support": 1
+          },
+          "0|2": {
+            "weekday": 0,
+            "period": 2,
+            "subject": "F",
+            "teacher": "Dvořák",
+            "room": "F11",
+            "start_min": 535,
+            "support": 1
+          }
+        }
+      ],
+      "expected": [
+        1,
+        {
+          "07.09.2026": [
+            {
+              "subject": "M",
+              "teacher": "Novák",
+              "room": "U12",
+              "time": "1 (8:00 - 8:45)"
+            },
+            {
+              "subject": "F",
+              "teacher": "Dvořák",
+              "room": "F11",
+              "time": "2 (8:55 - 9:40)"
+            },
+            {
+              "type": "removed",
+              "subject": "F",
+              "teacher": "Dvořák",
+              "room": "F11",
+              "time": "2 (8:55 - 9:40)",
+              "removedinfo": "Zrušeno",
+              "period": 2
+            }
+          ],
+          "14.09.2026": [
+            {
+              "subject": "M",
+              "teacher": "Novák",
+              "room": "U12",
+              "time": "1 (8:00 - 8:45)"
+            },
+            {
+              "subject": "F",
+              "teacher": "Dvořák",
+              "room": "F11",
+              "time": "2 (8:55 - 9:40)"
+            }
+          ]
+        },
+        {
+          "0|1": {
+            "weekday": 0,
+            "period": 1,
+            "subject": "M",
+            "teacher": "Novák",
+            "room": "U12",
+            "start_min": 480,
+            "support": 1
+          },
+          "0|2": {
+            "weekday": 0,
+            "period": 2,
+            "subject": "F",
+            "teacher": "Dvořák",
+            "room": "F11",
+            "start_min": 535,
+            "support": 1
+          }
+        }
+      ]
+    },
+    {
+      "fn": "applySubstitutionFeed",
+      "args": [
+        {
+          "07.09.2026": [
+            {
+              "subject": "M",
+              "teacher": "Novák",
+              "room": "U12",
+              "time": "1 (8:00 - 8:45)"
+            },
+            {
+              "subject": "F",
+              "teacher": "Dvořák",
+              "room": "F11",
+              "time": "2 (8:55 - 9:40)"
+            }
+          ],
+          "14.09.2026": [
+            {
+              "subject": "M",
+              "teacher": "Novák",
+              "room": "U12",
+              "time": "1 (8:00 - 8:45)"
+            },
+            {
+              "subject": "F",
+              "teacher": "Dvořák",
+              "room": "F11",
+              "time": "2 (8:55 - 9:40)"
+            }
+          ]
+        },
+        [
+          {
+            "day": "14.09.2026",
+            "period": 2,
+            "badge": "S",
+            "description": "Suplování (Král)"
+          },
+          {
+            "day": "15.09.2026",
+            "period": 1,
+            "badge": "O",
+            "description": "Odpadá",
+            "subject_short": "M",
+            "time": "1 (8:00 - 8:45)"
+          }
+        ]
+      ],
+      "expected": [
+        1,
+        {
+          "07.09.2026": [
+            {
+              "subject": "M",
+              "teacher": "Novák",
+              "room": "U12",
+              "time": "1 (8:00 - 8:45)"
+            },
+            {
+              "subject": "F",
+              "teacher": "Dvořák",
+              "room": "F11",
+              "time": "2 (8:55 - 9:40)"
+            }
+          ],
+          "14.09.2026": [
+            {
+              "subject": "M",
+              "teacher": "Novák",
+              "room": "U12",
+              "time": "1 (8:00 - 8:45)"
+            },
+            {
+              "subject": "F",
+              "teacher": "Dvořák",
+              "room": "F11",
+              "time": "2 (8:55 - 9:40)",
+              "infoChangeCode": "Substitution",
+              "notice": "Suplování (Král)"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

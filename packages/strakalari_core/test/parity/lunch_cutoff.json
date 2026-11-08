@@ -1,0 +1,328 @@
+{
+  "module": "lunch_cutoff",
+  "cases": [
+    {
+      "fn": "parseCutoffTime",
+      "args": [
+        "12:00"
+      ],
+      "expected": [
+        12,
+        0
+      ]
+    },
+    {
+      "fn": "parseCutoffTime",
+      "args": [
+        "9.30"
+      ],
+      "expected": [
+        9,
+        30
+      ]
+    },
+    {
+      "fn": "parseCutoffTime",
+      "args": [
+        "9:5"
+      ],
+      "expected": [
+        9,
+        5
+      ]
+    },
+    {
+      "fn": "parseCutoffTime",
+      "args": [
+        "25:00"
+      ],
+      "expected": [
+        12,
+        0
+      ]
+    },
+    {
+      "fn": "parseCutoffTime",
+      "args": [
+        ""
+      ],
+      "expected": [
+        12,
+        0
+      ]
+    },
+    {
+      "fn": "parseCutoffTime",
+      "args": [
+        null
+      ],
+      "expected": [
+        12,
+        0
+      ]
+    },
+    {
+      "fn": "parseCutoffTime",
+      "args": [
+        "abc"
+      ],
+      "expected": [
+        12,
+        0
+      ]
+    },
+    {
+      "fn": "parseCutoffTime",
+      "args": [
+        "08:00"
+      ],
+      "expected": [
+        8,
+        0
+      ]
+    },
+    {
+      "fn": "isValidCutoffTime",
+      "args": [
+        "12:00"
+      ],
+      "expected": true
+    },
+    {
+      "fn": "isValidCutoffTime",
+      "args": [
+        "9.30"
+      ],
+      "expected": true
+    },
+    {
+      "fn": "isValidCutoffTime",
+      "args": [
+        ""
+      ],
+      "expected": true
+    },
+    {
+      "fn": "isValidCutoffTime",
+      "args": [
+        null
+      ],
+      "expected": true
+    },
+    {
+      "fn": "isValidCutoffTime",
+      "args": [
+        "24:00"
+      ],
+      "expected": false
+    },
+    {
+      "fn": "isValidCutoffTime",
+      "args": [
+        "9:5"
+      ],
+      "expected": false
+    },
+    {
+      "fn": "isValidCutoffTime",
+      "args": [
+        "12:60"
+      ],
+      "expected": false
+    },
+    {
+      "fn": "isValidCutoffTime",
+      "args": [
+        "ab:cd"
+      ],
+      "expected": false
+    },
+    {
+      "fn": "normalizeCutoffTime",
+      "args": [
+        "9:5"
+      ],
+      "expected": "09:05"
+    },
+    {
+      "fn": "normalizeCutoffTime",
+      "args": [
+        "garbage"
+      ],
+      "expected": "12:00"
+    },
+    {
+      "fn": "normalizeCutoffTime",
+      "args": [
+        ""
+      ],
+      "expected": "12:00"
+    },
+    {
+      "fn": "normalizeCutoffTime",
+      "args": [
+        null
+      ],
+      "expected": "12:00"
+    },
+    {
+      "fn": "normalizeCutoffTime",
+      "args": [
+        "23:59"
+      ],
+      "expected": "23:59"
+    },
+    {
+      "fn": "isBusinessDay",
+      "args": [
+        {
+          "__date__": "2026-09-07"
+        },
+        [
+          {
+            "__date__": "2026-09-07"
+          }
+        ]
+      ],
+      "expected": false
+    },
+    {
+      "fn": "isBusinessDay",
+      "args": [
+        {
+          "__date__": "2026-09-12"
+        },
+        [
+          {
+            "__date__": "2026-09-07"
+          }
+        ]
+      ],
+      "expected": false
+    },
+    {
+      "fn": "isBusinessDay",
+      "args": [
+        {
+          "__date__": "2026-09-13"
+        },
+        [
+          {
+            "__date__": "2026-09-07"
+          }
+        ]
+      ],
+      "expected": false
+    },
+    {
+      "fn": "isBusinessDay",
+      "args": [
+        {
+          "__date__": "2026-09-07"
+        }
+      ],
+      "expected": true
+    },
+    {
+      "fn": "previousBusinessDay",
+      "args": [
+        {
+          "__date__": "2026-09-07"
+        },
+        [
+          {
+            "__date__": "2026-09-07"
+          }
+        ]
+      ],
+      "expected": {
+        "__date__": "2026-09-04"
+      }
+    },
+    {
+      "fn": "previousBusinessDay",
+      "args": [
+        {
+          "__date__": "2026-09-08"
+        }
+      ],
+      "expected": {
+        "__date__": "2026-09-07"
+      }
+    },
+    {
+      "fn": "lunchOrderDeadline",
+      "args": [
+        {
+          "__date__": "2026-10-07"
+        },
+        "12:00",
+        [
+          {
+            "__date__": "2026-09-07"
+          }
+        ]
+      ],
+      "expected": "2026-10-06T12:00"
+    },
+    {
+      "fn": "lunchOrderDeadline",
+      "args": [
+        {
+          "__date__": "2026-09-08"
+        },
+        "09:30"
+      ],
+      "expected": "2026-09-07T09:30"
+    },
+    {
+      "fn": "isLunchOrderOpen",
+      "args": [
+        {
+          "__date__": "2026-10-07"
+        },
+        {
+          "__datetime__": "2026-10-05T11:00:00"
+        },
+        "12:00",
+        [
+          {
+            "__date__": "2026-09-07"
+          }
+        ]
+      ],
+      "expected": true
+    },
+    {
+      "fn": "isLunchOrderOpen",
+      "args": [
+        {
+          "__date__": "2026-10-07"
+        },
+        {
+          "__datetime__": "2026-10-06T13:00:00"
+        },
+        "12:00",
+        [
+          {
+            "__date__": "2026-09-07"
+          }
+        ]
+      ],
+      "expected": false
+    },
+    {
+      "fn": "isLunchOrderOpen",
+      "args": [
+        {
+          "__date__": "2026-09-08"
+        },
+        {
+          "__date__": "2026-09-04"
+        },
+        "09:30"
+      ],
+      "expected": true
+    }
+  ]
+}

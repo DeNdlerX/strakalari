@@ -1,0 +1,342 @@
+{
+  "module": "status_notification",
+  "cases": [
+    {
+      "fn": "selectedItems",
+      "args": [
+        {
+          "background_notification_items": [
+            "lunch",
+            "bogus",
+            "excuses"
+          ]
+        }
+      ],
+      "expected": [
+        "lunch",
+        "excuses"
+      ]
+    },
+    {
+      "fn": "selectedItems",
+      "args": [
+        {}
+      ],
+      "expected": [
+        "next_lesson",
+        "lunch",
+        "excuses",
+        "wakeup"
+      ]
+    },
+    {
+      "fn": "selectedItems",
+      "args": [
+        {
+          "background_notification_items": "nope"
+        }
+      ],
+      "expected": [
+        "next_lesson",
+        "lunch",
+        "excuses",
+        "wakeup"
+      ]
+    },
+    {
+      "fn": "selectedItems",
+      "args": [
+        null
+      ],
+      "expected": [
+        "next_lesson",
+        "lunch",
+        "excuses",
+        "wakeup"
+      ]
+    },
+    {
+      "fn": "withItem",
+      "args": [
+        {
+          "background_notification_items": [
+            "lunch",
+            "excuses"
+          ]
+        },
+        "wakeup",
+        true
+      ],
+      "expected": [
+        "lunch",
+        "excuses",
+        "wakeup"
+      ]
+    },
+    {
+      "fn": "withItem",
+      "args": [
+        {
+          "background_notification_items": [
+            "lunch",
+            "excuses"
+          ]
+        },
+        "lunch",
+        false
+      ],
+      "expected": [
+        "excuses"
+      ]
+    },
+    {
+      "fn": "mealText",
+      "args": [
+        ""
+      ],
+      "expected": ""
+    },
+    {
+      "fn": "mealText",
+      "args": [
+        "Guláš"
+      ],
+      "expected": "Guláš"
+    },
+    {
+      "fn": "mealText",
+      "args": [
+        "oběd 1 - Polévka,Řízek(01, 07 )"
+      ],
+      "expected": "Oběd 1 - Polévka, Řízek"
+    },
+    {
+      "fn": "mealText",
+      "args": [
+        null
+      ],
+      "expected": ""
+    },
+    {
+      "fn": "mealText",
+      "args": [
+        0
+      ],
+      "expected": ""
+    },
+    {
+      "fn": "lunchOverAt",
+      "args": [
+        {
+          "timetable": {
+            "09.11.2026": [
+              {
+                "subject": "M",
+                "time": "1 (8:00 - 8:45)"
+              },
+              {
+                "subject": "M",
+                "time": "2 (8:55 - 9:40)"
+              },
+              {
+                "subject": "F",
+                "time": "3 (10:05 - 10:50)"
+              },
+              {
+                "subject": "F",
+                "time": "4 (10:55 - 11:40)"
+              },
+              {
+                "subject": "X",
+                "time": "6 (12:45 - 13:30)"
+              }
+            ],
+            "10.11.2026": [
+              {
+                "subject": "M",
+                "time": "1 (8:00 - 8:45)"
+              },
+              {
+                "subject": "M",
+                "time": "2 (8:55 - 9:40)"
+              },
+              {
+                "subject": "F",
+                "time": "3 (10:05 - 10:50)"
+              },
+              {
+                "subject": "F",
+                "time": "4 (10:55 - 11:40)"
+              },
+              {
+                "subject": "X",
+                "time": "6 (12:45 - 13:30)"
+              }
+            ]
+          },
+          "freeDays": []
+        },
+        {
+          "__date__": "2026-11-09"
+        }
+      ],
+      "expected": 765
+    },
+    {
+      "fn": "buildStatus",
+      "args": [
+        {
+          "timetable": {
+            "09.11.2026": [
+              {
+                "subject": "M",
+                "time": "1 (8:00 - 8:45)"
+              },
+              {
+                "subject": "M",
+                "time": "2 (8:55 - 9:40)"
+              },
+              {
+                "subject": "F",
+                "time": "3 (10:05 - 10:50)"
+              },
+              {
+                "subject": "F",
+                "time": "4 (10:55 - 11:40)"
+              },
+              {
+                "subject": "X",
+                "time": "6 (12:45 - 13:30)"
+              }
+            ],
+            "10.11.2026": [
+              {
+                "subject": "M",
+                "time": "1 (8:00 - 8:45)"
+              },
+              {
+                "subject": "M",
+                "time": "2 (8:55 - 9:40)"
+              },
+              {
+                "subject": "F",
+                "time": "3 (10:05 - 10:50)"
+              },
+              {
+                "subject": "F",
+                "time": "4 (10:55 - 11:40)"
+              },
+              {
+                "subject": "X",
+                "time": "6 (12:45 - 13:30)"
+              }
+            ]
+          },
+          "food": {
+            "09.11.2026": {
+              "table0&1&0": "Guláš"
+            }
+          },
+          "webOrders": {
+            "09.11.2026": "table0&1&0"
+          },
+          "config": {
+            "background_notification_items": [
+              "next_lesson",
+              "lunch",
+              "lunch_orders",
+              "excuses"
+            ],
+            "use_strava": true
+          },
+          "freeDays": [],
+          "pendingExcuses": 2,
+          "lastUpdated": {
+            "__datetime__": "2026-11-09T06:40:00"
+          }
+        },
+        {
+          "__datetime__": "2026-11-09T07:00:00"
+        },
+        {
+          "lang": "cs"
+        }
+      ],
+      "expected": {
+        "title": "Další hodina",
+        "text": "1. M · 8:00\nOběd dnes: Guláš\nOmluvenky k odeslání: 2",
+        "sub": "",
+        "rows": [
+          {
+            "kind": "next_lesson",
+            "label": "Další hodina",
+            "value": "1. M · 8:00",
+            "short": "1. M · 8:00"
+          },
+          {
+            "kind": "lunch",
+            "label": "Oběd dnes",
+            "value": "Guláš",
+            "short": "Guláš"
+          },
+          {
+            "kind": "excuses",
+            "label": "Omluvenky k odeslání",
+            "value": "2",
+            "short": ""
+          }
+        ]
+      }
+    },
+    {
+      "fn": "buildStatus",
+      "args": [
+        {
+          "config": {
+            "background_notification_items": []
+          },
+          "freeDays": []
+        },
+        {
+          "__datetime__": "2026-11-09T07:00:00"
+        },
+        {
+          "lang": "en"
+        }
+      ],
+      "expected": {
+        "title": "Strakaláři",
+        "text": "",
+        "sub": "",
+        "rows": []
+      }
+    },
+    {
+      "fn": "buildStatus",
+      "args": [
+        {
+          "config": {
+            "background_notification_items": []
+          },
+          "freeDays": []
+        },
+        {
+          "__datetime__": "2026-11-09T07:00:00"
+        },
+        {
+          "lang": "cs",
+          "fallback": [
+            "Běží",
+            "Každých 30 min"
+          ]
+        }
+      ],
+      "expected": {
+        "title": "Běží",
+        "text": "Každých 30 min",
+        "sub": "",
+        "rows": []
+      }
+    }
+  ]
+}

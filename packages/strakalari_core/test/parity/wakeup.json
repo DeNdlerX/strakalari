@@ -1,0 +1,697 @@
+{
+  "module": "wakeup",
+  "cases": [
+    {
+      "fn": "clampWakeupMinutes",
+      "args": [
+        null
+      ],
+      "expected": 60
+    },
+    {
+      "fn": "clampWakeupMinutes",
+      "args": [
+        30
+      ],
+      "expected": 30
+    },
+    {
+      "fn": "clampWakeupMinutes",
+      "args": [
+        "45"
+      ],
+      "expected": 45
+    },
+    {
+      "fn": "clampWakeupMinutes",
+      "args": [
+        "abc"
+      ],
+      "expected": 60
+    },
+    {
+      "fn": "clampWakeupMinutes",
+      "args": [
+        0
+      ],
+      "expected": 1
+    },
+    {
+      "fn": "clampWakeupMinutes",
+      "args": [
+        9999
+      ],
+      "expected": 720
+    },
+    {
+      "fn": "clampWakeupMinutes",
+      "args": [
+        "60,5"
+      ],
+      "expected": 60
+    },
+    {
+      "fn": "skippedDays",
+      "args": [
+        {
+          "wakeup_skip_dates": [
+            "2026-11-10",
+            "garbage",
+            "2026-10-01"
+          ]
+        }
+      ],
+      "expected": [
+        "2026-10-01",
+        "2026-11-10"
+      ]
+    },
+    {
+      "fn": "withSkippedDay",
+      "args": [
+        {
+          "wakeup_skip_dates": [
+            "2026-11-10",
+            "garbage",
+            "2026-10-01"
+          ]
+        },
+        {
+          "__date__": "2026-11-11"
+        },
+        true,
+        {
+          "__date__": "2026-11-01"
+        }
+      ],
+      "expected": [
+        "2026-11-10",
+        "2026-11-11"
+      ]
+    },
+    {
+      "fn": "withSkippedDay",
+      "args": [
+        {
+          "wakeup_skip_dates": [
+            "2026-11-10",
+            "garbage",
+            "2026-10-01"
+          ]
+        },
+        {
+          "__date__": "2026-10-01"
+        },
+        false,
+        {
+          "__date__": "2026-11-01"
+        }
+      ],
+      "expected": [
+        "2026-11-10"
+      ]
+    },
+    {
+      "fn": "periodOf",
+      "args": [
+        {
+          "subject": "M",
+          "time": "1 (8:00 - 8:45)"
+        },
+        "09.11.2026"
+      ],
+      "expected": 1
+    },
+    {
+      "fn": "isCancelledLesson",
+      "args": [
+        {
+          "subject": "M",
+          "time": "1 (8:00 - 8:45)",
+          "status": "cancelled"
+        },
+        "09.11.2026"
+      ],
+      "expected": true
+    },
+    {
+      "fn": "isCancelledLesson",
+      "args": [
+        {
+          "subject": "M",
+          "time": "1 (8:00 - 8:45)"
+        },
+        "09.11.2026"
+      ],
+      "expected": false
+    },
+    {
+      "fn": "indexDays",
+      "args": [
+        {
+          "09.11.2026": [
+            {
+              "subject": "M",
+              "time": "1 (8:00 - 8:45)"
+            },
+            {
+              "subject": "F",
+              "time": "2 (8:55 - 9:40)"
+            }
+          ],
+          "10.11.2026": []
+        }
+      ],
+      "expected": {
+        "2026-11-09": [
+          {
+            "subject": "M",
+            "time": "1 (8:00 - 8:45)"
+          },
+          {
+            "subject": "F",
+            "time": "2 (8:55 - 9:40)"
+          }
+        ],
+        "2026-11-10": []
+      }
+    },
+    {
+      "fn": "plannedOff",
+      "args": [
+        {
+          "__date__": "2026-11-09"
+        },
+        1,
+        [
+          {
+            "start_date": "2026-11-09",
+            "end_date": "2026-11-09",
+            "template": "t"
+          }
+        ]
+      ],
+      "expected": true
+    },
+    {
+      "fn": "plannedOff",
+      "args": [
+        {
+          "__date__": "2026-11-10"
+        },
+        1,
+        [
+          {
+            "start_date": "2026-11-09",
+            "end_date": "2026-11-09",
+            "template": "t"
+          }
+        ]
+      ],
+      "expected": false
+    },
+    {
+      "fn": "clockAppWeekday",
+      "args": [
+        {
+          "day": {
+            "__date__": "2026-11-09"
+          },
+          "alarmDt": {
+            "__datetime__": "2026-11-09T07:30:00"
+          },
+          "lessonStartDt": {
+            "__datetime__": "2026-11-09T08:00:00"
+          },
+          "period": 1,
+          "subject": "M",
+          "room": "U12",
+          "minutesBefore": 30
+        },
+        {
+          "__datetime__": "2026-11-08T12:00:00"
+        }
+      ],
+      "expected": null
+    },
+    {
+      "fn": "alarmQueue",
+      "args": [
+        [
+          {
+            "day": {
+              "__date__": "2026-11-09"
+            },
+            "alarmDt": {
+              "__datetime__": "2026-11-09T07:30:00"
+            },
+            "lessonStartDt": {
+              "__datetime__": "2026-11-09T08:00:00"
+            },
+            "period": 1,
+            "subject": "M",
+            "room": "U12",
+            "minutesBefore": 30
+          },
+          {
+            "day": {
+              "__date__": "2026-11-10"
+            },
+            "alarmDt": {
+              "__datetime__": "2026-11-10T09:00:00"
+            },
+            "lessonStartDt": {
+              "__datetime__": "2026-11-10T09:30:00"
+            },
+            "period": null,
+            "subject": "",
+            "room": "",
+            "minutesBefore": 45
+          }
+        ],
+        "cs"
+      ],
+      "expected": [
+        {
+          "at": 1794205800000,
+          "lesson": 1794207600000,
+          "title": "Budík · M v 08:00",
+          "text": "1. hodina · učebna U12"
+        },
+        {
+          "at": 1794297600000,
+          "lesson": 1794299400000,
+          "title": "Budík ·  v 09:30",
+          "text": "První hodina"
+        }
+      ]
+    },
+    {
+      "fn": "alarmQueue",
+      "args": [
+        [
+          {
+            "day": {
+              "__date__": "2026-11-09"
+            },
+            "alarmDt": {
+              "__datetime__": "2026-11-09T07:30:00"
+            },
+            "lessonStartDt": {
+              "__datetime__": "2026-11-09T08:00:00"
+            },
+            "period": 1,
+            "subject": "M",
+            "room": "U12",
+            "minutesBefore": 30
+          }
+        ],
+        "en"
+      ],
+      "expected": [
+        {
+          "at": 1794205800000,
+          "lesson": 1794207600000,
+          "title": "Wake-up · M at 08:00",
+          "text": "Period 1 · room U12"
+        }
+      ]
+    },
+    {
+      "fn": "upcomingWakeupAlarms",
+      "args": [
+        {
+          "timetable": {
+            "09.11.2026": [
+              {
+                "subject": "M",
+                "time": "1 (8:00 - 8:45)"
+              },
+              {
+                "subject": "F",
+                "time": "2 (8:55 - 9:40)"
+              }
+            ],
+            "10.11.2026": []
+          },
+          "config": {
+            "wakeup_enabled": true,
+            "wakeup_minutes_before": 30
+          },
+          "now": {
+            "__datetime__": "2026-11-08T20:00:00"
+          }
+        }
+      ],
+      "expected": [
+        {
+          "day": {
+            "__date__": "2026-11-09"
+          },
+          "alarmDt": {
+            "__datetime__": "2026-11-09T07:30:00"
+          },
+          "lessonStartDt": {
+            "__datetime__": "2026-11-09T08:00:00"
+          },
+          "period": 1,
+          "subject": "M",
+          "room": "",
+          "minutesBefore": 30
+        }
+      ]
+    },
+    {
+      "fn": "upcomingSkippedDays",
+      "args": [
+        {
+          "timetable": {
+            "09.11.2026": [
+              {
+                "subject": "M",
+                "time": "1 (8:00 - 8:45)"
+              },
+              {
+                "subject": "F",
+                "time": "2 (8:55 - 9:40)"
+              }
+            ],
+            "10.11.2026": []
+          },
+          "config": {
+            "wakeup_enabled": true,
+            "wakeup_minutes_before": 30,
+            "wakeup_skip_dates": [
+              "2026-11-09"
+            ]
+          },
+          "now": {
+            "__datetime__": "2026-11-08T20:00:00"
+          }
+        }
+      ],
+      "expected": [
+        [
+          "2026-11-09",
+          {
+            "day": {
+              "__date__": "2026-11-09"
+            },
+            "alarmDt": {
+              "__datetime__": "2026-11-09T07:30:00"
+            },
+            "lessonStartDt": {
+              "__datetime__": "2026-11-09T08:00:00"
+            },
+            "period": 1,
+            "subject": "M",
+            "room": "",
+            "minutesBefore": 30
+          }
+        ]
+      ]
+    },
+    {
+      "fn": "nextWakeupAlarm",
+      "args": [
+        {
+          "timetable": {
+            "09.11.2026": [
+              {
+                "subject": "M",
+                "time": "1 (8:00 - 8:45)"
+              },
+              {
+                "subject": "F",
+                "time": "2 (8:55 - 9:40)"
+              }
+            ],
+            "10.11.2026": []
+          },
+          "config": {
+            "wakeup_enabled": true,
+            "wakeup_minutes_before": 30
+          },
+          "now": {
+            "__datetime__": "2026-11-08T20:00:00"
+          }
+        }
+      ],
+      "expected": {
+        "day": {
+          "__date__": "2026-11-09"
+        },
+        "alarmDt": {
+          "__datetime__": "2026-11-09T07:30:00"
+        },
+        "lessonStartDt": {
+          "__datetime__": "2026-11-09T08:00:00"
+        },
+        "period": 1,
+        "subject": "M",
+        "room": "",
+        "minutesBefore": 30
+      }
+    },
+    {
+      "fn": "buildWidgetDayRows",
+      "args": [
+        [
+          {
+            "subject": "M",
+            "time": "1 (8:00 - 8:45)"
+          },
+          {
+            "subject": "F",
+            "time": "2 (8:55 - 9:40)"
+          }
+        ],
+        {
+          "__date__": "2026-11-09"
+        },
+        {
+          "lang": "cs"
+        }
+      ],
+      "expected": [
+        {
+          "kind": "lesson",
+          "period": "1.",
+          "time": "8:00 - 8:45",
+          "subject": "M",
+          "meta": "",
+          "badge": "",
+          "status": "normal",
+          "start": 480,
+          "end": 525
+        },
+        {
+          "kind": "lesson",
+          "period": "2.",
+          "time": "8:55 - 9:40",
+          "subject": "F",
+          "meta": "",
+          "badge": "",
+          "status": "normal",
+          "start": 535,
+          "end": 580
+        }
+      ]
+    },
+    {
+      "fn": "buildWidgetPayload",
+      "args": [
+        {
+          "timetable": {
+            "09.11.2026": [
+              {
+                "subject": "M",
+                "time": "1 (8:00 - 8:45)"
+              },
+              {
+                "subject": "F",
+                "time": "2 (8:55 - 9:40)"
+              }
+            ],
+            "10.11.2026": []
+          },
+          "config": {
+            "wakeup_enabled": true,
+            "wakeup_minutes_before": 30
+          },
+          "now": {
+            "__datetime__": "2026-11-08T20:00:00"
+          }
+        },
+        {
+          "lang": "cs"
+        }
+      ],
+      "expected": {
+        "today": "Dnes",
+        "tomorrow": "Zítra",
+        "empty": "Žádné vyučování",
+        "days": [
+          {
+            "iso": "2026-11-02",
+            "label": "Pondělí 2. 11.",
+            "subtitle": "Žádné vyučování",
+            "free": false,
+            "taught": 0,
+            "end": -1,
+            "rows": []
+          },
+          {
+            "iso": "2026-11-03",
+            "label": "Úterý 3. 11.",
+            "subtitle": "Žádné vyučování",
+            "free": false,
+            "taught": 0,
+            "end": -1,
+            "rows": []
+          },
+          {
+            "iso": "2026-11-04",
+            "label": "Středa 4. 11.",
+            "subtitle": "Žádné vyučování",
+            "free": false,
+            "taught": 0,
+            "end": -1,
+            "rows": []
+          },
+          {
+            "iso": "2026-11-05",
+            "label": "Čtvrtek 5. 11.",
+            "subtitle": "Žádné vyučování",
+            "free": false,
+            "taught": 0,
+            "end": -1,
+            "rows": []
+          },
+          {
+            "iso": "2026-11-06",
+            "label": "Pátek 6. 11.",
+            "subtitle": "Žádné vyučování",
+            "free": false,
+            "taught": 0,
+            "end": -1,
+            "rows": []
+          },
+          {
+            "iso": "2026-11-09",
+            "label": "Pondělí 9. 11.",
+            "subtitle": "2 hodiny",
+            "free": false,
+            "taught": 2,
+            "end": 580,
+            "rows": [
+              {
+                "kind": "lesson",
+                "period": "1.",
+                "time": "8:00 - 8:45",
+                "subject": "M",
+                "meta": "",
+                "badge": "",
+                "status": "normal",
+                "start": 480,
+                "end": 525
+              },
+              {
+                "kind": "lesson",
+                "period": "2.",
+                "time": "8:55 - 9:40",
+                "subject": "F",
+                "meta": "",
+                "badge": "",
+                "status": "normal",
+                "start": 535,
+                "end": 580
+              }
+            ]
+          },
+          {
+            "iso": "2026-11-10",
+            "label": "Úterý 10. 11.",
+            "subtitle": "Žádné vyučování",
+            "free": false,
+            "taught": 0,
+            "end": -1,
+            "rows": []
+          },
+          {
+            "iso": "2026-11-11",
+            "label": "Středa 11. 11.",
+            "subtitle": "Žádné vyučování",
+            "free": false,
+            "taught": 0,
+            "end": -1,
+            "rows": []
+          },
+          {
+            "iso": "2026-11-12",
+            "label": "Čtvrtek 12. 11.",
+            "subtitle": "Žádné vyučování",
+            "free": false,
+            "taught": 0,
+            "end": -1,
+            "rows": []
+          },
+          {
+            "iso": "2026-11-13",
+            "label": "Pátek 13. 11.",
+            "subtitle": "Žádné vyučování",
+            "free": false,
+            "taught": 0,
+            "end": -1,
+            "rows": []
+          },
+          {
+            "iso": "2026-11-16",
+            "label": "Pondělí 16. 11.",
+            "subtitle": "Žádné vyučování",
+            "free": false,
+            "taught": 0,
+            "end": -1,
+            "rows": []
+          },
+          {
+            "iso": "2026-11-17",
+            "label": "Úterý 17. 11.",
+            "subtitle": "Žádné vyučování",
+            "free": false,
+            "taught": 0,
+            "end": -1,
+            "rows": []
+          },
+          {
+            "iso": "2026-11-18",
+            "label": "Středa 18. 11.",
+            "subtitle": "Žádné vyučování",
+            "free": false,
+            "taught": 0,
+            "end": -1,
+            "rows": []
+          },
+          {
+            "iso": "2026-11-19",
+            "label": "Čtvrtek 19. 11.",
+            "subtitle": "Žádné vyučování",
+            "free": false,
+            "taught": 0,
+            "end": -1,
+            "rows": []
+          },
+          {
+            "iso": "2026-11-20",
+            "label": "Pátek 20. 11.",
+            "subtitle": "Žádné vyučování",
+            "free": false,
+            "taught": 0,
+            "end": -1,
+            "rows": []
+          }
+        ]
+      }
+    }
+  ]
+}

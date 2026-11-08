@@ -1,0 +1,610 @@
+{
+  "module": "school_presets",
+  "cases": [
+    {
+      "fn": "validatePreset",
+      "args": [
+        {
+          "id": "x",
+          "title_cs": "Demo"
+        }
+      ],
+      "expected": []
+    },
+    {
+      "fn": "validatePreset",
+      "args": [
+        {
+          "id": 1,
+          "sem1_close": "bad",
+          "lunch_cutoff_time": "99:99",
+          "marks_percent_bands": [
+            90,
+            90,
+            50
+          ],
+          "days": [
+            [
+              "bad",
+              "label"
+            ]
+          ],
+          "ranges": [
+            "nope"
+          ]
+        }
+      ],
+      "expected": [
+        "'title_cs' or 'title_en' is required",
+        "'sem1_close' must be DD.MM.YYYY",
+        "'lunch_cutoff_time' must be HH:MM",
+        "'marks_percent_bands' must be four decreasing percentages within (0, 100] (the top of grades 2–5)",
+        "bad 'days' entry ['bad', 'label'] (want [\"DD.MM.YYYY\", \"label\"])",
+        "bad 'ranges' entry 'nope' (want [\"DD.MM.YYYY\", \"DD.MM.YYYY\", \"label\"])"
+      ]
+    },
+    {
+      "fn": "validatePreset",
+      "args": [
+        null
+      ],
+      "expected": [
+        "preset must be a JSON object"
+      ]
+    },
+    {
+      "fn": "validatePreset",
+      "args": [
+        "junk"
+      ],
+      "expected": [
+        "preset must be a JSON object"
+      ]
+    },
+    {
+      "fn": "presetTitle",
+      "args": [
+        {
+          "id": "demo",
+          "title_cs": "Demo škola",
+          "title_en": "Demo school"
+        },
+        "cs"
+      ],
+      "expected": "Demo škola"
+    },
+    {
+      "fn": "presetTitle",
+      "args": [
+        {
+          "id": "demo",
+          "title_cs": "Demo škola",
+          "title_en": "Demo school"
+        },
+        "en"
+      ],
+      "expected": "Demo school"
+    },
+    {
+      "fn": "presetTitle",
+      "args": [
+        {},
+        "cs"
+      ],
+      "expected": "?"
+    },
+    {
+      "fn": "expandEntries",
+      "args": [
+        [
+          "07.09.2026|zahájení",
+          {
+            "date": "08.09.2026",
+            "label": "x"
+          },
+          "09.09.2026",
+          "garbage"
+        ]
+      ],
+      "expected": {
+        "2026-09-07": "zahájení",
+        "2026-09-08": "x",
+        "2026-09-09": ""
+      }
+    },
+    {
+      "fn": "splitEntry",
+      "args": [
+        "07.09.2026|První den"
+      ],
+      "expected": [
+        {
+          "__date__": "2026-09-07"
+        },
+        "První den"
+      ]
+    },
+    {
+      "fn": "splitEntry",
+      "args": [
+        {
+          "date": "08.09.2026",
+          "label": "L"
+        }
+      ],
+      "expected": [
+        {
+          "__date__": "2026-09-08"
+        },
+        "L"
+      ]
+    },
+    {
+      "fn": "splitEntry",
+      "args": [
+        "09.09.2026"
+      ],
+      "expected": [
+        {
+          "__date__": "2026-09-09"
+        },
+        ""
+      ]
+    },
+    {
+      "fn": "splitEntry",
+      "args": [
+        "garbage"
+      ],
+      "expected": [
+        null,
+        ""
+      ]
+    },
+    {
+      "fn": "splitEntry",
+      "args": [
+        null
+      ],
+      "expected": [
+        null,
+        ""
+      ]
+    },
+    {
+      "fn": "getPreset",
+      "args": [
+        "gekom_2026_2027"
+      ],
+      "expected": {
+        "id": "gekom_2026_2027",
+        "school": "GEKOM",
+        "year": "2026/2027",
+        "title_cs": "GEKOM 2026/2027",
+        "title_en": "GEKOM 2026/2027",
+        "version": 1,
+        "sem1_close": "25.01.2027",
+        "sem2_close": "26.04.2027",
+        "lunch_cutoff_time": "12:00",
+        "marks_percent_bands": [
+          87.0,
+          72.0,
+          55.0,
+          40.0
+        ],
+        "ranges": [
+          [
+            "28.10.2026",
+            "30.10.2026",
+            "Podzimní prázdniny"
+          ],
+          [
+            "23.12.2026",
+            "03.01.2027",
+            "Vánoční prázdniny"
+          ],
+          [
+            "22.02.2027",
+            "26.02.2027",
+            "Jarní prázdniny"
+          ],
+          [
+            "25.03.2027",
+            "29.03.2027",
+            "Velikonoční prázdniny"
+          ]
+        ],
+        "days": [
+          [
+            "28.09.2026",
+            "Státní svátek"
+          ],
+          [
+            "16.11.2026",
+            "Ředitelské volno"
+          ],
+          [
+            "17.11.2026",
+            "Státní svátek"
+          ],
+          [
+            "29.01.2027",
+            "Pololetní prázdniny"
+          ],
+          [
+            "10.02.2027",
+            "Ředitelské volno"
+          ]
+        ]
+      }
+    },
+    {
+      "fn": "getPreset",
+      "args": [
+        ""
+      ],
+      "expected": null
+    },
+    {
+      "fn": "getPreset",
+      "args": [
+        "custom"
+      ],
+      "expected": null
+    },
+    {
+      "fn": "getPreset",
+      "args": [
+        null
+      ],
+      "expected": null
+    },
+    {
+      "fn": "presetDays",
+      "args": [
+        "gekom_2026_2027"
+      ],
+      "expected": {
+        "2026-09-28": "Státní svátek",
+        "2026-11-16": "Ředitelské volno",
+        "2026-11-17": "Státní svátek",
+        "2027-01-29": "Pololetní prázdniny",
+        "2027-02-10": "Ředitelské volno",
+        "2026-10-28": "Podzimní prázdniny",
+        "2026-10-29": "Podzimní prázdniny",
+        "2026-10-30": "Podzimní prázdniny",
+        "2026-12-23": "Vánoční prázdniny",
+        "2026-12-24": "Vánoční prázdniny",
+        "2026-12-25": "Vánoční prázdniny",
+        "2026-12-26": "Vánoční prázdniny",
+        "2026-12-27": "Vánoční prázdniny",
+        "2026-12-28": "Vánoční prázdniny",
+        "2026-12-29": "Vánoční prázdniny",
+        "2026-12-30": "Vánoční prázdniny",
+        "2026-12-31": "Vánoční prázdniny",
+        "2027-01-01": "Vánoční prázdniny",
+        "2027-01-02": "Vánoční prázdniny",
+        "2027-01-03": "Vánoční prázdniny",
+        "2027-02-22": "Jarní prázdniny",
+        "2027-02-23": "Jarní prázdniny",
+        "2027-02-24": "Jarní prázdniny",
+        "2027-02-25": "Jarní prázdniny",
+        "2027-02-26": "Jarní prázdniny",
+        "2027-03-25": "Velikonoční prázdniny",
+        "2027-03-26": "Velikonoční prázdniny",
+        "2027-03-27": "Velikonoční prázdniny",
+        "2027-03-28": "Velikonoční prázdniny",
+        "2027-03-29": "Velikonoční prázdniny"
+      }
+    },
+    {
+      "fn": "presetCloses",
+      "args": [
+        "gekom_2026_2027"
+      ],
+      "expected": [
+        "25.01.2027",
+        "26.04.2027"
+      ]
+    },
+    {
+      "fn": "presetLunchCutoff",
+      "args": [
+        "gekom_2026_2027"
+      ],
+      "expected": "12:00"
+    },
+    {
+      "fn": "presetMarksBands",
+      "args": [
+        "gekom_2026_2027"
+      ],
+      "expected": [
+        87.0,
+        72.0,
+        55.0,
+        40.0
+      ]
+    },
+    {
+      "fn": "presetDays",
+      "args": [
+        ""
+      ],
+      "expected": {}
+    },
+    {
+      "fn": "presetCloses",
+      "args": [
+        ""
+      ],
+      "expected": [
+        "",
+        ""
+      ]
+    },
+    {
+      "fn": "presetLunchCutoff",
+      "args": [
+        ""
+      ],
+      "expected": ""
+    },
+    {
+      "fn": "presetMarksBands",
+      "args": [
+        ""
+      ],
+      "expected": null
+    },
+    {
+      "fn": "resolveMarksBands",
+      "args": [
+        {
+          "marks_percent_bands": [
+            88.0,
+            70.0,
+            50.0,
+            30.0
+          ]
+        }
+      ],
+      "expected": [
+        [
+          88.0,
+          70.0,
+          50.0,
+          30.0
+        ],
+        "user"
+      ]
+    },
+    {
+      "fn": "resolveMarksBands",
+      "args": [
+        {
+          "school_preset_id": "gekom_2026_2027"
+        }
+      ],
+      "expected": [
+        [
+          87.0,
+          72.0,
+          55.0,
+          40.0
+        ],
+        "preset"
+      ]
+    },
+    {
+      "fn": "resolveMarksBands",
+      "args": [
+        {}
+      ],
+      "expected": [
+        [
+          90.0,
+          75.0,
+          50.0,
+          30.0
+        ],
+        "default"
+      ]
+    },
+    {
+      "fn": "resolveLunchCutoff",
+      "args": [
+        {
+          "lunch_order_cutoff_time": "09:30"
+        }
+      ],
+      "expected": "09:30"
+    },
+    {
+      "fn": "resolveLunchCutoff",
+      "args": [
+        {
+          "school_preset_id": "gekom_2026_2027"
+        }
+      ],
+      "expected": "12:00"
+    },
+    {
+      "fn": "resolveLunchCutoff",
+      "args": [
+        {}
+      ],
+      "expected": "12:00"
+    },
+    {
+      "fn": "resolveClose",
+      "args": [
+        "sem1",
+        {
+          "sem1_close": "20.12.2026"
+        }
+      ],
+      "expected": "20.12.2026"
+    },
+    {
+      "fn": "resolveClose",
+      "args": [
+        "sem2",
+        {
+          "school_preset_id": "gekom_2026_2027"
+        }
+      ],
+      "expected": "26.04.2027"
+    },
+    {
+      "fn": "resolveClose",
+      "args": [
+        "sem1",
+        {}
+      ],
+      "expected": ""
+    },
+    {
+      "fn": "effectiveCalendar",
+      "args": [
+        {
+          "user_free_days": [
+            "22.12.2026|Xmas",
+            {
+              "date": "23.12.2026",
+              "label": "X"
+            }
+          ],
+          "forced_school_days": [
+            "07.09.2026"
+          ]
+        },
+        true
+      ],
+      "expected": [
+        [
+          "2026-12-22",
+          "2026-12-23"
+        ],
+        {
+          "2026-12-22": "Xmas",
+          "2026-12-23": "X"
+        },
+        {
+          "preset_id": "",
+          "preset_days": 0,
+          "user_added": 2,
+          "forced_school": 0
+        }
+      ]
+    },
+    {
+      "fn": "effectiveCalendar",
+      "args": [
+        {
+          "school_preset_id": "gekom_2026_2027"
+        },
+        true
+      ],
+      "expected": [
+        [
+          "2026-09-28",
+          "2026-10-28",
+          "2026-10-29",
+          "2026-10-30",
+          "2026-11-16",
+          "2026-11-17",
+          "2026-12-23",
+          "2026-12-24",
+          "2026-12-25",
+          "2026-12-26",
+          "2026-12-27",
+          "2026-12-28",
+          "2026-12-29",
+          "2026-12-30",
+          "2026-12-31",
+          "2027-01-01",
+          "2027-01-02",
+          "2027-01-03",
+          "2027-01-29",
+          "2027-02-10",
+          "2027-02-22",
+          "2027-02-23",
+          "2027-02-24",
+          "2027-02-25",
+          "2027-02-26",
+          "2027-03-25",
+          "2027-03-26",
+          "2027-03-27",
+          "2027-03-28",
+          "2027-03-29"
+        ],
+        {
+          "2026-09-28": "Státní svátek",
+          "2026-11-16": "Ředitelské volno",
+          "2026-11-17": "Státní svátek",
+          "2027-01-29": "Pololetní prázdniny",
+          "2027-02-10": "Ředitelské volno",
+          "2026-10-28": "Podzimní prázdniny",
+          "2026-10-29": "Podzimní prázdniny",
+          "2026-10-30": "Podzimní prázdniny",
+          "2026-12-23": "Vánoční prázdniny",
+          "2026-12-24": "Vánoční prázdniny",
+          "2026-12-25": "Vánoční prázdniny",
+          "2026-12-26": "Vánoční prázdniny",
+          "2026-12-27": "Vánoční prázdniny",
+          "2026-12-28": "Vánoční prázdniny",
+          "2026-12-29": "Vánoční prázdniny",
+          "2026-12-30": "Vánoční prázdniny",
+          "2026-12-31": "Vánoční prázdniny",
+          "2027-01-01": "Vánoční prázdniny",
+          "2027-01-02": "Vánoční prázdniny",
+          "2027-01-03": "Vánoční prázdniny",
+          "2027-02-22": "Jarní prázdniny",
+          "2027-02-23": "Jarní prázdniny",
+          "2027-02-24": "Jarní prázdniny",
+          "2027-02-25": "Jarní prázdniny",
+          "2027-02-26": "Jarní prázdniny",
+          "2027-03-25": "Velikonoční prázdniny",
+          "2027-03-26": "Velikonoční prázdniny",
+          "2027-03-27": "Velikonoční prázdniny",
+          "2027-03-28": "Velikonoční prázdniny",
+          "2027-03-29": "Velikonoční prázdniny"
+        },
+        {
+          "preset_id": "gekom_2026_2027",
+          "preset_days": 30,
+          "user_added": 0,
+          "forced_school": 0
+        }
+      ]
+    },
+    {
+      "fn": "pruneOrphanForced",
+      "args": [
+        {
+          "school_preset_id": "",
+          "user_free_days": [
+            "07.09.2026|day off"
+          ],
+          "forced_school_days": [
+            "07.09.2026",
+            "08.09.2026|orphan"
+          ]
+        }
+      ],
+      "expected": [
+        true,
+        {
+          "school_preset_id": "",
+          "user_free_days": [
+            "07.09.2026|day off"
+          ],
+          "forced_school_days": [
+            "07.09.2026"
+          ]
+        }
+      ]
+    }
+  ]
+}
