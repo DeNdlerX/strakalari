@@ -4,27 +4,25 @@
 //
 // `looksLikePlaceholder` and `isDemoHistoryItem` are public (Python keeps
 // them private, but strava_client/automation import them across modules).
-// The cutoff/bands/status-items/channel checks below mirror the phase-3
-// modules (lunch_cutoff, grades, status_notification, update); phase 3
-// rewires them to the canonical ports — see STATUS.md.
+// Cutoff/bands checks delegate to the canonical phase-3 ports
+// (lunch_cutoff, grades); the channel follows update.defaultChannel and
+// the status items are status_notification.items — like config.py's lazy
+// imports from those modules.
 import 'dart:convert';
 import 'dart:io';
 
+import '../lunches/lunch_cutoff.dart' as lunch_cutoff;
+import '../planning/grades.dart' as grades;
+import '../status_notification.dart' as status_notification;
+import '../update.dart' as update;
 import 'helpers.dart';
 
 /// Allowed values for `excuse_mode` / `strava_order_mode`.
 const List<String> excuseModes = ['auto', 'confirm', 'dry_run'];
 
-/// Items the background notification may show (mirror of
-/// status_notification.ITEMS; phase 3 owns the canonical list).
-const List<String> statusNotificationItems = [
-  'next_lesson',
-  'lunch',
-  'lunch_orders',
-  'excuses',
-  'wakeup',
-  'updated',
-];
+/// Items the background notification may show (canonical:
+/// status_notification.items).
+const List<String> statusNotificationItems = status_notification.items;
 
 /// Canonical config schema (single names only — no aliases, no migration).
 const Map<String, Object> canonicalDefaults = {
@@ -248,54 +246,11 @@ bool isDemoHistoryItem(Object? item) {
   return (hasBakalari, hasStrava);
 }
 
-// -- mirrors of phase-3 modules (rewired when they land) --------------------
+// -- canonical phase-3 checks (delegated, like config.py's lazy imports) ---
 
-/// True for empty (follow preset) or a strict `HH:MM` 24h time.
-/// Mirror of lunch_cutoff.is_valid_cutoff_time.
-bool isValidCutoffTime(Object? value) {
-  final text = '${value ?? ''}'.trim().replaceAll('.', ':');
-  if (text.isEmpty) return true;
-  if (RegExp(r'^\d{1,2}:\d{2}$').firstMatch(text) == null) return false;
-  final parts = text.split(':');
-  final hour = int.tryParse(parts[0]);
-  final minute = int.tryParse(parts[1]);
-  if (hour == null || minute == null) return false;
-  return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
-}
-
-/// True for four strictly decreasing boundaries within (0, 100].
-/// Mirror of grades.bands_valid.
-bool bandsValid(Object? bands) {
-  if (bands is String || bands is! List) return false;
-  if (bands.length != 4) return false;
-  final vals = <double>[];
-  for (final b in bands) {
-    final v = _toDouble(b);
-    if (v == null) return false;
-    vals.add(v);
-  }
-  if (vals.any((v) => v <= 0 || v > 100)) return false;
-  for (var i = 0; i + 1 < vals.length; i++) {
-    if (vals[i] <= vals[i + 1]) return false;
-  }
-  return true;
-}
-
-/// Channel for a config that has none yet: follows the running build.
-/// Mirror of update.default_channel (beta build -> beta).
-String defaultUpdateChannel({String version = '1.0.0'}) =>
-    _isPrereleaseVersion(version) ? 'beta' : 'stable';
-
-bool _isPrereleaseVersion(String text) {
-  var cleaned = text.trim();
-  if (cleaned.startsWith('v') || cleaned.startsWith('V')) {
-    cleaned = cleaned.substring(1);
-  }
-  cleaned = cleaned.split('+').first;
-  final m = RegExp(r'^(\d+(?:\.\d+)*)(.*)$').firstMatch(cleaned);
-  if (m == null) return false;
-  return m.group(2)!.replaceAll(RegExp(r'^[.\-_]+'), '').trim().isNotEmpty;
-}
+/// Follows the running build (beta build -> beta), like
+/// update.defaultChannel. The config persists the value on first save.
+String defaultUpdateChannel() => update.defaultChannel();
 
 // -- numeric coercions (mirror Python's float()/int() semantics) ------------
 
@@ -381,7 +336,7 @@ List<String> validateConfig(Map<String, Object?> data) {
           'got ${_repr(data[modeKey])}.');
     }
   }
-  if (!isValidCutoffTime(data['lunch_order_cutoff_time'] ?? '')) {
+  if (!lunch_cutoff.isValidCutoffTime(data['lunch_order_cutoff_time'] ?? '')) {
     problems.add(
         "'lunch_order_cutoff_time' must be empty (school preset, else 12:00) "
         "or 'HH:MM' ('HH.MM' accepted too).");
@@ -407,7 +362,7 @@ List<String> validateConfig(Map<String, Object?> data) {
   final bands = data['marks_percent_bands'];
   if (bands != null &&
       !(bands is List && bands.isEmpty) &&
-      !bandsValid(bands)) {
+      !grades.bandsValid(bands)) {
     problems.add(
         "'marks_percent_bands' must be empty or four decreasing percentages "
         'within (0, 100].');
