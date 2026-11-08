@@ -117,6 +117,8 @@ def helpers_cases() -> list[dict]:
                                                        "none": None}},
         {"a": [], "b": {}, "c": [1, [2, 3], {"d": "e\"f\\g\n\t"}], "z": ""},
         ["x", 1, True, None, {"k": []}],
+        {"floats": [0.0, -0.0, 15.0, 1e-7, 1e-5, 1e-4, 1e15, 1e16, 1.5e16,
+                    -2.5e-7, 1e21]},
     ]
     for sample in samples:
         cases.append(_case("pyJsonDumps",

@@ -263,6 +263,28 @@ void main() {
       expect(toPlatformNewlines('a\nb', windows: false), 'a\nb');
     });
 
+    test('floatFormattingMatchesPython', () {
+      expect(pyJsonDumps(1e-7), '1e-07');
+      expect(pyJsonDumps(1e-5), '1e-05');
+      expect(pyJsonDumps(1e-4), '0.0001');
+      expect(pyJsonDumps(0.0), '0.0');
+      expect(pyJsonDumps(-0.0), '-0.0');
+      expect(pyJsonDumps(15.0), '15.0');
+      expect(pyJsonDumps(1e15), '1000000000000000.0');
+      expect(pyJsonDumps(1e16), '1e+16');
+      expect(pyJsonDumps(1.5e16), '1.5e+16');
+      expect(pyJsonDumps(-2.5e-7), '-2.5e-07');
+      expect(pyJsonDumps(1e21), '1e+21');
+      expect(
+        jsonIndent2({
+          'small': 1e-7,
+          'large': 1e16,
+          'whole': 15.0,
+        }),
+        '{\n  "small": 1e-07,\n  "large": 1e+16,\n  "whole": 15.0\n}',
+      );
+    });
+
     test('noTmpLeftovers', () {
       final p = '${tmp!.path}/data.json';
       atomicWriteJson(p, [1]);

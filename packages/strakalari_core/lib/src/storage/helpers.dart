@@ -626,6 +626,54 @@ bool jsonEquals(Object? a, Object? b) {
 String toPlatformNewlines(String text, {bool? windows}) =>
     (windows ?? Platform.isWindows) ? text.replaceAll('\n', '\r\n') : text;
 
+/// Python `float.__repr__` / `json.dumps` float formatting:
+/// scientific notation for `0 < |v| < 1e-4` and `|v| >= 1e16` with a
+/// signed, at-least-two-digit exponent (`1e-07`, `1e+16`) and no trailing
+/// `.0` on the mantissa; fixed-point with `.0` for whole numbers in
+/// `[1e-4, 1e16)` and `±0.0`.
+String _pyFloatRepr(double v) {
+  if (v.isNaN) return 'NaN';
+  if (v.isInfinite) return v.isNegative ? '-Infinity' : 'Infinity';
+  if (v == 0.0) return v.isNegative ? '-0.0' : '0.0';
+  final sign = v.isNegative ? '-' : '';
+  final absV = v.abs();
+  final raw = absV.toString();
+  final eIdx = raw.indexOf('e');
+  if (eIdx != -1) {
+    var mantissa = raw.substring(0, eIdx);
+    if (mantissa.endsWith('.0')) {
+      mantissa = mantissa.substring(0, mantissa.length - 2);
+    }
+    final expPart = raw.substring(eIdx + 1);
+    final hasSign = expPart.startsWith('+') || expPart.startsWith('-');
+    final expSign = hasSign ? expPart[0] : '+';
+    final expDigits = hasSign ? expPart.substring(1) : expPart;
+    return '$sign${mantissa}e$expSign${expDigits.padLeft(2, '0')}';
+  }
+  if (raw.startsWith('0.0000')) {
+    final afterDot = raw.substring(2);
+    var zeros = 0;
+    while (zeros < afterDot.length && afterDot[zeros] == '0') {
+      zeros++;
+    }
+    final sig = afterDot.substring(zeros);
+    final exp = zeros + 1;
+    final mantissa =
+        sig.length <= 1 ? sig : '${sig[0]}.${sig.substring(1)}';
+    return '$sign${mantissa}e-${exp.toString().padLeft(2, '0')}';
+  }
+  if (absV >= 1e16) {
+    final digits =
+        raw.endsWith('.0') ? raw.substring(0, raw.length - 2) : raw;
+    final exp = digits.length - 1;
+    final sig = digits.replaceFirst(RegExp(r'0+$'), '');
+    final mantissa =
+        sig.length <= 1 ? sig : '${sig[0]}.${sig.substring(1)}';
+    return '$sign${mantissa}e+${exp.toString().padLeft(2, '0')}';
+  }
+  return '$sign$raw';
+}
+
 /// `json.dumps(value, ensure_ascii=False, default=str)`: Python's default
 /// separators (`", "` and `": "`), non-ASCII kept as is. Values that are
 /// not JSON types are written as their string form (`default=str`).
@@ -634,7 +682,9 @@ String pyJsonDumps(Object? value) {
   void write(Object? v) {
     if (v == null) {
       out.write('null');
-    } else if (v is bool || v is num || v is String) {
+    } else if (v is double) {
+      out.write(_pyFloatRepr(v));
+    } else if (v is bool || v is int || v is String) {
       out.write(jsonEncode(v));
     } else if (v is Map) {
       out.write('{');
@@ -666,8 +716,58 @@ String pyJsonDumps(Object? value) {
 }
 
 /// `json.dumps(value, indent=2, ensure_ascii=False)`.
-String jsonIndent2(Object? value) =>
-    const JsonEncoder.withIndent('  ').convert(value);
+String jsonIndent2(Object? value) {
+  final out = StringBuffer();
+  void write(Object? v, int depth) {
+    if (v == null) {
+      out.write('null');
+    } else if (v is double) {
+      out.write(_pyFloatRepr(v));
+    } else if (v is bool || v is int || v is String) {
+      out.write(jsonEncode(v));
+    } else if (v is Map) {
+      if (v.isEmpty) {
+        out.write('{}');
+        return;
+      }
+      out.write('{\n');
+      final pad = '  ' * (depth + 1);
+      var first = true;
+      v.forEach((k, val) {
+        if (!first) out.write(',\n');
+        first = false;
+        out.write(pad);
+        out.write(jsonEncode('$k'));
+        out.write(': ');
+        write(val, depth + 1);
+      });
+      out.write('\n');
+      out.write('  ' * depth);
+      out.write('}');
+    } else if (v is Iterable) {
+      final list = v is List ? v : v.toList();
+      if (list.isEmpty) {
+        out.write('[]');
+        return;
+      }
+      out.write('[\n');
+      final pad = '  ' * (depth + 1);
+      for (var i = 0; i < list.length; i++) {
+        if (i > 0) out.write(',\n');
+        out.write(pad);
+        write(list[i], depth + 1);
+      }
+      out.write('\n');
+      out.write('  ' * depth);
+      out.write(']');
+    } else {
+      out.write(jsonEncode('$v'));
+    }
+  }
+
+  write(value, 0);
+  return out.toString();
+}
 
 /// Writes JSON atomically (temp file + rename) so a crash or kill can
 /// never leave a truncated file behind. Creates parent dirs as needed.
