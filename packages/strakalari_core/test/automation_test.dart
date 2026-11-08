@@ -1371,6 +1371,39 @@ void main() {
       await a.stravaOrderSelected({days[0]: 'a&1&0', days[1]: 'b&-1&0'});
       expect(c.ordered.first, 'b&-1&0');
     });
+
+    test('cancellationsBeforeOrdersPreservesRelativeOrderOver32Days', () async {
+      final days = futureDays(36);
+      final c = FakeStrava()
+        ..clickOnOrder = true
+        ..saveButton = true
+        ..verifiedIds = {
+          for (var i = 0; i < days.length; i++)
+            if (i.isEven) 'm$i&1&0',
+        };
+      for (var i = 0; i < days.length; i++) {
+        c.foodDict[days[i]] = {
+          'm$i&1&0': 'Meal $i',
+          'm$i&-1&0': 'x',
+        };
+        c.orderOk['m$i&1&0'] = true;
+        c.orderOk['m$i&-1&0'] = true;
+      }
+      final a = realApp(tmp, {'strava_order_mode': 'auto'});
+      a.stravaClient = c;
+      final orders = <String, String>{
+        for (var i = 0; i < days.length; i++)
+          days[i]: i.isOdd ? 'm$i&-1&0' : 'm$i&1&0',
+      };
+      expect(await a.stravaOrderSelected(orders), isTrue);
+      final expected = <String>[
+        for (var i = 0; i < days.length; i++)
+          if (i.isOdd) 'm$i&-1&0',
+        for (var i = 0; i < days.length; i++)
+          if (i.isEven) 'm$i&1&0',
+      ];
+      expect(c.saved, expected);
+    });
   });
 
   group('dryRunExcuse', () {

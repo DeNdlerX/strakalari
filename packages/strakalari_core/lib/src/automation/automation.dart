@@ -807,13 +807,14 @@ class Strakalari implements RefreshApp {
     final failed = _orderReport['failed']!;
     final unfunded = _orderReport['unfunded']!;
     // Cancellations first: they refund money that the meal orders
+    // Stage cancellations before orders: deorders free up balance that days
     // after them may need (and never cost any themselves).
-    final items = orders.entries.toList()
-      ..sort((a, b) {
-        final da = a.value.contains('&-1&') ? 0 : 1;
-        final db = b.value.contains('&-1&') ? 0 : 1;
-        return da.compareTo(db);
-      });
+    final items = <MapEntry<String, String>>[
+      for (final e in orders.entries)
+        if (e.value.contains('&-1&')) e,
+      for (final e in orders.entries)
+        if (!e.value.contains('&-1&')) e,
+    ];
     for (final item in items) {
       var day = item.key;
       var mealId = item.value;
