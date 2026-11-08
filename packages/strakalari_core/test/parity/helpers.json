@@ -560,6 +560,86 @@
       "expected": "[\n  \"x\",\n  1,\n  true,\n  null,\n  {\n    \"k\": []\n  }\n]"
     },
     {
+      "fn": "entryName",
+      "args": [
+        "C:\\Users\\Student\\AppData\\Local\\Strakalari",
+        true
+      ],
+      "expected": "fernet-key:73d786283cd4f68f"
+    },
+    {
+      "fn": "entryName",
+      "args": [
+        "C:/Users/Student/AppData/Local/Strakalari",
+        true
+      ],
+      "expected": "fernet-key:73d786283cd4f68f"
+    },
+    {
+      "fn": "entryName",
+      "args": [
+        "C:\\Users\\Student\\AppData\\Local\\Strakalari\\",
+        true
+      ],
+      "expected": "fernet-key:73d786283cd4f68f"
+    },
+    {
+      "fn": "entryName",
+      "args": [
+        "C:/Users/Student/AppData/Local/Strakalari/",
+        true
+      ],
+      "expected": "fernet-key:73d786283cd4f68f"
+    },
+    {
+      "fn": "entryName",
+      "args": [
+        "C:/Users/Student/AppData/Local/Other/../Strakalari/./",
+        true
+      ],
+      "expected": "fernet-key:73d786283cd4f68f"
+    },
+    {
+      "fn": "entryName",
+      "args": [
+        "c:\\USERS\\student\\AppData\\LOCAL\\strakalari",
+        true
+      ],
+      "expected": "fernet-key:73d786283cd4f68f"
+    },
+    {
+      "fn": "entryName",
+      "args": [
+        "/home/student/.config/strakalari",
+        false
+      ],
+      "expected": "fernet-key:ef7e8150fd53b282"
+    },
+    {
+      "fn": "entryName",
+      "args": [
+        "/home/student/.config/strakalari/",
+        false
+      ],
+      "expected": "fernet-key:ef7e8150fd53b282"
+    },
+    {
+      "fn": "entryName",
+      "args": [
+        "/home/student/.config/other/../strakalari/./",
+        false
+      ],
+      "expected": "fernet-key:ef7e8150fd53b282"
+    },
+    {
+      "fn": "entryName",
+      "args": [
+        "/home/Student/.config/Strakalari",
+        false
+      ],
+      "expected": "fernet-key:2ffd99c49dc2f3e4"
+    },
+    {
       "fn": "roundTripFiles",
       "args": [],
       "expected": {

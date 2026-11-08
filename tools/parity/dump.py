@@ -121,6 +121,37 @@ def helpers_cases() -> list[dict]:
         cases.append(_case("jsonIndent2",
                            json.dumps(sample, indent=2, ensure_ascii=False),
                            sample))
+    # Key store entry name normalization (A-M5): normcase(abspath(data_dir)).
+    import hashlib
+    import ntpath
+    import posixpath
+
+    def _entry_name_win(raw: str) -> str:
+        norm = ntpath.normcase(ntpath.normpath(raw))
+        digest = hashlib.sha256(norm.encode("utf-8")).hexdigest()[:16]
+        return f"fernet-key:{digest}"
+
+    def _entry_name_posix(raw: str) -> str:
+        norm = posixpath.normcase(posixpath.normpath(raw))
+        digest = hashlib.sha256(norm.encode("utf-8")).hexdigest()[:16]
+        return f"fernet-key:{digest}"
+
+    for raw in [
+        "C:\\Users\\Student\\AppData\\Local\\Strakalari",
+        "C:/Users/Student/AppData/Local/Strakalari",
+        "C:\\Users\\Student\\AppData\\Local\\Strakalari\\",
+        "C:/Users/Student/AppData/Local/Strakalari/",
+        "C:/Users/Student/AppData/Local/Other/../Strakalari/./",
+        "c:\\USERS\\student\\AppData\\LOCAL\\strakalari",
+    ]:
+        cases.append(_case("entryName", _entry_name_win(raw), raw, True))
+    for raw in [
+        "/home/student/.config/strakalari",
+        "/home/student/.config/strakalari/",
+        "/home/student/.config/other/../strakalari/./",
+        "/home/Student/.config/Strakalari",
+    ]:
+        cases.append(_case("entryName", _entry_name_posix(raw), raw, False))
     # Per-file writer snapshots (A-M4): Python writes config, cache,
     # history, sidecar, planned skips and presets through their real
     # writers; Dart seeds those bytes on disk, loads + rewrites each

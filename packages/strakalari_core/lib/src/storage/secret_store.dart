@@ -36,9 +36,15 @@ bool get _noKeyring {
 }
 
 /// Store entry bound to the data dir path.
-String entryName(String dataDir) {
-  var path = p.absolute(dataDir);
-  if (Platform.isWindows) path = path.toLowerCase();
+///
+/// Mirrors `secret_store._entry_name`: `normcase(abspath(data_dir))`.
+/// [windows] overrides the host OS for cross-platform parity tests on
+/// already-absolute paths.
+String entryName(String dataDir, {bool? windows}) {
+  var path = windows == null
+      ? p.normalize(p.absolute(dataDir))
+      : (windows ? p.windows : p.posix).normalize(dataDir);
+  if (windows ?? Platform.isWindows) path = path.toLowerCase();
   final digest = sha256.convert(utf8.encode(path)).toString();
   return 'fernet-key:${digest.substring(0, 16)}';
 }

@@ -132,6 +132,44 @@ void main() {
     expect(entryName('${tmp.path}/a'), isNot(entryName('${tmp.path}/b')));
   });
 
+  test('entryNameNormalizesSlashesTrailingSeparatorDotDotAndCase', () {
+    final canonical = entryName(tmp.path);
+    expect(entryName('${tmp.path}/'), canonical);
+    expect(entryName('${tmp.path}${Platform.pathSeparator}'), canonical);
+    expect(
+      entryName(
+        '${tmp.path}${Platform.pathSeparator}sub${Platform.pathSeparator}..',
+      ),
+      canonical,
+    );
+    expect(entryName(tmp.path.replaceAll(r'\', '/')), canonical);
+    if (Platform.isWindows) {
+      expect(entryName(tmp.path.toUpperCase()), canonical);
+      expect(entryName(tmp.path.toLowerCase()), canonical);
+    }
+    const winCanonical = r'C:\Users\Student\AppData\Local\Strakalari';
+    final winExpected = entryName(winCanonical, windows: true);
+    expect(
+      entryName('C:/Users/Student/AppData/Local/Strakalari', windows: true),
+      winExpected,
+    );
+    expect(
+      entryName(r'C:\Users\Student\AppData\Local\Strakalari\', windows: true),
+      winExpected,
+    );
+    expect(
+      entryName(
+        'C:/Users/Student/AppData/Local/Other/../Strakalari/./',
+        windows: true,
+      ),
+      winExpected,
+    );
+    expect(
+      entryName(r'c:\USERS\student\AppData\LOCAL\strakalari', windows: true),
+      winExpected,
+    );
+  });
+
   test('forgetKeyRemovesFileKey', () {
     // No backend: the key lands in the file (mirrors CI without keyring).
     keyStoreBackend = null;

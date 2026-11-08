@@ -10,6 +10,7 @@ import 'package:strakalari_core/src/platform/packaging.dart';
 import 'package:strakalari_core/src/storage/cache.dart';
 import 'package:strakalari_core/src/storage/config.dart';
 import 'package:strakalari_core/src/storage/helpers.dart';
+import 'package:strakalari_core/src/storage/secret_store.dart';
 
 import 'parity_cases.dart';
 
@@ -120,6 +121,8 @@ void main() {
           result = pyJsonDumps(args[0]);
         case 'jsonIndent2':
           result = jsonIndent2(args[0]);
+        case 'entryName':
+          result = entryName(args[0] as String, windows: args[1] as bool);
         case 'roundTripFiles':
           result = _runRoundTripFiles(expected as Map<String, Object?>);
         case 'daysBetween':
