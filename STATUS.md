@@ -1,7 +1,10 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 2 · Next step: Phase 2 — parity_fetch (demo-server JSON parity), then phase 3.
+Current phase: 3 · Next step: Phase 3 — domain logic (schedule first).
+Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
+`bin/parity_fetch.dart` prints byte-identical JSON to
+`tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
 Phase 1 (core foundation) is done: models, helpers, config, cache, i18n,
 audit, excuse_history, Fernet + secret_store, parity harness.
 
