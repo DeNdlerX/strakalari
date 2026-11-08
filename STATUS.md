@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 4 (⛔ Checkpoint A rework complete; phases 5–9 in progress, unreviewed) · Next step: ⛔ Checkpoint A re-review — all findings resolved (B1 ee364bd, B2 7a045dd, B3 e0d0ebf, B4 441a05e, B5 2eff0b5; M1 56c34aa, M2 5857842, M3 73cd892, M4 e734e04/763ec48, M5 f5f7f16, M6 57a54f4, M7 0d37753, M8 a3811a3; S1 92181d8, S2 b8b37d8, S3 c9dc71f, S4 c6b4941, S5 d2f9eba, S6 bcb07bf, S7 e4bb8e1, S8 cfaf7f4, S9 1a97efa, S10+N1 b953c09). Waiting for reviewer sign-off before resuming phases 5–10.
+Current phase: 4 (⛔ Checkpoint A re-review: FAIL, 3 must-fix open; phases 5–9 in progress, unreviewed) · Next step: Fix every finding in `reviews/checkpoint-A.md` (blockers first), one commit per finding, then stop for re-review. The open findings are the R-* items in its "Re-review (2026-11-08)" section (R-M1–R-M3, then R-S1–R-S7); every A-* item is done. No work on phases 5–10 until Checkpoint A passes.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -716,6 +716,7 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
   - **A-M7** (`0d37753`): made `tools/parity/dump.py` re-exec with `PYTHONHASHSEED=0` when unset and regenerated `schedule.json`.
   - **A-M8** (`a3811a3`): marked phases 5–9 `in progress, unreviewed`, added `keepLunchChoiceIsStoredAndHonored`, listed dropped TLS/import tests, and mapped all 94 Python test files test-by-test.
   - **A-S1..A-S10 + A-N1** (`92181d8..b953c09`): two-pass cancellation-first staging (`A-S1`), Python float formatting in JSON writers (`A-S2`), `Stopwatch`/`clock.now()` lock timing (`A-S3`), `STRAKALARI_NO_KEYRING=1` in parity scripts (`A-S4`), localhost guard on `refresh_dryrun.dart --send-day` (`A-S5`), full dry-run parity comparison including `excusePending()` (`A-S6`), async `PeriodicRunner` jobs (`A-S7`), narrowed `isDroppedReadError` read retry (`A-S8`), bounded `DartIoHttpTransport` connect timeout (`A-S9`), delegated log redaction to `error_report.dart` (`A-S10`), and aligned `refresh.dart`/`writeLog` error handling (`A-N1`).
+- 2026-11-08 · Checkpoint A re-review: **FAIL** (all A-* findings fixed; 0 blockers, 3 must-fix, 7 should-fix new) — [docs/flutter-migration/reviews/checkpoint-A.md](docs/flutter-migration/reviews/checkpoint-A.md#re-review-2026-11-08)
 
 ### ⛔ Checkpoint A: core review (phases 3–4)
 

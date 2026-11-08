@@ -351,3 +351,216 @@ would touch the owner's key store). Re-check these after the fixes, with
 Side effect to clean up: my Python dry run stored one throwaway key in Windows
 Credential Manager, `Strakalari / fernet-key:d242a8e8433a6c40` (my scratch folder, no
 real data). The owner may delete it.
+
+---
+
+# Re-review (2026-11-08)
+
+Reviewed at `21958bc` (branch tip). Commits since the review: `09157ff..21958bc`
+(23 fix commits `ee364bd..b953c09` plus STATUS commits). Same scope as above.
+
+## Verdict: **FAIL** (no blockers left, 3 must-fix)
+
+Every finding of the first review is fixed in the code, and I proved the important
+ones by running them (table below). The send path, the order path, the locks and
+the file formats now match Python. Three new must-fix items keep this from passing:
+the new POSIX lock calls `open()` wrongly for Apple-silicon Macs (R-M1), the rework
+list in STATUS.md describes fixes that don't exist (R-M2), and one refresh-pipeline
+test was never ported (R-M3). All three are small. The should-fix items below can go
+in the same rework.
+
+## Status of the first review's findings
+
+| ID | Commit | How I checked | Result |
+|---|---|---|---|
+| A-B1 DST | `ee364bd` | Read every changed site against Python; no `Duration(days:` day steps or `.inDays` on local dates left in `lib/` (grep); full core suite on **Linux with `TZ=Europe/Prague`**; live demo-server dry run: Dart now caches **55** timetable days like Python (was 15) | fixed (tests: see R-S4) |
+| A-B2 never-sent by phase | `7a045dd` | Code: only `openUrl` (DNS + connect, incl. TLS) is wrapped in `ConnectFailure`; `isNeverSentCause` is `is ConnectFailure`. **Probe with the real `DartIoHttpTransport`** and a local socket: reset after the server read the POST → `HttpException`, "maybe sent"; no reply → `TimeoutException`, "maybe sent"; closed port → `ConnectFailure`, "never sent" | fixed |
+| A-B3 save button | `e0d0ebf` | `immediate = !client.findSaveButton()` matches `automation.py:585`; both tests flipped back; new default-client test | fixed |
+| A-B4 auto lunch | `441a05e` | Hook is async, defaults to `planAutoOrders`, gets `ordered` as the day → meal map; `defaultHookOrdersGapDay` runs the real planner. No `today` parameter was added (correct, see answer 3) | fixed |
+| A-B5 session lock | `2eff0b5` | POSIX `flock` via FFI + in-process registry; `withSessionLockAsync` used in `background.dart:184`. **Linux (WSL, Dart 3.12.2):** `session_lock_test.dart` 11/11 incl. `matchesPythonFlock` (Python holds → Dart refused, Dart holds → Python refused). **Two isolates in one process** exclude each other on Linux and Windows (probe). **Windows:** Python holds → Dart refused, Dart holds → Python refused, both released → acquired | fixed (macOS: R-M1) |
+| A-M1 history lock | `56c34aa` | Per-path FIFO mutex + `Zone` re-entrancy + async file-lock poll, like `excuse_history.py:306-339`; `_sendTail` gone; `concurrentSyncWaitsForSendAndKeepsBoth` gates the submit with a `Completer` | fixed |
+| A-M2 corrupt sidecar | `5857842` | `loadUnconfirmed` quarantines bad JSON / bad UTF-8 and returns `[]`, I/O errors rethrow, like `excuse_history.py:198-218` | fixed |
+| A-M3 fetch_data | `73cd892` | `DataMixin.fetchData` resets the same fields in the same order as `bakalari_data.py:377-427`, then cancel check + login | fixed |
+| A-M4 bytes on Windows | `e734e04`, `763ec48` | Dry run on both sides: `already_excused_lessons.json`, `automation_history.jsonl` and `data_cache.json` byte-identical apart from timestamps. Config **with encrypted passwords** (probe, `STRAKALARI_NO_KEYRING=1`): Python writes → Dart decrypts and rewrites → same bytes; Dart writes a new password → Python decrypts it (Czech letters + emoji). The committed test spawns Python for six file types | fixed |
+| A-M5 entry name | `f5f7f16` | Probe: Dart `entryName` = Python `_entry_name` for `C:/x/data`, `C:\x\data\`, `c:\X\Data`, `C:\x\sub\..\data`, relative paths, a trailing `.`, Czech letters, UNC | fixed |
+| A-M6 missing key store | `57a54f4` | Desktop with no backend throws `KeyStoreUnavailable` unless `STRAKALARI_NO_KEYRING`; tests opt in explicitly | fixed |
+| A-M7 oracle | `0d37753` | `dump.py` regenerated → `git diff --exit-code` clean | fixed |
+| A-M8 STATUS | `a3811a3` | Phases 5–9 now "in progress, unreviewed"; all 94 Python files mapped. But see R-M2 | partly |
+| A-S1 … A-S10, A-N1 | `92181d8..b953c09` | Read each diff: two-pass staging, Python float repr, `Stopwatch` deadlines, `NO_KEYRING` in all parity scripts, `--send-day` loopback guard (+ test), full-cache dry-run compare, `FutureOr` jobs awaited, read retry narrowed, connect timeout `min(timeout, 20 s)` like `bakalari_http.py:281`, redaction delegated, N1 aligned (cancel predicate and school-year start now propagate) | fixed |
+
+## New findings
+
+### R-M1 · must-fix · On Apple-silicon Macs the lock files get random permissions
+
+`packages/strakalari_core/lib/src/storage/helpers.dart:468-470` declares libc `open`
+as a fixed three-argument function and calls it at `:548` with
+`O_RDWR | O_CREAT, 438`. `open` is variadic (`int open(const char *, int, ...)`).
+On Apple arm64, variadic arguments are passed on the stack, not in registers, so
+`open` reads the mode from a random stack slot. Every lock file the Dart app creates
+first (`session.lock`, `config.json.lock`, `secret.key.lock`, …) gets random
+permission bits. If the owner-read/write bits are missing, every later `open` fails
+with `EACCES`, `_flockExclusive` returns null, and the lock looks busy **forever**:
+no refresh runs, config saves fail, and the Python app can't open those files either
+(`helpers.py:354` raises `PermissionError`). Linux, Android and Intel Macs are not
+affected (they pass these arguments in registers).
+Python reference: `helpers.py:354` `open(self.path, "a+b")` (mode `0o666 & ~umask`).
+**Correct:** declare it variadic:
+`typedef _OpenC = ffi.Int32 Function(ffi.Pointer<ffi.Int8>, ffi.Int32, ffi.VarArgs<(ffi.Int32,)>);`
+(keep the Dart signature `int Function(Pointer<Int8>, int, int)`). Add a POSIX-only
+test: acquire a lock on a fresh path, release it, then check
+`FileStat.statSync(path).mode & 0x180 == 0x180` (owner read + write) and that a second
+acquire succeeds. Mark the macOS run as *unverified* in STATUS until the owner's
+macOS CI job runs it.
+
+### R-M2 · must-fix · STATUS.md describes fixes that aren't in the code
+
+The rework list under *Checkpoint notes* (`STATUS.md:705-718`) does not match the
+commits it names. Several entries describe functions that don't exist anywhere in the
+repository (`loadExcuses`, `decryptEntry`, `saveExcuses`, `tryEncrypt`):
+
+| Line | Says | The commit actually does |
+|---|---|---|
+| 707 A-B3 `e0d0ebf` | "`loadExcuses(decrypt: true)` … `reason_encrypted`" | flips `findSaveButton` |
+| 708 A-B4 `441a05e` | "added optional `today` parameter" | no `today` parameter (correctly, per answer 3) |
+| 709 A-B5 `2eff0b5` | "aligned `parseInt` …" | POSIX `flock` + `withSessionLockAsync` |
+| 711 A-M2 `5857842` | "`hasValidCredentials` … truthiness" | quarantines a corrupt sidecar |
+| 712 A-M3 `73cd892` | "moved `tryEncrypt` before `with HistoryLock` in `saveExcuses`" | ports `fetch_data` |
+| 713 A-M4 `e734e04`/`763ec48` | "`json.loads` NaN/Infinity, `float()`" | CRLF, audit separators, byte test |
+| 714 A-M5 `f5f7f16` | "input order when sorting ties in `grades.summarize`/`news.findNews`" | normalizes `entryName` |
+
+Also: the deviation at `STATUS.md:502-506` says `HistoryLock` uses "the OS
+`InterProcessLock`"; it uses `tryFileLock` (the create-exclusive lock file), which is
+what Python's `history_lock` uses (`excuse_history.py:327`), so the code is right and
+the text is wrong. `STATUS.md:726` still says "Dart suite 720/720" (now 757 core, 124
+app). `STATUS.md:665` still says "Checkpoints B + C reached", while the header says
+phases 5–8 are unreviewed. Several per-file counts in the test map are function
+counts, not pytest cases (`test_bakalari_excuse.py` 12 vs 14 collected,
+`test_order_latch.py` 4 vs 7, `test_excuse_generation.py` 25 vs 41,
+`test_mobile.py` 48 vs 70, and 9 more).
+**Correct:** rewrite the rework list from `git show --stat` of each commit, one line
+each, describing only what the diff changes. Fix the three stale lines. Give every
+test-map count as `pytest --collect-only` reports it, with the function count in
+brackets where they differ.
+
+### R-M3 · must-fix · A refresh-pipeline test was never ported
+
+`tests/test_refresh_pipeline.py:159` `test_gemini_fallback_is_not_a_gemini_run` (Gemini
+offline → the blacklist-filter pick is used and `used_gemini` is False) has no Dart
+counterpart. STATUS.md (test map, item 58) points it at `lunch_auto_test.dart`
+`gemini answer is used when due`, which tests the opposite case, and at
+`gemini_test.dart`, which tests the local fallback inside `recommendLunches`, not
+`planAutoOrders`. PLAN §4 phase 4 says the `test_refresh_*` files are ported first and
+literally. I ran the case by hand (a probe with a failing `geminiTransport`): Dart
+returns `used=false`, `{06.10.2099: t2&1&0}`, the same as Python. So the code is right
+and only the test is missing.
+**Correct:** add `geminiFallbackIsNotAGeminiRun` to `refresh_test.dart` (or
+`lunch_auto_test.dart`): `planAutoOrders({'06.10.2099': {'t2&1&0': 'Guláš'}}, cfg)` with
+`gemini_auto_enabled: true`, `gemini_api_key: 'k'`, `gemini_api_key_encrypted: false`,
+a `geminiTransport` that throws `SocketException('offline')` and a no-op
+`geminiSleep`. Expect `usedGemini == false` and `orders == {'06.10.2099': 't2&1&0'}`.
+Fix item 58 of the test map.
+
+### Should-fix
+
+- **R-S1** Dead `on OSError` catches: Dart file APIs throw `FileSystemException`, never
+  `OSError`. (a) `automation/automation.dart:586`: when rotating `log.txt` fails (for
+  example another program has it open on Windows), the exception escapes to the outer
+  catch and **the log line is lost**; Python (`automation.py:325`) ignores the
+  rotation error and still appends. (b) `storage/secret_store.dart:323`: `carryKey`
+  promises "never raises" but a write error escapes; Python (`secret_store.py:317`)
+  catches `OSError`, which includes `KeyStoreUnavailable`. (c)
+  `storage/helpers.dart:825` `decrypt`: Python (`helpers.py:484`) also falls back on
+  `OSError`. Use `on FileSystemException` (plus `KeyStoreUnavailable` in (c), as
+  Python's `KeyStoreUnavailable` is an `OSError`). Test: a log rotation that fails
+  still appends the line.
+- **R-S2** `storage/helpers.dart:793-801` `_replaceFile` and
+  `storage/secret_store.dart:213-222` `_writeFile` delete the target when the rename
+  fails, then rename again. Python uses `os.replace` and never deletes
+  (`helpers.py:453`, `secret_store.py:93`). I checked: Dart `renameSync` already
+  replaces an existing file on Windows, so the fallback only runs on a real error,
+  and then it can leave **no** `config.json` / history / `secret.key` at all.
+  Remove the fallback and let the error propagate.
+- **R-S3** `bakalari/excuse.dart:192` `now ?? DateTime.now()` must be `clock.now()`
+  (PLAN §3.5; Python `bakalari_excuse.py:113` `datetime.now()`).
+- **R-S4** Three DST tests re-implement the arithmetic instead of calling the code:
+  `test/dst_test.dart:59` (`mondayAndTargetDaysStayMidnight`), `:77`
+  (`historyWeekSteppingStaysMidnight`), `:89` (`substitutionRange`). Drive the real
+  code under `withClock` at 30.3.2026 and 26.10.2026: `fetchTimetableWeeks`
+  (`bakalari/timetable.dart:68`) with a fake that records the Mondays it was asked
+  for, `_missingHistoryWeeks` through `runRefresh` (`automation/refresh.dart:347`),
+  and the substitution request range in `bakalari/data.dart` (`fetchSubstitutions`).
+  Assert the same Mondays and dates Python produces (add those rows to `dump.py`,
+  as the first review asked "for every row above"). Note that `TZ` may not take
+  effect on the `windows-latest` runner; the ubuntu job is the one that proves it.
+- **R-S5** User messages after a connect failure differ from Python. A connect
+  timeout becomes `bak_unreachable` / `strava_unreachable` in Dart
+  (`bakalari/http_session.dart:510`, `:678`; `strava/client.dart:288`); Python shows
+  `timeout_user_message()` because `ConnectTimeout` is a `TimeoutException`
+  (`bakalari_http.py:308`, `strava_client.py:230`). And a Strava `SocketException`
+  after connecting becomes `strava_unreachable` in Dart, while Python says
+  `strava_connection_lost` (`strava_client.py:235`: only `ConnectError` is
+  "unreachable"). Keep `ConnectFailure` (the never-sent rule is right), but choose the
+  message from its `cause`: a `TimeoutException` cause gives the timeout message, and
+  only `ConnectFailure` gives "unreachable".
+- **R-S6** Log lines print maps in Dart's style: `{type: days and hours, …}` vs Python
+  `{'type': 'days and hours', …}` (seen in the dry-run `log.txt`;
+  `automation/automation.dart:1239` and every log line that interpolates `$excuse`;
+  Python `automation.py:787`). Format them with the existing `_pyRepr` so `log.txt`
+  reads the same.
+- **R-S7** `storage/helpers.dart:394-403, 489-523`: when libc can't be loaded, the lock
+  silently falls back to `lockSync`, the per-process lock A-B5 was about. Print one
+  `Warning:` line the first time this happens (CONTRIBUTING §5, fail loudly).
+
+### Notes (for later checkpoints, nothing to do now)
+
+- **R-N1** `wakeup.dart:509` compares absolute time (`difference`), Python compares wall
+  time (`wakeup.py:371`); they differ by one hour only across a DST switch, and both
+  results ring at the right moment. Look again at Checkpoint C.
+- **R-N2** `app/lib/platform/desktop/notifications.dart:36` (`windowsToastGuid`) and
+  the comment at `.github/workflows/dart.yml:68` say `{D94B0F7F-…}`; the Inno AppId
+  in `installer.iss:14` and PLAN is `{D94B0B7F-…}`. `installer.iss` is right. Check
+  at Checkpoint C which GUID the toasts need.
+- **R-N3** `ConfigManager.save` (`storage/config.dart:607`) and `getKey`
+  (`storage/secret_store.dart:79`) wait for their file lock with a blocking `sleep()`
+  (up to 10 s). Python blocks only a worker thread; in Flutter this would freeze the
+  UI isolate while another process saves. Checkpoint B: call them off the UI isolate
+  or make the wait async.
+- **R-N4** `automation/refresh.dart:726` passes `app.orderedDict` to
+  `updateHandledDays`; Python passes `client.orderedDict or ordered_before`
+  (`refresh.py:578`). The two differ only when the order dict comes back empty.
+  Align it.
+- **R-N5** `automation/automation.dart:1043-1047`: `sent_excuses_limit: 5.7` gives 100
+  in Dart, 5 in Python (`int(5.7)`). Only a hand-edited config can hold that.
+- **R-N6** `app/lib/platform/android/background.dart` passes
+  `pendingExcuses: result.excusesFailed` to the phone sync. Check against Python at
+  Checkpoint C.
+
+## What I verified in the re-review, and how
+
+Flutter 3.44.8 / Dart 3.12.2 on this PC (Windows 11, Europe/Prague). Probes and outputs
+are in the reviewer's scratchpad, not committed. Nothing touched the owner's data,
+key store or real servers.
+
+| Check | Result |
+|---|---|
+| `dart analyze` / `dart test` (core, Windows) | clean / **757**: 756 passed, 1 skipped (the Linux-only flock probe) |
+| Core suite on **Linux** (WSL Ubuntu, official Dart 3.12.2 SDK, `TZ=Europe/Prague`, every test file run directly with `--enable-asserts`) | **757 passed** (the flock probe runs there). The SDK was downloaded with the owner's OK and deleted afterwards |
+| `flutter analyze` / `flutter test` (app) | clean / **124**: 123 passed, 1 skipped (APK scan, needs `STRAKALARI_APK`) |
+| Python suite | **1643 passed** |
+| `dump.py` regeneration + `git diff --exit-code` on `test/parity/` | **clean** |
+| Dry-run parity (`tools/parity/soak_refresh.py` vs `bin/refresh_dryrun.dart`, one demo server, two throwaway folders) | `soak_compare.py`: **IDENTICAL**. Both: 55 timetable days, 2 audit records (manual + auto `dry_run`), 4 outbox items, 4 history items, empty sidecar. Written files byte-identical apart from timestamps; `log.txt` differs only in map formatting (R-S6) |
+| Phase-2 fetch parity (`tools/parity/fetch.py` vs `bin/parity_fetch.dart`) | **byte-identical** (31,142 bytes) |
+| Session lock, Windows, both directions | refused correctly both ways; acquired after release |
+| Session lock, Linux, both directions + same process | refused correctly; second handle and second isolate refused |
+| Real transport phases (local socket probe) | reset / no reply after the request → "maybe sent"; closed port → "never sent" |
+| Config with encrypted passwords, both directions; entry names for 9 path shapes | match (see A-M4, A-M5 rows) |
+| Test parity (pytest `--collect-only` vs Dart JSON reporter, per file) | Safety files case by case: `test_bakalari_excuse` 14 → 16 (3 network cases → 5), `test_session_lock` 6 → 6 + 5 new lock tests, `test_unconfirmed_excuses` 16 → 16 + corrupt-sidecar test, `test_automation_safety` 12 ported + 4 UI deferred, `test_refresh_pipeline` 9 → 8 (+ the new default-hook test; the 9th is missing, R-M3), `test_data_safety` 8 → 8 (spread over three Dart files) |
+| Test integrity (`git diff 09157ff..` on all Dart tests) | no assertion loosened or removed (the scheduler tests became `async`, same expectations); no new `skip:` except the Linux-only probe; no `try`/`catch` around `expect`. Three DST tests don't call the code under test (R-S4) |
+| Fail loudly (send, order and save code) | every swallowed exception has a Python counterpart that swallows too, except the dead `on OSError` catches (R-S1) |
+| §3.5 pitfalls in the changed code (`RegExp`, `~/`, `%`, `round`, `weekday`, `DateTime.now`, `DateTime.parse`, `jsonEncode`) | OK, except `excuse.dart:192` (R-S3) |
+| `package:flutter` in core, codegen, lockfiles, Flutter pin | none / none / committed / 3.44.8 + `--enforce-lockfile` |
+| Personal data in history, real hosts in tests, upstream, `Co-Authored-By` / `Claude-Session` | none (`test/parity/config.json` is oracle data); tests use fakes or loopback only; no upstream; none |
+| `main` merged and ported | `main` = `0ffdcff`, an ancestor of the branch; STATUS says `0ffdcff` |
+
+**Still not verified:** macOS (R-M1 must go through the owner's CI), Android
+(Checkpoint C), and phases 5–9, which stay unreviewed.
