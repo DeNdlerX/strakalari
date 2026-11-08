@@ -7,6 +7,10 @@ Usage (CI fills everything from the release version + secrets)::
         --identity-name "YourCompany.Strakalari" \\
         --publisher "CN=..." --publisher-display "Your Company"
 
+    # Flutter build (whole Release bundle dir instead of one exe):
+    python tools/make_msix.py --app-dir app/build/windows/x64/runner/Release \\
+        --out Strakalari-0.2.0.msix --version 0.2.0 ... (same flags)
+
 The package is intentionally UNSIGNED: the Microsoft Store signs Store
 submissions itself, so no code-signing certificate is needed. Standard
 library only (runs on the CI runner with plain python).
@@ -72,7 +76,14 @@ def find_makeappx(explicit: str | None) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--exe", required=True, help="Frozen Strakalari.exe")
+    parser.add_argument("--exe", default=None,
+                        help="Frozen single-file Strakalari.exe (Python build). "
+                             "Exactly one of --exe / --app-dir is required.")
+    parser.add_argument("--app-dir", default=None,
+                        help="Flutter Release bundle dir "
+                             "(build/windows/x64/runner/Release): its whole "
+                             "content (Strakalari.exe, flutter_windows.dll, "
+                             "data/) is staged into the MSIX.")
     parser.add_argument("--out", required=True, help="Output .msix path")
     parser.add_argument("--version", required=True, help="Release version, e.g. 0.2.0")
     parser.add_argument("--identity-name", required=True)
@@ -86,8 +97,17 @@ def main() -> int:
                         help="Keep the unpacked package here (emptied first)")
     args = parser.parse_args()
 
-    if not os.path.isfile(args.exe):
+    if bool(args.exe) == bool(args.app_dir):
+        raise SystemExit("pass exactly one of --exe (Python onefile) or "
+                         "--app-dir (Flutter Release bundle dir)")
+    if args.exe is not None and not os.path.isfile(args.exe):
         raise SystemExit(f"exe not found: {args.exe}")
+    if args.app_dir is not None:
+        if not os.path.isdir(args.app_dir):
+            raise SystemExit(f"app dir not found: {args.app_dir}")
+        if not os.path.isfile(os.path.join(args.app_dir, "Strakalari.exe")):
+            raise SystemExit(f"Strakalari.exe not found in {args.app_dir} "
+                             "(set BINARY_NAME to Strakalari)")
     if not os.path.isfile(args.manifest):
         raise SystemExit(f"manifest template not found: {args.manifest}")
     version4 = msix_version(args.version)
@@ -114,7 +134,19 @@ def main() -> int:
     else:
         stage = tempfile.mkdtemp(prefix="strakalari-msix-")
     try:
-        shutil.copy2(args.exe, os.path.join(stage, "Strakalari.exe"))
+        if args.app_dir is not None:
+            # Flutter bundle: stage everything (exe, DLLs, data/) next
+            # to the manifest — the MSIX Application Executable stays
+            # Strakalari.exe, so the StartupTask + identity are unchanged.
+            for entry in os.listdir(args.app_dir):
+                src = os.path.join(args.app_dir, entry)
+                dst = os.path.join(stage, entry)
+                if os.path.isdir(src):
+                    shutil.copytree(src, dst)
+                else:
+                    shutil.copy2(src, dst)
+        else:
+            shutil.copy2(args.exe, os.path.join(stage, "Strakalari.exe"))
         with open(os.path.join(stage, "AppxManifest.xml"), "w", encoding="utf-8") as handle:
             handle.write(manifest)
         assets_dir = os.path.join(stage, "Assets")

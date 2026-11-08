@@ -54,7 +54,17 @@ czech.RemoveDataMsg=Chcete také odstranit všechna uživatelská data (nastaven
 czech.RemoveBrowserMsg=Od této verze Strakaláři prohlížeč nepotřebují.%n%nProhlížeč Chromium stažený staršími verzemi (asi 320 MB) je stále ve složce aplikace a lze ho odstranit. Odstranit?
 
 [Files]
-Source: "dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+; Flutter release bundle (flutter build windows --release):
+; build\windows\x64
+unner\Release\Strakalari.exe + flutter_windows.dll
+; + data\ (flutter_assets, ICU data). The whole folder ships — the app
+; is no longer a onefile exe (cf. dist\Strakalari.exe in the Python
+; build). Unchanged names (Strakalari.exe, AppId, HKCU Run value) mean
+; the Flutter build installs as an update over the Python one.
+Source: "app\build\windows\x64
+unner\Release\Strakalari.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "app\build\windows\x64
+unner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,*.exp,*.lib,*.ilk,*.map"
 Source: "config.example.json"; DestDir: "{app}"; Flags: ignoreversion
 ; NOTE: strava_blacklist.example.json is NOT seeded as a live file: the
 ; default blacklist is empty (the template is just "[]") and a missing
@@ -170,7 +180,9 @@ begin
         MsgBox(CustomMessage('RemoveDataMsg'), mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
     { The password key lives in Windows Credential Manager, which only the
       app itself can address: ask it to forget the key while its exe still
-      exists (files are removed after this step). }
+      exists (files are removed after this step). The Flutter app must
+      handle the --forget-secrets CLI flag (delete its keystore/file keys
+      and exit) — see docs/flutter-migration/phase-7-desktop.md. }
     if RemoveUserData and FileExists(ExpandConstant('{app}\{#MyAppExeName}')) then
       Exec(ExpandConstant('{app}\{#MyAppExeName}'), '--forget-secrets', '', SW_HIDE,
         ewWaitUntilTerminated, ResultCode);

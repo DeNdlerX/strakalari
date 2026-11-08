@@ -7,10 +7,17 @@ on:
   push:
     branches:
       - flutter-migration
+    tags:
+      - 'v*'
   pull_request:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Tag to release, e.g. v0.2.0 or v0.2.0-beta.1 (created on the selected commit). Leave empty for a build-only run.'
+        required: false
+        default: ''
 
 jobs:
   dart:
@@ -44,3 +51,356 @@ jobs:
       - name: Test app
         run: flutter test
         working-directory: app
+
+  # Phase-7 release jobs (Flutter builds; the Python build.yml is
+  # untouched until the phase-10 switch). Same tag/version contract:
+  #   tag v1.2.3        -> version 1.2.3, full release (draft to review)
+  #   tag v1.2.3-beta.1 -> version 1.2.3-beta.1, pre-release (at once;
+  #                        the in-app "beta" update channel picks it up)
+  #   no tag            -> build-only run (artifacts, no release)
+  # Same asset set as build.yml, minus the MSIX (it goes straight to
+  # the Microsoft Store via publish-store, which also signs it; see
+  # docs/STORE.md). Same identity everywhere: Inno AppId
+  # {D94B0F7F-65C1-4D52-9A47-E30D6E26F22B}, the Store identity from
+  # build.yml env, macOS bundle cz.strakalari.app.
+  meta:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    # Tags and manual runs only: branch pushes skip the release jobs.
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+      release: ${{ steps.v.outputs.release }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: v
+        env:
+          INPUT_TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          TAG=""
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          elif [[ -n "${INPUT_TAG// /}" ]]; then
+            TAG="${INPUT_TAG// /}"
+            [[ "$TAG" == v* ]] || TAG="v$TAG"
+          fi
+          if [[ -n "$TAG" ]]; then
+            if ! [[ "$TAG" =~ ^v[0-9]+(\.[0-9]+)*(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::Invalid release tag '$TAG' (expected v1.2.3 or v1.2.3-beta.1)"
+              exit 1
+            fi
+            VER="${TAG#v}"
+            RELEASE=true
+          else
+            VER="0.0.0"
+            RELEASE=false
+          fi
+          if [[ "$VER" == *-* ]]; then PRE=true; else PRE=false; fi
+          {
+            echo "version=$VER"
+            echo "tag=$TAG"
+            echo "release=$RELEASE"
+            echo "prerelease=$PRE"
+          } >> "$GITHUB_OUTPUT"
+          echo "Version: $VER | tag: ${TAG:-<none>} | release: $RELEASE | prerelease: $PRE"
+
+  build-flutter-windows:
+    name: Build Flutter Windows (Installer)
+    needs: meta
+    if: needs.meta.outputs.release == 'true'
+    runs-on: windows-latest
+    env:
+      STRAKALARI_VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter 3.44.8
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          cache: true
+
+      - name: Stamp installer version
+        shell: pwsh
+        run: |
+          $ver = $env:STRAKALARI_VERSION
+          $iss = Get-Content installer.iss -Raw
+          $iss2, $n = $iss -replace '#define MyAppVersion "[^"]+"', ('#define MyAppVersion "' + $ver + '"')
+          if ($n -ne 1) { throw "version stamp not found in installer.iss" }
+          Set-Content installer.iss $iss2 -NoNewline
+
+      - name: Resolve workspace dependencies
+        run: dart pub get --enforce-lockfile
+
+      - name: Analyze
+        run: dart analyze
+
+      - name: Build Windows bundle
+        run: flutter build windows --release --build-name="$env:STRAKALARI_VERSION" --build-number="${{ github.run_number }}"
+        working-directory: app
+
+      - name: Install Inno Setup compiler
+        run: |
+          choco install innosetup --no-progress
+
+      - name: Compile Windows Installer with Inno Setup
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion="${{ needs.meta.outputs.version }}" installer.iss
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-binaries
+          path: |
+            output/Strakalari-Setup-*.exe
+          retention-days: 14
+
+      # Raw Release bundle dir for the MSIX job: same binaries in Setup
+      # and Store (the manifest's Executable stays Strakalari.exe).
+      - name: Upload Release bundle for MSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-bundle
+          path: |
+            app/build/windows/x64/runner/Release/
+          retention-days: 3
+
+  build-flutter-msix:
+    name: Build MSIX (Microsoft Store)
+    needs: [meta, build-flutter-windows]
+    if: needs.meta.outputs.release == 'true' && needs.meta.outputs.prerelease != 'true'
+    runs-on: windows-latest
+    env:
+      STRAKALARI_VERSION: ${{ needs.meta.outputs.version }}
+      # Partner Center > the app > Product identity. Not secret: every
+      # installed package shows them. Empty = placeholder identity (the
+      # package still builds, but Partner Center refuses to take it).
+      STORE_IDENTITY_NAME: "DeNdler.Strakali"
+      STORE_PUBLISHER: "CN=D57E398C-E1DC-477E-8B3A-EA778AC2EDAC"
+      STORE_PUBLISHER_DISPLAY: "DeNdler"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-bundle
+          path: flutter-bundle
+
+      - name: Pack unsigned MSIX
+        shell: pwsh
+        run: |
+          $identity = $env:STORE_IDENTITY_NAME
+          $publisher = $env:STORE_PUBLISHER
+          $display = $env:STORE_PUBLISHER_DISPLAY
+          if ([string]::IsNullOrWhiteSpace($identity) -or [string]::IsNullOrWhiteSpace($publisher)) {
+            Write-Output "::warning::Store identity not set in dart.yml (build-flutter-msix env): placeholder MSIX, Partner Center will reject it. See docs/STORE.md."
+            $identity = "Strakalari.Placeholder"
+            $publisher = "CN=Strakalari-Placeholder"
+          }
+          if ([string]::IsNullOrWhiteSpace($display)) { $display = "Strakalari" }
+          python tools/make_msix.py --app-dir flutter-bundle `
+            --out "Strakalari-$env:STRAKALARI_VERSION.msix" `
+            --version "$env:STRAKALARI_VERSION" `
+            --identity-name "$identity" --publisher "$publisher" `
+            --publisher-display "$display"
+
+      - name: Upload MSIX Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: msix-package
+          path: |
+            Strakalari-*.msix
+          retention-days: 14
+
+  build-flutter-linux:
+    name: Build Flutter Linux (AppImage)
+    needs: meta
+    if: needs.meta.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    env:
+      STRAKALARI_VERSION: ${{ needs.meta.outputs.version }}
+      VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter 3.44.8
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          cache: true
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake git ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev
+
+      - name: Resolve workspace dependencies
+        run: dart pub get --enforce-lockfile
+
+      - name: Build Linux bundle
+        run: flutter build linux --release --build-name="$VERSION" --build-number="${{ github.run_number }}"
+        working-directory: app
+
+      - name: Build AppImage
+        run: |
+          set -e
+          VERSION="${VERSION:-0.0.1}"
+          echo "Building AppImage version $VERSION"
+          APPDIR=Strakalari.AppDir
+          rm -rf "$APPDIR"
+          mkdir -p "$APPDIR/usr/bin"
+          mkdir -p "$APPDIR/usr/share/applications"
+          mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+
+          cp -r app/build/linux/x64/release/bundle/* "$APPDIR/usr/bin/"
+          chmod +x "$APPDIR/usr/bin/strakalari"
+          cp assets/logo-256.png "$APPDIR/strakalari.png"
+          cp assets/logo-256.png "$APPDIR/.DirIcon"
+          cp assets/logo-256.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/strakalari.png"
+
+          cat << 'EOF' > "$APPDIR/strakalari.desktop"
+          [Desktop Entry]
+          Type=Application
+          Name=Strakalari
+          Comment=Automated school absence excusing and food ordering
+          Exec=strakalari --minimized
+          Icon=strakalari
+          Terminal=false
+          Categories=Utility;Education;
+          EOF
+
+          cat << 'EOF' > "$APPDIR/AppRun"
+          #!/bin/sh
+          SELF=$(readlink -f "$0")
+          HERE=${SELF%/*}
+          exec "$HERE/usr/bin/strakalari" "$@"
+          EOF
+          chmod +x "$APPDIR/AppRun"
+
+          wget -q -O appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run "$APPDIR" "Strakalari-${VERSION}-x86_64.AppImage"
+          chmod +x Strakalari-*.AppImage
+          ls -lh Strakalari-*.AppImage
+
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-binaries
+          path: |
+            Strakalari-*-x86_64.AppImage
+          retention-days: 14
+
+  build-flutter-macos:
+    name: Build Flutter macOS (.dmg)
+    needs: meta
+    if: needs.meta.outputs.release == 'true'
+    runs-on: macos-latest
+    env:
+      STRAKALARI_VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter 3.44.8
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          cache: true
+
+      - name: Free disk space (macOS runners are nearly full)
+        run: |
+          df -h /
+          sudo rm -rf /Users/runner/Library/Android || true
+          sudo rm -rf /Library/Developer/CoreSimulator/Caches || true
+          rm -rf ~/Library/Caches/* || true
+          df -h /
+
+      - name: Resolve workspace dependencies
+        run: dart pub get --enforce-lockfile
+
+      - name: Build macOS bundle
+        run: flutter build macos --release --build-name="$STRAKALARI_VERSION" --build-number="${{ github.run_number }}"
+        working-directory: app
+
+      - name: Ad-hoc sign and create macOS .dmg Installer
+        run: |
+          # Ad-hoc sign bundle (bundle id cz.strakalari.app, same as the
+          # Python .app, so the LaunchAgent plist keeps working).
+          codesign --force --deep --sign - "app/build/macos/Build/Products/Release/Strakalari.app"
+
+          # Build .dmg disk image with Applications shortcut.
+          mkdir -p dist/dmg
+          cp -r "app/build/macos/Build/Products/Release/Strakalari.app" dist/dmg/
+          ln -s /Applications dist/dmg/Applications
+          APP_MB=$(du -sm dist/dmg | cut -f1)
+          SIZE_MB=$((APP_MB + 512))
+          echo "Creating ${SIZE_MB}m image for ${APP_MB}m of staging"
+          hdiutil create -volname "Strakalari" -srcfolder dist/dmg -ov -format UDZO -size ${SIZE_MB}m "Strakalari-${STRAKALARI_VERSION}.dmg"
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-binaries
+          path: |
+            Strakalari-*.dmg
+          retention-days: 14
+
+  # One job publishes all Flutter assets together (same rule as the
+  # Python release job: parallel jobs creating/updating the release
+  # race into duplicate drafts). The MSIX is deliberately NOT attached
+  # here — it goes straight to the Microsoft Store (publish-store job
+  # in build.yml), which also signs it.
+  release-flutter:
+    name: Publish Flutter GitHub Release
+    needs: [meta, build-flutter-windows, build-flutter-linux, build-flutter-macos]
+    if: needs.meta.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: List release assets
+        run: ls -lh release-assets
+
+      # The binaries are not code-signed: publish checksums so a
+      # download can at least be checked against the release page.
+      - name: Compute SHA-256 checksums
+        working-directory: release-assets
+        run: |
+          set -euo pipefail
+          sha256sum Strakalari-Setup-*.exe Strakalari-*-x86_64.AppImage Strakalari-*.dmg > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.meta.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ needs.meta.outputs.prerelease == 'true' && format('Strakaláři {0} (beta)', needs.meta.outputs.version) || format('Strakaláři {0}', needs.meta.outputs.version) }}
+          prerelease: ${{ needs.meta.outputs.prerelease == 'true' }}
+          # Betas go out at once (opt-in channel); stable releases wait as a
+          # draft until published by hand.
+          draft: ${{ needs.meta.outputs.prerelease != 'true' }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            release-assets/Strakalari-Setup-*.exe
+            release-assets/Strakalari-*-x86_64.AppImage
+            release-assets/Strakalari-*.dmg
+            release-assets/SHA256SUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
