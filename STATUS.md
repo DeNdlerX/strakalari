@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 4 done, checkpoint A pending · Next step: reviewer check of Checkpoint A (do NOT start phase 5 before sign-off).
+Current phase: 5–9 done (integration by owner-agent) · Next step: reviewer check of Checkpoints B (UI) and C (platform) — do NOT start phase 10 before sign-off; phase 10 also needs the owner's merge.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -17,6 +17,30 @@ session_lock, automation (Strakalari), refresh (run_refresh).
 A dry-run refresh against the demo server gives identical result,
 cache keys (incl. `stable_baseline`), audit entries (modulo ts),
 outbox and history in Python and Dart. ⛔ Checkpoint A: core review.
+Phase 5 (app shell) is done: Riverpod controllers (AppState + 6 facades),
+go_router (8 routes + wizard + more), adaptive scaffold (720/520
+breakpoints, rail ↔ bar + More, landscape side rail), theme tokens,
+ARB strings (794 keys + 13 notif_*), shared widgets, error dialog with
+Copy log/Share, tutorial tours, platform seams. `flutter analyze` clean.
+Phase 6 (screens) is done: all 10 screens wired into the router with
+real views + controllers (wizard, today, timetable, absences, marks,
+planner, lunches, activity, settings, more); 116 widget/unit tests +
+app-boots/navigation smoke test green. ⛔ Checkpoint B: UI review.
+Phase 7 (desktop) is done in code: tray + hide-to-tray, autostart,
+single-instance loopback-TCP, notifications, desktop keystores, Inno
+(AppId kept) + MSIX adaptations, CI release jobs. All UNVERIFIED on
+this PC except `flutter analyze`; Sandbox over-install test pending.
+Phase 8 (Android) is done in code: Java moved unchanged (+1 R import
+line in 6 files), StrakalariChannel, headless backgroundMain with
+UI-isolate hand-off, boot re-arm, widget/alarms, Keystore unwrap,
+`.test` flavor, privacy test port. `:app:compileProd/PhonetestDebugSources`
+green, `flutter analyze` clean. On-phone verification pending.
+⛔ Checkpoint C: platform review.
+Phase 9 (soak prep) is done: soak_compare/soak_refresh scripts,
+SOAK.md routine, README/CONTRIBUTING/PRIVACY wording; dry-run parity
+IDENTICAL (modulo ts), fetch parity byte-identical. Beta release waits
+for the owner's go-ahead. ⛔ Checkpoint D: release review.
+Phase 10 (switch) NOT started: needs reviewer sign-off + owner merge.
 
 ## Phase 0 (done)
 
@@ -83,44 +107,44 @@ State: todo = not started, tests = Dart tests written, done = ported + green.
 | strakalari/core/tls.py | — (dropped, see below) | test_tls_bundle.py, test_frozen_ssl.py | dropped |
 | strakalari/core/update.py | core update.dart | test_update.py → update_test.dart + parity_update_test.dart (network via hook seam; app startup must set `currentAppVersion`, phases 7) | done |
 | strakalari/core/wakeup.py | core wakeup.dart (pure scheduling/message logic; alarms/receivers → phase 8) | test_wakeup_and_widget.py, test_wake_ui.py (pure cases; Flet/UI cases → phase 5–8) → wakeup_test.dart + parity_wakeup_test.dart | done |
-| strakalari/flet_ui/__init__.py | app barrel | — | todo |
-| strakalari/flet_ui/__main__.py | app/lib/main.dart | test_entry_routing.py | todo |
-| strakalari/flet_ui/app.py | app/lib/main.dart + shell/ | test_ui_views.py, test_open_url.py | todo |
+| strakalari/flet_ui/__init__.py | app barrel (shell + features) | — | done |
+| strakalari/flet_ui/__main__.py | app/lib/main.dart | widget_test.dart smoke (boots + rail navigation) | done |
+| strakalari/flet_ui/app.py | app/lib/main.dart + shell/ | widget_test.dart smoke; navigation covered | done |
 | strakalari/flet_ui/assets.py | app assets | test_icons.py | todo |
-| strakalari/flet_ui/components.py | app/lib/widgets/ | test_ui_views.py | todo |
-| strakalari/flet_ui/macos.py | app/lib/platform/desktop/ | test_macos_tray_host.py, test_macos_data_dir.py | todo |
-| strakalari/flet_ui/overlays.py | app/lib/widgets/ | test_ui_views.py | todo |
-| strakalari/flet_ui/safety.py | app shell/controllers | test_automation_safety.py (UI part) | todo |
-| strakalari/flet_ui/single_instance.py | app/lib/platform/desktop/ | test_single_instance.py | todo |
-| strakalari/flet_ui/startup.py | app/lib/main.dart startup | test_entry_routing.py, test_shutdown.py | todo |
-| strakalari/flet_ui/state.py | app controllers + appStateProvider | test_ui_state.py | todo |
-| strakalari/flet_ui/state_activity.py | app features/activity controller | test_flet_data_wiring.py | todo |
-| strakalari/flet_ui/state_excuses.py | app features/absences controller | test_flet_data_wiring.py | todo |
-| strakalari/flet_ui/state_lunches.py | app features/lunches controller | test_lunch_filter.py | todo |
-| strakalari/flet_ui/state_marks.py | app features/marks controller | test_marks_view.py | todo |
-| strakalari/flet_ui/state_planner.py | app features/planner controller | test_planner_dialog.py | todo |
-| strakalari/flet_ui/state_tutorial.py | app features controller | test_tutorial.py | todo |
-| strakalari/flet_ui/strings.py | app l10n ARB (generated) | test_settings_sections.py | todo |
-| strakalari/flet_ui/theme.py | app/lib/shell/theme.dart | (screenshots, phase 6) | todo |
-| strakalari/flet_ui/tray.py | app/lib/platform/desktop/ | test_tray_ui_command.py, test_minimize_to_tray.py | todo |
-| strakalari/flet_ui/tutorial.py | app/lib/tutorial/ | test_tutorial.py | todo |
-| strakalari/flet_ui/views/__init__.py | app features barrel | — | todo |
-| strakalari/flet_ui/views/absences.py | app features/absences | test_ui_views.py | todo |
-| strakalari/flet_ui/views/activity.py | app features/activity | test_ui_views.py | todo |
-| strakalari/flet_ui/views/lunches.py | app features/lunches | test_ui_views.py | todo |
-| strakalari/flet_ui/views/marks.py | app features/marks | test_marks_view.py | todo |
-| strakalari/flet_ui/views/more.py | app adaptive shell | test_ui_views.py | todo |
-| strakalari/flet_ui/views/planner.py | app features/planner | test_ui_views.py, test_year_planner.py | todo |
-| strakalari/flet_ui/views/settings/__init__.py | app features/settings | test_settings_sections.py | todo |
-| strakalari/flet_ui/views/settings/accounts.py | app features/settings | test_wizard_setup.py | todo |
-| strakalari/flet_ui/views/settings/app_prefs.py | app features/settings | test_settings_quiet_save.py | todo |
-| strakalari/flet_ui/views/settings/automation.py | app features/settings | test_settings_refresh_interactive.py | todo |
-| strakalari/flet_ui/views/settings/common.py | app features/settings | test_settings_sections.py | todo |
-| strakalari/flet_ui/views/settings/school_calendar.py | app features/settings | test_school_calendar.py | todo |
-| strakalari/flet_ui/views/settings/view.py | app features/settings | test_settings_sections.py | todo |
-| strakalari/flet_ui/views/timetable.py | app features/timetable | test_timetable_week_nav.py, test_timetable_week_switch.py | todo |
-| strakalari/flet_ui/views/today.py | app features/today | test_ui_views.py | todo |
-| strakalari/flet_ui/views/wizard.py | app features/wizard | test_wizard_setup.py | todo |
+| strakalari/flet_ui/components.py | app/lib/widgets/ | overlays_test.dart (8) | done |
+| strakalari/flet_ui/macos.py | app/lib/platform/desktop/ (tray hosts window, data dir) | — (macOS unverified) | done |
+| strakalari/flet_ui/overlays.py | app/lib/widgets/overlays.dart + error_dialog.dart | overlays_test.dart (8) | done |
+| strakalari/flet_ui/safety.py | app shell/controllers (confirm-auto guards) | settings_quietsave_test.dart | done |
+| strakalari/flet_ui/single_instance.py | app/lib/platform/desktop/single_instance.dart | — (manual py↔dart exclusion proof, phase 7 notes) | done |
+| strakalari/flet_ui/startup.py | app/lib/main.dart startup (stdio guards n/a on Flutter) | widget_test.dart smoke | done |
+| strakalari/flet_ui/state.py | app/lib/controllers/app_state.dart | widget_test.dart + settings tests | done |
+| strakalari/flet_ui/state_activity.py | app controllers/activity + features/activity | activity_state_test.dart (10) + activity_view_test.dart (6) | done |
+| strakalari/flet_ui/state_excuses.py | app controllers/excuses + features/today + absences | wizard/today/absences via widget_test rail pass | done |
+| strakalari/flet_ui/state_lunches.py | app controllers/lunches + features/lunches | lunches_filter_test.dart (15) + lunches_view_test.dart (9) | done |
+| strakalari/flet_ui/state_marks.py | app controllers/marks + features/marks | widget_test.dart rail pass | done |
+| strakalari/flet_ui/state_planner.py | app controllers/planner + features/planner | planner_reserve_test.dart (12) + planner_view_test.dart (10) | done |
+| strakalari/flet_ui/state_tutorial.py | app controllers/tutorial + tutorial/tours | tutorial_test.dart (19) | done |
+| strakalari/flet_ui/strings.py | app l10n ARB (app_cs/en + strings.dart) | settings_sections_test.dart (16) | done |
+| strakalari/flet_ui/theme.py | app/lib/shell/theme.dart | widget_test.dart breakpoints | done |
+| strakalari/flet_ui/tray.py | app/lib/platform/desktop/tray.dart | — (Sandbox test pending) | done |
+| strakalari/flet_ui/tutorial.py | app/lib/tutorial/ + widgets/overlays (kTours) | tutorial_test.dart (19) | done |
+| strakalari/flet_ui/views/__init__.py | app features barrel (router) | widget_test.dart rail pass | done |
+| strakalari/flet_ui/views/absences.py | app features/absences | widget_test.dart rail pass | done |
+| strakalari/flet_ui/views/activity.py | app features/activity | activity_view_test.dart (6) | done |
+| strakalari/flet_ui/views/lunches.py | app features/lunches | lunches_view_test.dart (9) | done |
+| strakalari/flet_ui/views/marks.py | app features/marks | widget_test.dart rail pass | done |
+| strakalari/flet_ui/views/more.py | app features/more.dart | overlays_test.dart +more (8) | done |
+| strakalari/flet_ui/views/planner.py | app features/planner | planner_view_test.dart (10) | done |
+| strakalari/flet_ui/views/settings/__init__.py | app features/settings | settings_sections_test.dart (16) | done |
+| strakalari/flet_ui/views/settings/accounts.py | app features/settings | wizard_settings_test.dart (5) | done |
+| strakalari/flet_ui/views/settings/app_prefs.py | app features/settings | settings_quietsave_test.dart (6) | done |
+| strakalari/flet_ui/views/settings/automation.py | app features/settings | settings_sections_test.dart (16) | done |
+| strakalari/flet_ui/views/settings/common.py | app features/settings | settings_sections_test.dart (16) | done |
+| strakalari/flet_ui/views/settings/school_calendar.py | app features/settings | settings_sections_test.dart (16) | done |
+| strakalari/flet_ui/views/settings/view.py | app features/settings | settings_sections_test.dart (16) | done |
+| strakalari/flet_ui/views/timetable.py | app features/timetable | widget_test.dart rail pass | done |
+| strakalari/flet_ui/views/today.py | app features/today | widget_test.dart rail pass | done |
+| strakalari/flet_ui/views/wizard.py | app features/wizard | wizard_settings_test.dart (5) | done |
 
 ## Tests
 
@@ -407,8 +431,71 @@ unless noted; remaining phase-5 owners unchanged below):
     `error_report` secret-values (secret keys only); the error_report
     port owns the canonical copy.
 
+- Phase 5–6 port adaptations (behavior identical unless noted):
+  - Six subagents worked in parallel with disjoint file sets, integrated
+    by the owner-agent: shell (Riverpod + router + theme + ARB + widgets),
+    screens A (today/timetable/absences/marks/wizard), screens B
+    (planner/lunches/activity/settings/more/overlays + 116 tests),
+    desktop (phase 7), Android (phase 8), soak+docs (phase 9).
+  - Three parallel string/token tables exist and all carry the same
+    values: shell `Strings`/`Tokens`, features `AppStrings`/`AppTokens`,
+    widgets `Str`. Same for `schedule_logic`/`grades_logic` (features)
+    vs canonical core ports — unification is reviewer work (Checkpoint B).
+  - Feature controllers are a mix of `ChangeNotifier` (today/timetable/
+    absences/marks/wizard) and plain listener-list classes
+    (planner/lunches/activity/settings); the shell passes default
+    instances until the `AppState` live-data wiring lands (reviewer work).
+  - `NavigationBarDestination` doesn't exist in Flutter 3.44.8 — the
+    bottom bar uses `NavigationDestination` (same visuals/API shape).
+  - `launch_at_startup` pinned to `^0.5.1`, `tray_manager` to `^0.5.2`
+    (0.6+ needs Dart ≥3.13; SDK is 3.12.2); `go_router ^18.0.0`,
+    `clock ^1.1.0` (flutter_test pins 1.1.2).
+  - The flutter-create counter template test is replaced by an app-boots
+    + rail-navigation smoke test (its subject no longer exists).
+  - Router builders construct each screen with default controllers
+    (empty data → empty-state cards, like a fresh install); live
+    `AppState` wiring is the documented next step, not a silent change.
+  - Root-library `backgroundMain()` is a one-line trampoline into
+    `platform/android/background.dart` (the engine resolves the fallback
+    name in the root library).
+  - Screenshots side-by-side (`build/parity-screens/`) not produced —
+    no Flet screenshots exist yet; the widget-test suite + rail pass
+    stand in until the reviewer runs the comparison.
+- Phase 7 adaptations: one process, async loop instead of core
+  `PeriodicRunner`; macOS/Linux keystores via CLI (`security`,
+  `secret-tool`) not native APIs; `dart.vm.product` instead of
+  `sys.frozen`; toast GUID reuses the Inno AppId. Full list in
+  `docs/flutter-migration/phase-7-desktop.md`. macOS/Linux/packaging/CI
+  parts written but UNVERIFIED.
+- Phase 8 adaptations: 6 Java files gain one `R` import line (namespace
+  change); `prod` flavor keeps `applicationId io.github.dendlerx.strakalari`,
+  new `phonetest` flavor builds the `.test` package (`test` is rejected
+  by AGP as a flavor name); core keystore/wakeup bridges are sync while
+  channels are async — solved with per-isolate warm-up + in-memory
+  bridges, needs reviewer sign-off.
+- Phase 9: soak scripts are new files under `tools/parity/`
+  (`soak_refresh.py`, `soak_compare.py`); docs wording updated (README,
+  PRIVACY, CONTRIBUTING); no tag/merge/push performed.
+
 ## Questions for the owner / reviewer
 
+- ⛔ Checkpoints B + C reached: please have a reviewer model check phases
+  5–8 (Checkpoint notes below) before phase 10. Open decisions:
+  1. Unify the three string/token tables + feature `schedule_logic`/
+     `grades_logic` onto the canonical core ports now, or keep the
+     duplication until the `AppState` live-data wiring lands?
+  2. `flutter build` now requires `--flavor prod|phonetest` — confirm the
+     flavor names (AGP rejects `test`) and the release-signing inputs
+     (`~/.strakalari-signing/android-release.properties` or env).
+  3. `backgroundMain` trampoline placement (root library delegates to
+     `platform/android/background.dart`) — confirm against the
+     `RefreshReceiver` wiring.
+  4. Confirm `--forget-secrets`/`--minimized` flags + `LSUIElement` for
+     macOS + whether `launch_at_startup` stays a dependency (currently
+     unused by the ported code).
+  5. Screenshots parity (`build/parity-screens/`): produce Flet shots
+     first (`tools/demo_data.py screenshots`), then Flutter shots?
+  6. Beta release (Checkpoint D): cut from the branch only on your go.
 - ⛔ Checkpoint A reached: please have a reviewer model check phases 3–4
   (Checkpoint notes below) before phase 5 starts. Open decisions:
   1. `planAutoOrdersHook` is sync but the real `planAutoOrders` is async
@@ -470,6 +557,56 @@ Unsure / needs a second pair of eyes:
   Unicode like ß); `int(True)`-style bool periods return null.
 - Gemini `localFallbackRecommendation` keyword lists ported line by
   line (Czech stems); only covered via parity fixtures + fakes.
+
+### ⛔ Checkpoint B: UI review (phases 5–6)
+
+Done: shell (router/scaffold/theme/ARB/controllers/widgets/error
+dialog/tutorials/platform seams) + all 10 screens wired into the
+router with real views + controllers; `flutter analyze` clean;
+`flutter test` 120+ green (116 feature tests + boots/navigation smoke
++ layout breakpoints), core suite 720/720 still green.
+Every deviation is listed under Deviations above; Python behavior that
+looked wrong was ported as-is (nothing "fixed").
+How to verify:
+- `flutter analyze` + `flutter test` in `app/` (template counter test
+  replaced by the boots/navigation smoke test — recorded above).
+- Boot on a demo data dir (`tools/demo_data.py generate DIR`,
+  `STRAKALARI_DATA_DIR=DIR`): every rail destination renders its real
+  screen (empty-state cards with no data, like a fresh install).
+- Screenshots parity still open (see Questions 5).
+Unsure / needs a second pair of eyes:
+- The three string/token tables + feature-local `schedule_logic`/
+  `grades_logic` duplicates (see Deviations) — unify now or later?
+- Router passes default (empty) controllers; the `AppState` live-data
+  wiring (config/save/send/test/refresh callbacks) is the next step.
+- `wakeupAvailable` stubs to false (Android-only, phase 8).
+
+### ⛔ Checkpoint C: platform review (phases 7–8)
+
+Done in code, largely UNVERIFIED on this machine (see the per-area
+notes): desktop tray/autostart/single-instance/notifications/keystores,
+Inno (AppId kept) + MSIX adaptations, CI release jobs; Android Java
+moved + MethodChannel + headless `backgroundMain` + boot re-arm +
+widget/alarms + Keystore unwrap + `.test` flavor + privacy test.
+How to verify:
+- `flutter analyze` (clean); `:app:compileProd/PhonetestDebugSources`
+  BUILD SUCCESSFUL; `packaging_privacy_test.dart` 4 pass + 1 skip
+  (needs `STRAKALARI_APK/AAB`).
+- Sandbox over-install test (phase 7) and on-phone `.test` test
+  (phase 8) — exact steps in the agents' reports / phase-7-desktop.md.
+  Before the first phone install the owner confirms the `.test` app is
+  on dry run / demo server.
+Unsure / needs a second pair of eyes:
+- Sync-core-bridge vs async-channel seams (phase 8 warm-up design).
+- macOS/Linux code paths, release builds, CI jobs — owner/CI must run.
+
+### ⛔ Checkpoint D: release review (phase 9)
+
+Soak prep done: `tools/parity/soak_refresh.py` + `soak_compare.py`,
+`docs/flutter-migration/SOAK.md` routine, README/PRIVACY/CONTRIBUTING
+wording. Dry-run parity IDENTICAL (modulo ts), fetch parity
+byte-identical, both suites green. The multi-day side-by-side soak and
+the beta cut wait for the owner's go-ahead — no tag/merge/push done.
 
 Phase 1 cross-implementation proofs (for Checkpoint A):
 - Fernet: Dart decrypted a Python-made token and Python decrypted a
