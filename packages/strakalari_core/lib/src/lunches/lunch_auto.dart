@@ -9,12 +9,10 @@
 // - Food-ban matching delegates to planning/matching.dart
 //   ([_isFoodBannedPair] → `isFoodBanned`); the stem/token logic lives
 //   there, exactly like lunch_auto.py calls matching.is_food_banned.
-// - [orderWindowPredicate] resolves its cutoff and free-day set through the
-//   optional [cutoffOverride]/[freeDaysOverride] seams. They stand in for
-//   school_presets `resolve_lunch_cutoff` / `effective_calendar(...,
-//   clip: false)` until planning/school_presets.dart lands; without them the
-//   predicate is unavailable (fail-closed), exactly like the Python path
-//   when the calendar cannot be computed.
+// - [orderWindowPredicate] resolves its cutoff and free-day set from
+//   school_presets (`resolveLunchCutoff` / `effectiveCalendar(...,
+//   clip: false)`), like lunch_auto.py; the optional
+//   [cutoffOverride]/[freeDaysOverride] seams stay for tests.
 // - Key decryption ([decryptStrict], [isEncryptedFlag]), [getLanguage],
 //   [canonicalDayKey] and [parseCzDate] are the already-ported canonical
 //   implementations.
@@ -23,6 +21,8 @@ import 'package:clock/clock.dart';
 import '../i18n.dart';
 import '../models.dart';
 import '../planning/matching.dart' as matching;
+import '../planning/school_presets.dart'
+    show effectiveCalendar, resolveLunchCutoff;
 import '../storage/helpers.dart';
 import 'gemini.dart';
 import 'lunch_cutoff.dart';
@@ -340,9 +340,10 @@ Map<String, String> mergeGeminiWithFilter(
 /// `date -> bool` cutoff predicate for auto picks (null = unavailable).
 ///
 /// Fail-closed: a day whose deadline cannot be computed reads as closed.
-/// [cutoffOverride] and [freeDaysOverride] stand in for school_presets
-/// (`resolve_lunch_cutoff` / `effective_calendar(..., clip: false)`) until
-/// planning/school_presets.dart lands; without both, the predicate is null.
+/// The cutoff and free-day set resolve from [configData] through
+/// school_presets (`resolveLunchCutoff` / `effectiveCalendar(..., clip:
+/// false)`); [cutoffOverride] and [freeDaysOverride] stay injectable
+/// seams for tests.
 bool Function(DateTime)? orderWindowPredicate(
   Map<String, Object?>? configData, {
   DateTime? now,
@@ -350,12 +351,9 @@ bool Function(DateTime)? orderWindowPredicate(
   Set<DateTime>? freeDaysOverride,
 }) {
   try {
-    // `configData` will feed school_presets `resolve_lunch_cutoff` and
-    // `effective_calendar(..., clip: false)` once planning/school_presets.dart
-    // lands; until then both stay injectable seams below.
-    final cutoff = cutoffOverride;
-    final free = freeDaysOverride;
-    if (cutoff == null || free == null) return null;
+    final cutoff = cutoffOverride ?? resolveLunchCutoff(configData);
+    final free =
+        freeDaysOverride ?? effectiveCalendar(configData, clip: false).dates;
     final moment = now ?? clock.now();
     bool isOpen(DateTime day) {
       try {

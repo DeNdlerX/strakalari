@@ -63,20 +63,20 @@ Set<String> testPlannedLunchDays(Map<String, Object?> cfg) {
 /// Gap-fill planner double (mirrors `plan_auto_orders` for the cases the
 /// refresh tests exercise: cancelled days get no meal, handled/ordered
 /// days are left alone, a broken blacklist orders nothing).
-({Map<String, String> orders, bool usedGemini}) testPlanAutoOrders(
+Future<(Map<String, String>, bool)> testPlanAutoOrders(
   Map<String, Map<String, String>> food,
   Map<String, Object?> cfg, {
   List<String> blacklist = const [],
   bool blacklistBroken = false,
   Set<String> cancelledDays = const {},
-  List<String> ordered = const [],
+  Map<String, String> ordered = const {},
   List<String> handled = const [],
   String promptFallback = '',
   RefreshEmit? emit,
-}) {
-  if (food.isEmpty) return (orders: <String, String>{}, usedGemini: false);
-  if (blacklistBroken) return (orders: <String, String>{}, usedGemini: false);
-  final skip = {...cancelledDays, ...handled, ...ordered};
+}) async {
+  if (food.isEmpty) return (<String, String>{}, false);
+  if (blacklistBroken) return (<String, String>{}, false);
+  final skip = {...cancelledDays, ...handled, ...ordered.keys};
   final orders = <String, String>{};
   for (final day in food.keys) {
     if (skip.contains(day)) continue;
@@ -87,7 +87,7 @@ Set<String> testPlannedLunchDays(Map<String, Object?> cfg) {
       }
     }
   }
-  return (orders: orders, usedGemini: false);
+  return (orders, false);
 }
 
 /// Minimal handled-days double (mirrors `update_handled_days`: union of
@@ -482,6 +482,28 @@ void main() {
       expect(orders, isNotEmpty);
       expect(orders.first.containsKey(futureDay), isFalse);
       expect(orders.first.containsKey(otherDay), isTrue);
+    });
+
+    test('defaultHookOrdersGapDay', () async {
+      // The production planner (no Gemini configured): a gap day gets a
+      // meal, the planned-skip day gets none.
+      planAutoOrdersHook = defaultPlan;
+      try {
+        final calls = <Object?>[];
+        final result = await runRefresh(
+            FakeApp(calls, orderMode: 'auto'), refreshConfig());
+        final orders = [
+          for (final c in calls)
+            if (c is (String, Map<String, String>)) c.$2
+        ];
+        expect(orders, isNotEmpty);
+        expect(orders.first.containsKey(futureDay), isFalse);
+        expect(orders.first.containsKey(otherDay), isTrue);
+        expect(result.lunchesOrdered, 1);
+        expect(result.usedGemini, isFalse);
+      } finally {
+        planAutoOrdersHook = testPlanAutoOrders;
+      }
     });
 
     test('brokenBlacklistOrdersNothing', () async {

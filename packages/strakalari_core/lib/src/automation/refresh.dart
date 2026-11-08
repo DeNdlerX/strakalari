@@ -23,10 +23,7 @@
 // needs `lunches/lunch_auto.dart` + `planning/planned_skips.dart` —
 // like refresh.py's lazy imports of those modules. The hooks below default
 // to those canonical functions; tests assign fakes (the Dart mirror of
-// monkeypatching the module functions). Only [planAutoOrdersHook] still
-// throws: the real `planAutoOrders` is async (network/Gemini) while the
-// hook contract is sync, so production wiring waits for the async
-// boundary owner (phase 5/9).
+// monkeypatching the module functions).
 import 'package:clock/clock.dart';
 
 import '../bakalari/common.dart';
@@ -35,7 +32,8 @@ import '../storage/config.dart';
 import '../i18n.dart';
 import '../models.dart';
 import '../storage/cache.dart';
-import '../lunches/lunch_auto.dart' show handledKey, updateHandledDays;
+import '../lunches/lunch_auto.dart'
+    show handledKey, planAutoOrders, updateHandledDays;
 import '../storage/helpers.dart';
 import '../news.dart' show findNews;
 import '../planning/planned_skips.dart' show plannedLunchDays;
@@ -69,29 +67,19 @@ List<(String, String)> Function(
       for (final e in findNews(previous, fresh, today)) (e.key, e.value)
     ];
 
-/// Auto-mode lunch picks: `(orders, usedGemini)`. The real
-/// `lunch_auto.planAutoOrders` is async (network/Gemini) while this hook
-/// contract is sync, so the hook keeps throwing until the async boundary
-/// is reworked (phase 5/9); tests assign fakes.
-({Map<String, String> orders, bool usedGemini}) Function(
+/// Auto-mode lunch picks: `(orders, usedGemini)`. Defaults to the real
+/// `lunch_auto.planAutoOrders` (async: network/Gemini); tests assign fakes.
+Future<(Map<String, String>, bool)> Function(
     Map<String, Map<String, String>> food,
     Map<String, Object?> cfg, {
   List<String> blacklist,
   bool blacklistBroken,
   Set<String> cancelledDays,
-  List<String> ordered,
+  Map<String, String> ordered,
   List<String> handled,
   String promptFallback,
   RefreshEmit? emit,
-}) planAutoOrdersHook = (_, _,
-        {blacklist = const [],
-        blacklistBroken = false,
-        cancelledDays = const {},
-        ordered = const [],
-        handled = const [],
-        promptFallback = '',
-        emit}) =>
-    throw UnimplementedError('phase 3: lunch_auto');
+}) planAutoOrdersHook = planAutoOrders;
 
 /// `DD.MM.YYYY` days off whose lunch should be cancelled
 /// (`planned_skips.planned_lunch_days`, like refresh.py's lazy import).
@@ -682,20 +670,19 @@ Future<void> _autoLunch(
   try {
     final cancelled =
         plannedLunchDaysHook(cfg).union(Set<String>.of(cancelledLunchDays ?? const <String>[]));
-    final plan = planAutoOrdersHook(
+    final (orders, usedGemini) = await planAutoOrdersHook(
       Map<String, Map<String, String>>.of(app.foodDict),
       cfg,
       blacklist: List<String>.of(app.stravaBlacklist),
       blacklistBroken: app.stravaBlacklistBroken,
       cancelledDays: cancelled,
-      ordered: [for (final e in orderedBefore.entries) e.key],
+      ordered: orderedBefore,
       handled: handled,
       promptFallback: lunchPrompt,
       emit: (key, [fmt = const <String, Object?>{}]) =>
           emit(key, fmt),
     );
-    final orders = plan.orders;
-    result.usedGemini = plan.usedGemini;
+    result.usedGemini = usedGemini;
     if (orders.isEmpty) {
       emit('auto_lunch_none');
     } else if (await app.stravaOrderSelected(orders, source: 'auto')) {
