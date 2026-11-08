@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 5–9 done (integration by owner-agent) · Next step: Checkpoint A rework — ALL BLOCKERS DONE (B1 ee364bd, B2 7a045dd, B3 e0d0ebf, B4 441a05e, B5 2eff0b5) + M1 DONE (56c34aa, concurrent-sync test green); M2 DONE (5857842), M3 DONE (fetchData port), M4 DONE except the per-file Python-writes-Dart-rewrites byte test (CRLF, audit separators and indent-2 writer are covered by parity cases + unit tests only); next: finish that byte test, then M5–M8, S1–S10, one commit per finding, then stop for re-review. No work on phases 5–10 until Checkpoint A passes.
+Current phase: 5–9 done (integration by owner-agent) · Next step: Checkpoint A rework — ALL BLOCKERS DONE (B1 ee364bd, B2 7a045dd, B3 e0d0ebf, B4 441a05e, B5 2eff0b5) + M1 DONE (56c34aa), M2 DONE (5857842), M3 DONE (73cd892), M4 DONE (e734e04 + per-file Python-writes-Dart-rewrites byte test); next: M5–M8, S1–S10, one commit per finding, then stop for re-review. No work on phases 5–10 until Checkpoint A passes.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.

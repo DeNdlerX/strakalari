@@ -121,6 +121,123 @@ def helpers_cases() -> list[dict]:
         cases.append(_case("jsonIndent2",
                            json.dumps(sample, indent=2, ensure_ascii=False),
                            sample))
+    # Per-file writer snapshots (A-M4): Python writes config, cache,
+    # history, sidecar, planned skips and presets through their real
+    # writers; Dart seeds those bytes on disk, loads + rewrites each
+    # file through its real reader/writer, and asserts the bytes match.
+    import tempfile
+    from strakalari.core import cache as _cache
+    from strakalari.core import config as _config
+    from strakalari.core import excuse_history as _eh
+    from strakalari.core import planned_skips as _ps
+    from strakalari.core import school_presets as _sp
+
+    old_data_dir = os.environ.get("STRAKALARI_DATA_DIR")
+    old_no_keyring = os.environ.get("STRAKALARI_NO_KEYRING")
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["STRAKALARI_DATA_DIR"] = tmp
+            os.environ["STRAKALARI_NO_KEYRING"] = "1"
+            cfg_path = os.path.join(tmp, "config.json")
+            cm = _config.ConfigManager(cfg_path)
+            cm.set("language", "en")
+            cm.set("bakalari_url", "https://bakalari.skola.cz")
+            cm.set("bakalari_username", "jan.novak")
+            cm.set("use_strava", False)
+            cm.set("marks_percent_bands", [87.0, 72.0, 55.0, 40.0])
+            cm.save()
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                cfg_text = f.read()
+
+            _cache.save_data_cache(
+                {
+                    "timetable": {
+                        "01.09.2026": [{"hour": "1", "subject": "ČJ"}]
+                    },
+                    "absence": [],
+                    "grades": {"ČJ": {"marks": [], "average": "1,50"}},
+                    "strava_menu": {},
+                    "strava_ordered": {"01.09.2026": "1"},
+                    "last_updated": "01.09.2026 08:00:00",
+                },
+                replace=True,
+            )
+            with open(os.path.join(tmp, "data_cache.json"), "r",
+                      encoding="utf-8") as f:
+                cache_text = f.read()
+
+            merged_hist, _ = _eh.merge_sent_excuses(
+                [{"type": "pure days", "starting_day": "1.9.2026",
+                  "ending_day": "02.09.2026"}],
+                [{"type": "days and hours", "starting_day": "03.09.2026",
+                  "ending_day": "03.09.2026", "starting_lesson": 2,
+                  "ending_lesson": 4}],
+            )
+            hist_path = os.path.join(tmp, "already_excused_lessons.json")
+            h.atomic_write_json(hist_path, merged_hist)
+            with open(hist_path, "r", encoding="utf-8") as f:
+                hist_text = f.read()
+
+            from datetime import datetime as _dt
+            sidecar_path = _eh.unconfirmed_path(hist_path)
+            _eh.save_unconfirmed(
+                hist_path,
+                [_eh.unconfirmed_entry(
+                    {"type": "pure days", "starting_day": "04.09.2026",
+                     "ending_day": "04.09.2026"},
+                    _dt(2026, 9, 4, 7, 30, 0),
+                )],
+            )
+            with open(sidecar_path, "r", encoding="utf-8") as f:
+                sidecar_text = f.read()
+
+            skips = _ps.entries_for_selection(
+                {_date(2026, 9, 7): [1, 2], _date(2026, 9, 8): [1, 2, 3]},
+                {_date(2026, 9, 7): [1, 2, 3], _date(2026, 9, 8): [1, 2, 3]},
+                template="Lékař",
+                cancel_lunch=False,
+            )
+            skips_cfg_path = os.path.join(tmp, "skips_config.json")
+            cm_skips = _config.ConfigManager(skips_cfg_path)
+            cm_skips.set_and_save(
+                "planned_skips",
+                _ps.load_planned_skips({"planned_skips": skips}),
+            )
+            with open(skips_cfg_path, "r", encoding="utf-8") as f:
+                skips_text = f.read()
+
+            preset_data = dict(
+                _sp.GEKOM_2026_2027,
+                id="test_gekom",
+                ranges=[list(r) for r in _sp.GEKOM_2026_2027["ranges"]],
+                days=[list(d) for d in _sp.GEKOM_2026_2027["days"]],
+            )
+            preset_path = os.path.join(
+                tmp, "school_presets", "test_gekom.json")
+            h.atomic_write_json(preset_path, preset_data)
+            with open(preset_path, "r", encoding="utf-8") as f:
+                preset_text = f.read()
+
+            cases.append(_case(
+                "roundTripFiles",
+                {
+                    "config": cfg_text,
+                    "cache": cache_text,
+                    "history": hist_text,
+                    "sidecar": sidecar_text,
+                    "planned_skips": skips_text,
+                    "presets": preset_text,
+                },
+            ))
+    finally:
+        if old_data_dir is None:
+            os.environ.pop("STRAKALARI_DATA_DIR", None)
+        else:
+            os.environ["STRAKALARI_DATA_DIR"] = old_data_dir
+        if old_no_keyring is None:
+            os.environ.pop("STRAKALARI_NO_KEYRING", None)
+        else:
+            os.environ["STRAKALARI_NO_KEYRING"] = old_no_keyring
     return cases
 
 
