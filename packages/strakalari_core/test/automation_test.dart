@@ -283,7 +283,10 @@ void main() {
 
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('automation_test_');
-    setEnvironmentOverride({'STRAKALARI_DATA_DIR': tmp.path});
+    setEnvironmentOverride({
+      'STRAKALARI_DATA_DIR': tmp.path,
+      'STRAKALARI_NO_KEYRING': '1',
+    });
     clearKeyCache();
     // Open future days; past days stay closed (mirrors the real cutoff
     // for the far-future/past dates the tests use).

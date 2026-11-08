@@ -62,7 +62,10 @@ Future<void> main(List<String> args) async {
     }
   }
   Directory(dataDir).createSync(recursive: true);
-  setEnvironmentOverride({'STRAKALARI_DATA_DIR': dataDir});
+  setEnvironmentOverride({
+    'STRAKALARI_DATA_DIR': dataDir,
+    'STRAKALARI_NO_KEYRING': '1',
+  });
 
   // Production hook defaults (real phase-3 functions) are exercised as-is;
   // tests assign fakes only in the unit suite.

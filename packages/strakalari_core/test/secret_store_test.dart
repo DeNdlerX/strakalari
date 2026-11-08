@@ -40,6 +40,7 @@ void main() {
     tmp = Directory.systemTemp.createTempSync('secret_store_test_');
     backend = MemoryKeyStore();
     keyStoreBackend = backend;
+    allowMissingKeyStoreForTesting = false;
     setEnvironmentOverride({'STRAKALARI_DATA_DIR': tmp.path});
     originalFernetFactory = fernetFactory;
     clearKeyCache();
@@ -47,6 +48,7 @@ void main() {
 
   tearDown(() {
     keyStoreBackend = null;
+    allowMissingKeyStoreForTesting = false;
     setEnvironmentOverride(null);
     fernetFactory = originalFernetFactory;
     clearKeyCache();
@@ -121,8 +123,20 @@ void main() {
     expect(File(keyPath()).existsSync(), isTrue);
   });
 
+  test('missingBackendOnDesktopThrowsInsteadOfCreatingFile', () {
+    keyStoreBackend = null;
+    expect(() => encrypt('hunter2'), throwsA(isA<KeyStoreUnavailable>()));
+    expect(File(keyPath()).existsSync(), isFalse);
+    expect(() => getKey(tmp.path), throwsA(isA<KeyStoreUnavailable>()));
+    expect(
+      () => storageLocation(tmp.path),
+      throwsA(isA<KeyStoreUnavailable>()),
+    );
+  });
+
   test('noBackendFallsBackToFile', () {
     keyStoreBackend = null;
+    allowMissingKeyStoreForTesting = true;
     final token = encrypt('hunter2');
     expect(File(keyPath()).existsSync(), isTrue);
     expect(decrypt(token), 'hunter2');
@@ -171,8 +185,9 @@ void main() {
   });
 
   test('forgetKeyRemovesFileKey', () {
-    // No backend: the key lands in the file (mirrors CI without keyring).
+    // Explicit opt-in: the key lands in the file (mirrors CI without keyring).
     keyStoreBackend = null;
+    allowMissingKeyStoreForTesting = true;
     getKey(tmp.path);
     expect(File('${tmp.path}${Platform.pathSeparator}$keyFile').existsSync(),
         isTrue);

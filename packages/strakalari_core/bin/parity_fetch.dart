@@ -41,6 +41,7 @@ void main(List<String> args) async {
       password = args[++i];
     }
   }
+  setEnvironmentOverride({'STRAKALARI_NO_KEYRING': '1'});
   final client = BakalariClient({
     'bakalari_url': url,
     'bakalari_username': user,

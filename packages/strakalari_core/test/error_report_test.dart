@@ -21,7 +21,10 @@ void main() {
   Directory? tmp;
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('error_report_test_');
-    setEnvironmentOverride({'STRAKALARI_DATA_DIR': tmp!.path});
+    setEnvironmentOverride({
+      'STRAKALARI_DATA_DIR': tmp!.path,
+      'STRAKALARI_NO_KEYRING': '1',
+    });
     clearKeyCache();
   });
   tearDown(() {

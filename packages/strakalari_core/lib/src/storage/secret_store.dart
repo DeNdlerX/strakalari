@@ -35,6 +35,26 @@ bool get _noKeyring {
   return value.isNotEmpty && value != '0';
 }
 
+/// Test-only opt-in to the `secret.key` file fallback when
+/// [keyStoreBackend] is null and `STRAKALARI_NO_KEYRING` is not set.
+///
+/// Desktop entry points must register a [KeyStore] or set
+/// `STRAKALARI_NO_KEYRING=1`; forgetting to do so throws
+/// [KeyStoreUnavailable] instead of silently creating a `secret.key` that
+/// would later shadow the OS credential store.
+bool allowMissingKeyStoreForTesting = false;
+
+KeyStore? _desktopBackend() {
+  if (_noKeyring || allowMissingKeyStoreForTesting) return null;
+  final backend = keyStoreBackend;
+  if (backend != null) return backend;
+  if (isMobile()) return null;
+  throw const KeyStoreUnavailable(
+    'No OS credential store backend registered '
+    '(set keyStoreBackend or STRAKALARI_NO_KEYRING=1).',
+  );
+}
+
 /// Store entry bound to the data dir path.
 ///
 /// Mirrors `secret_store._entry_name`: `normcase(abspath(data_dir))`.
@@ -129,7 +149,7 @@ Uint8List _loadOrCreate(String dataDir) {
   }
   final android = _androidKeystore();
   if (android != null) return _androidLoadOrCreate(dataDir, fileKey, android);
-  final backend = _noKeyring ? null : keyStoreBackend;
+  final backend = _desktopBackend();
   if (backend == null) {
     if (fileKey == null) {
       fileKey = Fernet.generateKey();
@@ -285,7 +305,7 @@ bool carryKey(String oldDir, String newDir) {
   final dest = p.join(newDir, keyFile);
   try {
     Uint8List? key = _readFile(p.join(oldDir, keyFile));
-    final backend = _noKeyring ? null : keyStoreBackend;
+    final backend = _desktopBackend();
     if (!Fernet.isValidKeyBytes(key)) {
       key = backend == null ? null : _fromStore(backend, entryName(oldDir));
     }
@@ -297,8 +317,11 @@ bool carryKey(String oldDir, String newDir) {
     } else {
       _writeFile(dest, key!);
     }
+  } on KeyStoreUnavailable catch (e) {
+    print('Warning: could not carry the password key to $newDir: $e');
+    return false;
   } on OSError catch (e) {
-    // Includes KeyStoreUnavailable.
+    // Includes filesystem errors.
     print('Warning: could not carry the password key to $newDir: $e');
     return false;
   }
@@ -312,7 +335,7 @@ bool carryKey(String oldDir, String newDir) {
 /// is left behind. Never raises.
 bool forgetKey(String dataDir) {
   var ok = true;
-  final backend = _noKeyring ? null : keyStoreBackend;
+  final backend = _desktopBackend();
   if (backend != null) {
     try {
       backend.deletePassword(serviceName, entryName(dataDir));
@@ -338,7 +361,7 @@ bool forgetKey(String dataDir) {
 String storageLocation(String dataDir) {
   if (File(p.join(dataDir, keyFile)).existsSync()) return 'file';
   if (File(p.join(dataDir, wrappedFile)).existsSync()) return 'keystore';
-  final backend = _noKeyring ? null : keyStoreBackend;
+  final backend = _desktopBackend();
   return backend != null ? 'keyring' : 'file';
 }
 
