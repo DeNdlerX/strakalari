@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 2 · Next step: Phase 2 — port bakalari_common + extractors/bakalari.
+Current phase: 2 · Next step: Phase 2 — port bakalari_http (session).
 Phase 1 (core foundation) is done: models, helpers, config, cache, i18n,
 audit, excuse_history, Fernet + secret_store, parity harness.
 
@@ -32,7 +32,7 @@ State: todo = not started, tests = Dart tests written, done = ported + green.
 | strakalari/core/automation.py | core automation/automation.dart | test_automation_safety.py | todo |
 | strakalari/core/autostart.py | core platform/autostart.dart + app impl | test_autostart.py, test_autostart_platforms.py | todo |
 | strakalari/core/bakalari_client.py | core bakalari/client.dart | test_bakalari_client.py | todo |
-| strakalari/core/bakalari_common.py | core bakalari/common.dart | (covered by client/data tests) | todo |
+| strakalari/core/bakalari_common.py | core bakalari/common.dart | client/data tests (hour-index, week offsets, removed/room-move rows) → common_test.dart | done |
 | strakalari/core/bakalari_data.py | core bakalari/data.dart | test_absence_details.py, test_marks_view.py, test_sent_excuses.py, test_substitution_feed_days.py | todo |
 | strakalari/core/bakalari_excuse.py | core bakalari/excuse.dart | test_bakalari_excuse.py, test_excuse_generation.py | todo |
 | strakalari/core/bakalari_http.py | core bakalari/http_session.dart | test_bakalari_http.py | todo |
@@ -43,7 +43,7 @@ State: todo = not started, tests = Dart tests written, done = ported + green.
 | strakalari/core/error_report.py | core error_report.dart | test_error_report.py, test_log_redaction.py | todo |
 | strakalari/core/excuse_history.py | core automation/excuse_history.dart | test_excuse_history.py, test_unconfirmed_excuses.py (pure cases) → excuse_history_test.dart (17) + parity_excuse_history_test.dart | done |
 | strakalari/core/extractors/__init__.py | core bakalari/ + strava/ barrels | — | todo |
-| strakalari/core/extractors/bakalari.py | core bakalari/extractors.dart | (covered by client/data tests) | todo |
+| strakalari/core/extractors/bakalari.py | core bakalari/extractors.dart | grades/sent-excuses/substitution/parity cases → extractors_test.dart + parity_bakalari_test.dart | done |
 | strakalari/core/extractors/strava.py | core strava/extractors.dart | (covered by strava tests) | todo |
 | strakalari/core/forecast.py | core planning/forecast.dart | test_forecast.py | todo |
 | strakalari/core/gemini.py | core lunches/gemini.dart | test_gemini_key.py, test_gemini_picks.py, test_ai_recommend.py | todo |

@@ -11,6 +11,7 @@ dependencies:
   # http + cookie_jar arrive with the client ports (phase 2).
   clock: ^1.1.0
   crypto: ^3.0.0
+  html_unescape: ^2.0.0
   path: ^1.9.0
   pointycastle: ^4.0.0
 

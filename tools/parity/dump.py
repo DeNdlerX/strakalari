@@ -349,6 +349,128 @@ def history_cases() -> list[dict]:
     return cases
 
 
+def bakalari_cases() -> list[dict]:
+    import json as _json
+
+    from strakalari.core import bakalari_common as _common
+    from strakalari.core.extractors import bakalari as _x
+
+    cases = []
+    removed = {"type": "removed", "subjecttext": None, "teacher": None,
+               "room": None, "absentinfo": None,
+               "removedinfo": "Zrušeno (FG, Dušek Filip)",
+               "AbsentInfo": None, "day": "18.9.2026 (pátek)",
+               "time": "13:40 - 14:25"}
+    cases.append(_case("parseTimetableDetail",
+                       _common.parse_timetable_detail(dict(removed)),
+                       dict(removed)))
+    moved = {"type": "atom", "subjecttext": "Matematika",
+             "teacher": "Mgr. Jana Tláskalová", "room": "II - (313)",
+             "group": "8.1 celá - celá třída", "theme": "",
+             "notice": "", "changeinfo": "Změna místnosti: II (I)",
+             "absencetext": "", "absenceType": "NoAbsent",
+             "day": "18.9.2026 (pátek)", "time": "3 (10:05 - 10:50)",
+             "hourIndex": 5, "changeBadgeChar": "M",
+             "infoChangeCode": "RoomChanged"}
+    cases.append(_case("parseTimetableDetail",
+                       _common.parse_timetable_detail(dict(moved)),
+                       dict(moved)))
+    base = {"teacher": "T", "subjecttext": "M", "day": "07.09.2026",
+            "time": "bez čísla"}
+    cases.append(_case("parseTimetableDetail",
+                       _common.parse_timetable_detail(
+                           {**base, "hourIndex": 3}),
+                       {**base, "hourIndex": 3}))
+    cases.append(_case("parseTimetableDetail",
+                       _common.parse_timetable_detail(
+                           {**base, "hourIndex": 2}),
+                       {**base, "hourIndex": 2}))
+    cases.append(_case("parseTimetableDetail",
+                       _common.parse_timetable_detail(
+                           {"type": "removed"}),
+                       {"type": "removed"}))
+    event = {"absentinfo": "B", "removedinfo": "beseda",
+             "day": "18.09.2026", "time": "1 (8:00 - 8:45)"}
+    cases.append(_case("parseTimetableDetail",
+                       _common.parse_timetable_detail(dict(event)),
+                       dict(event)))
+    cases.append(_case("weekOffsets",
+                       _common.week_offsets(4, 1), 4, 1))
+    cases.append(_case("weekOffsets",
+                       _common.week_offsets("nonsense", None),
+                       "nonsense", None))
+    cases.append(_case("weekOffsets",
+                       _common.week_offsets(0, 0), 0, 0))
+    import html as _html
+
+    def _mark(subject, grade, weight, day):
+        blob = _json.dumps(
+            {"nazev": subject, "MarkText": grade, "vaha": weight,
+             "udel_datum": day}, ensure_ascii=False)
+        return ('<div data-clasif="' +
+                _html.escape(blob, quote=True) + '"></div>')
+
+    grades_html = (_mark("Matematika", "3", 10, "12.09.2026") +
+                   _mark("Matematika", "1", 10, "05.09.2026") +
+                   _mark("Fyzika", "2", 5, "06.09.2026"))
+    cases.append(_case("extractGrades",
+                       _x.extract_grades(grades_html), grades_html))
+    cases.append(_case("extractGrades", _x.extract_grades(""), ""))
+    detail = {"Kind": "OMLUVENKA", "DateFrom": "3.9.2026",
+              "DateTo": "3.9.2026", "TimeFrom": "10:05", "TimeTo": "10:50",
+              "HourFrom": {"Caption": "3"}, "HourTo": {"Caption": "3"}}
+    cases.append(_case("sentExcuseEntries",
+                       _x.sent_excuse_entries(dict(detail)), dict(detail)))
+    cases.append(_case("sentExcuseEntries",
+                       _x.sent_excuse_entries(
+                           {"Kind": "OMLUVENKA", "DateFrom": "nikdy"}),
+                       {"Kind": "OMLUVENKA", "DateFrom": "nikdy"}))
+    rows = [{"Name": "Matematika", "LessonCount": 100, "Count": 12,
+             "Percent": 0.12},
+            {"Name": "Celkem", "LessonCount": 500, "Count": 60,
+             "Percent": 0.12},
+            {"Name": "Fyzika", "LessonCount": 80, "Count": 20,
+             "Percent": 0.25},
+            {"Name": "Fyzika", "LessonCount": 80, "Count": 8,
+             "Percent": 0.1}]
+    percentages, details = _x.absence_from_subjects(rows)
+    cases.append(_case("absenceFromSubjects",
+                       [percentages, details], rows))
+    subj = [{"SubjectName": "Matematika",
+             "TeacherName": "Mgr. Jan Novák"}]
+    cases.append(_case("subjectDirectory", _x.subject_directory_from_rows(subj), subj))
+    content = {"Days": [{"Hours": [{"Atoms": [
+        {"TooltipDetails": '{"teacher": "T"}'},
+        {"TooltipDetails": "{broken"}]}]}]}
+    cases.append(_case("timetableDetails",
+                       _x.timetable_details(content), content))
+    page = ('DatesInformations = ko.mapping.fromJS('
+            '{"DefaultDateFrom": {"DefaultValue": "01.09.2026"}, '
+            '"DefaultDateTo": {"DefaultValue": "30.09.2026"}});')
+    cases.append(_case("absenceDateRange",
+                       list(_x.absence_date_range(page) or []), page))
+    change = {"Day": "čtvrtek 17.9.2026", "HourLabel": "3",
+              "TimeLabel": "10:05 - 10:50", "ChangeType": "RoomChanged",
+              "Description": "Změna místnosti: VIII",
+              "ChangeLessonInfo": {"ClassAbbrev": "8.1",
+                                  "IsClassGroup": True,
+                                  "SubjectAbbrev": "M",
+                                  "RoomAbbrev": "VIII"}}
+    cases.append(_case("substitutionsFromWeeks",
+                       _x.substitutions_from_weeks(
+                           [{"Title": "", "Changes": [dict(change)]}]),
+                       [{"Title": "", "Changes": [dict(change)]}]))
+    listing = ('<table data-idmsg="501" data-msgtype="OMLUVENKA">'
+               '<table data-idmsg="502" data-msgtype="OBECNA">'
+               '<table data-idmsg="501" data-msgtype="OMLUVENKA">')
+    cases.append(_case("outboxExcuseIds",
+                       _x.outbox_excuse_ids(listing), listing))
+    cases.append(_case("storeRows",
+                       _x.store_rows({"data": [1], "totalCount": 1}),
+                       {"data": [1], "totalCount": 1}))
+    return cases
+
+
 def main() -> None:
     _dump("helpers", helpers_cases())
     _dump("models", models_cases())
@@ -357,6 +479,7 @@ def main() -> None:
     _dump("config", config_cases())
     _dump("audit", audit_cases())
     _dump("history", history_cases())
+    _dump("bakalari", bakalari_cases())
 
 
 if __name__ == "__main__":

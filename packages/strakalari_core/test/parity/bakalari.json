@@ -1,0 +1,458 @@
+{
+  "module": "bakalari",
+  "cases": [
+    {
+      "fn": "parseTimetableDetail",
+      "args": [
+        {
+          "type": "removed",
+          "subjecttext": null,
+          "teacher": null,
+          "room": null,
+          "absentinfo": null,
+          "removedinfo": "Zrušeno (FG, Dušek Filip)",
+          "AbsentInfo": null,
+          "day": "18.9.2026 (pátek)",
+          "time": "13:40 - 14:25"
+        }
+      ],
+      "expected": {
+        "teacher": "Dušek Filip",
+        "subject": "FG",
+        "subject_short": "FG",
+        "room": "",
+        "group": "",
+        "theme": "",
+        "notice": "Zrušeno (FG, Dušek Filip)",
+        "change": "Zrušeno (FG, Dušek Filip)",
+        "date": "18.9.2026 (pátek)",
+        "time": "13:40 - 14:25",
+        "absencetext": "",
+        "absenceType": "",
+        "status": "cancelled",
+        "type": "removed",
+        "removedinfo": "Zrušeno (FG, Dušek Filip)",
+        "changeinfo": "",
+        "infoChangeCode": "",
+        "changeBadgeChar": "",
+        "hourIndex": null
+      }
+    },
+    {
+      "fn": "parseTimetableDetail",
+      "args": [
+        {
+          "type": "atom",
+          "subjecttext": "Matematika",
+          "teacher": "Mgr. Jana Tláskalová",
+          "room": "II - (313)",
+          "group": "8.1 celá - celá třída",
+          "theme": "",
+          "notice": "",
+          "changeinfo": "Změna místnosti: II (I)",
+          "absencetext": "",
+          "absenceType": "NoAbsent",
+          "day": "18.9.2026 (pátek)",
+          "time": "3 (10:05 - 10:50)",
+          "hourIndex": 5,
+          "changeBadgeChar": "M",
+          "infoChangeCode": "RoomChanged"
+        }
+      ],
+      "expected": {
+        "teacher": "Mgr. Jana Tláskalová",
+        "subject": "Matematika",
+        "subject_short": "",
+        "room": "II",
+        "group": "8.1 celá - celá třída",
+        "theme": "",
+        "notice": "Změna místnosti: II (I)",
+        "date": "18.9.2026 (pátek)",
+        "time": "3 (10:05 - 10:50)",
+        "absencetext": "",
+        "absenceType": "NoAbsent",
+        "changeinfo": "Změna místnosti: II (I)",
+        "infoChangeCode": "RoomChanged",
+        "changeBadgeChar": "M",
+        "hourIndex": 5,
+        "period": 3
+      }
+    },
+    {
+      "fn": "parseTimetableDetail",
+      "args": [
+        {
+          "teacher": "T",
+          "subjecttext": "M",
+          "day": "07.09.2026",
+          "time": "bez čísla",
+          "hourIndex": 3
+        }
+      ],
+      "expected": {
+        "teacher": "T",
+        "subject": "M",
+        "subject_short": "",
+        "room": "",
+        "group": "",
+        "theme": "",
+        "notice": "",
+        "date": "07.09.2026",
+        "time": "bez čísla",
+        "absencetext": null,
+        "absenceType": null,
+        "changeinfo": "",
+        "infoChangeCode": "",
+        "changeBadgeChar": "",
+        "hourIndex": 3,
+        "period": 1
+      }
+    },
+    {
+      "fn": "parseTimetableDetail",
+      "args": [
+        {
+          "teacher": "T",
+          "subjecttext": "M",
+          "day": "07.09.2026",
+          "time": "bez čísla",
+          "hourIndex": 2
+        }
+      ],
+      "expected": {
+        "teacher": "T",
+        "subject": "M",
+        "subject_short": "",
+        "room": "",
+        "group": "",
+        "theme": "",
+        "notice": "",
+        "date": "07.09.2026",
+        "time": "bez čísla",
+        "absencetext": null,
+        "absenceType": null,
+        "changeinfo": "",
+        "infoChangeCode": "",
+        "changeBadgeChar": "",
+        "hourIndex": 2
+      }
+    },
+    {
+      "fn": "parseTimetableDetail",
+      "args": [
+        {
+          "type": "removed"
+        }
+      ],
+      "expected": null
+    },
+    {
+      "fn": "parseTimetableDetail",
+      "args": [
+        {
+          "absentinfo": "B",
+          "removedinfo": "beseda",
+          "day": "18.09.2026",
+          "time": "1 (8:00 - 8:45)"
+        }
+      ],
+      "expected": {
+        "teacher": "",
+        "subject": "beseda",
+        "subject_short": "",
+        "room": "",
+        "group": "",
+        "theme": "",
+        "notice": "beseda",
+        "date": "18.09.2026",
+        "time": "1 (8:00 - 8:45)",
+        "absencetext": "",
+        "absenceType": "",
+        "type": "event",
+        "changeinfo": "",
+        "infoChangeCode": "",
+        "changeBadgeChar": "",
+        "hourIndex": null
+      }
+    },
+    {
+      "fn": "weekOffsets",
+      "args": [
+        4,
+        1
+      ],
+      "expected": [
+        1,
+        0,
+        -1,
+        -2,
+        -3
+      ]
+    },
+    {
+      "fn": "weekOffsets",
+      "args": [
+        "nonsense",
+        null
+      ],
+      "expected": []
+    },
+    {
+      "fn": "weekOffsets",
+      "args": [
+        0,
+        0
+      ],
+      "expected": []
+    },
+    {
+      "fn": "extractGrades",
+      "args": [
+        "<div data-clasif=\"{&quot;nazev&quot;: &quot;Matematika&quot;, &quot;MarkText&quot;: &quot;3&quot;, &quot;vaha&quot;: 10, &quot;udel_datum&quot;: &quot;12.09.2026&quot;}\"></div><div data-clasif=\"{&quot;nazev&quot;: &quot;Matematika&quot;, &quot;MarkText&quot;: &quot;1&quot;, &quot;vaha&quot;: 10, &quot;udel_datum&quot;: &quot;05.09.2026&quot;}\"></div><div data-clasif=\"{&quot;nazev&quot;: &quot;Fyzika&quot;, &quot;MarkText&quot;: &quot;2&quot;, &quot;vaha&quot;: 5, &quot;udel_datum&quot;: &quot;06.09.2026&quot;}\"></div>"
+      ],
+      "expected": {
+        "Matematika": [
+          {
+            "Grade": "1",
+            "Weight": 10,
+            "Date": "05.09.2026"
+          },
+          {
+            "Grade": "3",
+            "Weight": 10,
+            "Date": "12.09.2026"
+          }
+        ],
+        "Fyzika": [
+          {
+            "Grade": "2",
+            "Weight": 5,
+            "Date": "06.09.2026"
+          }
+        ]
+      }
+    },
+    {
+      "fn": "extractGrades",
+      "args": [
+        ""
+      ],
+      "expected": {}
+    },
+    {
+      "fn": "sentExcuseEntries",
+      "args": [
+        {
+          "Kind": "OMLUVENKA",
+          "DateFrom": "3.9.2026",
+          "DateTo": "3.9.2026",
+          "TimeFrom": "10:05",
+          "TimeTo": "10:50",
+          "HourFrom": {
+            "Caption": "3"
+          },
+          "HourTo": {
+            "Caption": "3"
+          }
+        }
+      ],
+      "expected": [
+        {
+          "type": "income",
+          "starting_day": "03.09.2026",
+          "ending_day": "03.09.2026",
+          "starting_lesson": 3,
+          "ending_lesson": 3
+        },
+        {
+          "type": "soon",
+          "starting_day": "03.09.2026",
+          "ending_day": "03.09.2026",
+          "starting_lesson": 3,
+          "ending_lesson": 3
+        },
+        {
+          "type": "days and hours",
+          "starting_day": "03.09.2026",
+          "ending_day": "03.09.2026",
+          "starting_lesson": 3,
+          "ending_lesson": 3
+        }
+      ]
+    },
+    {
+      "fn": "sentExcuseEntries",
+      "args": [
+        {
+          "Kind": "OMLUVENKA",
+          "DateFrom": "nikdy"
+        }
+      ],
+      "expected": []
+    },
+    {
+      "fn": "absenceFromSubjects",
+      "args": [
+        [
+          {
+            "Name": "Matematika",
+            "LessonCount": 100,
+            "Count": 12,
+            "Percent": 0.12
+          },
+          {
+            "Name": "Celkem",
+            "LessonCount": 500,
+            "Count": 60,
+            "Percent": 0.12
+          },
+          {
+            "Name": "Fyzika",
+            "LessonCount": 80,
+            "Count": 20,
+            "Percent": 0.25
+          },
+          {
+            "Name": "Fyzika",
+            "LessonCount": 80,
+            "Count": 8,
+            "Percent": 0.1
+          }
+        ]
+      ],
+      "expected": [
+        {
+          "Matematika": 12.0,
+          "Fyzika": 25.0
+        },
+        {
+          "Matematika": {
+            "percent": 12.0,
+            "total_hours": 100.0,
+            "missed_hours": 12.0,
+            "approaching": false,
+            "unclassifiable": false
+          },
+          "Fyzika": {
+            "percent": 25.0,
+            "total_hours": 80.0,
+            "missed_hours": 20.0,
+            "approaching": false,
+            "unclassifiable": false
+          }
+        }
+      ]
+    },
+    {
+      "fn": "subjectDirectory",
+      "args": [
+        [
+          {
+            "SubjectName": "Matematika",
+            "TeacherName": "Mgr. Jan Novák"
+          }
+        ]
+      ],
+      "expected": {
+        "Matematika": "Mgr. Jan Novák"
+      }
+    },
+    {
+      "fn": "timetableDetails",
+      "args": [
+        {
+          "Days": [
+            {
+              "Hours": [
+                {
+                  "Atoms": [
+                    {
+                      "TooltipDetails": "{\"teacher\": \"T\"}"
+                    },
+                    {
+                      "TooltipDetails": "{broken"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "teacher": "T"
+        }
+      ]
+    },
+    {
+      "fn": "absenceDateRange",
+      "args": [
+        "DatesInformations = ko.mapping.fromJS({\"DefaultDateFrom\": {\"DefaultValue\": \"01.09.2026\"}, \"DefaultDateTo\": {\"DefaultValue\": \"30.09.2026\"}});"
+      ],
+      "expected": [
+        "01.09.2026",
+        "30.09.2026"
+      ]
+    },
+    {
+      "fn": "substitutionsFromWeeks",
+      "args": [
+        [
+          {
+            "Title": "",
+            "Changes": [
+              {
+                "Day": "čtvrtek 17.9.2026",
+                "HourLabel": "3",
+                "TimeLabel": "10:05 - 10:50",
+                "ChangeType": "RoomChanged",
+                "Description": "Změna místnosti: VIII",
+                "ChangeLessonInfo": {
+                  "ClassAbbrev": "8.1",
+                  "IsClassGroup": true,
+                  "SubjectAbbrev": "M",
+                  "RoomAbbrev": "VIII"
+                }
+              }
+            ]
+          }
+        ]
+      ],
+      "expected": [
+        {
+          "day": "17.9.2026",
+          "period": 3,
+          "time": "10:05 - 10:50",
+          "badge": "M",
+          "info": "8.1 | M | VIII",
+          "subject_short": "M",
+          "description": "Změna místnosti: VIII"
+        }
+      ]
+    },
+    {
+      "fn": "outboxExcuseIds",
+      "args": [
+        "<table data-idmsg=\"501\" data-msgtype=\"OMLUVENKA\"><table data-idmsg=\"502\" data-msgtype=\"OBECNA\"><table data-idmsg=\"501\" data-msgtype=\"OMLUVENKA\">"
+      ],
+      "expected": [
+        "501"
+      ]
+    },
+    {
+      "fn": "storeRows",
+      "args": [
+        {
+          "data": [
+            1
+          ],
+          "totalCount": 1
+        }
+      ],
+      "expected": [
+        1
+      ]
+    }
+  ]
+}

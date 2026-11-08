@@ -296,4 +296,73 @@ void main() {
       }
     });
   });
+
+  group('mergeSentExcuses', () {
+    test('addsOnlyNew', () {
+      final history = [
+        {
+          'type': 'pure days',
+          'starting_day': '07.09.2026',
+          'ending_day': '08.09.2026',
+        }
+      ];
+      final discovered = [
+        {
+          'type': 'pure days',
+          'starting_day': '07.09.2026',
+          'ending_day': '08.09.2026',
+        },
+        {
+          'type': 'pure days',
+          'starting_day': '10.09.2026',
+          'ending_day': '10.09.2026',
+        },
+      ];
+      final (merged, added) = mergeSentExcuses(history, discovered);
+      expect(added, 1);
+      expect(merged, hasLength(2));
+    });
+
+    test('canonicalizesSpellings', () {
+      final history = [
+        {
+          'type': 'pure days',
+          'starting_day': '7.9.2026',
+          'ending_day': '8.9.2026',
+        }
+      ];
+      final discovered = [
+        {
+          'type': 'pure days',
+          'starting_day': '07.09.2026',
+          'ending_day': '08.09.2026',
+        }
+      ];
+      final (merged, added) = mergeSentExcuses(history, discovered);
+      expect(added, 0);
+      expect(merged, hasLength(1));
+    });
+
+    test('stripsUiKeysAndIgnoresJunk', () {
+      final (merged, added) = mergeSentExcuses([], [
+        {
+          'type': 'pure days',
+          'starting_day': '10.09.2026',
+          'ending_day': '10.09.2026',
+          'templates': ['x'],
+          'default_preview': 'y',
+        },
+        'not-a-dict',
+        null,
+      ]);
+      expect(added, 1);
+      expect(merged, [
+        {
+          'type': 'pure days',
+          'starting_day': '10.09.2026',
+          'ending_day': '10.09.2026',
+        }
+      ]);
+    });
+  });
 }
