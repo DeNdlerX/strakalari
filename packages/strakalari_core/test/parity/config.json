@@ -1,0 +1,486 @@
+{
+  "module": "config",
+  "cases": [
+    {
+      "fn": "looksLikePlaceholder",
+      "args": [
+        "VAS_BAKALARI_LOGIN"
+      ],
+      "expected": true
+    },
+    {
+      "fn": "looksLikePlaceholder",
+      "args": [
+        "vas_strava_login"
+      ],
+      "expected": true
+    },
+    {
+      "fn": "looksLikePlaceholder",
+      "args": [
+        "CISLO_JIDELNY"
+      ],
+      "expected": true
+    },
+    {
+      "fn": "looksLikePlaceholder",
+      "args": [
+        "example value"
+      ],
+      "expected": true
+    },
+    {
+      "fn": "looksLikePlaceholder",
+      "args": [
+        "YOUR_BLACKLIST_EXAMPLE"
+      ],
+      "expected": true
+    },
+    {
+      "fn": "looksLikePlaceholder",
+      "args": [
+        "novak"
+      ],
+      "expected": false
+    },
+    {
+      "fn": "looksLikePlaceholder",
+      "args": [
+        "https://skola.cz"
+      ],
+      "expected": false
+    },
+    {
+      "fn": "looksLikePlaceholder",
+      "args": [
+        ""
+      ],
+      "expected": false
+    },
+    {
+      "fn": "hasValidCredentials",
+      "args": [
+        {
+          "bakalari_username": "",
+          "bakalari_url": "",
+          "strava_username": "student",
+          "strava_canteen_id": "1950"
+        }
+      ],
+      "expected": [
+        false,
+        true
+      ]
+    },
+    {
+      "fn": "hasValidCredentials",
+      "args": [
+        {
+          "bakalari_username": "novak",
+          "bakalari_url": "https://skola.cz",
+          "strava_username": "novak",
+          "strava_canteen_id": "1950"
+        }
+      ],
+      "expected": [
+        true,
+        true
+      ]
+    },
+    {
+      "fn": "hasValidCredentials",
+      "args": [
+        {
+          "bakalari_username": "VAS_BAKALARI_LOGIN",
+          "bakalari_url": "https://vas-bakalari-portal.cz",
+          "strava_username": "x",
+          "strava_canteen_id": "CISLO_JIDELNY"
+        }
+      ],
+      "expected": [
+        false,
+        false
+      ]
+    },
+    {
+      "fn": "hasValidCredentials",
+      "args": [
+        {
+          "bakalari_username": "student",
+          "bakalari_url": "https://skola.cz",
+          "strava_username": "VAS_STRAVA_LOGIN",
+          "strava_canteen_id": "1950"
+        }
+      ],
+      "expected": [
+        true,
+        false
+      ]
+    },
+    {
+      "fn": "validateConfig",
+      "args": [
+        {
+          "bakalari_url": "",
+          "bakalari_username": "",
+          "bakalari_password": "",
+          "bakalari_password_encrypted": false,
+          "strava_url": "https://strava.cz",
+          "strava_canteen_id": "1",
+          "strava_username": "u",
+          "strava_password": "",
+          "strava_password_encrypted": false,
+          "use_strava": true,
+          "log_file": "./log.txt",
+          "strava_blacklist": "./strava_blacklist.json",
+          "already_excused_file": "./already_excused_lessons.json",
+          "theme": "dark",
+          "absence_warn_pct": 15.0,
+          "absence_critical_pct": 25.0,
+          "absence_plan_reserve_pct": 10.0,
+          "cache_ttl_hours": 24,
+          "page_load_timeout_s": 60.0,
+          "gemini_model": "gemini-3.8-flash",
+          "gemini_api_key": "",
+          "gemini_api_key_encrypted": false,
+          "gemini_auto_enabled": false,
+          "gemini_prompt": "",
+          "gemini_interval_days": 2,
+          "gemini_last_run": "",
+          "late_income_excuses": [
+            {
+              "name": "Dopravní komplikace",
+              "text": "Dobrý den, omluvte prosím pozdní příchod z důvodu dopravních komplikací.\nDěkuji\n"
+            },
+            {
+              "name": "Lékař",
+              "text": "Dobrý den, omluvte prosím pozdní příchod z důvodu návštěvy lékaře.\nDěkuji\n"
+            }
+          ],
+          "left_soon_excuses": [
+            {
+              "name": "Rodinné důvody",
+              "text": "Dobrý den, omluvte prosím předčasný odchod z rodinných důvodů.\nDěkuji\n"
+            },
+            {
+              "name": "Lékař",
+              "text": "Dobrý den, omluvte prosím předčasný odchod z důvodu návštěvy lékaře.\nDěkuji\n"
+            }
+          ],
+          "short_absence_excuses": [
+            {
+              "name": "Rodinné důvody",
+              "text": "Dobrý den, omluvte prosím absenci z rodinných důvodů.\nDěkuji\n"
+            },
+            {
+              "name": "Osobní důvody",
+              "text": "Dobrý den, omluvte prosím absenci z osobních důvodů.\nDěkuji\n"
+            }
+          ],
+          "long_absence_excuses": [
+            {
+              "name": "Nemoc",
+              "text": "Dobrý den, omluvte prosím absenci z důvodu nemoci.\nDěkuji\n"
+            },
+            {
+              "name": "Rodinné důvody",
+              "text": "Dobrý den, omluvte prosím absenci z rodinných důvodů.\nDěkuji\n"
+            }
+          ],
+          "your_signature": "",
+          "go_back_weeks": 4,
+          "go_forward_weeks": 1,
+          "excuse_delay_days": 2,
+          "sent_excuses_limit": 100,
+          "minimize_to_tray": true,
+          "run_in_background": true,
+          "background_notification_items": [
+            "next_lesson",
+            "lunch",
+            "excuses",
+            "wakeup"
+          ],
+          "language": "cs",
+          "excuse_mode": "confirm",
+          "default_excuse_selection": "first",
+          "strava_order_mode": "confirm",
+          "automation_paused": false,
+          "disclaimer_accepted": false,
+          "lunch_order_cutoff_time": "",
+          "subject_limits": {},
+          "school_preset_id": "custom",
+          "user_free_days": [],
+          "forced_school_days": [],
+          "sem1_close": "",
+          "sem2_close": "",
+          "holidays": [],
+          "school_year_end": "",
+          "check_interval_minutes": 60,
+          "notifications": {},
+          "planned_skips": [],
+          "planner_target_days": 0,
+          "tutorials_enabled": true,
+          "tutorials_done": [],
+          "ignored_excuses": [],
+          "excuse_day_per_lesson": false,
+          "timetable_view": "table",
+          "compact_density": false,
+          "marks_scale": "auto",
+          "marks_subject_scales": {},
+          "marks_percent_bands": [],
+          "marks_sort": "name",
+          "update_channel": "stable",
+          "wakeup_enabled": false,
+          "wakeup_minutes_before": 60,
+          "wakeup_skip_dates": []
+        }
+      ],
+      "expected": []
+    },
+    {
+      "fn": "validateConfig",
+      "args": [
+        {
+          "bakalari_url": "",
+          "bakalari_username": "",
+          "bakalari_password": "",
+          "bakalari_password_encrypted": false,
+          "strava_url": "https://strava.cz",
+          "strava_canteen_id": "1",
+          "strava_username": "u",
+          "strava_password": "",
+          "strava_password_encrypted": false,
+          "use_strava": true,
+          "log_file": "./log.txt",
+          "strava_blacklist": "./strava_blacklist.json",
+          "already_excused_file": "./already_excused_lessons.json",
+          "theme": "dark",
+          "absence_warn_pct": 15.0,
+          "absence_critical_pct": 25.0,
+          "absence_plan_reserve_pct": 10.0,
+          "cache_ttl_hours": 24,
+          "page_load_timeout_s": 60.0,
+          "gemini_model": "gemini-3.8-flash",
+          "gemini_api_key": "",
+          "gemini_api_key_encrypted": false,
+          "gemini_auto_enabled": false,
+          "gemini_prompt": "",
+          "gemini_interval_days": 2,
+          "gemini_last_run": "",
+          "late_income_excuses": [
+            {
+              "name": "Dopravní komplikace",
+              "text": "Dobrý den, omluvte prosím pozdní příchod z důvodu dopravních komplikací.\nDěkuji\n"
+            },
+            {
+              "name": "Lékař",
+              "text": "Dobrý den, omluvte prosím pozdní příchod z důvodu návštěvy lékaře.\nDěkuji\n"
+            }
+          ],
+          "left_soon_excuses": [
+            {
+              "name": "Rodinné důvody",
+              "text": "Dobrý den, omluvte prosím předčasný odchod z rodinných důvodů.\nDěkuji\n"
+            },
+            {
+              "name": "Lékař",
+              "text": "Dobrý den, omluvte prosím předčasný odchod z důvodu návštěvy lékaře.\nDěkuji\n"
+            }
+          ],
+          "short_absence_excuses": [
+            {
+              "name": "Rodinné důvody",
+              "text": "Dobrý den, omluvte prosím absenci z rodinných důvodů.\nDěkuji\n"
+            },
+            {
+              "name": "Osobní důvody",
+              "text": "Dobrý den, omluvte prosím absenci z osobních důvodů.\nDěkuji\n"
+            }
+          ],
+          "long_absence_excuses": [
+            {
+              "name": "Nemoc",
+              "text": "Dobrý den, omluvte prosím absenci z důvodu nemoci.\nDěkuji\n"
+            },
+            {
+              "name": "Rodinné důvody",
+              "text": "Dobrý den, omluvte prosím absenci z rodinných důvodů.\nDěkuji\n"
+            }
+          ],
+          "your_signature": "",
+          "go_back_weeks": 4,
+          "go_forward_weeks": 1,
+          "excuse_delay_days": 2,
+          "sent_excuses_limit": 100,
+          "minimize_to_tray": true,
+          "run_in_background": true,
+          "background_notification_items": [
+            "next_lesson",
+            "lunch",
+            "excuses",
+            "wakeup"
+          ],
+          "language": "cs",
+          "excuse_mode": "sometimes",
+          "default_excuse_selection": "first",
+          "strava_order_mode": "confirm",
+          "automation_paused": false,
+          "disclaimer_accepted": false,
+          "lunch_order_cutoff_time": "",
+          "subject_limits": {},
+          "school_preset_id": "custom",
+          "user_free_days": [],
+          "forced_school_days": [],
+          "sem1_close": "",
+          "sem2_close": "",
+          "holidays": [],
+          "school_year_end": "",
+          "check_interval_minutes": 60,
+          "notifications": {},
+          "planned_skips": [],
+          "planner_target_days": 0,
+          "tutorials_enabled": true,
+          "tutorials_done": [],
+          "ignored_excuses": [],
+          "excuse_day_per_lesson": false,
+          "timetable_view": "table",
+          "compact_density": false,
+          "marks_scale": "auto",
+          "marks_subject_scales": {},
+          "marks_percent_bands": [],
+          "marks_sort": "name",
+          "update_channel": "stable",
+          "wakeup_enabled": false,
+          "wakeup_minutes_before": 60,
+          "wakeup_skip_dates": []
+        }
+      ],
+      "expected": [
+        "'excuse_mode' must be one of ['auto', 'confirm', 'dry_run'], got 'sometimes'."
+      ]
+    },
+    {
+      "fn": "validateConfig",
+      "args": [
+        {
+          "bakalari_url": "",
+          "bakalari_username": "",
+          "bakalari_password": "",
+          "bakalari_password_encrypted": false,
+          "strava_url": "https://strava.cz",
+          "strava_canteen_id": "1",
+          "strava_username": "u",
+          "strava_password": "",
+          "strava_password_encrypted": false,
+          "use_strava": true,
+          "log_file": "./log.txt",
+          "strava_blacklist": "./strava_blacklist.json",
+          "already_excused_file": "./already_excused_lessons.json",
+          "theme": "dark",
+          "absence_warn_pct": 15.0,
+          "absence_critical_pct": 25.0,
+          "absence_plan_reserve_pct": 10.0,
+          "cache_ttl_hours": 24,
+          "page_load_timeout_s": 60.0,
+          "gemini_model": "gemini-3.8-flash",
+          "gemini_api_key": "",
+          "gemini_api_key_encrypted": false,
+          "gemini_auto_enabled": false,
+          "gemini_prompt": "",
+          "gemini_interval_days": 2,
+          "gemini_last_run": "",
+          "late_income_excuses": [
+            {
+              "name": "Dopravní komplikace",
+              "text": "Dobrý den, omluvte prosím pozdní příchod z důvodu dopravních komplikací.\nDěkuji\n"
+            },
+            {
+              "name": "Lékař",
+              "text": "Dobrý den, omluvte prosím pozdní příchod z důvodu návštěvy lékaře.\nDěkuji\n"
+            }
+          ],
+          "left_soon_excuses": [
+            {
+              "name": "Rodinné důvody",
+              "text": "Dobrý den, omluvte prosím předčasný odchod z rodinných důvodů.\nDěkuji\n"
+            },
+            {
+              "name": "Lékař",
+              "text": "Dobrý den, omluvte prosím předčasný odchod z důvodu návštěvy lékaře.\nDěkuji\n"
+            }
+          ],
+          "short_absence_excuses": [
+            {
+              "name": "Rodinné důvody",
+              "text": "Dobrý den, omluvte prosím absenci z rodinných důvodů.\nDěkuji\n"
+            },
+            {
+              "name": "Osobní důvody",
+              "text": "Dobrý den, omluvte prosím absenci z osobních důvodů.\nDěkuji\n"
+            }
+          ],
+          "long_absence_excuses": [
+            {
+              "name": "Nemoc",
+              "text": "Dobrý den, omluvte prosím absenci z důvodu nemoci.\nDěkuji\n"
+            },
+            {
+              "name": "Rodinné důvody",
+              "text": "Dobrý den, omluvte prosím absenci z rodinných důvodů.\nDěkuji\n"
+            }
+          ],
+          "your_signature": "",
+          "go_back_weeks": 99,
+          "go_forward_weeks": 99,
+          "excuse_delay_days": 2,
+          "sent_excuses_limit": 100,
+          "minimize_to_tray": true,
+          "run_in_background": true,
+          "background_notification_items": [
+            "next_lesson",
+            "lunch",
+            "excuses",
+            "wakeup"
+          ],
+          "language": "cs",
+          "excuse_mode": "confirm",
+          "default_excuse_selection": "first",
+          "strava_order_mode": "confirm",
+          "automation_paused": false,
+          "disclaimer_accepted": false,
+          "lunch_order_cutoff_time": "",
+          "subject_limits": {},
+          "school_preset_id": "custom",
+          "user_free_days": [],
+          "forced_school_days": [],
+          "sem1_close": "",
+          "sem2_close": "",
+          "holidays": [],
+          "school_year_end": "",
+          "check_interval_minutes": 60,
+          "notifications": {},
+          "planned_skips": [],
+          "planner_target_days": 0,
+          "tutorials_enabled": true,
+          "tutorials_done": [],
+          "ignored_excuses": [],
+          "excuse_day_per_lesson": false,
+          "timetable_view": "table",
+          "compact_density": false,
+          "marks_scale": "auto",
+          "marks_subject_scales": {},
+          "marks_percent_bands": [],
+          "marks_sort": "name",
+          "update_channel": "stable",
+          "wakeup_enabled": false,
+          "wakeup_minutes_before": 60,
+          "wakeup_skip_dates": []
+        }
+      ],
+      "expected": [
+        "'go_back_weeks' must be within [0, 52] (runtime clamps to it).",
+        "'go_forward_weeks' must be within [0, 8] (runtime clamps to it)."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,892 @@
+// Configuration: canonical keys, validation, load/save with merge.
+// Port of strakalari/core/config.py. File names and JSON shapes stay
+// identical so an update installs over the Python app with no migration.
+//
+// `looksLikePlaceholder` and `isDemoHistoryItem` are public (Python keeps
+// them private, but strava_client/automation import them across modules).
+// The cutoff/bands/status-items/channel checks below mirror the phase-3
+// modules (lunch_cutoff, grades, status_notification, update); phase 3
+// rewires them to the canonical ports — see STATUS.md.
+import 'dart:convert';
+import 'dart:io';
+
+import 'helpers.dart';
+
+/// Allowed values for `excuse_mode` / `strava_order_mode`.
+const List<String> excuseModes = ['auto', 'confirm', 'dry_run'];
+
+/// Items the background notification may show (mirror of
+/// status_notification.ITEMS; phase 3 owns the canonical list).
+const List<String> statusNotificationItems = [
+  'next_lesson',
+  'lunch',
+  'lunch_orders',
+  'excuses',
+  'wakeup',
+  'updated',
+];
+
+/// Canonical config schema (single names only — no aliases, no migration).
+const Map<String, Object> canonicalDefaults = {
+  'bakalari_url': '',
+  'bakalari_username': '',
+  'bakalari_password': '',
+  'bakalari_password_encrypted': false,
+  'strava_url': 'https://strava.cz',
+  'strava_canteen_id': '',
+  'strava_username': '',
+  'strava_password': '',
+  'strava_password_encrypted': false,
+  'use_strava': true,
+  'log_file': './log.txt',
+  'strava_blacklist': './strava_blacklist.json',
+  'already_excused_file': './already_excused_lessons.json',
+  'theme': 'dark',
+  'absence_warn_pct': 15.0,
+  'absence_critical_pct': 25.0,
+  'absence_plan_reserve_pct': 10.0,
+  'cache_ttl_hours': 24,
+  'page_load_timeout_s': 60.0,
+  'gemini_model': 'gemini-3.8-flash',
+  'gemini_api_key': '',
+  'gemini_api_key_encrypted': false,
+  'gemini_auto_enabled': false,
+  'gemini_prompt': '',
+  'gemini_interval_days': 2,
+  'gemini_last_run': '',
+  'late_income_excuses': [
+    {
+      'name': 'Dopravní komplikace',
+      'text': 'Dobrý den, omluvte prosím pozdní příchod z důvodu '
+          'dopravních komplikací.\nDěkuji\n'
+    },
+    {
+      'name': 'Lékař',
+      'text': 'Dobrý den, omluvte prosím pozdní příchod z důvodu '
+          'návštěvy lékaře.\nDěkuji\n'
+    },
+  ],
+  'left_soon_excuses': [
+    {
+      'name': 'Rodinné důvody',
+      'text': 'Dobrý den, omluvte prosím předčasný odchod z rodinných '
+          'důvodů.\nDěkuji\n'
+    },
+    {
+      'name': 'Lékař',
+      'text': 'Dobrý den, omluvte prosím předčasný odchod z důvodu '
+          'návštěvy lékaře.\nDěkuji\n'
+    },
+  ],
+  'short_absence_excuses': [
+    {
+      'name': 'Rodinné důvody',
+      'text':
+          'Dobrý den, omluvte prosím absenci z rodinných důvodů.\nDěkuji\n'
+    },
+    {
+      'name': 'Osobní důvody',
+      'text':
+          'Dobrý den, omluvte prosím absenci z osobních důvodů.\nDěkuji\n'
+    },
+  ],
+  'long_absence_excuses': [
+    {
+      'name': 'Nemoc',
+      'text': 'Dobrý den, omluvte prosím absenci z důvodu nemoci.\nDěkuji\n'
+    },
+    {
+      'name': 'Rodinné důvody',
+      'text':
+          'Dobrý den, omluvte prosím absenci z rodinných důvodů.\nDěkuji\n'
+    },
+  ],
+  'your_signature': '',
+  'go_back_weeks': 4,
+  'go_forward_weeks': 1,
+  'excuse_delay_days': 2,
+  'sent_excuses_limit': 100,
+  'minimize_to_tray': true,
+  // Phone app: keep refreshing and automating with the app closed
+  // (Android foreground service; ignored on desktop and iOS).
+  'run_in_background': true,
+  // What that service's always-on notification shows (an overview; see
+  // core/status_notification.ITEMS). Empty = only "running in the background".
+  'background_notification_items': [
+    'next_lesson',
+    'lunch',
+    'excuses',
+    'wakeup'
+  ],
+  'language': 'cs',
+  'excuse_mode': 'confirm',
+  'default_excuse_selection': 'first',
+  'strava_order_mode': 'confirm',
+  'automation_paused': false,
+  'disclaimer_accepted': false,
+  'lunch_order_cutoff_time': '',
+  'subject_limits': {},
+  // No school is assumed: the wizard (or Settings) picks a preset.
+  'school_preset_id': 'custom',
+  'user_free_days': [],
+  'forced_school_days': [],
+  'sem1_close': '',
+  'sem2_close': '',
+  'holidays': [],
+  'school_year_end': '',
+  'check_interval_minutes': 60,
+  'notifications': {},
+  'planned_skips': [],
+  'planner_target_days': 0,
+  // Interactive tutorials: global switch + ids of finished/skipped tours.
+  'tutorials_enabled': true,
+  'tutorials_done': [],
+  'ignored_excuses': [],
+  // Today: the day card's "Excuse day" sends every lesson as its own
+  // excuse (one message each) instead of one whole-day / range excuse.
+  'excuse_day_per_lesson': false,
+  'timetable_view': 'table',
+  'compact_density': false,
+  // Marks view: "auto" detects 1–5 vs percent per subject; a per-subject
+  // choice ({subject: "grade" | "percent"}) beats the global one.
+  'marks_scale': 'auto',
+  'marks_subject_scales': {},
+  // Top of grades 2–5 in percent (a boundary is the worse grade). Empty =
+  // the school preset's table, else the built-in 90/75/50/30.
+  'marks_percent_bands': [],
+  'marks_sort': 'name',
+  // Update notifications: "stable" (full releases only) or "beta"
+  // (pre-releases too, whichever is newest). ConfigManager replaces
+  // this with the running build's kind (beta build -> "beta").
+  'update_channel': 'stable',
+  // Phone wake-up alarm before the first lesson (core/wakeup.py); the
+  // skip list holds ISO days the user turned it off for.
+  'wakeup_enabled': false,
+  'wakeup_minutes_before': 60,
+  'wakeup_skip_dates': [],
+};
+
+Object? _deepCopyJson(Object? value) {
+  if (value is Map) {
+    return value.map((k, v) => MapEntry('$k', _deepCopyJson(v)));
+  }
+  if (value is List) {
+    return value.map(_deepCopyJson).toList();
+  }
+  return value;
+}
+
+/// A fresh copy of the built-in canonical defaults.
+///
+/// Deliberately never reads `config.example.json`: its placeholder
+/// demo values must not leak into real configs.
+Map<String, Object?> defaultConfig() {
+  final copy =
+      _deepCopyJson(canonicalDefaults) as Map<String, Object?>;
+  copy['update_channel'] = defaultUpdateChannel();
+  return copy;
+}
+
+/// True for template/example values that must not count as configured.
+bool looksLikePlaceholder(Object? value) {
+  final low = '${value ?? ''}'.toLowerCase();
+  return [
+    'vas_',
+    'vase_',
+    'cislo_',
+    'vas-bakalari',
+    'vas_strava',
+    'vase_heslo',
+    'example',
+    'placeholder',
+    'your_',
+  ].any(low.contains);
+}
+
+/// True for example-template history rows that must not seed real data.
+///
+/// Drops non-dict rows, rows without `type`/`starting_day`, and rows
+/// carrying placeholder text (`VAS_…`, `example`, …). Applied only
+/// to the `.example.json` fallback, never to the real history file.
+/// (Day-range types carry `ending_day` too, but single-lesson types
+/// legitimately do not — so it is not required here.)
+bool isDemoHistoryItem(Object? item) {
+  if (item is! Map) return true;
+  if ('${item['type'] ?? ''}'.isEmpty ||
+      '${item['starting_day'] ?? ''}'.isEmpty) {
+    return true;
+  }
+  try {
+    return item.values
+        .whereType<String>()
+        .any(looksLikePlaceholder);
+  } on Object {
+    return false;
+  }
+}
+
+/// Checks configured credentials without any GUI dependency.
+///
+/// Returns `(hasBakalari, hasStrava)`. Used by first-run detection.
+(bool, bool) hasValidCredentials(
+    Map<String, Object?> cfgData) {
+  final bakUser = '${cfgData['bakalari_username'] ?? ''}';
+  final bakUrl = '${cfgData['bakalari_url'] ?? ''}';
+  final stravaUser =
+      '${cfgData['strava_username'] ?? cfgData['strava_user'] ?? ''}';
+  final stravaId =
+      '${cfgData['strava_canteen_id'] ?? cfgData['strava_id'] ?? ''}';
+
+  final hasBakalari = bakUser.isNotEmpty &&
+      bakUrl.isNotEmpty &&
+      !looksLikePlaceholder(bakUser) &&
+      !looksLikePlaceholder(bakUrl);
+  final hasStrava = stravaUser.isNotEmpty &&
+      stravaId.isNotEmpty &&
+      !looksLikePlaceholder(stravaUser) &&
+      !looksLikePlaceholder(stravaId);
+  return (hasBakalari, hasStrava);
+}
+
+// -- mirrors of phase-3 modules (rewired when they land) --------------------
+
+/// True for empty (follow preset) or a strict `HH:MM` 24h time.
+/// Mirror of lunch_cutoff.is_valid_cutoff_time.
+bool isValidCutoffTime(Object? value) {
+  final text = '${value ?? ''}'.trim().replaceAll('.', ':');
+  if (text.isEmpty) return true;
+  if (RegExp(r'^\d{1,2}:\d{2}$').firstMatch(text) == null) return false;
+  final parts = text.split(':');
+  final hour = int.tryParse(parts[0]);
+  final minute = int.tryParse(parts[1]);
+  if (hour == null || minute == null) return false;
+  return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+}
+
+/// True for four strictly decreasing boundaries within (0, 100].
+/// Mirror of grades.bands_valid.
+bool bandsValid(Object? bands) {
+  if (bands is String || bands is! List) return false;
+  if (bands.length != 4) return false;
+  final vals = <double>[];
+  for (final b in bands) {
+    final v = _toDouble(b);
+    if (v == null) return false;
+    vals.add(v);
+  }
+  if (vals.any((v) => v <= 0 || v > 100)) return false;
+  for (var i = 0; i + 1 < vals.length; i++) {
+    if (vals[i] <= vals[i + 1]) return false;
+  }
+  return true;
+}
+
+/// Channel for a config that has none yet: follows the running build.
+/// Mirror of update.default_channel (beta build -> beta).
+String defaultUpdateChannel({String version = '1.0.0'}) =>
+    _isPrereleaseVersion(version) ? 'beta' : 'stable';
+
+bool _isPrereleaseVersion(String text) {
+  var cleaned = text.trim();
+  if (cleaned.startsWith('v') || cleaned.startsWith('V')) {
+    cleaned = cleaned.substring(1);
+  }
+  cleaned = cleaned.split('+').first;
+  final m = RegExp(r'^(\d+(?:\.\d+)*)(.*)$').firstMatch(cleaned);
+  if (m == null) return false;
+  return m.group(2)!.replaceAll(RegExp(r'^[.\-_]+'), '').trim().isNotEmpty;
+}
+
+// -- numeric coercions (mirror Python's float()/int() semantics) ------------
+
+double? _toDouble(Object? value) {
+  if (value is double) return value;
+  if (value is int) return value.toDouble();
+  if (value is String) return double.tryParse(value.trim());
+  if (value is bool) return value ? 1 : 0;
+  return null;
+}
+
+/// Python `int(x)`: ints pass, doubles truncate, numeric strings parse
+/// (float-like strings fail), bools become 0/1, everything else is null.
+int? _toIntStrict(Object? value) {
+  if (value is int) return value;
+  if (value is double) {
+    if (value.isNaN || value.isInfinite) return null;
+    return value.truncate();
+  }
+  if (value is String) return int.tryParse(value.trim());
+  if (value is bool) return value ? 1 : 0;
+  return null;
+}
+
+/// Python `int(float(str(x).replace(',', '.')))`: commas accepted.
+int? _toIntViaFloat(Object? value) {
+  if (value == null) return null;
+  final parsed = _toDouble('$value'.replaceAll(',', '.'));
+  if (parsed == null || parsed.isNaN || parsed.isInfinite) return null;
+  return parsed.truncate();
+}
+
+String _repr(Object? value) =>
+    value is String ? "'$value'" : '$value';
+
+bool _isTruthy(Object? value) {
+  if (value is bool) return value;
+  if (value == null) return false;
+  if (value is num) return value != 0;
+  if (value is String) return value.isNotEmpty;
+  if (value is Iterable || value is Map) {
+    return (value as dynamic).isNotEmpty as bool;
+  }
+  return true;
+}
+
+/// Returns human-readable config problems (empty = OK).
+List<String> validateConfig(Map<String, Object?> data) {
+  final problems = <String>[];
+  final bakUser = '${data['bakalari_username'] ?? ''}';
+  final bakUrl = '${data['bakalari_url'] ?? ''}';
+  if ((bakUser.isNotEmpty || bakUrl.isNotEmpty) &&
+      !(bakUser.isNotEmpty && bakUrl.isNotEmpty)) {
+    problems.add('Bakaláři: username and URL must both be set.');
+  }
+  if (bakUrl.isNotEmpty &&
+      !bakUrl.contains('://') &&
+      !bakUrl.contains('.')) {
+    problems.add("Bakaláři URL looks invalid: ${_repr(bakUrl)}.");
+  }
+  final stravaFlag =
+      data.containsKey('use_strava') ? data['use_strava'] : true;
+  if (_isTruthy(stravaFlag)) {
+    // Legacy read-aliases (strava_user / strava_id) count: the runtime
+    // (StravaClient, Strakalari) and hasValidCredentials() honor
+    // them, so the validator must not reject them.
+    final stravaUser =
+        '${data['strava_username'] ?? data['strava_user'] ?? ''}';
+    final stravaId =
+        '${data['strava_canteen_id'] ?? data['strava_id'] ?? ''}';
+    if (stravaUser.isEmpty) {
+      problems.add('Strava: username is empty (integration enabled).');
+    }
+    if (stravaId.isEmpty) {
+      problems.add('Strava: canteen ID is empty (integration enabled).');
+    }
+  }
+  for (final modeKey in ['excuse_mode', 'strava_order_mode']) {
+    final mode = '${data[modeKey] ?? 'confirm'}'.toLowerCase();
+    if (!excuseModes.contains(mode)) {
+      problems.add(
+          "'$modeKey' must be one of ['auto', 'confirm', 'dry_run'], "
+          'got ${_repr(data[modeKey])}.');
+    }
+  }
+  if (!isValidCutoffTime(data['lunch_order_cutoff_time'] ?? '')) {
+    problems.add(
+        "'lunch_order_cutoff_time' must be empty (school preset, else 12:00) "
+        "or 'HH:MM' ('HH.MM' accepted too).");
+  }
+  if (!['table', 'list']
+      .contains('${data['timetable_view'] ?? 'table'}')) {
+    problems.add(
+        "'timetable_view' must be 'table' or 'list', "
+        'got ${_repr(data['timetable_view'])}.');
+  }
+  if (!['auto', 'grade', 'percent']
+      .contains('${data['marks_scale'] ?? 'auto'}')) {
+    problems.add(
+        "'marks_scale' must be 'auto', 'grade' or 'percent', "
+        'got ${_repr(data['marks_scale'])}.');
+  }
+  final subjectScales = data['marks_subject_scales'];
+  if (subjectScales is! Map ||
+      subjectScales.values.any((v) => v != 'grade' && v != 'percent')) {
+    problems.add(
+        "'marks_subject_scales' must map subjects to 'grade' or 'percent'.");
+  }
+  final bands = data['marks_percent_bands'];
+  if (bands != null &&
+      !(bands is List && bands.isEmpty) &&
+      !bandsValid(bands)) {
+    problems.add(
+        "'marks_percent_bands' must be empty or four decreasing percentages "
+        'within (0, 100].');
+  }
+  if (!['name', 'average', 'recent']
+      .contains('${data['marks_sort'] ?? 'name'}')) {
+    problems.add(
+        "'marks_sort' must be 'name', 'average' or 'recent', "
+        'got ${_repr(data['marks_sort'])}.');
+  }
+  final warn = _toDouble(data['absence_warn_pct'] ?? 15);
+  final crit = _toDouble(data['absence_critical_pct'] ?? 25);
+  if (warn == null ||
+      crit == null ||
+      !(warn > 0 && warn < crit && crit <= 100)) {
+    problems.add(warn == null || crit == null
+        ? 'Absence thresholds must be numbers.'
+        : 'Absence thresholds must satisfy 0 < warn < critical <= 100.');
+  }
+  final reserve = _toDouble(data['absence_plan_reserve_pct'] ?? 10);
+  if (reserve == null) {
+    problems.add("'absence_plan_reserve_pct' must be a number.");
+  } else if (!(reserve >= 0 && reserve < 100)) {
+    problems.add("'absence_plan_reserve_pct' must be within [0, 100).");
+  }
+  final targetDays = _toIntStrict(data['planner_target_days'] ?? 0);
+  if (targetDays == null) {
+    problems.add("'planner_target_days' must be a whole number.");
+  } else if (!(targetDays >= 0 && targetDays <= 200)) {
+    problems.add("'planner_target_days' must be within [0, 200].");
+  }
+  if (data['tutorials_done'] is! List) {
+    problems.add("'tutorials_done' must be a list of tutorial ids.");
+  }
+  final timeoutVal = _toDouble(data['page_load_timeout_s'] ?? 5.0);
+  if (timeoutVal == null) {
+    problems.add("'page_load_timeout_s' must be a number.");
+  } else if (!(timeoutVal >= 5.0 && timeoutVal <= 180.0)) {
+    problems.add(
+        "'page_load_timeout_s' must be between 5.0 and 180.0 seconds.");
+  }
+  if (!['stable', 'beta']
+      .contains('${data['update_channel'] ?? 'stable'}'.toLowerCase())) {
+    problems.add(
+        "'update_channel' must be 'stable' or 'beta', "
+        'got ${_repr(data['update_channel'])}.');
+  }
+  if (!['dark', 'light']
+      .contains('${data['theme'] ?? 'dark'}'.toLowerCase())) {
+    problems.add("Theme must be 'dark' or 'light'.");
+  }
+  if (!['cs', 'en']
+      .contains('${data['language'] ?? 'cs'}'.toLowerCase())) {
+    problems.add(
+        "'language' must be 'cs' or 'en', "
+        'got ${_repr(data['language'])}.');
+  }
+  if ('${data['gemini_model'] ?? 'gemini-3.8-flash'}'.trim().isEmpty) {
+    problems.add("'gemini_model' must not be empty.");
+  }
+  final gInterval = _toIntViaFloat(data['gemini_interval_days'] ?? 2);
+  if (gInterval == null) {
+    problems.add("'gemini_interval_days' must be a whole number.");
+  } else if (!(gInterval >= 1 && gInterval <= 30)) {
+    problems.add("'gemini_interval_days' must be within [1, 30].");
+  }
+  final delay = _toIntStrict(data['excuse_delay_days'] ?? 2);
+  if (delay == null) {
+    problems.add("'excuse_delay_days' must be a whole number.");
+  } else if (delay < 0) {
+    problems.add("'excuse_delay_days' must be >= 0.");
+  }
+  for (final entry in [
+    ('go_back_weeks', 0, 52),
+    ('go_forward_weeks', 0, 8),
+  ]) {
+    final weeks = _toIntStrict(data[entry.$1] ?? 0);
+    if (weeks == null) {
+      problems.add("'${entry.$1}' must be a whole number.");
+    } else if (!(weeks >= entry.$2 && weeks <= entry.$3)) {
+      problems.add(
+          "'${entry.$1}' must be within [${entry.$2}, ${entry.$3}] "
+          '(runtime clamps to it).');
+    }
+  }
+  if (!['first', 'random'].contains(
+      '${data['default_excuse_selection'] ?? 'first'}'.toLowerCase())) {
+    problems.add(
+        "'default_excuse_selection' must be 'first' or 'random', "
+        'got ${_repr(data['default_excuse_selection'])}.');
+  }
+  final interval = _toDouble(data['check_interval_minutes'] ?? 60);
+  if (interval == null) {
+    problems.add("'check_interval_minutes' must be a number.");
+  } else if (interval < 1) {
+    problems.add("'check_interval_minutes' must be >= 1.");
+  }
+  final wakeupMin = _toIntViaFloat(data['wakeup_minutes_before'] ?? 60);
+  if (wakeupMin == null) {
+    problems.add("'wakeup_minutes_before' must be a whole number.");
+  } else if (!(wakeupMin >= 1 && wakeupMin <= 720)) {
+    problems.add("'wakeup_minutes_before' must be within [1, 720].");
+  }
+  if (data['wakeup_skip_dates'] is! List) {
+    problems.add("'wakeup_skip_dates' must be a list of dates (YYYY-MM-DD).");
+  }
+  final picked = data['background_notification_items'];
+  if (picked is! List ||
+      picked.any((item) => !statusNotificationItems.contains(item))) {
+    problems.add(
+        "'background_notification_items' must be a list of "
+        '$statusNotificationItems.');
+  }
+  final limits = data['subject_limits'];
+  if (limits is! Map) {
+    problems.add(
+        "'subject_limits' must be an object mapping subject -> percent.");
+  } else {
+    for (final entry in limits.entries) {
+      final value = _toDouble(entry.value);
+      if (value == null) {
+        problems.add(
+            "Subject limit for ${_repr(entry.key)} must be a number.");
+        break;
+      }
+      if (!(value > 0 && value <= 100)) {
+        problems.add(
+            "Subject limit for ${_repr(entry.key)} must be within (0, 100].");
+        break;
+      }
+    }
+  }
+  return problems;
+}
+
+/// Manages loading, saving, and updating Strakalari configuration settings.
+/// Handles password obfuscation, defaults fallback, and path resolution.
+class ConfigManager {
+  /// Resolved absolute config path.
+  final String configPath;
+
+  /// File encoding (JSON is always written as UTF-8-compatible text).
+  final Encoding encoding;
+
+  /// Current (possibly edited) configuration.
+  Map<String, Object?> data = {};
+
+  Map<String, Object?> _baseline = {};
+  Set<String> _touched = {};
+  bool _unreadable = false;
+
+  factory ConfigManager([String configPath = './config.json',
+      Encoding encoding = utf8]) {
+    final manager = ConfigManager._(resolvePath(configPath), encoding);
+    manager.load();
+    return manager;
+  }
+
+  ConfigManager._(this.configPath, this.encoding);
+
+  /// Loads configuration from the JSON file and merges on top of defaults.
+  Map<String, Object?> load() {
+    _loadInner();
+    _rememberBaseline();
+    return data;
+  }
+
+  void _rememberBaseline() {
+    _baseline =
+        (_deepCopyJson(data) as Map<String, Object?>);
+    _touched = {};
+  }
+
+  /// Snapshot of what is on disk, so save() writes only real edits.
+  void _loadInner() {
+    final defaults = defaultConfig();
+    if (!File(configPath).existsSync()) {
+      data = defaults;
+      _unreadable = false;
+      return;
+    }
+    try {
+      final loaded = jsonDecode(
+          File(configPath).readAsStringSync(encoding: encoding));
+      if (loaded is Map) {
+        // Explicit nulls never override defaults: a hand-edited
+        // `"key": null` falls back to the canonical default
+        // instead of poisoning the runtime with null.
+        for (final entry in loaded.entries) {
+          if (entry.value != null) {
+            defaults['${entry.key}'] = entry.value as Object?;
+          }
+        }
+      } else {
+        print("Warning: Config '$configPath' does not contain a JSON "
+            'object. Using fallback defaults.');
+      }
+      data = defaults;
+    } on FormatException catch (e) {
+      // Quarantine the corrupt file BEFORE falling back: a later
+      // save() would otherwise atomically overwrite the original
+      // bytes and destroy credentials/config for good.
+      final backup = quarantineCorruptFile(configPath);
+      final hint = backup.isNotEmpty ? ' Preserved at $backup.' : '';
+      print("Warning: Failed to load '$configPath': $e. "
+          'Using fallback defaults.$hint');
+      data = defaults;
+    } on FileSystemException catch (e) {
+      // Busy or locked (antivirus, the other process mid-write), not
+      // corrupt: keep the file untouched and refuse to save over it
+      // until a later load succeeds.
+      print("Warning: Could not read '$configPath' right now: $e. "
+          'Using defaults, not saving.');
+      data = defaults;
+      _unreadable = true;
+      return;
+    }
+    _unreadable = false;
+    // No stored-data migration: the project is pre-release with a single
+    // user, so legacy keys are simply ignored (defaults win). Unknown
+    // keys stay on disk untouched but are never read.
+  }
+
+  /// Reloads configuration from disk.
+  Map<String, Object?> reload() => load();
+
+  /// Saves current configuration to the JSON file (atomically).
+  ///
+  /// Refuses when the file existed but could not be read at load time —
+  /// writing then would replace the user's settings with defaults.
+  void save() {
+    if (_unreadable && File(configPath).existsSync()) {
+      throw StateError("Config '$configPath' could not be read at startup; "
+          'not overwriting it. Restart the app.');
+    }
+    // The tray and the window are separate processes, each with its
+    // own ConfigManager. Writing our whole (possibly hours old) copy
+    // would silently undo whatever the other one saved meanwhile, so
+    // only the keys edited here are applied on top of the file as it
+    // is now — under a lock so two saves cannot interleave.
+    final lock = InterProcessLock('$configPath.lock');
+    if (!lock.acquire(timeoutS: 10.0)) {
+      // Writing unlocked could interleave with the other process's
+      // save and silently drop its edits: fail loudly instead (the
+      // edits stay in memory and go out with the next save).
+      throw StateError("Config '$configPath' is being saved by another "
+          'process; not saved — try again.');
+    }
+    try {
+      final merged = _mergeOntoDisk();
+      try {
+        atomicWriteJson(configPath, merged, encoding: encoding);
+      } on FileSystemException catch (e) {
+        throw StateError(
+            "Could not save config to '$configPath': $e");
+      }
+      if (!identical(merged, data)) {
+        // In place: other objects share it.
+        data
+          ..clear()
+          ..addAll(merged);
+      }
+    } finally {
+      lock.release();
+    }
+    _rememberBaseline();
+  }
+
+  /// Current file content with this instance's edits applied.
+  ///
+  /// Falls back to this instance's full data when the file is missing
+  /// or unreadable (nothing on disk worth preserving then).
+  Map<String, Object?> _mergeOntoDisk() {
+    if (!File(configPath).existsSync()) return data;
+    late final Map<String, Object?> onDisk;
+    try {
+      final decoded = jsonDecode(
+          File(configPath).readAsStringSync(encoding: encoding));
+      if (decoded is! Map) return data;
+      onDisk = decoded.map((k, v) => MapEntry('$k', v as Object?));
+    } on FileSystemException {
+      return data;
+    } on FormatException {
+      return data;
+    }
+    final merged = defaultConfig();
+    for (final entry in onDisk.entries) {
+      if (entry.value != null) merged[entry.key] = entry.value;
+    }
+    for (final entry in data.entries) {
+      if (_touched.contains(entry.key) ||
+          !_baseline.containsKey(entry.key) ||
+          _baseline[entry.key] != entry.value) {
+        merged[entry.key] = entry.value;
+      }
+    }
+    for (final key in _baseline.keys) {
+      if (!data.containsKey(key)) merged.remove(key);
+    }
+    return merged;
+  }
+
+  /// Retrieves a configuration value by key.
+  Object? get(String key, [Object? defaultValue]) =>
+      data.containsKey(key) ? data[key] : defaultValue;
+
+  /// Sets a configuration value, automatically encrypting passwords.
+  void set(String key, Object? value, {bool autoEncrypt = true}) {
+    if (!canonicalDefaults.containsKey(key)) {
+      // Warn about typos, but still store (keys of newer versions).
+      print("Warning: unknown config key '$key' — storing anyway.");
+    }
+    _touched.add(key);
+    if (autoEncrypt &&
+        (key == 'strava_password' ||
+            key == 'bakalari_password' ||
+            key == 'gemini_api_key')) {
+      _touched.add('${key}_encrypted');
+    }
+    if (key == 'excuse_mode' || key == 'strava_order_mode') {
+      final normalized = '$value'.toLowerCase();
+      if (!excuseModes.contains(normalized)) {
+        throw ArgumentError(
+            "'$key' must be one of $excuseModes, got ${_repr(value)}.");
+      }
+      data[key] = normalized;
+      return;
+    }
+    if (autoEncrypt &&
+        (key == 'strava_password' ||
+            key == 'bakalari_password' ||
+            key == 'gemini_api_key')) {
+      // Avoid re-encrypting if value is already the encrypted string.
+      if (data['${key}_encrypted'] == true && data[key] == value) return;
+      data[key] = encrypt('$value');
+      data['${key}_encrypted'] = true;
+    } else {
+      data[key] = value;
+    }
+  }
+
+  /// Sets a configuration value and immediately persists to disk.
+  void setAndSave(String key, Object? value, {bool autoEncrypt = true}) {
+    set(key, value, autoEncrypt: autoEncrypt);
+    save();
+  }
+
+  /// Validates current config, returning human-readable problems.
+  List<String> validate() => validateConfig(data);
+
+  /// Returns the resolved absolute path to the blacklist file.
+  String getBlacklistPath() => resolvePath(
+      '${get('strava_blacklist', './strava_blacklist.json')}');
+
+  /// Loads blacklist keywords from strava_blacklist.json.
+  ///
+  /// Returns [] when the file is missing: the default blacklist is
+  /// empty (a missing file means "no bans", never the example template).
+  /// Placeholder entries from older templates (`YOUR_BLACKLIST_EXAMPLE`)
+  /// are filtered from any loaded list so a copied old example stays
+  /// harmless.
+  List<String> getBlacklist() => _readBlacklist(strict: false);
+
+  /// Blacklist keywords; [strict] raises when the file is busy.
+  ///
+  /// Only undecodable content is quarantined. A busy file reads as
+  /// empty for display, but edits ([strict]) must fail instead of
+  /// saving a list that would drop every existing keyword.
+  List<String> _readBlacklist({bool strict = false}) {
+    final path = getBlacklistPath();
+    if (!File(path).existsSync()) return [];
+    try {
+      final decoded =
+          jsonDecode(File(path).readAsStringSync(encoding: encoding));
+      if (decoded is List) {
+        return decoded
+            .map((e) => '$e')
+            .where((kw) => !looksLikePlaceholder(kw))
+            .toList();
+      }
+      print("Warning: Blacklist file '$path' does not contain a JSON "
+          'list. Treating as empty.');
+      return [];
+    } on FormatException catch (e) {
+      final backup = quarantineCorruptFile(path);
+      final hint = backup.isNotEmpty ? ' Preserved at $backup.' : '';
+      print("Warning: Could not read blacklist file '$path': $e. "
+          'Treating as empty.$hint');
+      return [];
+    } on FileSystemException catch (e) {
+      if (strict) {
+        throw StateError(
+            "Blacklist file '$path' is not readable right now: $e");
+      }
+      print("Warning: Could not read blacklist file '$path' right now: $e.");
+      return [];
+    }
+  }
+
+  /// Saves blacklist keywords list to strava_blacklist.json (atomically).
+  void setBlacklist(List<Object?> items) {
+    final path = getBlacklistPath();
+    // Deduplicate while preserving order, strip whitespace.
+    final cleaned = <String>[];
+    for (final item in items) {
+      final s = '$item'.trim();
+      if (s.isNotEmpty && !cleaned.contains(s)) cleaned.add(s);
+    }
+    atomicWriteJson(path, cleaned, encoding: encoding);
+  }
+
+  /// Adds a keyword to the blacklist if not already present.
+  bool addBlacklistItem(String item) {
+    final clean = item.trim();
+    if (clean.isEmpty) return false;
+    final current = _readBlacklist(strict: true);
+    if (!current.any((x) => x.toLowerCase() == clean.toLowerCase())) {
+      current.add(clean);
+      setBlacklist(current);
+      return true;
+    }
+    return false;
+  }
+
+  /// Removes a keyword from the blacklist.
+  bool removeBlacklistItem(String item) {
+    final clean = item.trim().toLowerCase();
+    final current = _readBlacklist(strict: true);
+    final next =
+        current.where((x) => x.trim().toLowerCase() != clean).toList();
+    if (next.length != current.length) {
+      setBlacklist(next);
+      return true;
+    }
+    return false;
+  }
+
+  /// Returns the resolved absolute path to the already excused lessons file.
+  String getAlreadyExcusedPath() => resolvePath(
+      '${get('already_excused_file', './already_excused_lessons.json')}');
+
+  /// Loads history from already_excused_lessons.json (or the example
+  /// template if missing, with demo rows filtered out).
+  List<Object?> getExcuseHistory() {
+    final path = getAlreadyExcusedPath();
+    if (!File(path).existsSync()) {
+      final examplePath = examplePathFor(path);
+      if (File(examplePath).existsSync()) {
+        try {
+          final decoded = jsonDecode(
+              File(examplePath).readAsStringSync(encoding: encoding));
+          final items = decoded is List ? List.of(decoded) : <Object?>[];
+          // Template fallback: filter demo/placeholder rows
+          // so they never seed real dedup history.
+          return items.where((it) => !isDemoHistoryItem(it)).toList();
+        } on Object catch (e) {
+          print('Warning: Could not read excuse history template '
+              "'$examplePath': $e");
+        }
+      }
+      return [];
+    }
+    try {
+      final decoded =
+          jsonDecode(File(path).readAsStringSync(encoding: encoding));
+      if (decoded is List) return List.of(decoded);
+      print("Warning: Excuse history file '$path' does not contain a JSON "
+          'list. Treating as empty.');
+      return [];
+    } on FormatException catch (e) {
+      final backup = quarantineCorruptFile(path);
+      final hint = backup.isNotEmpty ? ' Preserved at $backup.' : '';
+      print("Warning: Could not read excuse history file '$path': $e. "
+          'Treating as empty.$hint');
+      return [];
+    } on FileSystemException catch (e) {
+      print(
+          "Warning: Could not read excuse history file '$path' right now: $e.");
+      return [];
+    }
+  }
+}

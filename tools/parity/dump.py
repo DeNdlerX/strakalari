@@ -193,11 +193,55 @@ def cache_cases() -> list[dict]:
     return cases
 
 
+def config_cases() -> list[dict]:
+    import copy
+
+    from strakalari.core import config as cfg
+
+    cases = []
+    for text in ["VAS_BAKALARI_LOGIN", "vas_strava_login", "CISLO_JIDELNY",
+                 "example value", "YOUR_BLACKLIST_EXAMPLE", "novak",
+                 "https://skola.cz", ""]:
+        cases.append(_case("looksLikePlaceholder",
+                           cfg._looks_like_placeholder(text), text))
+    for row in [
+            {"bakalari_username": "", "bakalari_url": "",
+             "strava_username": "student", "strava_canteen_id": "1950"},
+            {"bakalari_username": "novak",
+             "bakalari_url": "https://skola.cz",
+             "strava_username": "novak", "strava_canteen_id": "1950"},
+            {"bakalari_username": "VAS_BAKALARI_LOGIN",
+             "bakalari_url": "https://vas-bakalari-portal.cz",
+             "strava_username": "x", "strava_canteen_id": "CISLO_JIDELNY"},
+            {"bakalari_username": "student",
+             "bakalari_url": "https://skola.cz",
+             "strava_username": "VAS_STRAVA_LOGIN",
+             "strava_canteen_id": "1950"},
+    ]:
+        cases.append(_case("hasValidCredentials",
+                           list(cfg.has_valid_credentials(row)), row))
+    base = copy.deepcopy(cfg.CANONICAL_DEFAULTS)
+    base.update({"use_strava": True, "strava_username": "u",
+                 "strava_canteen_id": "1"})
+    cases.append(_case("validateConfig", cfg.validate_config(base), base))
+    bad_mode = dict(base)
+    bad_mode["excuse_mode"] = "sometimes"
+    cases.append(_case("validateConfig",
+                       cfg.validate_config(bad_mode), bad_mode))
+    bad_weeks = dict(base)
+    bad_weeks["go_back_weeks"] = 99
+    bad_weeks["go_forward_weeks"] = 99
+    cases.append(_case("validateConfig",
+                       cfg.validate_config(bad_weeks), bad_weeks))
+    return cases
+
+
 def main() -> None:
     _dump("helpers", helpers_cases())
     _dump("models", models_cases())
     _dump("i18n", i18n_cases())
     _dump("cache", cache_cases())
+    _dump("config", config_cases())
 
 
 if __name__ == "__main__":

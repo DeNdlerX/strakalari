@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 1 · Next step: Phase 1 — port strakalari/core/config.py.
+Current phase: 1 · Next step: Phase 1 — port strakalari/core/audit.py.
 
 ## Phase 0 (done)
 
@@ -37,7 +37,7 @@ State: todo = not started, tests = Dart tests written, done = ported + green.
 | strakalari/core/bakalari_timetable.py | core bakalari/timetable.dart | test_timetable_cache_merge.py | todo |
 | strakalari/core/cache.py | core storage/cache.dart | test_cache.py + merge/seed/busy cases from test_timetable_cache_merge, test_data_safety, test_scheduler → cache_test.dart (21) + parity_cache_test.dart | done |
 | strakalari/core/cancel.py | core automation/cancel.dart | test_cancel_responsive.py, test_refresh_cancel_keeps_data.py | todo |
-| strakalari/core/config.py | core storage/config.dart | test_config.py, test_config_save_lock.py | todo |
+| strakalari/core/config.py | core storage/config.dart | test_config.py, test_config_save_lock.py → config_test.dart (34) + parity_config_test.dart | done |
 | strakalari/core/error_report.py | core error_report.dart | test_error_report.py, test_log_redaction.py | todo |
 | strakalari/core/excuse_history.py | core automation/excuse_history.dart | test_excuse_history.py, test_excuse_day_scope.py, test_excuse_ignore_list.py, test_unconfirmed_excuses.py | todo |
 | strakalari/core/extractors/__init__.py | core bakalari/ + strava/ barrels | — | todo |
@@ -160,6 +160,10 @@ test_tls_bundle.py, test_frozen_ssl.py (frozen CA bundle no longer exists).
 - test_session_lock.py → phase 4 (needs `refresh.session_lock`; the
   cross-process subprocess case needs a Python process and is proven
   manually instead, see Checkpoint notes).
+- test_config.py → `TestPasswordOverridesEncrypted`,
+  `test_integer_strava_id_handling`, `TestStravaEnableDefault` (incl.
+  `test_partial_config_without_use_strava_stays_enabled`) move to phase 4
+  (need `automation.Strakalari`).
 
 ## Dropped (with reason)
 
@@ -185,6 +189,17 @@ test_tls_bundle.py, test_frozen_ssl.py (frozen CA bundle no longer exists).
     ambient dir like the Python suite.
   - `lessonStatusFromLegacy` is public (Python: `_lesson_status_from_legacy`);
     the ported tests call it directly.
+  - `config.dart` carries local mirrors of four phase-3 checks
+    (`isValidCutoffTime`, `bandsValid`, `statusNotificationItems`,
+    `defaultUpdateChannel`); phase 3 rewires them to the canonical ports.
+    `looksLikePlaceholder` + `isDemoHistoryItem` are public (Python:
+    `_looks_like_placeholder`, `_is_demo_history_item` used cross-module).
+  - `ConfigManager` uses a factory constructor (Dart forbids `this.x`
+    alongside a transformed `configPath` initializer); `save()` throws
+    `StateError` where Python raises `RuntimeError`.
+  - `test_config_save_lock.py` is proven with a real held
+    `InterProcessLock` instead of monkeypatching `acquire` (waits the
+    10 s save timeout once per suite run).
 
 ## Questions for the owner / reviewer
 
