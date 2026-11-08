@@ -496,13 +496,17 @@ class DartIoHttpTransport implements HttpTransport {
       {Map<String, String>? headers,
       List<int>? body,
       Duration timeout = const Duration(seconds: 60)}) async {
-    // A connect timeout must also surface as "never sent".
-    _client.connectionTimeout = timeout;
+    // A connect timeout must also surface as "never sent". Match Python's
+    // httpx.Timeout(timeout_s, connect=min(timeout_s, 20.0)).
+    final connectTimeout = timeout < const Duration(seconds: 20)
+        ? timeout
+        : const Duration(seconds: 20);
+    _client.connectionTimeout = connectTimeout;
     late final HttpClientRequest request;
     try {
       // DNS + connect: the only phase where a failure means the
       // request certainly never left.
-      request = await _client.openUrl(method, url);
+      request = await _client.openUrl(method, url).timeout(connectTimeout);
     } on Object catch (e) {
       throw ConnectFailure(e);
     }

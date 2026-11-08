@@ -199,6 +199,31 @@ void main() {
       await expectLater(bakConn.login(), throwsA(isA<UserError>()));
       expect(connectCalls, 1);
     });
+
+    test('dartIoTransportWrapsConnectErrorAsNeverSent', () async {
+      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final unusedPort = server.port;
+      await server.close();
+      final transport = DartIoHttpTransport();
+      try {
+        await expectLater(
+          () => transport.send(
+            'GET',
+            Uri.parse('http://127.0.0.1:$unusedPort/bakaweb'),
+            timeout: const Duration(milliseconds: 500),
+          ),
+          throwsA(
+            isA<ConnectFailure>().having(
+              (e) => isNeverSentCause(e),
+              'isNeverSentCause',
+              isTrue,
+            ),
+          ),
+        );
+      } finally {
+        transport.close();
+      }
+    });
   });
 }
 
