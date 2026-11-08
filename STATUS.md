@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 5–9 done (integration by owner-agent) · Next step: Checkpoint A rework — ALL BLOCKERS DONE (B1 ee364bd, B2 7a045dd, B3 e0d0ebf, B4 441a05e, B5 2eff0b5) + M1 DONE (56c34aa), M2 DONE (5857842), M3 DONE (73cd892), M4 DONE (e734e04, 763ec48), M5 DONE (f5f7f16), M6 DONE (57a54f4), M7 DONE (PYTHONHASHSEED=0 in dump.py); next: M8, S1–S10, one commit per finding, then stop for re-review. No work on phases 5–10 until Checkpoint A passes.
+Current phase: 4 (Checkpoint A rework; phases 5–9 in progress, unreviewed) · Next step: Checkpoint A rework — ALL BLOCKERS DONE (B1 ee364bd, B2 7a045dd, B3 e0d0ebf, B4 441a05e, B5 2eff0b5) + M1 DONE (56c34aa), M2 DONE (5857842), M3 DONE (73cd892), M4 DONE (e734e04, 763ec48), M5 DONE (f5f7f16), M6 DONE (57a54f4), M7 DONE (0d37753), M8 DONE; next: S1–S10, one commit per finding, then stop for re-review. No work on phases 5–10 until Checkpoint A passes.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -14,32 +14,33 @@ notify (core interface). 16 new parity JSON fixtures (344 cases);
 `dart analyze` + `flutter analyze` clean.
 Phase 4 (automation) is done: error_report (full), scheduler,
 session_lock, automation (Strakalari), refresh (run_refresh).
-A dry-run refresh against the demo server gives identical result,
-cache keys (incl. `stable_baseline`), audit entries (modulo ts),
-outbox and history in Python and Dart. ⛔ Checkpoint A: core review.
-Phase 5 (app shell) is done: Riverpod controllers (AppState + 6 facades),
+⛔ Checkpoint A: core review (rework in progress).
+Phase 5 (app shell) is in progress, unreviewed: Riverpod controllers (AppState + 6 facades),
 go_router (8 routes + wizard + more), adaptive scaffold (720/520
 breakpoints, rail ↔ bar + More, landscape side rail), theme tokens,
 ARB strings (794 keys + 13 notif_*), shared widgets, error dialog with
-Copy log/Share, tutorial tours, platform seams. `flutter analyze` clean.
-Phase 6 (screens) is done: all 10 screens wired into the router with
-real views + controllers (wizard, today, timetable, absences, marks,
-planner, lunches, activity, settings, more); 116 widget/unit tests +
-app-boots/navigation smoke test green. ⛔ Checkpoint B: UI review.
-Phase 7 (desktop) is done in code: tray + hide-to-tray, autostart,
+Copy log/Share, tutorial tours, platform seams. Live `AppState` → core
+wiring and deferred phase-5 tests still pending.
+Phase 6 (screens) is in progress, unreviewed: all 10 screens wired into the router with
+views + controllers (wizard, today, timetable, absences, marks,
+planner, lunches, activity, settings, more); 106 widget/unit tests +
+app-boots/navigation smoke test green; live `AppState` wiring and
+deferred phase-6 tests still pending. ⛔ Checkpoint B: UI review (unreviewed).
+Phase 7 (desktop) is in progress, unreviewed: tray + hide-to-tray, autostart,
 single-instance loopback-TCP, notifications, desktop keystores, Inno
-(AppId kept) + MSIX adaptations, CI release jobs. All UNVERIFIED on
-this PC except `flutter analyze`; Sandbox over-install test pending.
-Phase 8 (Android) is done in code: Java moved unchanged (+1 R import
+(AppId kept) + MSIX adaptations, CI release jobs written in code;
+unverified on this PC except `flutter analyze`; Sandbox over-install test
+and desktop platform tests pending.
+Phase 8 (Android) is in progress, unreviewed: Java moved unchanged (+1 R import
 line in 6 files), StrakalariChannel, headless backgroundMain with
 UI-isolate hand-off, boot re-arm, widget/alarms, Keystore unwrap,
 `.test` flavor, privacy test port. `:app:compileProd/PhonetestDebugSources`
 green, `flutter analyze` clean. On-phone verification pending.
-⛔ Checkpoint C: platform review.
-Phase 9 (soak prep) is done: soak_compare/soak_refresh scripts,
-SOAK.md routine, README/CONTRIBUTING/PRIVACY wording; dry-run parity
-IDENTICAL (modulo ts), fetch parity byte-identical. Beta release waits
-for the owner's go-ahead. ⛔ Checkpoint D: release review.
+⛔ Checkpoint C: platform review (unreviewed).
+Phase 9 (soak prep) is in progress, unreviewed: soak_compare/soak_refresh scripts,
+SOAK.md routine, README/CONTRIBUTING/PRIVACY wording; multi-day soak not
+yet run. Beta release waits for Checkpoint A–D sign-off and the owner's
+go-ahead. ⛔ Checkpoint D: release review (unreviewed).
 Phase 10 (switch) NOT started: needs reviewer sign-off + owner merge.
 
 ## Phase 0 (done)
@@ -57,233 +58,411 @@ Phase 10 (switch) NOT started: needs reviewer sign-off + owner merge.
 
 ## Modules
 
-State: todo = not started, tests = Dart tests written, done = ported + green.
+State: todo = not started, tests = Dart tests written, in progress, unreviewed = code drafted ahead of review, done = ported + green.
 
 | Python file | Dart file | Tests (py → dart) | State |
 |---|---|---|---|
 | strakalari/__init__.py | version export (core/app) | — | todo |
-| strakalari/__main__.py | app/lib/main.dart | — | todo |
-| strakalari/core/__init__.py | core barrel | — | todo |
-| strakalari/core/android.py | core platform/android_bridge.dart + app MethodChannel | test_notify.py, test_wake_ui.py, test_wakeup_and_widget.py | todo |
-| strakalari/core/audit.py | core automation/audit.dart | test_automation_safety.py (audit cases) → audit_test.dart (3) + parity_audit_test.dart | done |
-| strakalari/core/automation.py | core automation/automation.dart | test_automation_safety.py + deferred send-path cases (test_excuse_generation, test_order_latch, test_strava_low_balance, test_strava_ordering, test_unconfirmed_excuses, test_excuse_history/TestSendPath…) → automation_test.dart + refresh_test.dart; `bin/refresh_dryrun.dart` dry-run parity vs demo server | done |
-| strakalari/core/autostart.py | core platform/autostart.dart + app impl | test_autostart.py, test_autostart_platforms.py | todo |
-| strakalari/core/bakalari_client.py | core bakalari/client.dart | test_bakalari_client.py (base cases) → bakalari_client_test.dart | done |
-| strakalari/core/bakalari_common.py | core bakalari/common.dart | client/data tests (hour-index, week offsets, removed/room-move rows) → common_test.dart | done |
-| strakalari/core/bakalari_data.py | core bakalari/data.dart (DataMixin) | test_bakalari_http.py (read cases), test_sent_excuses.py, test_grades.py (client cases) → bakalari_data_test.dart (15); phase 3+: `update_stable_baseline` ported, fetch order details → stable → substitutions → baseline wired in `fetchBakalariData` | done |
-| strakalari/core/bakalari_excuse.py | core bakalari/excuse.dart (ExcuseFormMixin) | test_bakalari_excuse.py → bakalari_excuse_test.dart (14) + parity (excuse cases in bakalari.json) | done |
-| strakalari/core/bakalari_http.py | core bakalari/http_session.dart | test_bakalari_http.py (session cases) → http_session_test.dart (10) + parity_http_session_test.dart | done |
-| strakalari/core/bakalari_timetable.py | core bakalari/timetable.dart (TimetableMixin on BakalariClientBase) | test_bakalari_client.py (add/perm/stable/week cases) → timetable_test.dart | done |
-| strakalari/core/cache.py | core storage/cache.dart | test_cache.py + merge/seed/busy cases from test_timetable_cache_merge, test_data_safety, test_scheduler → cache_test.dart (21) + parity_cache_test.dart | done |
-| strakalari/core/cancel.py | core automation/cancel.dart | ported with the session (covered by http_session_test); test_cancel_responsive.py, test_refresh_cancel_keeps_data.py → phase 5/4 | done |
-| strakalari/core/config.py | core storage/config.dart | test_config.py, test_config_save_lock.py → config_test.dart (34) + parity_config_test.dart | done |
-| strakalari/core/error_report.py | core error_report.dart (full port: redaction, report builders; `UserError`/`timeoutUserMessage` API unchanged) | test_error_report.py, test_log_redaction.py → error_report_test.dart + parity_error_report_test.dart | done |
-| strakalari/core/excuse_history.py | core automation/excuse_history.dart | test_excuse_history.py, test_unconfirmed_excuses.py (pure cases) → excuse_history_test.dart (17) + parity_excuse_history_test.dart | done |
-| strakalari/core/extractors/__init__.py | core bakalari/ + strava/ barrels | — | todo |
-| strakalari/core/extractors/bakalari.py | core bakalari/extractors.dart | grades/sent-excuses/substitution/parity cases → extractors_test.dart + parity_bakalari_test.dart | done |
+| strakalari/__main__.py | app/lib/main.dart | — | in progress, unreviewed |
+| strakalari/core/__init__.py | core barrel | — | done |
+| strakalari/core/android.py | core platform/android_bridge.dart + app MethodChannel | test_notify.py, test_wake_ui.py, test_wakeup_and_widget.py | in progress, unreviewed |
+| strakalari/core/audit.py | core automation/audit.dart | test_automation_safety.py (audit cases) → audit_test.dart (4) + parity_audit_test.dart | done |
+| strakalari/core/automation.py | core automation/automation.dart | test_automation_safety.py (core cases), test_excuse_generation.py (25), test_strava_low_balance.py (2 order cases), test_strava_ordering.py (15), test_unconfirmed_excuses.py (TestSendPath/TestOutboxSettles), test_excuse_history.py (send/coverage/dry-run cases) → automation_test.dart (78) + refresh_test.dart; `test_order_latch.py` (4) is `AppState` (deferred phase 5) | done |
+| strakalari/core/autostart.py | core platform/autostart.dart + app impl | test_autostart.py, test_autostart_platforms.py (deferred phase 7) | in progress, unreviewed |
+| strakalari/core/bakalari_client.py | core bakalari/client.dart | test_bakalari_client.py (base cases) → bakalari_client_test.dart (8) | done |
+| strakalari/core/bakalari_common.py | core bakalari/common.dart | client/data tests (hour-index, week offsets, removed/room-move rows) → common_test.dart (9) | done |
+| strakalari/core/bakalari_data.py | core bakalari/data.dart (DataMixin) | test_bakalari_http.py (read cases), test_sent_excuses.py, test_grades.py (client cases) → bakalari_data_test.dart (16); `fetchData` + `updateStableBaseline` wired | done |
+| strakalari/core/bakalari_excuse.py | core bakalari/excuse.dart (ExcuseFormMixin) | test_bakalari_excuse.py → bakalari_excuse_test.dart (12) + parity (excuse cases in bakalari.json) | done |
+| strakalari/core/bakalari_http.py | core bakalari/http_session.dart | test_bakalari_http.py (session cases) → http_session_test.dart (11) + parity_http_session_test.dart | done |
+| strakalari/core/bakalari_timetable.py | core bakalari/timetable.dart (TimetableMixin on BakalariClientBase) | test_bakalari_client.py (add/perm/stable/week cases) → timetable_test.dart (7) | done |
+| strakalari/core/cache.py | core storage/cache.dart | test_cache.py + merge/seed/busy cases from test_timetable_cache_merge, test_data_safety, test_scheduler → cache_test.dart (19) + parity_cache_test.dart | done |
+| strakalari/core/cancel.py | core automation/cancel.dart | ported with the session (covered by http_session_test + refresh_test); UI cases in test_cancel_responsive.py → deferred phase 5 | done |
+| strakalari/core/config.py | core storage/config.dart | test_config.py, test_config_save_lock.py → config_test.dart (34) + automation_test.dart (3) + parity_config_test.dart | done |
+| strakalari/core/error_report.py | core error_report.dart (full port: redaction, report builders; `UserError`/`timeoutUserMessage` API unchanged) | test_error_report.py (core cases), test_log_redaction.py → error_report_test.dart (16) + parity_error_report_test.dart; UI popup/clipboard cases → deferred phase 5 | done |
+| strakalari/core/excuse_history.py | core automation/excuse_history.dart | test_excuse_history.py, test_unconfirmed_excuses.py (pure cases) → excuse_history_test.dart (20) + parity_excuse_history_test.dart | done |
+| strakalari/core/extractors/__init__.py | core bakalari/ + strava/ barrels | — | done |
+| strakalari/core/extractors/bakalari.py | core bakalari/extractors.dart | grades/sent-excuses/substitution/parity cases → extractors_test.dart (22) + parity_bakalari_test.dart | done |
 | strakalari/core/extractors/strava.py | core strava/extractors.dart | menu/food asserts in strava_test.dart + parity_strava_test.dart | done |
-| strakalari/core/forecast.py | core planning/forecast.dart | test_forecast.py, test_absence_details.py → forecast_test.dart + parity_forecast_test.dart | done |
-| strakalari/core/gemini.py | core lunches/gemini.dart | test_gemini_key.py, test_gemini_picks.py, test_ai_recommend.py → gemini_test.dart + parity_gemini_test.dart (network calls covered by fakes/seams, never real) | done |
-| strakalari/core/grades.py | core planning/grades.dart | test_grades.py, test_grades_math.py, test_grades_minus.py (pure math; extractor/client cases already in extractors/bakalari_data) → grades_test.dart + parity_grades_test.dart | done |
-| strakalari/core/helpers.py | core storage/helpers.dart | test_helpers.py → helpers_test.dart (21) + parity_helpers_test.dart; test_session_lock.py → session_lock_test.dart (phase 4, done) | done |
-| strakalari/core/i18n.py | core i18n.dart | test_i18n.py (core cases) → i18n_test.dart 4 + parity_i18n_test.dart | done |
-| strakalari/core/lunch_auto.py | core lunches/lunch_auto.dart | test_lunch_auto.py, test_lunch_auto_user_choice.py, test_lunch_same_pick.py → lunch_auto_test.dart + parity_lunch_auto_test.dart (ban matching delegates to planning/matching.dart) | done |
-| strakalari/core/lunch_cutoff.py | core lunches/lunch_cutoff.dart | test_lunch_cutoff.py, test_lunch_day_keys.py, test_lunch_deadline_calendar.py → lunch_cutoff_test.dart + parity_lunch_cutoff_test.dart | done |
-| strakalari/core/matching.py | core planning/matching.dart | test_matching.py → matching_test.dart + parity_matching_test.dart | done |
-| strakalari/core/models.py | core models.dart | test_models.py (minus 2 automation cases → phase 4) → models_test.dart (14) + parity_models_test.dart | done |
-| strakalari/core/news.py | core news.dart | test_news.py → news_test.dart + parity_news_test.dart | done |
-| strakalari/core/notify.py | core platform/notifier.dart (abstract Notifier interface; OS impls → phase 7) | test_notify.py → notifier_test.dart | done |
-| strakalari/core/packaging.py | core platform/packaging.dart | test_mobile.py (predicates) → packaging_test.dart 9 | done |
-| strakalari/core/planned_skips.py | core planning/planned_skips.dart | test_planned_skips.py, test_early_leave.py → planned_skips_test.dart + parity_planned_skips_test.dart | done |
-| strakalari/core/planner.py | core planning/planner.dart | test_year_planner.py (pure plan cases; dialog/AppState cases → phase 5/6), test_plan_reserve.py (pure reserve parts) → planner_test.dart + parity_planner_test.dart | done |
-| strakalari/core/refresh.py | core automation/refresh.dart | test_refresh_pipeline.py, test_data_safety.py, test_refresh_cancel_keeps_data.py, test_session_lock.py + deferred gate cases → refresh_test.dart; `bin/refresh_dryrun.dart` | done |
-| strakalari/core/schedule.py | core planning/schedule.dart | test_schedule.py, test_substitution_feed_days.py → schedule_test.dart + parity_schedule_test.dart | done |
-| strakalari/core/scheduler.py | core automation/scheduler.dart | test_scheduler.py, test_scheduler_retry.py → scheduler_test.dart + parity_scheduler_test.dart | done |
-| strakalari/core/school_presets.py | core planning/school_presets.dart | test_school_calendar.py → school_presets_test.dart + parity_school_presets_test.dart | done |
-| strakalari/core/secret_store.py | core storage/secret_store.dart + platform/keystore.dart (+ android_bridge.dart iface) | test_secret_store.py → secret_store_test.dart (10); Fernet roundtrip/tamper/key tests → fernet_test.dart (5) | done |
-| strakalari/core/status_notification.py | core status_notification.dart | test_status_notification.py → status_notification_test.dart + parity_status_notification_test.dart | done |
+| strakalari/core/forecast.py | core planning/forecast.dart | test_forecast.py, test_absence_details.py → forecast_test.dart (16) + parity_forecast_test.dart | done |
+| strakalari/core/gemini.py | core lunches/gemini.dart | test_gemini_key.py, test_gemini_picks.py, test_ai_recommend.py (pure/client cases) → gemini_test.dart (16) + parity_gemini_test.dart; 4 `AppState` worker cases in test_ai_recommend.py → deferred phase 5 | done |
+| strakalari/core/grades.py | core planning/grades.dart | test_grades.py, test_grades_math.py, test_grades_minus.py → grades_test.dart (24) + parity_grades_test.dart (extractor/client cases in extractors_test.dart / bakalari_data_test.dart) | done |
+| strakalari/core/helpers.py | core storage/helpers.dart | test_helpers.py → helpers_test.dart (24) + fernet_test.dart (5) + secret_store_test.dart (1) + parity_helpers_test.dart; test_session_lock.py → session_lock_test.dart (11) | done |
+| strakalari/core/i18n.py | core i18n.dart | test_i18n.py (core cases) → i18n_test.dart (4) + parity_i18n_test.dart; 2 `flet_ui.strings` cases → deferred phase 5 | done |
+| strakalari/core/lunch_auto.py | core lunches/lunch_auto.dart | test_lunch_auto.py (11), test_lunch_auto_user_choice.py (5 `TestAutoFillsGapsOnly` cases) → lunch_auto_test.dart (17) + parity_lunch_auto_test.dart (`test_keep_lunch_choice_is_stored_and_honored` in planned_skips_test.dart; 2 AppState cases + `test_lunch_same_pick.py` (5) → deferred phase 5) | done |
+| strakalari/core/lunch_cutoff.py | core lunches/lunch_cutoff.dart | test_lunch_cutoff.py (pure cases), test_lunch_day_keys.py, test_lunch_deadline_calendar.py → lunch_cutoff_test.dart (11) + parity_lunch_cutoff_test.dart (AppState cases → deferred phase 5) | done |
+| strakalari/core/matching.py | core planning/matching.dart | test_matching.py → matching_test.dart (8) + parity_matching_test.dart | done |
+| strakalari/core/models.py | core models.dart | test_models.py → models_test.dart (18) + automation_test.dart (2) + parity_models_test.dart | done |
+| strakalari/core/news.py | core news.dart | test_news.py (pure cases) → news_test.dart (6) + parity_news_test.dart (`test_refresh_reports_news_against_the_cache` → deferred phase 5 `AppState`) | done |
+| strakalari/core/notify.py | core platform/notifier.dart (abstract Notifier interface; OS impls → phase 7) | test_notify.py (core cases) → notifier_test.dart (9); OS backend cases → deferred phase 7 | done |
+| strakalari/core/packaging.py | core platform/packaging.dart | test_mobile.py (predicates) → packaging_test.dart (9) | done |
+| strakalari/core/planned_skips.py | core planning/planned_skips.dart | test_planned_skips.py (11 pure cases), test_lunch_auto_user_choice.py (`test_keep_lunch_choice_is_stored_and_honored`) → planned_skips_test.dart (20) + parity_planned_skips_test.dart (6 `AppState` persist/rollback cases in test_planned_skips.py → `app/test/planner_view_test.dart` / deferred phase 5) | done |
+| strakalari/core/planner.py | core planning/planner.dart | test_year_planner.py (18 pure plan cases), test_plan_reserve.py (pure reserve validation) → planner_test.dart (19) + parity_planner_test.dart (`AppState`/dialog cases → `app/test/planner_*` / deferred phase 5–6) | done |
+| strakalari/core/refresh.py | core automation/refresh.dart | test_refresh_pipeline.py, test_data_safety.py, test_refresh_cancel_keeps_data.py, test_session_lock.py + gate cases → refresh_test.dart (21); `bin/refresh_dryrun.dart` | done |
+| strakalari/core/schedule.py | core planning/schedule.dart | test_schedule.py (24), test_substitution_feed_days.py (1) → schedule_test.dart (26) + dst_test.dart (10) + parity_schedule_test.dart | done |
+| strakalari/core/scheduler.py | core automation/scheduler.dart | test_scheduler.py (10 core cases), test_scheduler_retry.py (2 core `PeriodicRunner` cases: `intervalProviderIsPolled`, `jobFailedCountsAsFailureButReported`) → scheduler_test.dart (13) + parity_scheduler_test.dart; 3 `flet_ui.app`/`tray` cases in test_scheduler.py + 5 window/tray cases in test_scheduler_retry.py → deferred phase 5/7 | done |
+| strakalari/core/school_presets.py | core planning/school_presets.dart | test_school_calendar.py → school_presets_test.dart (15) + parity_school_presets_test.dart | done |
+| strakalari/core/secret_store.py | core storage/secret_store.dart + platform/keystore.dart (+ android_bridge.dart iface) | test_secret_store.py → secret_store_test.dart (12); Fernet roundtrip/tamper/key tests → fernet_test.dart (5) | done |
+| strakalari/core/status_notification.py | core status_notification.dart | test_status_notification.py (39 core cases) → status_notification_test.dart (39) + parity_status_notification_test.dart; 12 Android/UI cases → deferred phase 5/8 | done |
 | strakalari/core/strava_client.py | core strava/client.dart (StravaClientBase) | test_strava_client.py (client cases) → strava_test.dart (19) + parity (strava cases in strava.json) | done |
 | strakalari/core/strava_ordering.py | core strava/ordering.dart (OrderingMixin) | test_strava_client.py (order/save cases) → strava_test.dart + order-sheet byte test | done |
 | strakalari/core/tls.py | — (dropped, see below) | test_tls_bundle.py, test_frozen_ssl.py | dropped |
-| strakalari/core/update.py | core update.dart | test_update.py → update_test.dart + parity_update_test.dart (network via hook seam; app startup must set `currentAppVersion`, phases 7) | done |
-| strakalari/core/wakeup.py | core wakeup.dart (pure scheduling/message logic; alarms/receivers → phase 8) | test_wakeup_and_widget.py, test_wake_ui.py (pure cases; Flet/UI cases → phase 5–8) → wakeup_test.dart + parity_wakeup_test.dart | done |
-| strakalari/flet_ui/__init__.py | app barrel (shell + features) | — | done |
-| strakalari/flet_ui/__main__.py | app/lib/main.dart | widget_test.dart smoke (boots + rail navigation) | done |
-| strakalari/flet_ui/app.py | app/lib/main.dart + shell/ | widget_test.dart smoke; navigation covered | done |
+| strakalari/core/update.py | core update.dart | test_update.py (40 core cases) → update_test.dart (40) + parity_update_test.dart; 6 `flet_ui`/config-state cases → deferred phase 5 | done |
+| strakalari/core/wakeup.py | core wakeup.dart (pure scheduling/message logic; alarms/receivers → phase 8) | test_wakeup_and_widget.py (21 core cases) → wakeup_test.dart (21) + parity_wakeup_test.dart; 21 UI/extension-wheel cases + test_wake_ui.py (2) → deferred phase 5–8 | done |
+| strakalari/flet_ui/__init__.py | app barrel (shell + features) | — | in progress, unreviewed |
+| strakalari/flet_ui/__main__.py | app/lib/main.dart | widget_test.dart smoke (boots + rail navigation) | in progress, unreviewed |
+| strakalari/flet_ui/app.py | app/lib/main.dart + shell/ | widget_test.dart smoke; navigation covered | in progress, unreviewed |
 | strakalari/flet_ui/assets.py | app assets | test_icons.py | todo |
-| strakalari/flet_ui/components.py | app/lib/widgets/ | overlays_test.dart (8) | done |
-| strakalari/flet_ui/macos.py | app/lib/platform/desktop/ (tray hosts window, data dir) | — (macOS unverified) | done |
-| strakalari/flet_ui/overlays.py | app/lib/widgets/overlays.dart + error_dialog.dart | overlays_test.dart (8) | done |
-| strakalari/flet_ui/safety.py | app shell/controllers (confirm-auto guards) | settings_quietsave_test.dart | done |
-| strakalari/flet_ui/single_instance.py | app/lib/platform/desktop/single_instance.dart | — (manual py↔dart exclusion proof, phase 7 notes) | done |
-| strakalari/flet_ui/startup.py | app/lib/main.dart startup (stdio guards n/a on Flutter) | widget_test.dart smoke | done |
-| strakalari/flet_ui/state.py | app/lib/controllers/app_state.dart | widget_test.dart + settings tests | done |
-| strakalari/flet_ui/state_activity.py | app controllers/activity + features/activity | activity_state_test.dart (10) + activity_view_test.dart (6) | done |
-| strakalari/flet_ui/state_excuses.py | app controllers/excuses + features/today + absences | wizard/today/absences via widget_test rail pass | done |
-| strakalari/flet_ui/state_lunches.py | app controllers/lunches + features/lunches | lunches_filter_test.dart (15) + lunches_view_test.dart (9) | done |
-| strakalari/flet_ui/state_marks.py | app controllers/marks + features/marks | widget_test.dart rail pass | done |
-| strakalari/flet_ui/state_planner.py | app controllers/planner + features/planner | planner_reserve_test.dart (12) + planner_view_test.dart (10) | done |
-| strakalari/flet_ui/state_tutorial.py | app controllers/tutorial + tutorial/tours | tutorial_test.dart (19) | done |
-| strakalari/flet_ui/strings.py | app l10n ARB (app_cs/en + strings.dart) | settings_sections_test.dart (16) | done |
-| strakalari/flet_ui/theme.py | app/lib/shell/theme.dart | widget_test.dart breakpoints | done |
-| strakalari/flet_ui/tray.py | app/lib/platform/desktop/tray.dart | — (Sandbox test pending) | done |
-| strakalari/flet_ui/tutorial.py | app/lib/tutorial/ + widgets/overlays (kTours) | tutorial_test.dart (19) | done |
-| strakalari/flet_ui/views/__init__.py | app features barrel (router) | widget_test.dart rail pass | done |
-| strakalari/flet_ui/views/absences.py | app features/absences | widget_test.dart rail pass | done |
-| strakalari/flet_ui/views/activity.py | app features/activity | activity_view_test.dart (6) | done |
-| strakalari/flet_ui/views/lunches.py | app features/lunches | lunches_view_test.dart (9) | done |
-| strakalari/flet_ui/views/marks.py | app features/marks | widget_test.dart rail pass | done |
-| strakalari/flet_ui/views/more.py | app features/more.dart | overlays_test.dart +more (8) | done |
-| strakalari/flet_ui/views/planner.py | app features/planner | planner_view_test.dart (10) | done |
-| strakalari/flet_ui/views/settings/__init__.py | app features/settings | settings_sections_test.dart (16) | done |
-| strakalari/flet_ui/views/settings/accounts.py | app features/settings | wizard_settings_test.dart (5) | done |
-| strakalari/flet_ui/views/settings/app_prefs.py | app features/settings | settings_quietsave_test.dart (6) | done |
-| strakalari/flet_ui/views/settings/automation.py | app features/settings | settings_sections_test.dart (16) | done |
-| strakalari/flet_ui/views/settings/common.py | app features/settings | settings_sections_test.dart (16) | done |
-| strakalari/flet_ui/views/settings/school_calendar.py | app features/settings | settings_sections_test.dart (16) | done |
-| strakalari/flet_ui/views/settings/view.py | app features/settings | settings_sections_test.dart (16) | done |
-| strakalari/flet_ui/views/timetable.py | app features/timetable | widget_test.dart rail pass | done |
-| strakalari/flet_ui/views/today.py | app features/today | widget_test.dart rail pass | done |
-| strakalari/flet_ui/views/wizard.py | app features/wizard | wizard_settings_test.dart (5) | done |
+| strakalari/flet_ui/components.py | app/lib/widgets/ | overlays_test.dart (8) | in progress, unreviewed |
+| strakalari/flet_ui/macos.py | app/lib/platform/desktop/ (tray hosts window, data dir) | — (macOS unverified) | in progress, unreviewed |
+| strakalari/flet_ui/overlays.py | app/lib/widgets/overlays.dart + error_dialog.dart | overlays_test.dart (8) | in progress, unreviewed |
+| strakalari/flet_ui/safety.py | app shell/controllers (confirm-auto guards) | settings_quietsave_test.dart | in progress, unreviewed |
+| strakalari/flet_ui/single_instance.py | app/lib/platform/desktop/single_instance.dart | — (manual py↔dart exclusion proof, phase 7 notes) | in progress, unreviewed |
+| strakalari/flet_ui/startup.py | app/lib/main.dart startup (stdio guards n/a on Flutter) | widget_test.dart smoke | in progress, unreviewed |
+| strakalari/flet_ui/state.py | app/lib/controllers/app_state.dart | widget_test.dart + settings tests | in progress, unreviewed |
+| strakalari/flet_ui/state_activity.py | app controllers/activity + features/activity | activity_state_test.dart (10) + activity_view_test.dart (6) | in progress, unreviewed |
+| strakalari/flet_ui/state_excuses.py | app controllers/excuses + features/today + absences | wizard/today/absences via widget_test rail pass | in progress, unreviewed |
+| strakalari/flet_ui/state_lunches.py | app controllers/lunches + features/lunches | lunches_filter_test.dart (15) + lunches_view_test.dart (9) | in progress, unreviewed |
+| strakalari/flet_ui/state_marks.py | app controllers/marks + features/marks | widget_test.dart rail pass | in progress, unreviewed |
+| strakalari/flet_ui/state_planner.py | app controllers/planner + features/planner | planner_reserve_test.dart (12) + planner_view_test.dart (10) | in progress, unreviewed |
+| strakalari/flet_ui/state_tutorial.py | app controllers/tutorial + tutorial/tours | tutorial_test.dart (19) | in progress, unreviewed |
+| strakalari/flet_ui/strings.py | app l10n ARB (app_cs/en + strings.dart) | settings_sections_test.dart (15) | in progress, unreviewed |
+| strakalari/flet_ui/theme.py | app/lib/shell/theme.dart | widget_test.dart breakpoints | in progress, unreviewed |
+| strakalari/flet_ui/tray.py | app/lib/platform/desktop/tray.dart | — (Sandbox test pending) | in progress, unreviewed |
+| strakalari/flet_ui/tutorial.py | app/lib/tutorial/ + widgets/overlays (kTours) | tutorial_test.dart (19) | in progress, unreviewed |
+| strakalari/flet_ui/views/__init__.py | app features barrel (router) | widget_test.dart rail pass | in progress, unreviewed |
+| strakalari/flet_ui/views/absences.py | app features/absences | widget_test.dart rail pass | in progress, unreviewed |
+| strakalari/flet_ui/views/activity.py | app features/activity | activity_view_test.dart (6) | in progress, unreviewed |
+| strakalari/flet_ui/views/lunches.py | app features/lunches | lunches_view_test.dart (9) | in progress, unreviewed |
+| strakalari/flet_ui/views/marks.py | app features/marks | widget_test.dart rail pass | in progress, unreviewed |
+| strakalari/flet_ui/views/more.py | app features/more.dart | overlays_test.dart +more (8) | in progress, unreviewed |
+| strakalari/flet_ui/views/planner.py | app features/planner | planner_view_test.dart (10) | in progress, unreviewed |
+| strakalari/flet_ui/views/settings/__init__.py | app features/settings | settings_sections_test.dart (15) | in progress, unreviewed |
+| strakalari/flet_ui/views/settings/accounts.py | app features/settings | wizard_settings_test.dart (5) | in progress, unreviewed |
+| strakalari/flet_ui/views/settings/app_prefs.py | app features/settings | settings_quietsave_test.dart (6) | in progress, unreviewed |
+| strakalari/flet_ui/views/settings/automation.py | app features/settings | settings_sections_test.dart (15) | in progress, unreviewed |
+| strakalari/flet_ui/views/settings/common.py | app features/settings | settings_sections_test.dart (15) | in progress, unreviewed |
+| strakalari/flet_ui/views/settings/school_calendar.py | app features/settings | settings_sections_test.dart (15) | in progress, unreviewed |
+| strakalari/flet_ui/views/settings/view.py | app features/settings | settings_sections_test.dart (15) | in progress, unreviewed |
+| strakalari/flet_ui/views/timetable.py | app features/timetable | widget_test.dart rail pass | in progress, unreviewed |
+| strakalari/flet_ui/views/today.py | app features/today | widget_test.dart rail pass | in progress, unreviewed |
+| strakalari/flet_ui/views/wizard.py | app features/wizard | wizard_settings_test.dart (5) | in progress, unreviewed |
 
-## Tests
+## Tests (per-file Python test → Dart test / Deferred / Dropped mapping)
 
-Naming: `tests/test_x.py` → `x_test.dart` in core or app (`test_ui_state.py`-style
-UI/platform tests go to `app/test/`, pure-logic tests to
-`packages/strakalari_core/test/`). All todo unless noted.
+Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(s) in `packages/strakalari_core/test/` or `app/test/`, or marked **Deferred (phase N)** (when its SUT is in phases 5–8) or **Dropped (reason)**.
 
-Core: test_absence_details, test_ai_recommend, test_automation_safety,
-test_bakalari_client, test_bakalari_excuse, test_bakalari_http, test_cache,
-test_config, test_config_save_lock, test_data_safety, test_early_leave,
-test_error_report, test_excuse_day_scope, test_excuse_generation,
-test_excuse_history, test_excuse_ignore_list, test_forecast, test_gemini_key,
-test_gemini_picks, test_grades, test_grades_math, test_grades_minus,
-test_helpers, test_i18n, test_log_redaction, test_lunch_auto,
-test_lunch_auto_user_choice, test_lunch_cutoff, test_lunch_day_keys,
-test_lunch_deadline_calendar, test_lunch_filter, test_lunch_same_pick,
-test_matching, test_models, test_news, test_order_latch, test_plan_picker,
-test_plan_reserve, test_planned_skips, test_refresh_cancel_keeps_data,
-test_refresh_pipeline, test_schedule, test_scheduler, test_scheduler_retry,
-test_school_calendar, test_secret_store, test_sent_excuses, test_session_lock,
-test_stable_change_signals, test_status_notification, test_strava_blacklist_edits,
-test_strava_client, test_strava_low_balance, test_strava_ordering,
-test_substitution_feed_days, test_timetable_cache_merge,
-test_unconfirmed_excuses, test_update, test_wakeup_and_widget, test_year_planner.
+1. `tests/test_absence_details.py` (6) → `forecast_test.dart`:
+   - `test_canon_subject_collapses_nbsp_and_case` → `collapses nbsp and case`
+   - `test_tracked_set_drops_homeroom_but_none_disables_filter` → `tracked set drops homeroom but null disables the filter`
+   - `test_school_badges_escalate_status` → `school badges escalate status`
+   - `test_taught_hours_override_beats_estimate` → `taught hours override beats the estimate`
+   - `test_forecast_subject_taught_override_math` → `taught override beats the estimate`
+   - `test_state_defaults_keep_old_behavior` → `keep old behavior`
+2. `tests/test_ai_recommend.py` (10):
+   - `test_empty_gemini_answer_falls_back_to_local` → `gemini_test.dart`: `empty gemini answer falls back to local`
+   - `test_hallucinated_ids_fall_back_to_local` → `gemini_test.dart`: `hallucinated ids fall back to local`
+   - `test_partial_gemini_answer_is_kept` → `gemini_test.dart`: `partial gemini answer is kept`
+   - `TestGemini.test_parse_json_block` → `gemini_test.dart`: `parse json block`
+   - `TestGemini.test_local_fallback_picks_non_banned` → `gemini_test.dart`: `local fallback picks high-protein meal`
+   - `test_validate_recommendation_drops_hallucinations` → `gemini_test.dart`: `validate drops hallucinations`
+   - `test_worker_reports_closed_days_separately`, `test_worker_says_closed_when_everything_is_past_cutoff`, `test_recommend_respects_skip_and_marks_pending`, `test_recommend_busy_guard_snacks_instead_of_rerunning` → **Deferred (phase 5 — `flet_ui.state_lunches` AI recommend worker)**
+3. `tests/test_automation_safety.py` (16):
+   - `test_audit_roundtrip_newest_first` → `audit_test.dart`: `roundtripNewestFirst`
+   - `test_audit_skips_corrupt_lines` → `audit_test.dart`: `skipsCorruptLines`
+   - `test_describe_excuse_has_no_text` → `audit_test.dart`: `hasNoText`
+   - `test_automation_paused_flag_parsing` → `refresh_test.dart`: `automationPausedFlagParsing`
+   - `test_paused_refresh_never_sends_or_orders` → `refresh_test.dart`: `pausedRefreshNeverSendsOrOrders`
+   - `test_failed_auto_excuse_is_an_error_but_data_is_fresh` → `refresh_test.dart`: `failedAutoExcuseIsAnErrorButDataIsFresh`
+   - `test_failed_auto_order_is_reported` → `refresh_test.dart`: `failedAutoOrderIsReported`
+   - `test_order_outcomes_are_recorded_per_day`, `test_successful_order_is_recorded_as_sent`, `test_dry_run_order_is_recorded_as_dry_run` → `automation_test.dart`: `mealNotOnMenuIsReportedButOthersPlaced`, `fullSuccessSubmitsAndRecords`, `dryRunSelectsWithoutSubmitting`
+   - `test_excuse_outcomes_are_recorded` → `automation_test.dart`: `excuseOutcomesAreRecorded`
+   - `test_auto_excuse_counts_failures` → `automation_test.dart`: `autoExcuseCountsFailures`
+   - `test_auto_confirm_dialog_recommends_dry_run_first`, `test_auto_confirm_dialog_after_dry_run`, `test_auto_confirm_dialog_warns_unsigned_excuses`, `test_pause_toggle_persists` → **Deferred (phase 5/6 — `flet_ui.safety` / `AppState` UI confirmation dialogs)**
+4. `tests/test_autostart.py` (3) → **Deferred (phase 7 — desktop autostart launch command)**: `test_get_launch_command_minimized`, `test_get_launch_command_not_minimized`, `test_launch_command_has_no_shell_quotes`
+5. `tests/test_autostart_platforms.py` (5) → **Deferred (phase 7 — OS autostart backends)**: `TestWindows.*` (3), `TestMacOS.*` (1), `TestLinux.*` (1)
+6. `tests/test_bakalari_client.py` (14):
+   - `TestGoBackWeeksRobustness.test_garbage_value_falls_back` → `bakalari_client_test.dart`: `goBackWeeksGarbageFallsBack`
+   - `TestGoBackWeeksRobustness.test_extreme_value_is_clamped` → `bakalari_client_test.dart`: `goBackWeeksExtremeIsClamped`
+   - `test_substitutions_init_is_unknown` → `bakalari_client_test.dart`: `substitutionsInitIsUnknown`
+   - `test_unparseable_outbox_is_unknown_not_empty` → `bakalari_data_test.dart`: `unparseableOutboxIsUnknownNotEmpty`
+   - `test_hour_index_fallback_never_invents_period_zero` → `common_test.dart`: `hourIndexFallbackNeverInventsPeriodZero`
+   - `test_add_timetable_details` → `timetable_test.dart`: `mergesDetailsGroupedPerDaySortedByPeriod`
+   - `test_week_offsets_cover_forward_and_back` → `common_test.dart`: `coverForwardAndBack`
+   - `test_go_forward_weeks_config_parsing` → `bakalari_client_test.dart`: `goForwardWeeksConfigParsing`
+   - `test_no_stable_view_means_no_baseline`, `test_scraped_stable_is_the_baseline` → `schedule_test.dart` / `bakalari_data_test.dart` (`aSecondRunSeesOnlyFreshData`, `noStableViewNeverReportsAddedOrMissing` in `parity_schedule_test.dart`)
+   - `test_add_timetable_details_into_separate_target` → `timetable_test.dart`: `intoSeparateTarget`
+   - `test_perm_view_is_told_apart_by_ident_code` → `timetable_test.dart`: `isToldApartByIdentCode`
+   - `test_extract_stable_timetable_scrapes_perm_view` → `timetable_test.dart`: `extractStableTimetableScrapesPermView`
+   - `test_extract_stable_timetable_rejects_stale_actual_week` → `timetable_test.dart`: `extractStableTimetableRejectsStaleActualWeek`
+7. `tests/test_bakalari_excuse.py` (12) → `bakalari_excuse_test.dart` (12 1:1 camelCase cases): `lessonExcusePostsTheFormOnceAndIsConfirmedByTheOutbox`, `wholeDayExcusePostsTheDayRange`, `lessonNotInTheTimetableIsNeverPosted`, `unreadableOutboxBeforeSendingMeansNothingIsPosted`, `postMissingFromTheOutboxIsUncertainAndNeverRepeated`, `otherExcuseAppearingDoesNotConfirmThisOne`, `tellsNeverSentFromMaybeSent`, `expiredSessionOnThePostIsNotSentAndNotRetried`, `cancelBeforeThePostSendsNothing`, `dryRunPreparesTheExcuseWithoutPosting`, `defaultTextComesFromTheTemplates`, `editorFieldMatchesTheBrowserByteForByte`
+8. `tests/test_bakalari_http.py` (22):
+   - Session cases (11) → `http_session_test.dart`: `dropsPageNames`, `areWhatABrowserSubmits`, `readsTheResultOrRaises`, `postsTheFormOnceAndReusesTheSession`, `rejectedLoginRaisesUserErrorWithTheReason`, `wrongAddressSaysSo`, `serverErrorAtLoginIsNeverALogin`, `networkFailuresExplainThemselves`, `cancelStopsBeforeAnyRequest`, `stillValidSessionNeedsNoNewLogin`, `droppedConnectionIsRetriedOnceForReads`
+   - Data/outbox/absence/substitutions cases (10) → `bakalari_data_test.dart`: `expiredSessionLogsInAgainAndRetriesOnce`, `outboxReadsEveryExcuseDetail`, `wholeDayExcuseIsOneEntry`, `emptyOutboxIsARealEmptyList`, `anotherFolderIsUnknownNotEmpty`, `outboxListNotLoadingIsUnknownNotEmpty`, `parsesTheSubjectRows`, `replyWithoutRowsIsFlagged`, `areParsedFromTheWeekReply`, `failedSubstitutionsAreUnknown`
+   - `test_each_week_is_requested_by_its_monday` → `timetable_test.dart`: `eachWeekIsRequestedByItsMonday`
+9. `tests/test_cache.py` (11) → `cache_test.dart` (11 1:1 camelCase cases): `missingFileReturnsEmptyDict`, `saveAndLoadCache`, `saveCacheMergesWithExisting`, `loadCorruptedCacheFallback`, `mismatchedVersionIgnored`, `currentVersionLoads`, `staleDetection`, `describeMentionsStale`, `replaceDropsStaleKeys`, `corruptCacheIsQuarantined`, `cacheLabelFollowsLanguage`
+10. `tests/test_cancel_responsive.py` (5):
+    - `test_strava_client_forwards_cancel_into_fetch` → `strava_test.dart` / `http_session_test.dart` (`cancelStopsBeforeAnyRequest`)
+    - `test_cancel_refresh_noop_when_idle` → `app/test/activity_state_test.dart`: `cancel refresh is a no-op when idle` (in progress, unreviewed)
+    - `test_cancel_refresh_gives_instant_feedback`, `test_core_log_never_reaches_the_status_bar`, `test_flet_locale_follows_app_language` → **Deferred (phase 5 — `AppState` UI refresh/locale wiring)**
+11. `tests/test_config.py` (36):
+    - 33 pure config cases → `config_test.dart` (33 1:1 camelCase cases)
+    - 3 `Strakalari` cases (`test_plaintext_override_decrypts`, `test_integer_strava_id_handling`, `test_partial_config_without_use_strava_stays_enabled`) → `automation_test.dart`: `plaintextOverrideEncrypts`, `integerStravaIdHandling`, `partialConfigWithoutUseStravaStaysEnabled`
+12. `tests/test_config_save_lock.py` (1) → `config_test.dart`: `saveRefusesWhenLockBusy`
+13. `tests/test_data_safety.py` (8):
+    - `test_missing_file_returns_empty`, `test_corrupt_file_preserved`, `test_corrupt_history_backed_up`, `test_corrupt_blacklist_disables_auto_order`, `test_write_log_lines_are_timestamped` → `automation_test.dart`: `missingFileReturnsEmpty`, `corruptFilePreserved`, `corruptHistoryBackedUp`, `corruptBlacklistDisablesAutoOrder`, `writeLogLinesAreTimestamped`
+    - `test_valid_blacklist_unaffected` → `config_test.dart`: `blacklistManagement`
+    - `test_busy_config_is_not_quarantined_or_overwritten` → `config_test.dart`: `saveRefusesWhenLockBusy`
+    - `test_busy_cache_is_left_untouched` → `cache_test.dart`: `busyCacheIsLeftUntouched`
+14. `tests/test_early_leave.py` (13):
+    - `TestSoonTemplates.test_config_defaults` → `config_test.dart`: `defaultsPass`
+    - `TestSoonTemplates.test_web_hour_excuse_dedupes_soon` → `extractors_test.dart`: `webHourExcuseDedupesSoon`
+    - `TestSoonDetection.*` (4), `TestSoonStatus.*` (6), `TestSoonTemplates.test_planner_templates_for_soon` (1) → **Deferred (phase 5/6 — `flet_ui` soon/early detection and badge colors)**
+15. `tests/test_entry_routing.py` (5) → **Deferred (phase 5/7 — Python `__main__` CLI entry routing; Flutter entry is `app/lib/main.dart`)**
+16. `tests/test_error_report.py` (26):
+    - 13 core cases → `error_report_test.dart`: `exposesOnlyPresence`, `classification`, `namesFix`, `scrubsSecretValues`, `numericAndShort`, `scrubsDecryptedPasswordAndPersonalData`, `carriesDiagnostics`, `extraSecretsRedacted`, `logTailIsContextNotTracebackCopy`, `neverContainsSecrets`, `prefersTypeAndFirstLine`, `namesBuildAndLanguage`, `raiseUserErrorForMissingLogin`
+    - 4 UI dialog cases → `app/test/overlays_test.dart` (in progress, unreviewed): `error dialog shows summary and traceback`, `error dialog with user message hides traceback`, `copy button records a copied confirmation`, `showErrorDialog never throws`
+    - Remaining 9 Flet/AppState popup queue & clipboard cases → **Deferred (phase 5 — `AppState` error queue + clipboard wiring)**
+17. `tests/test_excuse_day_scope.py` (8) → **Deferred (phase 5/6 — `AppState.day_excuse_plan` / `submit_day_excuse` / day card switch)**
+18. `tests/test_excuse_generation.py` (25) → `automation_test.dart` (25 1:1 camelCase cases): `gapDaysAreNotMerged`, `trulyConsecutiveDaysStillMerge`, `stillExcuses $notice`, `staysCancelled $notice`, `variantsGenerate ${v.$1}/${v.$2}`, `lateVariantsAreIncome ${v.$1}`, `cutoffIsDateBasedNotHourBased`, `excusedTypeSkipped`, `excusedTextWithAbsentTypeSkipped`, `fullyExcusedDayProducesNothing`, `fridayAndTuesdayDoNotBridge`, `presentDayStillBreaksChain`, `firstMode`, `randomModePicksFromList`, `emptyTemplates`, `defaultDelay`, `customDelay`, `multiGroupStatusPrioritization`, `pureDaysConsecutive`, `lateIncomeExcuse`, `pureDaysAcrossWeekend`, `delayDaysCutoff`, `fragmentedSameDayAbsences`, `genericEarlyLeaveIsAutoExcusedLikeUi`, `notCountedAbsenceIsNeverExcused`
+19. `tests/test_excuse_history.py` (17):
+    - 10 pure/config cases → `excuse_history_test.dart`: `broaderWebExcuseCoversSingleDay`, `partialOverlapIsNotCovered`, `hourRangeNeverCoversWholeDay`, `multiDayHourSpanSemantics`, `taskCoveredMatchesUiRules`, `nonPaddedDatesCanonicalized`, `stripsUiKeys`, `historyEntriesStoreEveryHourShape`, `managerFiltersExampleFallback`, `historyQuarantine`
+    - 4 automation cases → `automation_test.dart`: `concurrentSendsSubmitOnce`, `coveredExcuseIsNotResent`, `automationFiltersExampleFallback`, `excuseDryRunFillsWithoutSubmitting`
+    - 3 `TestHistoryCoverage` cases (`test_pure_days_covers`, `test_lesson_range_covers_only_inside`, `test_ambiguous_entries_never_hide`) → core coverage rules tested by `broaderWebExcuseCoversSingleDay` / `hourRangeNeverCoversWholeDay` / `taskCoveredMatchesUiRules`; `flet_ui.state_excuses` UI wrapper **Deferred (phase 5)**
+20. `tests/test_excuse_ignore_list.py` (9):
+    - 4 `TestIgnoredExcuses` core cases → `automation_test.dart`: `ignoredLessonIsNeverAutoExcused`, `ignoredDayBreaksFullDayChain`, `excuseAbsencePassesConfigIgnoreList`, `garbageKeysAreIgnoredSafely`
+    - 5 `AppState` ignore/unignore rollback cases → **Deferred (phase 5 — `AppState` ignore list)**
+21. `tests/test_flet_data_wiring.py` (9) → **Deferred (phase 5 — `AppState` live cache/data wiring)**
+22. `tests/test_forecast.py` (9) → `forecast_test.dart`:
+    - `TestRareSubjects.test_one_off_not_floored_to_one` → `one-off not floored to one`
+    - `TestWarnThreshold.test_explicit_warn_used` → `explicit warn used`
+    - `TestWarnThreshold.test_fallback_stays_sixty_percent` → `fallback stays sixty percent`
+    - `TestWarnThreshold.test_forecast_passes_warn_through` → `forecast passes warn through`
+    - `test_nonstable_absence_subjects_are_free` → `non-stable absence subjects are free`
+    - `test_weekly_hours_counts_stable_week` → `counts the stable week`
+    - `test_school_days_skip_weekends_and_holidays` → `school days skip weekends and holidays`
+    - `test_forecast_subject_math` → `math projects below the current rate when attending`
+    - `test_forecast_all_uses_per_subject_limits` → `uses per-subject limits`
+23. `tests/test_frozen_ssl.py` (4) → **Dropped (frozen PyInstaller CA bundle `strakalari/core/tls.py` does not exist in Flutter; Dart uses the OS trust store per PLAN §3.2)**
+24. `tests/test_gemini_key.py` (6) → `gemini_test.dart`:
+    - `test_api_key_success` → `success`
+    - `test_api_key_empty` → `empty`
+    - `test_api_key_invalid_key` → `invalid key`
+    - `test_api_key_bad_model_not_blamed_on_key` → `bad model not blamed on key`
+    - `test_api_key_network_error_redacts_key` → `network error redacts key`
+    - `test_recommend_lunches_strips_api_key` → `strips api key into header, never url`
+25. `tests/test_gemini_picks.py` (4) → `gemini_test.dart`:
+    - `test_validate_recommendation_rejects_other_days_meal` → `validate rejects other days meal`
+    - `test_merge_falls_back_to_filter_for_cross_day_pick` → `merge falls back to filter for cross-day pick`
+    - `test_gemini_texts_follow_language` → `texts follow the requested language`
+    - `test_core_t_lang_override` → `core t lang override`
+26. `tests/test_grades.py` (12):
+    - 8 extractor cases → `extractors_test.dart`: `emptyAndNoneInput`, `groupsBySubject`, `sortsEachSubjectByDate`, `skipsMalformedAndIncomplete`, `unparseableDatesSortLast`, `optionalDetailsKeptWhenPresent`, `nestedBracesAndBraceInString`, `readsQuarterlyMarks`
+    - 4 client cases → `bakalari_data_test.dart`: `fetchesParsesAndSorts` (covers `test_get_grades_fetches_parses_and_sorts` + `test_get_grades_reads_quarterly_marks_from_the_same_page`), `failureKeepsErrorWithoutRaising`, `emptyOtherPageIsAnErrorNotNoMarks`
+27. `tests/test_grades_math.py` (23) → `grades_test.dart`:
+    - `test_parse_raw` → `reads each mark on its own`
+    - `test_non_counting_marks` → `non-counting marks`
+    - `test_points_field_used_when_mark_text_is_not_a_number` → `points field used when mark text is not a number`
+    - `test_valid_mark_text_rejects_out_of_range` → `rejects out of range`
+    - `test_weights` → `weights`
+    - `test_detect_scale` → `detect scale`
+    - `test_conversion_uses_bands` → `conversion uses bands`
+    - `test_gekom_table_boundaries` → `gekom table boundaries`
+    - `test_round_grade_halves_go_down_a_grade` → `round grade halves go down a grade`
+    - `test_bands_validation` → `bands validation`
+    - `test_summary_weighted_average_trend_and_new` → `weighted average trend and new`
+    - `test_forced_percent_converts_a_pure_grade_subject` → `forced percent converts a pure grade subject`
+    - `test_bare_small_numbers_are_percent_on_a_percent_subject` → `bare small numbers are percent on a percent subject`
+    - `test_forced_grade_converts_percentages` → `forced grade converts percentages`
+    - `test_prediction_ops_leave_real_average_alone` → `prediction ops leave real average alone`
+    - `test_mark_keys_distinguish_identical_marks` → `mark keys distinguish identical marks`
+    - `test_planned_marks_do_not_count` → `planned marks do not count`
+    - `test_needed_grade` → `needed grade`
+    - `test_needed_many_best_marks` → `needed many best marks`
+    - `test_needed_percent` → `needed percent`
+    - `test_needed_with_no_marks` → `needed with no marks`
+    - `test_default_weight_is_most_common` → `default weight is most common`
+    - `test_format_value` → `format value`
+28. `tests/test_grades_minus.py` (1) → `grades_test.dart`: `minus grades count`
+29. `tests/test_helpers.py` (26):
+    - Date/path/lesson/template/atomic/lock cases → `helpers_test.dart`: `standard`, `withSpaces`, `withWeekdayParentheses`, `withLeadingDayPrefix`, `overrideWins` / `absolutePathPassesThrough` / `relativeResolvesAgainstDataDir`, `isoAndSlash`, `invalid`, `fillsVariables`, `acceptsShortYearAndIsoSlashes`, `onlySuffixReplaced`, `timeOnlyReturnsNull`, `bareNumberOk`, `classicShapeOk`, `emptyNull`, `writesValidJson`, `noTmpLeftovers`, `lockReleaseReacquire`
+    - `test_parse_cz_date_accepts_czech_slashes` → `models_test.dart`: `parseCzDateAcceptsCzechSlashes`
+    - Encrypt/decrypt cases → `fernet_test.dart` (`roundtrip`, `tamperedTokenThrows`, `garbageThrows`) + `secret_store_test.dart` (`decryptSurvivesKeyFileOSError`)
+30. `tests/test_i18n.py` (7):
+    - 4 core cases → `i18n_test.dart`: `getAndSetLanguage`, `missingKeyFallsBack`, `coreMessagesHaveBothLanguagesAndSamePlaceholders`, `coreMessageFollowsLanguage`
+    - `test_core_messages_follow_language` → `error_report_test.dart`: `namesFix` (tests `timeoutUserMessage` in cs/en)
+    - `test_new_flet_strings_present`, `test_dead_keys_removed_and_live_keys_kept` → **Deferred (phase 5 — `flet_ui.strings` / ARB key audit)**
+31. `tests/test_icons.py` (13) → **Deferred (phase 6/7 — app icon assets verification)**
+32. `tests/test_imports_resolve.py` (1) → **Dropped (Python AST relative-import check; replaced by `dart analyze` and `flutter analyze`)**
+33. `tests/test_log_redaction.py` (3) → `error_report_test.dart`: `plaintextAndCiphertextSecretsAreScrubbed`, `followsChangedPassword`, `skipPersonalData`
+34. `tests/test_lunch_auto.py` (11) → `lunch_auto_test.dart`:
+    - `test_disabled_never_runs` → `disabled never runs`
+    - `test_never_ran_is_due` → `never ran is due`
+    - `test_interval_gating` → `interval gating`
+    - `test_interval_clamped` → `interval clamped`
+    - `test_first_non_banned_wins` → `first non-banned wins`
+    - `test_past_and_cancelled_skipped` → `past and cancelled skipped`
+    - `test_closed_day_skipped` → `closed day skipped`
+    - `test_banned_gemini_replaced_by_filter` → `banned gemini pick replaced by filter`
+    - `test_gap_filled` → `gap filled`
+    - `test_spelling_variants_merge_into_one_key` → `spelling variants merge into one key`
+    - `test_filter_picks_uses_canonical_keys` → `uses canonical keys`
+35. `tests/test_lunch_auto_user_choice.py` (8):
+    - `TestAutoFillsGapsOnly.test_existing_order_is_never_switched` → `lunch_auto_test.dart`: `existing order is never switched`
+    - `TestAutoFillsGapsOnly.test_handled_day_is_not_reordered_after_web_cancel` → `lunch_auto_test.dart`: `handled day is not reordered after web cancel`
+    - `TestAutoFillsGapsOnly.test_planned_day_off_gets_its_lunch_cancelled` → `lunch_auto_test.dart`: `planned day off gets its lunch cancelled`
+    - `TestAutoFillsGapsOnly.test_planned_day_off_without_order_gets_nothing` → `lunch_auto_test.dart`: `planned day off without order gets nothing`
+    - `TestAutoFillsGapsOnly.test_handled_days_remember_orders_but_not_failures` → `lunch_auto_test.dart`: `handled days remember orders but not failures`
+    - `TestPlannedSkipLunchChoice.test_keep_lunch_choice_is_stored_and_honored` → `planned_skips_test.dart`: `keepLunchChoiceIsStoredAndHonored`
+    - `test_restart_does_not_resurrect_meal_on_planned_day`, `test_send_only_transmits_pending_picks` → **Deferred (phase 5 — `flet_ui.state.AppState` lunch staging)**
+36. `tests/test_lunch_cutoff.py` (11):
+    - `test_gekom_preset_cutoff_defaults_to_noon`, `test_resolve_lunch_cutoff_user_wins_then_preset` → `school_presets_test.dart`: `closes` / `userWinsThenPreset` + `parity_lunch_cutoff_test.dart`
+    - `test_parse_and_validate_cutoff` → `lunch_cutoff_test.dart`: `parseCutoffTime`, `normalizeCutoffTime`, `isValidCutoffTime`
+    - `test_previous_business_day_skips_weekend` → `lunch_cutoff_test.dart`: `skips weekend`
+    - `test_previous_business_day_skips_free_days` → `lunch_cutoff_test.dart`: `skips free days`
+    - `test_deadline_is_noon_previous_business_day` → `lunch_cutoff_test.dart`: `is noon on the previous business day`
+    - `test_is_open_until_cutoff_then_closed` → `lunch_cutoff_test.dart`: `open until cutoff, then closed`
+    - `test_monday_deadline_is_friday_noon` → `lunch_cutoff_test.dart`: `monday deadline is friday noon`
+    - `TestCutoffSpelling.test_dot_spelling_valid` → `lunch_cutoff_test.dart`: `dot spelling valid`
+    - `TestCutoffSpelling.test_garbage_still_invalid` → `lunch_cutoff_test.dart`: `garbage still invalid`
+    - `test_state_rejects_closed_day_and_filters_submit` → `app/test/lunches_view_test.dart`: `closed day is read-only` / `order past cutoff stages nothing` (in progress, unreviewed; `AppState` submit filter **Deferred phase 5**)
+37. `tests/test_lunch_day_keys.py` (3) → **Deferred (phase 5 — `flet_ui.state_lunches` `cached_orders` / `_record_web_orders` / `_store_ordered`; pure `canonicalLunchDayKey` covered by `parity_lunch_cutoff_test.dart`)**
+38. `tests/test_lunch_deadline_calendar.py` (1) → `parity_lunch_cutoff_test.dart` (`effectiveCalendar(clipToClose: false)`); `AppState.lunch_deadline_calendar` **Deferred (phase 5)**
+39. `tests/test_lunch_filter.py` (12) → `app/test/lunches_filter_test.dart` (12 1:1 cases, in progress, unreviewed): `negation clause yields keyword`, `likes clause ignored`, `mixed text keeps only dislikes`, `bez form`, `conjunction like segment ignored`, `english no form`, `empty`, `prefs hide and stage`, `good pick not clobbered`, `hidden pick replaced`, `cancelled day skipped`, `closed day hides but stages nothing`
+40. `tests/test_lunch_same_pick.py` (5) → **Deferred (phase 5 — `flet_ui.state.AppState` / `LunchView` pending pick vs web order comparison)**: `test_repicking_the_ordered_meal_is_no_change`, `test_a_different_meal_is_a_change_until_picked_back`, `test_no_lunch_compares_with_the_web_too`, `test_submit_sends_only_picks_that_differ`, `test_refresh_unstages_a_pick_the_web_now_reports`
+41. `tests/test_macos_data_dir.py` (9) → **Deferred (phase 7 — macOS bundle → Application Support migration)**
+42. `tests/test_macos_tray_host.py` (15) → **Deferred (phase 7 — macOS tray/window lifecycle)**
+43. `tests/test_marks_view.py` (15) → **Deferred (phase 5/6 — `flet_ui.views.marks` / `state_marks` UI view & predictor state)**
+44. `tests/test_matching.py` (8) → `matching_test.dart` (8 1:1 cases): `$keyword bans $meal`, `$keyword allows $meal`, `rybiDoesNotBanRybiz`, `inflectionStillMatches`, `wholeWordNotSubstring`, `diacriticsInsensitive`, `inflectionVariant`, `caseInsensitive`
+45. `tests/test_minimize_to_tray.py` (8) → **Deferred (phase 7 — desktop window close-to-tray behavior)**
+46. `tests/test_mobile.py` (48):
+    - `TestPlatform.*` (4) → `packaging_test.dart`: `desktopIsNotMobile`, `fletPlatformEnv`, `desktopFletBuildIsNotMobile`, `defaultsToFalse`
+    - ` test_update_check_per_distribution`, `test_repo_has_no_distribution_marker` → `packaging_test.dart`: `iosComesFromAppStore`, `androidWithoutDistributionIsNull`, `androidPlayChannel`, `offPhoneIsNull`, `emptyEnvironmentIsNull`
+    - `TestNarrowShell.*` (12) → `app/test/widget_test.dart` (`Layout breakpoints match the Python shell`, `Router builds every main screen without throwing`, in progress, unreviewed); remaining narrow-shell cases **Deferred (phase 5/6)**
+    - `TestMakeMobile.test_stage_has_no_personal_files`, `test_package_check_finds_nested_personal_file`, `test_path_markers_spell_every_separator`, `test_package_check_finds_build_machine_path` → `app/test/packaging_privacy_test.dart` (in progress, unreviewed)
+    - Remaining `TestDataDir`, `TestKeystoreKey`, `TestPhoneBackground`, `test_open_system_alarm_*` → **Deferred (phase 8 — Android bridge/keystore/service)**; Flet-packaging-specific `TestMakeMobile` (`test_flet_pin_matches_desktop`, `test_extension_wheel`, `test_pyc_shim_*`) → **Deferred (phase 8/10 — decide at Android review)**
+47. `tests/test_models.py` (19):
+    - 17 pure model cases → `models_test.dart` (17 1:1 camelCase cases)
+    - 2 engine cases (`test_engine_excuses_neomluveno_day`, `test_engine_excuses_unexcused_type`) → `automation_test.dart`: `engineExcusesNeomluvenoDay`, `engineExcusesUnexcusedType`
+48. `tests/test_news.py` (7):
+    - 6 pure cases → `news_test.dart`: `newMarkReportedOnce`, `marksNeedAPreviousStateAndSkipAnnouncedOnes`, `newOrChangedQuarterlyMarkReportedOnce`, `newAbsenceOnlyOnKnownDays`, `newTimetableChangeFromTodayOn`, `findNewsBuildsMessages`
+    - `test_refresh_reports_news_against_the_cache` → **Deferred (phase 5 — `AppState` refresh news notification dispatch)**
+49. `tests/test_notify.py` (17):
+    - Core dispatch/prefs/safety cases → `notifier_test.dart` (9): `appIdIsPlainAscii`, `knownEvents`, `defaultsToOn`, `unknownEventThrows`, `disabledEventNeverTouchesTheBackend`, `dispatchesToTheBackend`, `backendFailureFallsBackToStdout`, `noBackendPrintsAndReturnsFalse`, `neverRaisesFromBackend`
+    - Desktop OS script/command cases (`test_ps_single_quote_escapes_apostrophe`, `test_cdata_guards_closing_sequence`, `test_toast_script_*`, `test_send_windows_*`, `test_send_linux_*`, `test_send_macos_*`) → **Deferred (phase 7 — desktop notification backends)**
+50. `tests/test_open_url.py` (5) → **Deferred (phase 5/6 — UI URL launcher helper)**
+51. `tests/test_order_latch.py` (4) → **Deferred (phase 5 — `flet_ui.state.AppState` `submit_orders` latch & `submit_excuse` kind mapping)**: `test_empty_payload_releases_latch`, `test_demo_no_credentials_releases_latch`, `test_nothing_pending_releases_latch`, `test_excuse_kind_to_web_type`
+52. `tests/test_packaging_privacy.py` (4) → `app/test/packaging_privacy_test.dart` (in progress, unreviewed; desktop Inno/spec checks **Deferred phase 7**)
+53. `tests/test_plan_picker.py` (12) → `app/test/planner_view_test.dart` (`custom picker taps a day whole and confirms`, in progress, unreviewed); remaining 11 picker cases **Deferred (phase 6 — custom plan picker dialog)**
+54. `tests/test_plan_reserve.py` (5) → `planner_test.dart` (`reserveValidation`) + `app/test/planner_reserve_test.dart` (in progress, unreviewed): `reserve lowers plan limit, not school limit`, `default example 25 minus 10 is 15`, `zero reserve keeps old behavior`, `handbuilt states fall back to school values`, `reserve validation`
+55. `tests/test_planned_skips.py` (17):
+    - 11 pure cases → `planned_skips_test.dart`: `keeps period zero`, `entry covers follows the planner rule`, `whole days in a row merge across a weekend`, `a gap day splits the range`, `range may start late and end early`, `scattered lessons become separate entries`, `free periods do not split a run`, `a partial day does not join the next one`, `ranges are capped at 31 days`, `entries keep the template and lunch choice`
+    - 6 `AppState` persist/rollback cases (`test_plan_custom_skip_reports_persist_failure`, `test_plan_skip_reports_invalid_range`, `test_unplan_entry_reports_stale`, `test_plan_custom_skip_rolls_back_on_persist_failure`, `test_unplan_entry_rolls_back_on_persist_failure`, `test_plan_entries_saves_all_at_once`, `test_plan_entries_rolls_back_on_persist_failure`) → `app/test/planner_view_test.dart` (`controller plan/unplan with failing persist rolls back`, in progress, unreviewed) + **Deferred (phase 5/6)**
+56. `tests/test_planner_dialog.py` (6) → `app/test/planner_view_test.dart` (`plan dialog confirm plans the day`, `plan dialog cancel closes without planning`, in progress, unreviewed); remaining dialog cases **Deferred (phase 6)**
+57. `tests/test_refresh_cancel_keeps_data.py` (1) → `refresh_test.dart`: `cancelAfterFetchKeepsFetchedData`
+58. `tests/test_refresh_pipeline.py` (9) → `refresh_test.dart`:
+    - `test_web_excuses_sync_before_auto_excuse` → `webExcusesSyncBeforeAutoExcuse`
+    - `test_planned_skip_day_never_auto_ordered` → `plannedSkipDayNeverAutoOrdered`
+    - `test_broken_blacklist_orders_nothing` → `brokenBlacklistOrdersNothing`
+    - `test_strava_failure_keeps_bakalari_data_and_reports` → `stravaFailureKeepsBakalariDataAndReports`
+    - `test_empty_menu_keeps_cached_menu` → `emptyMenuKeepsCachedMenu`
+    - `test_strava_status_tells_why_the_menu_is_missing` → `stravaStatusTellsWhyTheMenuIsMissing`
+    - `test_unavailable_extras_survive_refresh` → `unavailableExtrasSurviveRefresh`
+    - `test_failed_absence_scrape_keeps_last_good_absence` → `failedAbsenceScrapeKeepsLastGoodAbsence`
+    - `test_gemini_fallback_is_not_a_gemini_run` → `lunch_auto_test.dart` (`gemini answer is used when due` / fallback in `gemini_test.dart`)
+59. `tests/test_schedule.py` (24) → `schedule_test.dart` (24 1:1 camelCase cases; `test_forecast_prefers_stable_hours_over_raw_weeks` → `forecast_test.dart`: `counts the stable week` + `schedule_test.dart`: `stableHoursIgnoreClocklessExtraRow`)
+60. `tests/test_scheduler.py` (13):
+    - 10 core cases → `scheduler_test.dart`: `stopWithoutStartIsSafe`, `failedRunRetriesSoon`, `runNowLeavesTimerAlone`, `scheduling` (`test_scheduler_next_due`), `runsJobsAndCapturesErrors`, `lastUpdatedTimeParsesFormats`, `startupSeedNeedsPositiveEvidence`, `seedDefersFirstAutoRun`, `runnerAcceptsLastRunSeed`, `keepsFullTraceback` (also in `cache_test.dart`: `lastUpdatedTimeParsesFormats`, `startupSeedNeedsPositiveEvidence`)
+    - 3 `flet_ui.app`/`tray` cases (`test_register_jobs_seeds_from_fresh_cache`, `test_register_jobs_empty_cache_refreshes_on_start`, `test_tray_startup_seed`) → **Deferred (phase 5/7 — UI/tray scheduler registration)**
+61. `tests/test_scheduler_retry.py` (7):
+    - 2 core `PeriodicRunner` cases → `scheduler_test.dart`: `intervalProviderIsPolled`, `jobFailedCountsAsFailureButReported`
+    - 5 window/tray cases (`test_window_job_raises_when_refresh_failed`, `test_window_job_ignores_cancelled_run_in_any_language`, `test_window_job_stops_waiting_on_shutdown`, `test_window_job_gives_up_on_a_hung_refresh`, `test_tray_interval_follows_config_file`) → **Deferred (phase 5/7 — `flet_ui.app` / `tray` job wrappers)**
+62. `tests/test_school_calendar.py` (20):
+    - 15 preset/calendar cases → `school_presets_test.dart`: `expandsAllRangesAndSingles`, `closes`, ` overrideModel`, `customPresetOnlyUserDays`, `userWinsThenPreset`, `canonicalDefaultsHaveCalendarKeys`, `pruneOrphanForced`, `fileIsPickedUp`, `invalidFileIsIgnored`, `cannotReplaceShippedOne`, `shippedPresetsAreValid`, `shipsItsPercentTable`, `resolutionOrder`, `presetBandsValidated`
+    - `test_no_migration_legacy_holidays_ignored`, `test_fresh_config_assumes_no_school` → `parity_school_presets_test.dart` + `config_test.dart` (`legacyKeysAreIgnored`)
+    - `test_forecast_uses_sem1_closure`, `test_forecast_uses_sem2_closure`, `test_forecast_legacy_year_end_still_applies` → `forecast_test.dart` (`semester bounds follow the Czech school year`) + `parity_forecast_test.dart`
+63. `tests/test_secret_store.py` (9) → `secret_store_test.dart` (9 1:1 camelCase cases): `newKeyGoesToTheStoreNotAFile`, `existingKeyFileIsMigratedAndDeleted`, `copiedFolderWithoutStoreEntryCannotDecrypt`, `lockedStoreWithFileUsesFile`, `lockedStoreWithoutFileFailsLoudly`, `differentFileAndStoreKeysPreferFile`, `noBackendFallsBackToFile`, `entryIsBoundToTheDataDir`, `forgetKeyRemovesFileKey`
+64. `tests/test_sent_excuses.py` (10):
+    - 4 `TestSentExcuseEntries` cases → `extractors_test.dart`: `lessonsYieldEveryHourShape`, `wholeDays`, `clockTimesWithoutLessonsLearnNothing`, `otherMessagesAndGarbageLearnNothing`
+    - 3 pure `TestMergeSentExcuses` cases → `excuse_history_test.dart`: `addsOnlyNew`, `canonicalizesSpellings`, `stripsUiKeysAndIgnoresJunk`
+    - 2 sync cases (`test_sync_without_credentials_is_noop`, `test_sync_treats_none_as_unknown`) → `automation_test.dart`: `syncWithoutCredentialsIsNoop`, `syncTreatsNoneAsUnknown`
+    - `test_sent_excuses_tristate` → `bakalari_data_test.dart`: `emptyOutboxIsARealEmptyList` / `anotherFolderIsUnknownNotEmpty`
+65. `tests/test_session_lock.py` (6) → `session_lock_test.dart` (`isExclusiveWithinProcess`, `blocksOtherProcess`, `keepsOtherProcessEdits`, `ownEditWinsOnSameKey`, `guardedJobSkipsWhileSessionHeld`, `guardedWorkRecordsFailedRunWhileHeld`) + `refresh_test.dart` (`lockIsExclusiveWithinProcess`, `configSaveKeepsOtherProcessEdits`, `configSaveOwnEditWinsOnSameKey`)
+66. `tests/test_settings_quiet_save.py` (6) → `app/test/settings_quietsave_test.dart` (6 cases, in progress, unreviewed)
+67. `tests/test_settings_refresh_interactive.py` (3) → **Deferred (phase 5/6 — `AppState` interactive settings during refresh)**
+68. `tests/test_settings_sections.py` (13) → `app/test/settings_sections_test.dart` (13 1:1 cases, in progress, unreviewed)
+69. `tests/test_shutdown.py` (23) → **Deferred (phase 7 — desktop shutdown / process cleanup; Flet-view orphan sweepers decide at phase 7 review)**
+70. `tests/test_single_instance.py` (22) → **Deferred (phase 7 — desktop single-instance loopback TCP tests)**
+71. `tests/test_stable_change_signals.py` (39):
+    - Core extractor/common/schedule/baseline cases → `common_test.dart` (`removedRowParsesToCancelledLesson`, `emptyRemovedRowStillDropped`, `atomRowWithoutTeacherStillDropped`, `roomMoveKeepsChangeinfoAsNote`, `classEventStandsInForSubject`), `timetable_test.dart` (`extractKeepsRemovedRows`), `extractors_test.dart` (`readsBadgesAndDays`, `neverRaises`), `schedule_test.dart` + `parity_schedule_test.dart` (all 30 schedule/feed/baseline cases in `tools/parity/dump.py` `dump_schedule`)
+    - UI list/grid view cases (`test_list_view_orders_cancelled_row_into_its_period`, `test_grid_cell_shows_taught_lesson_of_swapped_slot`, `test_stable_complete_reads_cache_source`) → **Deferred (phase 5/6 — timetable UI view)**
+72. `tests/test_status_notification.py` (51):
+    - 39 core `TestItems`, `TestLunchtime`, `TestLunch`, `TestNextLesson`, `TestOtherLines`, `TestNotifier` cases → `status_notification_test.dart` (39 1:1 camelCase cases)
+    - 12 `TestAndroidBridge`, `TestPhoneWiring`, `TestSettings` cases → **Deferred (phase 6/8 — Android notification bridge & settings preview)**
+73. `tests/test_store_package.py` (18) → **Deferred (phase 7 — Windows Store / MSIX packaging & data dir migration)**
+74. `tests/test_strava_blacklist_edits.py` (5):
+    - `test_default_blacklist_template_is_empty` → `config_test.dart`: `blacklistFiltersTemplatePlaceholders` / `repoExampleFilesAreValid`
+    - 4 `TestBlacklistEdits` (`AppState` add/remove blacklist word) → **Deferred (phase 5 — `AppState` blacklist editor)**
+75. `tests/test_strava_client.py` (19) → `strava_test.dart` (19 1:1 camelCase cases)
+76. `tests/test_strava_low_balance.py` (5):
+    - `test_ordering_stops_at_low_balance`, `test_cancellations_go_first_and_still_work_when_broke` → `automation_test.dart`: `orderingStopsAtLowBalance`, `cancellationsGoFirstAndStillWorkWhenBroke`
+    - `test_refresh_reports_low_balance_as_its_own_case`, `test_low_balance_notice_is_claimed_once_a_day` → `refresh_test.dart`: `refreshReportsLowBalanceAsItsOwnCase`, `lowBalanceNoticeIsClaimedOnceADay`
+    - `test_ui_low_balance_is_a_warning_not_an_error` → **Deferred (phase 5 — `AppState._warn_low_balance`)**
+77. `tests/test_strava_ordering.py` (15) → `automation_test.dart` (15 1:1 camelCase cases): `failedDayWithoutClicksIsNotSuccess`, `failedRunReportsDaysSavedByImmediateFrontend`, `failedRunOnSaveButtonFrontendReportsNothingClicked`, `allFailedAfterClicksRestoresOriginals`, `lostSelectionFailsAndRestores`, `mealNotOnMenuIsReportedButOthersPlaced`, `fullSuccessSubmitsAndRecords`, `menuMissReturnsFalse`, `menuHitReturnsTrue`, `orderingSkippedWithoutCutoff`, `partialOrderIsNotSuccess`, `dryRunSelectsWithoutSubmitting`, `successSubmits`, `failedDayAbortsSubmit`, `closedDayIsSkipped`
+78. `tests/test_substitution_feed_days.py` (1) → `schedule_test.dart`: `feedDoesNotCreateDays`
+79. `tests/test_timetable_cache_merge.py` (9):
+    - 5 `TestMergeTimetableDays` cases → `cache_test.dart`: `keepsUnscrapedDaysAndFreshWins`, `presentButEmptyDayOverwrites`, `prunesOutOfWindowOldDaysKeepsGarbage`, `noWindowStartKeepsEverything`, `emptyInputs`
+    - `test_excuse_single_dry_run_fills_only`, `test_excuse_absence_dry_run_sends_nothing` → `automation_test.dart`: `excuseSingleDryRunFillsOnly`, `excuseAbsenceDryRunSendsNothing`
+    - `test_submit_excuse_dry_run_leaves_pending`, `test_submit_day_excuse_dry_run_leaves_pending` → **Deferred (phase 5 — `AppState.submit_excuse` / `submit_day_excuse`)**
+80. `tests/test_timetable_week_nav.py` (4) → **Deferred (phase 5/6 — `AppState` / timetable week navigation)**
+81. `tests/test_timetable_week_switch.py` (3) → **Deferred (phase 5/6 — `AppState` timetable week switch fetch)**
+82. `tests/test_tls_bundle.py` (7) → **Dropped (frozen CA bundle `strakalari/core/tls.py` does not exist in Flutter; Dart uses OS trust store per PLAN §3.2)**
+83. `tests/test_tray_language.py` (1) → **Deferred (phase 7 — desktop tray language)**
+84. `tests/test_tray_ui_command.py` (4) → **Deferred (phase 7 — desktop tray UI command & refresh)**
+85. `tests/test_tutorial.py` (28):
+    - `test_config_validation_rejects_bad_progress` → `config_test.dart`: `validateCatchesBadModeAndThresholds`
+    - 19 gating/progress/rendering cases → `app/test/tutorial_test.dart` (in progress, unreviewed)
+    - Remaining 8 screen-specific anchor/walkthrough cases (`test_order_lunch_fires_its_event`, `test_missing_first_anchor_suspends`, `test_missing_later_anchor_floats`, `test_other_screen_suspends_the_tour`, `test_intro_floats_on_any_screen`, `test_today_view_anchors_first_excuse`, `test_shell_stacks_the_floating_bubble`, `TestMarksTour.*`) → **Deferred (phase 5/6 — screen tour anchor wiring)**
+86. `tests/test_ui_state.py` (13):
+    - 5 activity/status cases → `app/test/activity_state_test.dart` (in progress, unreviewed): `status kind transitions`, `manual sends show as working`, `last run label`, `next run label`, `log ring buffer caps`
+    - 2 setup cases → `app/test/wizard_settings_test.dart` (in progress, unreviewed): `needs setup false with strava only`, `needs setup fresh`
+    - Remaining 6 `AppState` cases (`test_set_timetable_view_validation`, `test_go_sets_pending_route`, `test_cancel_lunch_order`, `test_start_refresh_rejects_bad_scope_gracefully`, `test_state_save_reports_failure`, `test_subject_states_empty_without_timetable`) → **Deferred (phase 5)**
+87. `tests/test_ui_views.py` (28):
+    - `TestNamedTemplates.test_core_picks_text_of_named_template`, `test_timetable_period_of_zero` → `helpers_test.dart` / `schedule_test.dart` (`periodOfZero`)
+    - `TestPlannerSignature.test_signature_not_duplicated`, `TestNamedTemplates.test_helpers_accept_both_shapes`, `TestNamedTemplates.test_options_carry_names_and_skip_blank` → `app/test/planner_reserve_test.dart` (in progress, unreviewed)
+    - `test_all_views_build_headless` → `app/test/widget_test.dart` (`Router builds every main screen without throwing`, in progress, unreviewed)
+    - `test_settings_nav_groups_cover_every_section` → `app/test/settings_sections_test.dart` (`nav groups cover every section`, in progress, unreviewed)
+    - `test_lunch_meal_name_split`, `test_lunch_menu_hides_past_days_until_asked` → `app/test/lunches_filter_test.dart` (`split meal`) / `app/test/lunches_view_test.dart` (`menu hides past days until asked`, in progress, unreviewed)
+    - `test_activity_groups_and_translates_automation_history`, `test_activity_time_helpers`, `test_activity_log_counts_a_traceback_as_one_error` → `app/test/activity_view_test.dart` (in progress, unreviewed)
+    - Remaining 15 timetable/scroll/today view cases → **Deferred (phase 5/6)**
+88. `tests/test_unconfirmed_excuses.py` (16):
+    - 5 `TestHelpers` cases → `excuse_history_test.dart`: `sidecarSitsNextToHistory`, `overlapBlocksEvenAPartialResend`, `wholeDayBlocksItsLessons`, `resolve`, `submitBeforeTheOutboxRangeStaysOpen`
+    - 9 `TestSendPath` + `TestOutboxSettles` cases → `automation_test.dart`: `uncertainSubmitIsRecordedNotFailed`, `unconfirmedBlocksTheNextSend`, `certainFailureIsRetryable`, `sidecarWriteFailureFallsBackToHistory`, `autoCountsANewUnconfirmedAsAFailure`, `foundInOutboxIsConfirmed`, `absentFromOutboxAfterGraceIsReleased`, `freshSubmitIsKept`, `failedReadSettlesNothing`
+    - 2 `TestRefreshGate` cases → `refresh_test.dart`: `noAutoExcuseWithoutAnOutboxRead`, `autoExcuseRunsAfterAnOutboxRead`
+89. `tests/test_update.py` (46):
+    - 40 core cases → `update_test.dart` (40 1:1 camelCase cases)
+    - `TestConfigChannel.test_validation` → `config_test.dart`: `validateCatchesBadModeAndThresholds`
+    - 5 `TestStrings` / `TestChannelState` (`flet_ui` banner/diagnostics/config channel state) → **Deferred (phase 5/6)**
+90. `tests/test_version_sync.py` (3) → **Deferred (phase 7/10 — version sync across `pubspec.yaml`, Inno installer, MSIX)**
+91. `tests/test_wake_ui.py` (2) → **Deferred (phase 5/8 — UI isolate wakeup from background worker)**
+92. `tests/test_wakeup_and_widget.py` (42):
+    - 21 core `TestWakeupAlarm`, `TestWidgetPayload`, `TestSyncAndroid` cases → `wakeup_test.dart` (21 1:1 camelCase cases)
+    - 21 UI/widget/extension-wheel cases (`TestTimetableViews.*`, `TestCollapsibleDays.*`, `TestWakeupUI.*`, `test_extension_wheel_ships_widget_and_alarm`) → **Deferred (phase 6/8 — timetable/today/settings wakeup UI & Android build)**
+93. `tests/test_wizard_setup.py` (30):
+    - 3 setup-detection cases → `app/test/wizard_settings_test.dart` (in progress, unreviewed): `needs setup fresh`, `needs setup false with bakalari`, `needs setup false with strava only`
+    - Remaining 27 wizard step/validation/scheduler-gate cases → **Deferred (phase 5/6 — `WizardController` / `AppState` setup flow)**
+94. `tests/test_year_planner.py` (23):
+    - 18 pure planner cases → `planner_test.dart` (18 1:1 camelCase cases)
+    - 5 `AppState`/view cases (`test_plan_days_batches_one_save`, `test_year_plan_is_cached_until_inputs_change`, `test_first_plannable_day_is_clock_aware`, `test_target_days_setting_limits_the_plan`, `test_planner_view_builds_with_data_and_calendar_opens_dialog`) → `app/test/planner_view_test.dart` (in progress, unreviewed) + **Deferred (phase 5/6)**
 
-App: test_autostart, test_autostart_platforms, test_cancel_responsive,
-test_entry_routing, test_flet_data_wiring, test_icons,
-test_macos_data_dir, test_macos_tray_host, test_marks_view, test_minimize_to_tray,
-test_mobile, test_notify, test_open_url, test_packaging_privacy,
-test_planner_dialog, test_settings_quiet_save, test_settings_refresh_interactive,
-test_settings_sections, test_shutdown, test_single_instance, test_store_package,
-test_timetable_week_nav, test_timetable_week_switch, test_tray_language,
-test_tray_ui_command, test_tutorial, test_ui_state, test_ui_views,
-test_version_sync, test_wake_ui, test_wizard_setup.
-
-Support (ported as helpers/fixtures, not 1:1): tests/conftest.py,
-tests/fake_bakalari.py, tests/fixtures/, tests/test_imports_resolve.py
-(Python-specific, decide at port).
-
-Expected drops (decide at port, subject likely absent in Flutter):
-test_tls_bundle.py, test_frozen_ssl.py (frozen CA bundle no longer exists).
-
-## Deferred test cases (not dropped — ported with the phase that owns their SUT)
-
-Phase 4 resolutions (all landed in `automation_test.dart` / `refresh_test.dart`
-unless noted; remaining phase-5 owners unchanged below):
-- test_models.py 2 engine cases → done (need `automation.Strakalari`).
-- test_config.py `TestPasswordOverridesEncrypted`,
-  `test_integer_strava_id_handling`, `TestStravaEnableDefault` → done.
-- test_excuse_history.py deferred cases (`test_concurrent_sends_submit_once`,
-  `test_covered_excuse_is_not_resent`, `TestExampleHistoryFilter` automation
-  case, `TestHistoryCoverage`, `test_excuse_dry_run_fills_without_submitting`)
-  → done. `TestHistoryCoverage` UI half stays phase 5 (`AppState`).
-- test_unconfirmed_excuses.py `TestSendPath`/`TestOutboxSettles`/
-  `TestRefreshGate` → done.
-- test_strava_ordering.py → done (needs `Strakalari`).
-- test_strava_low_balance.py → done (refresh/notice/UI tail → phase 5 owners).
-- test_order_latch.py → done except the AppState latch (phase 5).
-- test_strava_blacklist_edits.py → still phase 5 (AppState + shipped template).
-- test_grades.py extractor/client cases → already in `extractors_test.dart` /
-  `bakalari_data_test.dart` (done, phase 2).
-- test_excuse_generation.py → done (in `automation_test.dart`).
-- test_sent_excuses.py sync tests → done.
-- test_excuse_day_scope.py → still phase 5 (`AppState.day_excuse_plan`).
-- test_excuse_ignore_list.py `TestIgnoredExcuses` → done (in
-  `automation_test.dart`); the rest still phase 5 (AppState ignore list).
-- test_absence_details.py → done in `forecast_test.dart` (+ parity).
-- test_substitution_feed_days.py → done in `schedule_test.dart`.
-- test_session_lock.py → done in `session_lock_test.dart` (+ manual
-  cross-process proof, see Checkpoint notes).
-- test_timetable_cache_merge.py dry-run send cases → covered by the phase-4
-  dry-run parity (Python vs Dart audit/outbox/history identical).
-- test_stable_change_signals.py → no automation/refresh-SUT cases found
-  (schedule/extractors/UI only); nothing to port.
-- `HistoryLock` test (`test_concurrent_sends_submit_once`) → done; the
-  one-isolate static mutex restoring check-submit-write serialization is
-  proven by it.
-- test_timetable_week_nav.py, test_timetable_week_switch.py,
-  test_marks_view.py, test_refresh_cancel_keeps_data.py UI tails,
-  test_cancel_responsive.py AppState branches → still phase 5.
-- test_early_leave.py → evaluated: entirely soon/early detection +
-  AppState/UI wiring (no pure schedule cases); nothing to port to core.
-- test_plan_picker.py (12 Flet dialog cases) → still phase 6 (no Dart
-  dialog subject exists).
-
-- test_i18n.py → `test_core_messages_follow_language` moves to phase 4
-  (needs `error_report.timeout_user_message`); `test_new_flet_strings_present`
-  + `test_dead_keys_removed_and_live_keys_kept` move to phase 5 (need
-  `flet_ui.strings`).
-- test_models.py → `test_engine_excuses_neomluveno_day` +
-  `test_engine_excuses_unexcused_type` move to phase 4 (need
-  `automation.Strakalari.generate_excuses`).
-- test_session_lock.py → phase 4 (needs `refresh.session_lock`; the
-  cross-process subprocess case needs a Python process and is proven
-  manually instead, see Checkpoint notes).
-- test_config.py → `TestPasswordOverridesEncrypted`,
-  `test_integer_strava_id_handling`, `TestStravaEnableDefault` (incl.
-  `test_partial_config_without_use_strava_stays_enabled`) move to phase 4
-  (need `automation.Strakalari`).
-- test_excuse_history.py → `test_concurrent_sends_submit_once`,
-  `test_covered_excuse_is_not_resent`,
-  `TestExampleHistoryFilter::test_automation_filters_example`,
-  `TestHistoryCoverage` (needs `flet_ui.state_excuses`, phase 5),
-  `test_excuse_dry_run_fills_without_submitting` move to phase 4
-  (need `automation.Strakalari`); `test_manager_filters_example_fallback`
-  + `test_history_quarantine` are ported in excuse_history_test.dart
-  (they test `ConfigManager.getExcuseHistory`).
-- test_excuse_day_scope.py → whole file moves to phase 5
-  (needs `AppState.day_excuse_plan` / `submit_day_excuse`).
-- test_excuse_ignore_list.py → `TestIgnoredExcuses` (needs
-  `automation.generate_excuses`, phase 4), the rest moves to phase 5
-  (needs `AppState` ignore list).
-- test_unconfirmed_excuses.py → `TestSendPath`, `TestOutboxSettles`,
-  `TestRefreshGate` move to phase 4 (need `Strakalari` / `run_refresh`).
-- test_strava_ordering.py → phase 4 (needs `Strakalari.strava_order_selected`).
-- test_strava_low_balance.py → phase 4 (`strava_order_selected` low-balance
-  path); the refresh/notice/UI tail (`run_refresh`, `claim_low_balance_notice`,
-  `AppState._warn_low_balance`) → phase 4/5 with their owners.
-- test_order_latch.py → phase 4 (needs `Strakalari`).
-- test_strava_blacklist_edits.py + `test_default_blacklist_template_is_empty`
-  → phase 5 (needs `AppState` blacklist editing + the shipped example file).
-- test_grades.py → extractor cases live in `extractors_test.dart`;
-  `get_grades` client cases live in `bakalari_data_test.dart` (done).
-- test_excuse_generation.py → phase 4 (needs `automation`
-  `Strakalari.generate_excuses`; the form-sending half is done in
-  `bakalari_excuse_test.dart`).
-- test_sent_excuses.py → `TestSentExcuseEntries` + `TestMergeSentExcuses`
-  are ported (`extractors_test.dart`, `excuse_history_test.dart`); the
-  sync tests move to phase 4 (need `Strakalari`).
-- test_absence_details.py → phase 3 (needs `forecast`).
-- test_marks_view.py → phase 5 (needs Flet views).
-- test_substitution_feed_days.py → phase 3 (needs `schedule`).
-- `HistoryLock` is ported with excuse_history but its test lands in
-  phase 4 (`test_concurrent_sends_submit_once`).
+Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftest.py`, `tests/fake_bakalari.py` (`packages/strakalari_core/test/support/fake_bakalari.dart`), `tests/fixtures/`.
 
 ## Dropped (with reason)
 
 - `strakalari/core/tls.py` — Dart uses the OS trust store; no frozen CA bundle
-  (PLAN §3.2). Reviewer sign-off still pending at the relevant checkpoint.
+  (PLAN §3.2).
+- `tests/test_tls_bundle.py` (7) — tests `strakalari/core/tls.py` (repairing a purged frozen CA bundle), which is absent in Flutter (PLAN §3.2).
+- `tests/test_frozen_ssl.py` (4) — tests `sys._MEIPASS` PyInstaller CA bundle setup in `strakalari/core/tls.py`, which is absent in Flutter (PLAN §3.2).
+- `tests/test_imports_resolve.py` (1) — Python AST check for `from ...` relative imports across `.py` files; Dart imports are statically verified by `dart analyze` and `flutter analyze`.
 
 ## Deviations from Python (each needs reviewer sign-off)
 
@@ -560,13 +739,13 @@ Unsure / needs a second pair of eyes:
 - Gemini `localFallbackRecommendation` keyword lists ported line by
   line (Czech stems); only covered via parity fixtures + fakes.
 
-### ⛔ Checkpoint B: UI review (phases 5–6)
+### ⛔ Checkpoint B: UI review (phases 5–6, in progress, unreviewed)
 
-Done: shell (router/scaffold/theme/ARB/controllers/widgets/error
+In progress, unreviewed: shell (router/scaffold/theme/ARB/controllers/widgets/error
 dialog/tutorials/platform seams) + all 10 screens wired into the
-router with real views + controllers; `flutter analyze` clean;
-`flutter test` 120+ green (116 feature tests + boots/navigation smoke
-+ layout breakpoints), core suite 720/720 still green.
+router with views + controllers; `flutter analyze` clean;
+`flutter test` 106 green, core suite green; live `AppState` wiring and
+deferred phase-5/6 tests still pending.
 Every deviation is listed under Deviations above; Python behavior that
 looked wrong was ported as-is (nothing "fixed").
 How to verify:
@@ -583,9 +762,9 @@ Unsure / needs a second pair of eyes:
   wiring (config/save/send/test/refresh callbacks) is the next step.
 - `wakeupAvailable` stubs to false (Android-only, phase 8).
 
-### ⛔ Checkpoint C: platform review (phases 7–8)
+### ⛔ Checkpoint C: platform review (phases 7–8, in progress, unreviewed)
 
-Done in code, largely UNVERIFIED on this machine (see the per-area
+In progress, unreviewed, largely UNVERIFIED on this machine (see the per-area
 notes): desktop tray/autostart/single-instance/notifications/keystores,
 Inno (AppId kept) + MSIX adaptations, CI release jobs; Android Java
 moved + MethodChannel + headless `backgroundMain` + boot re-arm +
@@ -602,13 +781,12 @@ Unsure / needs a second pair of eyes:
 - Sync-core-bridge vs async-channel seams (phase 8 warm-up design).
 - macOS/Linux code paths, release builds, CI jobs — owner/CI must run.
 
-### ⛔ Checkpoint D: release review (phase 9)
+### ⛔ Checkpoint D: release review (phase 9, in progress, unreviewed)
 
-Soak prep done: `tools/parity/soak_refresh.py` + `soak_compare.py`,
+In progress, unreviewed: `tools/parity/soak_refresh.py` + `soak_compare.py`,
 `docs/flutter-migration/SOAK.md` routine, README/PRIVACY/CONTRIBUTING
-wording. Dry-run parity IDENTICAL (modulo ts), fetch parity
-byte-identical, both suites green. The multi-day side-by-side soak and
-the beta cut wait for the owner's go-ahead — no tag/merge/push done.
+wording. Multi-day side-by-side soak and the beta cut wait for
+Checkpoints A–C sign-off and the owner's go-ahead — no tag/merge/push done.
 
 Phase 1 cross-implementation proofs (for Checkpoint A):
 - Fernet: Dart decrypted a Python-made token and Python decrypted a

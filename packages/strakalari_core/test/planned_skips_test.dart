@@ -313,5 +313,26 @@ void main() {
       });
       expect(days, {'09.11.2026', '10.11.2026'});
     });
+
+    test('keepLunchChoiceIsStoredAndHonored', () {
+      final keep = normalizePlannedEntry({
+        'start_date': '2099-10-05',
+        'cancel_lunch': false,
+      })!;
+      final cancel = normalizePlannedEntry({
+        'start_date': '2099-10-06',
+        'cancel_lunch': true,
+      })!;
+      final legacy = normalizePlannedEntry({
+        'start_date': '2099-10-07',
+      })!;
+      expect(keep['cancel_lunch'], isFalse);
+      expect(cancel.containsKey('cancel_lunch'), isFalse);
+      expect(legacy.containsKey('cancel_lunch'), isFalse);
+      final days = plannedLunchDays({
+        'planned_skips': [keep, cancel, legacy],
+      });
+      expect(days, {'06.10.2099', '07.10.2099'});
+    });
   });
 }
