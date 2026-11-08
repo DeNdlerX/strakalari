@@ -105,6 +105,22 @@ def helpers_cases() -> list[dict]:
                         ((2026, 3, 27), (2026, 4, 1))]:
         a, b = _date(*first), _date(*last)
         cases.append(_case("daysBetween", (b - a).days, a, b))
+    # JSON writers: audit lines use json.dumps defaults (", " / ": "),
+    # data files use json.dump(indent=2); both keep non-ASCII as is.
+    samples = [
+        {"ts": "2026-11-08T10:00:00", "kind": "excuse", "outcome": "sent",
+         "summary": "Příliš žluťoučký kůň", "detail": {"days": ["01.09.2026"],
+                                                       "n": 2, "ok": True,
+                                                       "none": None}},
+        {"a": [], "b": {}, "c": [1, [2, 3], {"d": "e\"f\\g\n\t"}], "z": ""},
+        ["x", 1, True, None, {"k": []}],
+    ]
+    for sample in samples:
+        cases.append(_case("pyJsonDumps",
+                           json.dumps(sample, ensure_ascii=False), sample))
+        cases.append(_case("jsonIndent2",
+                           json.dumps(sample, indent=2, ensure_ascii=False),
+                           sample))
     return cases
 
 

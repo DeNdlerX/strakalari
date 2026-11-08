@@ -37,6 +37,10 @@ void main() {
           result = isEncryptedFlag(args[0]);
         case 'addDays':
           result = addDays(args[0] as DateTime, args[1] as int);
+        case 'pyJsonDumps':
+          result = pyJsonDumps(args[0]);
+        case 'jsonIndent2':
+          result = jsonIndent2(args[0]);
         case 'daysBetween':
           result = daysBetween(args[0] as DateTime, args[1] as DateTime);
         default:

@@ -131,6 +131,23 @@ void main() {
       });
     });
 
+    test('fileBytesFollowPythonTextModeNewlines', () {
+      final p = '${tmp!.path}/nl.json';
+      atomicWriteJson(p, {
+        'a': [1]
+      });
+      final text = utf8.decode(File(p).readAsBytesSync());
+      // Python text mode writes CRLF on Windows and LF elsewhere.
+      expect(text.contains('\r\n'), Platform.isWindows);
+      expect(text.replaceAll('\r\n', '\n'), '{\n  "a": [\n    1\n  ]\n}');
+    });
+
+    test('toPlatformNewlines', () {
+      expect(toPlatformNewlines('a\nb\n\n', windows: true),
+          'a\r\nb\r\n\r\n');
+      expect(toPlatformNewlines('a\nb', windows: false), 'a\nb');
+    });
+
     test('noTmpLeftovers', () {
       final p = '${tmp!.path}/data.json';
       atomicWriteJson(p, [1]);

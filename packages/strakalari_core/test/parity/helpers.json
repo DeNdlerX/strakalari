@@ -446,6 +446,118 @@
         }
       ],
       "expected": 5
+    },
+    {
+      "fn": "pyJsonDumps",
+      "args": [
+        {
+          "ts": "2026-11-08T10:00:00",
+          "kind": "excuse",
+          "outcome": "sent",
+          "summary": "Příliš žluťoučký kůň",
+          "detail": {
+            "days": [
+              "01.09.2026"
+            ],
+            "n": 2,
+            "ok": true,
+            "none": null
+          }
+        }
+      ],
+      "expected": "{\"ts\": \"2026-11-08T10:00:00\", \"kind\": \"excuse\", \"outcome\": \"sent\", \"summary\": \"Příliš žluťoučký kůň\", \"detail\": {\"days\": [\"01.09.2026\"], \"n\": 2, \"ok\": true, \"none\": null}}"
+    },
+    {
+      "fn": "jsonIndent2",
+      "args": [
+        {
+          "ts": "2026-11-08T10:00:00",
+          "kind": "excuse",
+          "outcome": "sent",
+          "summary": "Příliš žluťoučký kůň",
+          "detail": {
+            "days": [
+              "01.09.2026"
+            ],
+            "n": 2,
+            "ok": true,
+            "none": null
+          }
+        }
+      ],
+      "expected": "{\n  \"ts\": \"2026-11-08T10:00:00\",\n  \"kind\": \"excuse\",\n  \"outcome\": \"sent\",\n  \"summary\": \"Příliš žluťoučký kůň\",\n  \"detail\": {\n    \"days\": [\n      \"01.09.2026\"\n    ],\n    \"n\": 2,\n    \"ok\": true,\n    \"none\": null\n  }\n}"
+    },
+    {
+      "fn": "pyJsonDumps",
+      "args": [
+        {
+          "a": [],
+          "b": {},
+          "c": [
+            1,
+            [
+              2,
+              3
+            ],
+            {
+              "d": "e\"f\\g\n\t"
+            }
+          ],
+          "z": ""
+        }
+      ],
+      "expected": "{\"a\": [], \"b\": {}, \"c\": [1, [2, 3], {\"d\": \"e\\\"f\\\\g\\n\\t\"}], \"z\": \"\"}"
+    },
+    {
+      "fn": "jsonIndent2",
+      "args": [
+        {
+          "a": [],
+          "b": {},
+          "c": [
+            1,
+            [
+              2,
+              3
+            ],
+            {
+              "d": "e\"f\\g\n\t"
+            }
+          ],
+          "z": ""
+        }
+      ],
+      "expected": "{\n  \"a\": [],\n  \"b\": {},\n  \"c\": [\n    1,\n    [\n      2,\n      3\n    ],\n    {\n      \"d\": \"e\\\"f\\\\g\\n\\t\"\n    }\n  ],\n  \"z\": \"\"\n}"
+    },
+    {
+      "fn": "pyJsonDumps",
+      "args": [
+        [
+          "x",
+          1,
+          true,
+          null,
+          {
+            "k": []
+          }
+        ]
+      ],
+      "expected": "[\"x\", 1, true, null, {\"k\": []}]"
+    },
+    {
+      "fn": "jsonIndent2",
+      "args": [
+        [
+          "x",
+          1,
+          true,
+          null,
+          {
+            "k": []
+          }
+        ]
+      ],
+      "expected": "[\n  \"x\",\n  1,\n  true,\n  null,\n  {\n    \"k\": []\n  }\n]"
     }
   ]
 }

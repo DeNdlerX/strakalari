@@ -620,6 +620,55 @@ bool jsonEquals(Object? a, Object? b) {
   return a == b;
 }
 
+/// Text-mode newline translation: Python writes LF as CRLF on Windows,
+/// so files must match byte for byte there. [windows] overrides the
+/// platform (tests).
+String toPlatformNewlines(String text, {bool? windows}) =>
+    (windows ?? Platform.isWindows) ? text.replaceAll('\n', '\r\n') : text;
+
+/// `json.dumps(value, ensure_ascii=False, default=str)`: Python's default
+/// separators (`", "` and `": "`), non-ASCII kept as is. Values that are
+/// not JSON types are written as their string form (`default=str`).
+String pyJsonDumps(Object? value) {
+  final out = StringBuffer();
+  void write(Object? v) {
+    if (v == null) {
+      out.write('null');
+    } else if (v is bool || v is num || v is String) {
+      out.write(jsonEncode(v));
+    } else if (v is Map) {
+      out.write('{');
+      var first = true;
+      v.forEach((k, val) {
+        if (!first) out.write(', ');
+        first = false;
+        out.write(jsonEncode('$k'));
+        out.write(': ');
+        write(val);
+      });
+      out.write('}');
+    } else if (v is Iterable) {
+      out.write('[');
+      var first = true;
+      for (final item in v) {
+        if (!first) out.write(', ');
+        first = false;
+        write(item);
+      }
+      out.write(']');
+    } else {
+      out.write(jsonEncode('$v'));
+    }
+  }
+
+  write(value);
+  return out.toString();
+}
+
+/// `json.dumps(value, indent=2, ensure_ascii=False)`.
+String jsonIndent2(Object? value) =>
+    const JsonEncoder.withIndent('  ').convert(value);
+
 /// Writes JSON atomically (temp file + rename) so a crash or kill can
 /// never leave a truncated file behind. Creates parent dirs as needed.
 void atomicWriteJson(String path, Object? data,
@@ -628,7 +677,7 @@ void atomicWriteJson(String path, Object? data,
   final tmpPath = '$path.$pid.tmp';
   try {
     File(tmpPath).writeAsStringSync(
-        const JsonEncoder.withIndent('  ').convert(data),
+        toPlatformNewlines(jsonIndent2(data)),
         encoding: encoding);
     _replaceFile(tmpPath, path);
   } catch (_) {

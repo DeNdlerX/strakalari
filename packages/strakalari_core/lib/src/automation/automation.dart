@@ -632,7 +632,8 @@ class Strakalari implements RefreshApp {
       Directory(
               File(logFile).parent.absolute.path)
           .createSync(recursive: true);
-      File(logFile).writeAsStringSync('[$stamp] $message\n\n',
+      File(logFile).writeAsStringSync(
+          toPlatformNewlines('[$stamp] $message\n\n'),
           mode: FileMode.append, encoding: utf8);
     } on Object catch (e) {
       print('Warning: Could not write to log file: $e');

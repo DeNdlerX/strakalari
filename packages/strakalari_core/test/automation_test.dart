@@ -1659,7 +1659,10 @@ void main() {
     test('writeLogLinesAreTimestamped', () {
       final app = realApp(tmp, {'log_file': '${tmp.path}/log.txt'});
       app.writeLog('hello');
-      final text = File('${tmp.path}/log.txt').readAsStringSync();
+      // Python reads in text mode (CRLF -> LF); normalize the same way.
+      final text = File('${tmp.path}/log.txt')
+          .readAsStringSync()
+          .replaceAll('\r\n', '\n');
       expect(
           text,
           matches(RegExp(

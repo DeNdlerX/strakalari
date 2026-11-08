@@ -70,8 +70,7 @@ bool record(String kind, String outcome, String source, String summary,
   }
   final path = historyPath();
   try {
-    final line =
-        '${jsonEncode(entry, toEncodable: (e) => '$e')}\n';
+    final line = toPlatformNewlines('${pyJsonDumps(entry)}\n');
     _rotateIfLarge(path);
     Directory(p.dirname(p.absolute(path))).createSync(recursive: true);
     File(path).writeAsStringSync(line, mode: FileMode.append, encoding: utf8);

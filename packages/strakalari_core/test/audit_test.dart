@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:test/test.dart';
@@ -29,6 +30,18 @@ void main() {
       expect(items[1]['source'], 'auto');
       expect(hasDryRun('lunch'), isTrue);
       expect(hasDryRun('excuse'), isFalse);
+    });
+
+    test('linesUsePythonSeparatorsAndPlatformNewlines', () {
+      expect(
+          record('excuse', 'sent', 'auto', 'Příliš', now: DateTime(2026, 11, 8, 10)),
+          isTrue);
+      final raw = utf8.decode(File(historyPath()).readAsBytesSync());
+      expect(
+          raw.replaceAll('\r\n', '\n'),
+          '{"ts": "2026-11-08T10:00:00", "kind": "excuse", '
+          '"outcome": "sent", "source": "auto", "summary": "Příliš"}\n');
+      expect(raw.endsWith('\r\n'), Platform.isWindows);
     });
 
     test('skipsCorruptLines', () {
