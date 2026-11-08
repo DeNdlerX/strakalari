@@ -1,0 +1,353 @@
+# Checkpoint A review: core (phases 1–4)
+
+Date: 2026-11-08 · Reviewed at: `a594f19` (branch tip) · Checkpoint A state: `a0c8a89`
+Scope: `packages/strakalari_core/**` and `tools/parity/**` against `strakalari/core/**`.
+
+## Verdict: **FAIL**
+
+Five blockers, eight must-fix items. Three of the blockers break the safety rules the
+port exists to keep: one can send the **same excuse twice**, one records **lunches as
+ordered that were never saved**, and one lets **two refreshes run at once**.
+
+### Process problem first
+
+The migrating agent did not stop at Checkpoint A (PLAN §4, PROMPT "Stop and hand
+over"). Phases 5–9 were built on top of an unreviewed core by parallel sub-agents,
+committed in one burst (`b2ff720`…`a594f19`, all within 30 seconds), and STATUS.md
+calls them "done". They are not reviewed here. The app UI isn't connected to the
+core yet: the router passes empty default controllers, and nothing in `app/lib` calls
+`runRefresh`, `sendExcuse` or `stravaOrderSelected` except the Android background
+entry. **No work on phases 5–10 until Checkpoint A passes.** Fixes may touch
+`app/lib/platform/android/background.dart` only where finding A-B5 requires it.
+
+---
+
+## Findings
+
+Severity: **blocker** (unsafe or broken, stop) · **must-fix** (wrong vs Python, fix before
+re-review) · **should-fix** · **note**.
+
+### A-B1 · blocker · Day arithmetic breaks across daylight-saving changes
+
+`Duration(days: n)` on local `DateTime`s is 23 or 25 hours across the Prague DST
+switches (29.3.2026, 25.10.2026). Python `date ± timedelta` has no DST. Results were
+proven by running the real Dart code next to Python on this PC (Europe/Prague):
+
+| Dart | Python | Proof (Dart vs Python) |
+|---|---|---|
+| `automation/excuse_history.dart:86` `excuseWindowStart` | `excuse_history.py:72` | `excuseWindowStart(15.4.2026)` = **15.3** vs **16.3**: in the month after the spring switch, the auto-excuse window is one day wider than what Komens → Odeslané can show, so a duplicate can't be ruled out for that day. |
+| `automation/excuse_history.dart:208` `_excusePoints` cursor | `excuse_history.py:156` | `unconfirmedBlocks(pure days 24.–26.10.2026, unconfirmed 26.10)` = **false** vs **True**: a maybe-sent excuse does **not** block an overlapping re-send (duplicate risk). The cursor becomes 25.10 23:00 and Monday 26.10 is never checked. |
+| `automation/automation.dart:1555` cutoff, `:1676` `day.difference(prevDate).inDays` | `automation.py:964`, `:1057` | `generateExcuses(absence Sat 28.3, today Mon 30.3, delay 2)` = **[]** vs **one excuse**. |
+| `bakalari/timetable.dart:76-100` week stepping and `targetDays`; `:82` `inDays ~/ 7` (truncates, Python `//` floors) | `bakalari_timetable.py:57-71` | **Live demo-server run today:** Dart logged "week of 19.10.2026 did not load (got 19.10.–23.10.)" for all 8 school-year weeks before 25.10 and cached **15** timetable days vs Python's **55**. Mondays become 23:00/01:00, so `targetDays` never equals the midnight days shown. For ~4 weeks after each switch the regular past weeks are also skipped or the wrong week is fetched (today 30.3.2026, off −1 → Monday **16.3** vs **23.3**). |
+| `automation/refresh.dart:332, 374, 386, 389, 396, 406-408` | `refresh.py:269-297, 388` | `_missingHistoryWeeks` steps `+7 days`; after a switch every Monday misses `done`/`regular`, so the whole history is re-fetched **on every refresh** and thrown away (see the row above). |
+| `bakalari/data.dart:361-365` substitution range | `bakalari_data.py:280-283` | Today 19.10 + 14 days → Sun 1.11 23:00, so the range ends a week early. |
+
+Also audit and fix the same pattern in `bakalari/excuse.dart:243`,
+`lunches/lunch_cutoff.dart:77,112,115`, `planning/grades.dart:681`,
+`planning/schedule.dart:1002-1032`, `planning/planned_skips.dart:141-143`,
+`status_notification.dart:289-546`, `wakeup.dart:245-755`.
+
+**Correct:** one pair of helpers in `storage/helpers.dart`, used everywhere a calendar day moves:
+`DateTime addDays(DateTime d, int n) => DateTime(d.year, d.month, d.day + n);` and
+`int daysBetween(DateTime a, DateTime b) => DateTime.utc(b.year, b.month, b.day).difference(DateTime.utc(a.year, a.month, a.day)).inDays;`.
+Week offsets use floor division (`(days / 7).floor()`, Python `//`). Compare days as
+date-only values. Add Dart tests and `dump.py` parity cases at 27.3–1.4.2026 and
+23.10–28.10.2026 for every row above, and run `dart test` with `TZ=Europe/Prague` in
+`dart.yml` (otherwise the CI runner's UTC hides this bug).
+
+### A-B2 · blocker · "Surely not sent" is decided by error code, not by when the error happened
+
+`bakalari/http_session.dart:860-885` (`isNeverSentCause`, `_isRefused`) treats
+SocketExceptions with codes such as 110/10060 (ETIMEDOUT), 113/65 (EHOSTUNREACH),
+101/51 (ENETUNREACH), "network is down" or "timed out" as "the post never left".
+Python (`bakalari_excuse.py:381`) decides by **phase**: only `httpx.ConnectError` and
+`ConnectTimeout`, which are raised before any request byte is sent. All of these codes
+also occur on an **established** connection after the excuse POST was written, for
+example a phone switching networks while it waits for the reply. Dart then sets
+`lastSubmitUncertain = false`, the outcome is `failed`, and the next auto refresh
+**sends the excuse again**. The ported test (`bakalari_excuse_test.dart:293-297`)
+only checks messages, not phases, so it can't catch this.
+
+**Correct:** in `DartIoHttpTransport.send` (`http_session.dart:483`) wrap only
+`await _client.openUrl(...)` (DNS + connect), and rethrow its failures as a new
+`ConnectFailure(cause)`. Set `_client.connectionTimeout = timeout` so a connect timeout
+also comes out as `ConnectFailure`. Anything thrown after `openUrl` returned means
+"maybe sent". `isNeverSentCause` returns true **only** for `ConnectFailure`. The fake
+transport throws `ConnectFailure` for its "refused" case. New tests:
+`SocketException('Connection timed out', OSError('', 110))` thrown after the request
+→ `lastSubmitUncertain == true`; `ConnectFailure(...)` → `false`. Apply the same rule
+to the Strava retry (`strava/client.dart:278`).
+
+### A-B3 · blocker · A failed lunch-order run records unsaved lunches as ordered
+
+`automation/automation.dart:1008` `immediate = client.findSaveButton();` with
+`strava/ordering.dart:304` `bool findSaveButton(...) => true;` is the **inverse** of
+Python `automation.py:585` `immediate = client._find_save_button(timeout_ms=500) is None`
+with `strava_ordering.py:237` returning `True` (truthy = staged, needs the save).
+Whenever an order run fails after clicks, every other clicked day goes into
+`lastOrderedDays`, `orderedDict`, the cached `strava_ordered`, the audit as `sent`,
+and the auto-mode "handled" list (so auto never retries it). **Nothing was saved on
+Strava**, so the student has no lunch while the app says ordered. The Dart tests
+`automation_test.dart:1072-1090` flipped the fake's `saveButton` flag to match the
+inverted code (Python `test_strava_ordering.py:68-90` sets `None` for "immediate" and
+an object for "save button").
+
+**Correct:** keep Python's meaning (true = a save button exists, changes are staged)
+and write `immediate = !client.findSaveButton();`. In the two tests, use
+`saveButton = false` for `failedRunReportsDaysSavedByImmediateFrontend` and
+`saveButton = true` for `failedRunOnSaveButtonFrontendReportsNothingClicked`. Add a test
+with the **default** client (no override) that asserts `lastOrderedDays` is empty
+after a failed run with clicks.
+
+### A-B4 · blocker · Automatic lunch ordering is not connected
+
+`automation/refresh.dart:75-93`: `planAutoOrdersHook` defaults to
+`throw UnimplementedError('phase 3: lunch_auto')`. Its contract is synchronous and
+gets `ordered` as a list of days (`refresh.dart:694`). The real
+`lunches/lunch_auto.dart:435 planAutoOrders` is async and takes
+`Map<String, String> ordered`. Python `refresh.py:527-533` passes the day → meal
+dict. Every refresh with `strava_order_mode: auto` records an `auto_lunch` error and
+orders nothing.
+
+**Correct:** make the hook `Future<(Map<String, String>, bool)> Function(...)` with
+`ordered: Map<String, String>`, default it to `planAutoOrders`, `await` it in
+`_autoLunch`, and pass `ordered: orderedBefore`. Add a refresh test that runs with the
+**default** hook (a fake Strava app and menu, no Gemini) and orders a gap day.
+
+### A-B5 · blocker · The session lock doesn't hold
+
+a) `storage/helpers.dart:354` `lockSync(FileLock.exclusive, 0, 1)`. dart:io uses POSIX
+`fcntl` record locks on Linux, macOS and Android. They belong to the process (dart:io
+docs: "several isolates in the same process can obtain an exclusive lock"), and closing
+any handle to the file drops them. Python uses `flock` (`helpers.py:364`). I proved on
+Linux (WSL, Python `fcntl.lockf` = the same fcntl lock): with `flock` held by one
+process, another process **acquired** the fcntl lock on byte 0, and a second fcntl
+lock in the same process was **also acquired**. So on Linux a Python and a Dart app
+don't exclude each other, and on every POSIX platform two refreshes in one Dart
+process both get the lock. `session_lock_test.dart:58` and `helpers_test.dart:168` will
+fail on the ubuntu CI job. Windows is fine: I ran Python-holds/Dart-tries and the
+reverse, and both were refused correctly.
+**Correct:** on POSIX call `flock(fd, LOCK_EX | LOCK_NB)` through `dart:ffi` (libc),
+which matches Python on Linux and macOS. Add an in-process registry (a static set of
+held lock paths) so a second acquire in the same process fails like Python's second
+handle. Keep `LockFileEx` on Windows. Add a Linux cross test (Python holds, Dart
+tries, and the reverse).
+
+b) `automation/session_lock.dart:48` `withSessionLock<T>(T Function(bool held) body)`
+releases in `finally` as soon as an **async** body returns its Future, so the lock is
+gone before the work runs. `app/lib/platform/android/background.dart:184` does exactly
+that, so the Android background refresh runs unlocked.
+**Correct:** add `Future<T> withSessionLockAsync<T>(Future<T> Function(bool held) body)`,
+which awaits the body inside `try/finally`, and use it in `background.dart`. Make the
+sync variant reject a Future-returning body (an assert, plus a test).
+
+### A-M1 · must-fix · History lock: concurrent tasks walk in, and the UI can freeze
+
+`automation/excuse_history.dart:369-414`. Python `excuse_history.py:306-339` holds a
+process `RLock` across the whole block, so other threads **wait**. The Dart static
+depth counter lets any concurrent async task in the isolate in as "re-entrant" while a
+send is awaiting login or submit. `_sendTail` (`automation.dart:1264`) only serializes
+sends with each other. `syncWebExcusesToHistory` (`automation.dart:1121`) can run in
+the middle of a send: it rewrites the history and settles the sidecar, then the send
+writes its stale copy (`automation.dart:1384`), so web-imported entries are lost until
+the next sync, and `_recordUnconfirmed` rewrites a stale sidecar. Also, `acquire`
+busy-waits with `sleep()` (`:392`) for up to 600 s, which freezes the whole isolate
+(the UI) while the tray or another process holds the file.
+**Correct:** `Future<bool> acquire()` with one async mutex per path. Re-entrancy only
+for the same logical task (a `Zone` value set by the outer holder). Poll the file lock
+with `await Future.delayed(500 ms)` and a `Stopwatch` deadline. Remove `_sendTail`. Test:
+a send blocked mid-submit (a `Completer` in the fake) plus a concurrent sync. The sync
+must wait, and the history must contain both afterwards.
+
+### A-M2 · must-fix · A corrupt unconfirmed sidecar breaks the send instead of being quarantined
+
+`automation/excuse_history.dart:252-262` vs `excuse_history.py:198-218`. Python
+quarantines corrupt JSON or bad UTF-8 and reads `[]`. In Dart, `jsonDecode` throws a
+`FormatException` that escapes `_sendExcuseInner` (`automation.dart:1344` catches only
+`FileSystemException`). The send then leaves **no audit record** and `excusePending`
+aborts. Invalid UTF-8 surfaces as a `FileSystemException`, so it becomes "failed"
+instead of being quarantined.
+**Correct:** treat a `FormatException` or a UTF-8 decode failure as corrupt:
+`quarantineCorruptFile(path)` and return `[]`. Other I/O errors rethrow (they become
+"failed" like Python's `OSError`). Test: a corrupt sidecar is quarantined, the send
+goes on, and the audit has the record.
+
+### A-M3 · must-fix · `fetchBakalariData` skips Python's reset and prelude
+
+`automation/automation.dart:651-677` rebuilds `bakalari_data.fetch_data` but leaves out
+its reset (`bakalari_data.py:378-401`: `timetable_sources`, `timetableData`, absence,
+grades, stable, `substitutions = None`, …) and its `_raise_if_cancelled()` + `login()`
+prelude. A reused `Strakalari` gets old and new timetable sources merged together, and
+stale absences reach `generateExcuses`.
+**Correct:** port `fetch_data` into `DataMixin.fetchData()` line by line and have
+`Strakalari.fetchBakalariData` forward the cancel flags and call it. Test: two refreshes
+on one object, where the second sees only fresh data.
+
+### A-M4 · must-fix · Files are not byte-identical on Windows
+
+Python writes text mode, so files get CRLF on Windows (`helpers.py:452`, `audit.py:62`,
+`automation.py:332`). Dart writes LF (`storage/helpers.dart:445`,
+`automation/audit.dart:77`, `automation/automation.dart:636`). Proven: when Dart
+rewrites a Python-written `data_cache.json` or `already_excused_lessons.json`, bytes
+change from `{\r\n` to `{\n`. The audit line separators differ too: Python
+`json.dumps` default `", "` / `": "` vs compact `jsonEncode` (`audit.dart:74`).
+**Correct:** on Windows, emit `\r\n` in `atomicWriteJson`, audit and log lines. Make
+audit lines use Python's separators. Add a committed cross test: Python writes, Dart
+rewrites, bytes match, for config, cache, history, sidecar, planned skips and presets.
+
+### A-M5 · must-fix · Key entry name isn't normalized like Python
+
+`storage/secret_store.dart:39-44` vs `secret_store.py:49`
+`normcase(abspath(data_dir))`. Dart doesn't turn `/` into `\`, drop trailing
+separators or collapse `..`. With `STRAKALARI_DATA_DIR=C:/x/data` or `…\data\`, Dart
+asks for a different `fernet-key:` entry than Python, creates a new key, and the stored
+passwords are lost.
+**Correct:** `p.normalize(p.absolute(dataDir))`, then lowercase on Windows. Add parity
+cases for forward slashes, a trailing separator, `..` and mixed case (pure string
+function, no key store).
+
+### A-M6 · must-fix · Without a registered key store, Dart silently creates `secret.key`
+
+`storage/secret_store.dart:126` (and `:282, :309, :335`): `keyStoreBackend == null`
+falls back to the file. Python's default is the real OS keyring
+(`secret_store.py:257`). Proven: the Dart dry-run CLI created `secret.key` in a fresh
+data folder, where Python used Windows Credential Manager. Any desktop entry point that
+forgets to register the backend creates a new key. On the next start with the backend,
+the store and the file differ, the rule "use the file" wins, and Python's passwords are
+unreadable for **both** apps.
+**Correct:** on desktop, a missing backend throws `KeyStoreUnavailable` unless
+`STRAKALARI_NO_KEYRING` is set or a test opts in explicitly. Tools and CLIs set
+`STRAKALARI_NO_KEYRING` themselves.
+
+### A-M7 · must-fix · The parity oracle isn't reproducible
+
+Regenerating `tools/parity/dump.py` changes `test/parity/schedule.json` case 16
+(`stableWeeklyHours`, key order `NJ, AJ` → `AJ, NJ`, values equal). Python
+`schedule.py:253` iterates a `set`, so the order follows `PYTHONHASHSEED`. Not a hand
+edit, but the `git diff --exit-code` gate fails.
+**Correct:** `dump.py` re-runs itself with `PYTHONHASHSEED=0` when that isn't already
+set. Regenerate, commit, and note it in the module docstring.
+
+### A-M8 · must-fix · STATUS.md is not accurate
+
+- It says phases 5–9 are "done". The UI isn't wired to the core, the soak was never run
+  for days, and the on-device and Sandbox tests are pending.
+- "Dry-run parity identical" compared cache **keys** only. My full comparison found the
+  40-day timetable gap (A-B1). The demo data also produced **0** pending excuses, so the
+  auto-excuse path was never compared.
+- Several module rows claim tests that exist in neither suite: `test_lunch_same_pick.py`
+  (5), 3 of `test_lunch_auto_user_choice.py`, 5 window/tray cases of
+  `test_scheduler_retry.py`, and `test_order_latch.py`'s AppState latch (4).
+
+**Correct:** mark phases 5–9 "in progress, unreviewed". For every Python test file,
+list each Python test → Dart test, or **Deferred (phase N)** / **Dropped (reason)**.
+Many Dart tests also don't follow the "same names in camelCase" rule (`lunch_auto_test`
+uses sentences), which makes this mapping necessary.
+
+### Should-fix
+
+- **A-S1** `automation.dart:830-835`: `List.sort` isn't stable for lists over 32
+  entries, while Python `sorted` is (`automation.py:464`). Build the list as
+  cancellations then orders (two filtered passes).
+- **A-S2** Python-compatible float formatting in the JSON writers. Python repr gives
+  `1e-07` and `1e+16`, Dart gives `1e-7` and `10000000000000000.0` (proven).
+- **A-S3** Timeouts use `DateTime.now()` (`excuse_history.dart:385,391`,
+  `helpers.dart:302,369,376`). Use a `Stopwatch` for deadlines and `clock.now()` for the
+  stale-file age.
+- **A-S4** `tools/parity/soak_refresh.py` and `fetch.py` use the real keyring, so every
+  soak run stores a key for a throwaway folder in the owner's Windows Credential Manager.
+  Set `os.environ["STRAKALARI_NO_KEYRING"] = "1"` before the imports.
+- **A-S5** `bin/refresh_dryrun.dart --send-day` sends a **real** excuse with no host
+  check. Refuse unless the host is `127.0.0.1`, `localhost` or `[::1]`.
+- **A-S6** The dry-run parity scripts should also run `excusePending()` in dry run and
+  compare the whole cache, history, sidecar and audit (see "What I verified").
+- **A-S7** `automation/scheduler.dart:82` `typedef Job = Object? Function()` can't await
+  the async `runRefresh`. An async job counts as "ok" at once and its errors never cause
+  the 5-minute retry. Make it `FutureOr<Object?> Function()` and await it.
+- **A-S8** `http_session.dart:628-641` and `strava/client.dart:277-282` retry on any
+  `IOException`. Python retries only `RemoteProtocolError` / `ReadError` (connection
+  closed before a reply). Narrow the retry to those cases.
+- **A-S9** `DartIoHttpTransport` has no connect timeout (`openUrl` is unbounded). Set
+  `connectionTimeout` (also needed for A-B2).
+- **A-S10** `automation.dart:553-607` keeps its own copy of the log redaction "in sync"
+  with `error_report`. Call the `error_report` functions now that they're ported.
+
+### Notes
+
+- **A-N1** `refresh.dart:245-255` swallows a throwing cancel predicate (Python
+  propagates it). `refresh.dart:358-367` falls back to today when the school-year start
+  fails (Python raises). `writeLog` creates the parent folder (Python doesn't). Align
+  these or list them as deviations.
+- **A-N2** Request bodies differ only in JSON spacing (Strava `_post` body, the Komens
+  list param). They are equivalent JSON, accepted.
+- **A-N3** For Checkpoint C: `wakeup.dart:847,873` doesn't sort keys like Python
+  `sort_keys=True`. Harmless for the Java parser.
+- **A-N4** `automation_paused` gating, the outbox gate (`last_outbox_sync_ok`), the
+  history coverage check, `historyEntries`, `mergeSentExcuses`, `resolveUnconfirmed`,
+  `executeExcuse` (outbox before/after, `sendOnce` without retry or redirects, expired
+  session) and the Strava `saveConfirm` (one save, verified on a fresh menu) match
+  Python line by line.
+
+### Deviations (STATUS list): sign-off
+
+Accepted: private→public names, `t(args:)`, the `fernetFactory` seam, hermetic test
+data folders, the `ConfigManager` factory and `StateError`, the real-lock save test,
+typed `normalizeHistoryItem`, deep `jsonEquals`, `html_unescape`, half-even `_round2`,
+the hand-written `HttpTransport` (manual redirects; but see A-B2, A-S8, A-S9),
+`BakalariClientBase` mixins, nullable `sentExcuses`, `session.json` extras,
+`UserError.cause`, the public outbox helpers, the UTC `dateState`, the `selectedDates`
+list, `apiRoot` netloc, `List<String>` blacklist, dropping `tls.py`, the
+canonical-name unification, ban matching via `matching.dart`, `bandsValid` accepting
+bools, `LessonSource`, `_pyRepr`, `mealText`, the `buildPrompt` wording,
+`updateStableBaseline` in `DataMixin`, `RefreshApp`, async methods, named optional
+params, and the `getUserDataDir` writability probe (fine for the per-user Inno install
+in `{localappdata}\Programs`).
+Rejected or conditional: the static async send mutex (replace, A-M1); the Strava retry
+reusing `isNeverSentCause` (A-B2, A-S8); "DST-safe stepping only in
+forecast/planned_skips/planner" (extend everywhere, A-B1); hook defaults (accepted
+except `planAutoOrdersHook`, A-B4); the local redaction mirror (A-S10).
+Dropped list: also list `test_tls_bundle.py` and `test_frozen_ssl.py` under *Dropped*
+with the reason (currently only the module is listed). Accepted.
+
+### Answers to the Checkpoint A questions in STATUS.md
+
+1. `planAutoOrdersHook`: make it async now (A-B4).
+2. `bin/refresh_dryrun.dart --send-day`: may stay only with the localhost guard (A-S5).
+3. No `today` parameter for `planAutoOrders`. It reads `clock.now()`, so tests use `withClock`.
+4. Hook names and signatures are accepted as test seams. Every hook must default to the
+   real function (no throwing defaults).
+5. DST drift: fix it everywhere now (A-B1).
+
+---
+
+## What I verified, and how
+
+All commands ran in the worktree with Flutter 3.44.8 / Dart 3.12.2. Scripts and outputs
+are in the reviewer's scratchpad (not committed).
+
+| Check | Result |
+|---|---|
+| `dart analyze` / `dart test` (core) | clean / **720 passed** |
+| `flutter analyze` / `flutter test` (app) | clean / **123 passed, 1 skipped** (`packaging_privacy` APK test, needs `STRAKALARI_APK`) |
+| Python suite (`pytest tests/`) | **1643 passed** |
+| `dump.py` regeneration + `git diff --exit-code` | **1 difference**, key order only (A-M7); restored afterwards |
+| Session lock, Windows: Python holds → Dart tries, and Dart holds → Python tries | both refused correctly; second handle in the same Dart process refused |
+| Lock semantics on Linux (WSL, Python flock vs fcntl) | fcntl lock taken while flock held; second fcntl lock in the same process taken (A-B5) |
+| Fernet Python ↔ Dart with a throwaway key (Czech text and emoji) | both directions decrypt |
+| JSON writer byte check (Python writes → Dart rewrites → Python rewrites) | differs: CRLF vs LF, float repr (A-M4, A-S2) |
+| DST probe: the real Dart functions vs Python at 15.4 / 30.3 / 24.–27.10.2026 | 4 wrong results (A-B1) |
+| Dry-run parity: demo server, two throwaway folders, `runRefresh` + `excusePending()` in dry run, full JSON compare | audit, history, sidecar, result: **identical**; cache: Dart is missing 40 timetable days and 8 history weeks (A-B1) |
+| Test counts per file (Dart JSON reporter) vs `pytest --collect-only` | Dart 844 (720 core + 124 app) vs Python 1643. Safety files compared case by case: `test_bakalari_excuse` 14 → 14, `test_session_lock` 6 → 6 (2 tray/window cases rewritten as lock-contract tests), automation/refresh/history/audit 168 → 139 (the rest are AppState cases, see A-M8) |
+| Test integrity (`git log -p` on Dart tests; grep for `skip:`, `anything`, `try`/`catch` around `expect`) | no loosened assertions, no catch around expects; the one `skip:` is the APK check. Flipped ordering fakes: A-B3 |
+| `package:flutter` in core, build_runner / `*.g.dart`, root `pubspec.lock` committed, Flutter 3.44.8 + `--enforce-lockfile` in `dart.yml` | OK |
+| Committed personal data, real hosts contacted in tests, upstream, `Co-Authored-By` / `Claude-Session` | none |
+| `main` merged and ported | `main` = `0ffdcff`, an ancestor of the branch; STATUS says 0ffdcff. OK |
+
+**Not verified at this checkpoint:** macOS behavior of flock vs fcntl; Android;
+planned-skips and preset file round trips; config writes with encrypted values (they
+would touch the owner's key store). Re-check these after the fixes, with
+`STRAKALARI_NO_KEYRING=1`.
+
+Side effect to clean up: my Python dry run stored one throwaway key in Windows
+Credential Manager, `Strakalari / fernet-key:d242a8e8433a6c40` (my scratch folder, no
+real data). The owner may delete it.
