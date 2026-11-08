@@ -322,7 +322,7 @@ String? tryFileLock(String lockPath, {double staleAfterS = 120}) {
         .createSync(recursive: true);
     try {
       if (File(lockPath).existsSync()) {
-        final age = DateTime.now().difference(
+        final age = clock.now().difference(
             File(lockPath).lastModifiedSync());
         if (age.inMicroseconds < (staleAfterS * 1e6).round()) return null;
         try {
@@ -419,15 +419,15 @@ class InterProcessLock {
     if (held) {
       throw StateError('lock $path is already held by this object');
     }
-    final deadline =
-        DateTime.now().add(Duration(microseconds: (timeoutS * 1e6).round()));
+    final stopwatch = Stopwatch()..start();
+    final timeout = Duration(microseconds: (timeoutS * 1e6).round());
     while (true) {
       try {
         if (_tryOnce()) return true;
       } on FileSystemException {
         return false;
       }
-      if (!DateTime.now().isBefore(deadline)) return false;
+      if (stopwatch.elapsed >= timeout) return false;
       sleep(const Duration(milliseconds: 250));
     }
   }

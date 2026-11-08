@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:clock/clock.dart';
 import 'package:test/test.dart';
 
 import 'package:strakalari_core/src/automation/excuse_history.dart';
@@ -366,6 +367,17 @@ void main() {
       expect(tryFileLock(lock), isNull);
       releaseFileLock(token);
       expect(tryFileLock(lock), isNotNull);
+    });
+
+    test('staleLockReclaimedUsingClockNow', () {
+      final lock = '${tmp!.path}/stale.lock';
+      final token = tryFileLock(lock, staleAfterS: 120);
+      expect(token, isNotNull);
+      final future = DateTime.now().add(const Duration(seconds: 125));
+      withClock(Clock.fixed(future), () {
+        expect(tryFileLock(lock, staleAfterS: 120), isNotNull);
+      });
+      releaseFileLock(token);
     });
   });
 
