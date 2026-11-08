@@ -122,9 +122,11 @@ void main() {
     });
 
     test('networkFailuresExplainThemselves', () async {
-      final refused = SocketException(
+      // The fake throws ConnectFailure for its refused case, like the
+      // production transport does for DNS + connect failures.
+      final refused = ConnectFailure(SocketException(
           '[Errno 11001] getaddrinfo failed',
-          osError: OSError('[Errno 11001] getaddrinfo failed', 11001));
+          osError: OSError('[Errno 11001] getaddrinfo failed', 11001)));
       final bak = session(_ThrowingTransport(refused));
       await expectLater(
           bak.login(),

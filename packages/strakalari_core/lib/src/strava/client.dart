@@ -285,7 +285,7 @@ class StravaClientBase {
       throw UserError(timeoutUserMessage());
     } on IOException catch (e) {
       log('Strava request failed: $path: ${e.runtimeType}: $e');
-      if (e is SocketException) {
+      if (e is ConnectFailure || e is SocketException) {
         throw UserError(t('strava_unreachable'));
       }
       throw UserError(t('strava_connection_lost'));

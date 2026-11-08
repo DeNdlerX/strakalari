@@ -291,13 +291,40 @@ void main() {
     });
 
     group('networkFailure', () {
-      for (final (error, uncertain) in [
-        (SocketException('Connection refused'), false),
-        (TimeoutException('read timed out'), true),
-        (SocketException('Connection reset by peer'), true),
+      // Phase, not error code, decides: only a ConnectFailure (DNS +
+      // connect, before any request byte left) means "never sent".
+      // Anything the fake throws from the post handler models a failure
+      // after openUrl returned, i.e. "maybe sent" — even ETIMEDOUT.
+      for (final (name, error, uncertain) in [
+        (
+          'connectRefused',
+          ConnectFailure(SocketException('Connection refused')),
+          false,
+        ),
+        (
+          'connectTimedOut',
+          ConnectFailure(TimeoutException('connect timed out')),
+          false,
+        ),
+        (
+          'readTimedOut',
+          TimeoutException('read timed out'),
+          true,
+        ),
+        (
+          'resetAfterSend',
+          SocketException('Connection reset by peer'),
+          true,
+        ),
+        (
+          'timedOutAfterSend',
+          SocketException('Connection timed out',
+              osError: OSError('', 110)),
+          true,
+        ),
       ]) {
         test(
-            'tellsNeverSentFromMaybeSent (${error.runtimeType})',
+            'tellsNeverSentFromMaybeSent ($name)',
             () async {
           late final ExcuseSchool school;
           Object? fail(FakeRequest request) {

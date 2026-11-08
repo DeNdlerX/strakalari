@@ -459,8 +459,10 @@ class HttpResponseData {
 }
 
 /// A single request without automatic redirects (the session follows them
-/// by hand to capture cookies at every hop). Throws [SocketException] on
-/// network failure and [TimeoutException] on timeout.
+/// by hand to capture cookies at every hop). Throws [ConnectFailure]
+/// when DNS + connect fails (the request certainly never left),
+/// [SocketException] on later network failure and [TimeoutException]
+/// on timeout.
 abstract interface class HttpTransport {
   Future<HttpResponseData> send(String method, Uri url,
       {Map<String, String>? headers,
@@ -468,6 +470,20 @@ abstract interface class HttpTransport {
       Duration timeout});
 
   void close();
+}
+
+/// A transport failure raised before any request byte could leave the
+/// machine: DNS + connect failed (or the connect timed out). Anything
+/// thrown after [DartIoHttpTransport] opened the connection means the
+/// request may already have arrived ("maybe sent").
+final class ConnectFailure implements IOException {
+  /// The connect error from `dart:io` (usually a [SocketException]).
+  final Object cause;
+
+  ConnectFailure(this.cause);
+
+  @override
+  String toString() => 'ConnectFailure: $cause';
 }
 
 /// `dart:io` transport (production).
@@ -480,7 +496,16 @@ class DartIoHttpTransport implements HttpTransport {
       {Map<String, String>? headers,
       List<int>? body,
       Duration timeout = const Duration(seconds: 60)}) async {
-    final request = await _client.openUrl(method, url);
+    // A connect timeout must also surface as "never sent".
+    _client.connectionTimeout = timeout;
+    late final HttpClientRequest request;
+    try {
+      // DNS + connect: the only phase where a failure means the
+      // request certainly never left.
+      request = await _client.openUrl(method, url);
+    } on Object catch (e) {
+      throw ConnectFailure(e);
+    }
     request.followRedirects = false;
     request.persistentConnection = true;
     for (final entry in (headers ?? {}).entries) {
@@ -627,7 +652,9 @@ class BakalariSession {
           _storeCookies(resp);
         } on IOException catch (e) {
           if (once) rethrow;
-          if (e is SocketException && _isRefused(e)) rethrow;
+          // A refused/unreachable host is not a dropped kept-alive
+          // connection: retrying cannot help.
+          if (e is ConnectFailure) rethrow;
           log('Bakaláři connection dropped (${e.runtimeType}), '
               'retrying once: $currentMethod $path');
           raiseIfCancelled(isCancelled);
@@ -647,7 +674,7 @@ class BakalariSession {
       } on IOException catch (e) {
         log('Bakaláři request failed: $currentMethod $path: '
             '${e.runtimeType}: $e');
-        if (e is SocketException && _isRefused(e)) {
+        if (e is ConnectFailure) {
           throw UserError(
               t('bak_unreachable', args: {'host': host}), e);
         }
@@ -852,34 +879,9 @@ class BakalariSession {
   }
 }
 
-/// Transport failures that happen before the request could reach the
-/// server: refused / unreachable / unknown host (like a refused
-/// connection) and connect timeouts. The excuse post uses this to tell
-/// "certainly never sent" from "maybe sent" (read timeouts and anything
-/// else may already have arrived).
-bool isNeverSentCause(Object? error) {
-  if (error is TimeoutException) return false;
-  if (error is SocketException) {
-    return _isRefused(error) ||
-        error.message.toLowerCase().contains('timed out');
-  }
-  return false;
-}
-
-bool _isRefused(SocketException e) {
-  final code = e.osError?.errorCode;
-  if (code != null &&
-      {
-        1, 7, 8, 51, 61, 64, 65, 99, 101, 110, 111, 112, 113, //
-        10060, 10061, 11001, 11004, //
-      }.contains(code)) {
-    return true;
-  }
-  final message = e.message.toLowerCase();
-  return message.contains('refused') ||
-      message.contains('unreachable') ||
-      message.contains('getaddrinfo') ||
-      message.contains('no address') ||
-      message.contains('failed host lookup') ||
-      message.contains('network is down');
-}
+/// Only a [ConnectFailure] means the excuse post certainly never left:
+/// DNS + connect failed before any request byte was written. Anything
+/// thrown after [DartIoHttpTransport] opened the connection (read
+/// timeouts, resets, ETIMEDOUT on an established connection, …) may
+/// already have arrived, so the post must never be repeated.
+bool isNeverSentCause(Object? error) => error is ConnectFailure;
