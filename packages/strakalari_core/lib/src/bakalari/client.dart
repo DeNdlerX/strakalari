@@ -16,6 +16,7 @@ import '../storage/helpers.dart';
 import '../i18n.dart';
 import 'http_session.dart';
 import 'timetable.dart';
+import 'data.dart';
 
 export 'common.dart' show parseTimetableDetail, weekOffsets;
 
@@ -83,7 +84,9 @@ abstract class BakalariClientBase {
   // Already-sent excuses scraped from Komens → Odeslané
   // (see fetch_sent_excuses). Empty until synced; never part of
   // fetch_data() so routine refreshes stay read-only and fast.
-  List<Map<String, Object?>> sentExcuses = [];
+  // Tri-state: a list (possibly empty) = the outbox was actually read,
+  // null = unknown (not yet synced, failed or skipped).
+  List<Map<String, Object?>>? sentExcuses = [];
   // Last sent-excuse sync failure ("") = fresh/OK; non-empty = unknown.
   String sentExcusesError = '';
   // First day of the range Odeslané showed on the last sync (the
@@ -266,7 +269,8 @@ abstract class BakalariClientBase {
 
 /// Bakaláři web session: login and requests; data fetching and the
 /// excuse form live in the mixins below.
-class BakalariClient extends BakalariClientBase with TimetableMixin {
+class BakalariClient extends BakalariClientBase
+    with TimetableMixin, DataMixin {
   BakalariClient(super.configData, {super.logger, super.transport});
 }
 

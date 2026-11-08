@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 2 · Next step: Phase 2 — port bakalari_data.
+Current phase: 2 · Next step: Phase 2 — port bakalari_excuse.
 Phase 1 (core foundation) is done: models, helpers, config, cache, i18n,
 audit, excuse_history, Fernet + secret_store, parity harness.
 
@@ -33,7 +33,7 @@ State: todo = not started, tests = Dart tests written, done = ported + green.
 | strakalari/core/autostart.py | core platform/autostart.dart + app impl | test_autostart.py, test_autostart_platforms.py | todo |
 | strakalari/core/bakalari_client.py | core bakalari/client.dart | test_bakalari_client.py (base cases) → bakalari_client_test.dart | done |
 | strakalari/core/bakalari_common.py | core bakalari/common.dart | client/data tests (hour-index, week offsets, removed/room-move rows) → common_test.dart | done |
-| strakalari/core/bakalari_data.py | core bakalari/data.dart | test_absence_details.py, test_marks_view.py, test_sent_excuses.py, test_substitution_feed_days.py | todo |
+| strakalari/core/bakalari_data.py | core bakalari/data.dart (DataMixin) | test_bakalari_http.py (read cases), test_sent_excuses.py, test_grades.py (client cases) → bakalari_data_test.dart (15) | done |
 | strakalari/core/bakalari_excuse.py | core bakalari/excuse.dart | test_bakalari_excuse.py, test_excuse_generation.py | todo |
 | strakalari/core/bakalari_http.py | core bakalari/http_session.dart | test_bakalari_http.py (session cases) → http_session_test.dart (10) + parity_http_session_test.dart | done |
 | strakalari/core/bakalari_timetable.py | core bakalari/timetable.dart (TimetableMixin on BakalariClientBase) | test_bakalari_client.py (add/perm/stable/week cases) → timetable_test.dart | done |
@@ -181,6 +181,14 @@ test_tls_bundle.py, test_frozen_ssl.py (frozen CA bundle no longer exists).
   (needs `AppState` ignore list).
 - test_unconfirmed_excuses.py → `TestSendPath`, `TestOutboxSettles`,
   `TestRefreshGate` move to phase 4 (need `Strakalari` / `run_refresh`).
+- test_grades.py → extractor cases live in `extractors_test.dart`;
+  `get_grades` client cases live in `bakalari_data_test.dart` (done).
+- test_sent_excuses.py → `TestSentExcuseEntries` + `TestMergeSentExcuses`
+  are ported (`extractors_test.dart`, `excuse_history_test.dart`); the
+  sync tests move to phase 4 (need `Strakalari`).
+- test_absence_details.py → phase 3 (needs `forecast`).
+- test_marks_view.py → phase 5 (needs Flet views).
+- test_substitution_feed_days.py → phase 3 (needs `schedule`).
 - `HistoryLock` is ported with excuse_history but its test lands in
   phase 4 (`test_concurrent_sends_submit_once`).
 
@@ -253,6 +261,11 @@ test_tls_bundle.py, test_frozen_ssl.py (frozen CA bundle no longer exists).
   `excuse_history.dart` keeps its identical private copy (no churn).
 - Password validation is eager like Python (constructor argument),
   while the provider still re-reads on every login.
+- `sentExcuses` is nullable (tri-state: list = read, null = unknown),
+  matching Python's `None`.
+- `session.json` grew optional `queryParams` + `jsonBody` (the data and
+  excuse mixins need both); `update_stable_baseline` / `fetch_data`
+  stay in `data.dart`'s future: they need `schedule.dart` (phase 3).
 
 ## Questions for the owner / reviewer
 

@@ -159,6 +159,24 @@ void main() {
       expect(server.logins, 1);
       expect(bak.loggedIn, isTrue);
     });
+
+    test('droppedConnectionIsRetriedOnceForReads', () async {
+      final server = FakeBakalari({
+        'POST /Teaching/Subjects': {
+          'data': <Object?>[]
+        },
+      });
+      // Drop the subjects POST (call 4: login GET, login POST, dashboard
+      // GET, then the read) — the retry must succeed.
+      final flaky = _FlakyTransport(server, 4);
+      final bak = session(flaky);
+      await bak.login();
+      final resp =
+          await bak.request('POST', '/Teaching/Subjects');
+      expect(resp.statusCode, 200);
+      expect(flaky.calls, 5);
+      expect(server.logins, 1);
+    });
   });
 }
 
@@ -195,4 +213,29 @@ class _ThrowingTransport implements HttpTransport {
 
   @override
   void close() {}
+}
+
+class _FlakyTransport implements HttpTransport {
+  final HttpTransport inner;
+  final int dropOnCall;
+  int calls = 0;
+
+  _FlakyTransport(this.inner, this.dropOnCall);
+
+  @override
+  Future<HttpResponseData> send(String method, Uri url,
+      {Map<String, String>? headers,
+      List<int>? body,
+      Duration timeout = const Duration(seconds: 60)}) {
+    calls += 1;
+    if (calls == dropOnCall) {
+      throw SocketException(
+          'Server disconnected without sending a response');
+    }
+    return inner.send(method, url,
+        headers: headers, body: body, timeout: timeout);
+  }
+
+  @override
+  void close() => inner.close();
 }

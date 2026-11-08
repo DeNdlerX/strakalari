@@ -813,9 +813,30 @@ class BakalariSession {
     String path, {
     Map<String, String>? headers,
     List<int>? body,
+    Map<String, String>? queryParams,
+    Map<String, Object?>? jsonBody,
   }) async {
-    final resp =
-        await request(method, path, headers: headers, body: body);
+    var requestPath = path;
+    if (queryParams != null && queryParams.isNotEmpty) {
+      final base = Uri.parse(path.startsWith('http') ? path : '$root$path');
+      final merged = Map<String, String>.of(base.queryParameters)
+        ..addAll(queryParams);
+      final rebuilt = base.replace(queryParameters: merged).toString();
+      requestPath = requestPath.startsWith('http')
+          ? rebuilt
+          : rebuilt.substring(root.length);
+    }
+    var requestHeaders = headers;
+    var requestBody = body;
+    if (jsonBody != null) {
+      requestHeaders = {
+        ...?requestHeaders,
+        'Content-Type': 'application/json',
+      };
+      requestBody = utf8.encode(jsonEncode(jsonBody));
+    }
+    final resp = await request(method, requestPath,
+        headers: requestHeaders, body: requestBody);
     late final Object? payload;
     try {
       payload = jsonDecode(resp.text);
