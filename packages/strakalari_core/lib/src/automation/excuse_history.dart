@@ -257,7 +257,16 @@ List<Map<String, Object?>> loadUnconfirmed(String historyPath,
     [Encoding encoding = utf8]) {
   final path = unconfirmedPath(historyPath);
   if (!File(path).existsSync()) return [];
-  final data = jsonDecode(File(path).readAsStringSync(encoding: encoding));
+  // Read bytes first: an I/O error rethrows (Python's OSError), while a
+  // bad-UTF-8 or bad-JSON file is corrupt and gets quarantined.
+  final bytes = File(path).readAsBytesSync();
+  final Object? data;
+  try {
+    data = jsonDecode(encoding.decode(bytes));
+  } on FormatException {
+    quarantineCorruptFile(path);
+    return [];
+  }
   if (data is! List) return [];
   return data
       .map(_asStrMap)

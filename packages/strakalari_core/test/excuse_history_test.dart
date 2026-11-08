@@ -295,6 +295,27 @@ void main() {
         dir.deleteSync(recursive: true);
       }
     });
+
+    test('corruptSidecarIsQuarantinedAndReadAsEmpty', () {
+      for (final bytes in [
+        utf8.encode('{not json'),
+        [0xff, 0xfe, 0x00, 0x80], // invalid UTF-8
+      ]) {
+        final dir =
+            Directory.systemTemp.createTempSync('unconfirmed_bad_');
+        try {
+          final hist = '${dir.path}/history.json';
+          File(unconfirmedPath(hist)).writeAsBytesSync(bytes);
+          expect(loadUnconfirmed(hist), isEmpty);
+          expect(File(unconfirmedPath(hist)).existsSync(), isFalse);
+          expect(
+              dir.listSync().any((e) => e.path.contains('.corrupt-')),
+              isTrue);
+        } finally {
+          dir.deleteSync(recursive: true);
+        }
+      }
+    });
   });
 
   group('mergeSentExcuses', () {

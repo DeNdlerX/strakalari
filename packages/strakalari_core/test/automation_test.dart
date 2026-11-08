@@ -904,6 +904,23 @@ void main() {
       expect(client.executeCalls, 1);
     });
 
+    test('corruptSidecarIsQuarantinedAndTheSendGoesOn', () async {
+      final (a, client) = app(uncertain: false);
+      final sidecar = unconfirmedPath('${tmp.path}/history.json');
+      File(sidecar).writeAsStringSync('{not json');
+      expect(await a.sendExcuse(Map<String, Object?>.of(lesson()), 'x'),
+          'failed');
+      // The send ran (it was not aborted by the FormatException) ...
+      expect(client.executeCalls, 1);
+      // ... and the bad file was moved aside, not left in place.
+      expect(File(sidecar).existsSync(), isFalse);
+      expect(
+          tmp
+              .listSync()
+              .any((e) => e.path.contains('unconfirmed.json.corrupt-')),
+          isTrue);
+    });
+
     test('certainFailureIsRetryable', () async {
       final (a, client) = app(uncertain: false);
       expect(await a.sendExcuse(Map<String, Object?>.of(lesson()), 'x'),
