@@ -23,4 +23,7 @@ export 'src/bakalari/client.dart';
 export 'src/bakalari/timetable.dart';
 export 'src/bakalari/data.dart';
 export 'src/bakalari/excuse.dart';
+export 'src/strava/extractors.dart';
+export 'src/strava/ordering.dart';
+export 'src/strava/client.dart';
 export 'src/error_report.dart';

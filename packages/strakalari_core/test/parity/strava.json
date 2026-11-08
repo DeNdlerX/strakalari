@@ -1,0 +1,267 @@
+{
+  "module": "strava",
+  "cases": [
+    {
+      "fn": "cleanText",
+      "args": [
+        "<b>Guláš</b> &amp; knedlík<br>zítra"
+      ],
+      "expected": "Guláš & knedlík zítra"
+    },
+    {
+      "fn": "cleanText",
+      "args": [
+        "  a\t\nb  "
+      ],
+      "expected": "a b"
+    },
+    {
+      "fn": "cleanText",
+      "args": [
+        ""
+      ],
+      "expected": ""
+    },
+    {
+      "fn": "cleanText",
+      "args": [
+        null
+      ],
+      "expected": ""
+    },
+    {
+      "fn": "menuTables",
+      "args": [
+        {
+          "table1": [
+            {
+              "id": 1
+            }
+          ],
+          "other": [
+            {
+              "id": 2
+            }
+          ],
+          "table0": [
+            {
+              "id": 3
+            }
+          ],
+          "table2": [],
+          "tableX": [
+            {
+              "id": 4
+            }
+          ]
+        }
+      ],
+      "expected": [
+        [
+          "table0",
+          [
+            {
+              "id": 3
+            }
+          ]
+        ],
+        [
+          "table1",
+          [
+            {
+              "id": 1
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "fn": "menuTables",
+      "args": [
+        []
+      ],
+      "expected": []
+    },
+    {
+      "fn": "isOrderableMeal",
+      "args": [
+        {
+          "polevka": "A",
+          "zkratkaProduktu": "x"
+        }
+      ],
+      "expected": false
+    },
+    {
+      "fn": "isOrderableMeal",
+      "args": [
+        {
+          "polevka": "N",
+          "zkratkaProduktu": ""
+        }
+      ],
+      "expected": false
+    },
+    {
+      "fn": "isOrderableMeal",
+      "args": [
+        {
+          "polevka": "N",
+          "zkratkaProduktu": "zkratka"
+        }
+      ],
+      "expected": true
+    },
+    {
+      "fn": "mealText",
+      "args": [
+        {
+          "druh_popis": "oběd 1",
+          "nazev": "Guláš ",
+          "alergeny": [
+            [
+              "01",
+              "Obiloviny"
+            ],
+            [
+              "07",
+              "Mléko"
+            ],
+            [
+              "",
+              "prázdné"
+            ],
+            "neplatné"
+          ]
+        }
+      ],
+      "expected": "oběd 1 - Guláš(01, 07 )"
+    },
+    {
+      "fn": "mealText",
+      "args": [
+        {
+          "druh_popis": "polévka",
+          "nazev": "Rajská",
+          "alergeny": []
+        }
+      ],
+      "expected": "polévka - Rajská"
+    },
+    {
+      "fn": "menuFromReply",
+      "args": [
+        {
+          "table0": [
+            {
+              "datum": "07.09.2026",
+              "druh": "P",
+              "id": 0,
+              "pocet": 0,
+              "polevka": "A",
+              "zkratkaProduktu": "",
+              "druh_popis": "polévka",
+              "nazev": "Rajská",
+              "alergeny": []
+            },
+            {
+              "datum": "07.09.2026",
+              "druh": "1",
+              "id": 1,
+              "pocet": 1,
+              "polevka": "N",
+              "zkratkaProduktu": "zkratka",
+              "druh_popis": "oběd 1",
+              "nazev": "Guláš",
+              "alergeny": [
+                [
+                  "01",
+                  "Obiloviny"
+                ]
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "07.09.2026": {
+            "table0&-1&0": "Monday 07/09/2026",
+            "table0&1&0": "oběd 1 - Guláš(01 )"
+          }
+        },
+        {
+          "07.09.2026": "table0&1&0"
+        }
+      ]
+    },
+    {
+      "fn": "menuFromReply",
+      "args": [
+        {}
+      ],
+      "expected": [
+        {},
+        {}
+      ]
+    },
+    {
+      "fn": "orderSheet",
+      "args": [
+        [
+          {
+            "date": "2026-10-07",
+            "druh": "2",
+            "pocet": 1
+          },
+          {
+            "date": "2026-10-07",
+            "druh": "1",
+            "pocet": 0
+          },
+          {
+            "date": "2026-10-08",
+            "druh": "3",
+            "pocet": 0
+          }
+        ]
+      ],
+      "expected": "&lt;?xml version=\"1.0\" encoding=\"UTF-8\"?&gt;\n  &lt;VFPData&gt;\n     &lt;xsd:schema xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:msdata=\"urn:schemas-microsoft-com:xml-msdata\" id=\"VFPData\"&gt;\n        &lt;xsd:element name=\"VFPData\" msdata:IsDataSet=\"true\"&gt;\n           &lt;xsd:complexType&gt;\n              &lt;xsd:choice maxOccurs=\"unbounded\"&gt;\n                 &lt;xsd:element name=\"rozpisobjednavek\" minOccurs=\"0\" maxOccurs=\"unbounded\"&gt;\n                    &lt;xsd:complexType&gt;\n                       &lt;xsd:sequence&gt;\n                          &lt;xsd:element name=\"datum\" type=\"xsd:date\" /&gt;\n                          &lt;xsd:element name=\"druh\"&gt;\n                             &lt;xsd:simpleType&gt;\n                                &lt;xsd:restriction base=\"xsd:string\"&gt;\n                                   &lt;xsd:maxLength value=\"1\" /&gt;\n                                &lt;/xsd:restriction&gt;\n                             &lt;/xsd:simpleType&gt;\n                          &lt;/xsd:element&gt;\n                          &lt;xsd:element name=\"pocet\"&gt;\n                             &lt;xsd:simpleType&gt;\n                                &lt;xsd:restriction base=\"xsd:decimal\"&gt;\n                                   &lt;xsd:totalDigits value=\"5\" /&gt;\n                                   &lt;xsd:fractionDigits value=\"0\" /&gt;\n                                &lt;/xsd:restriction&gt;\n                             &lt;/xsd:simpleType&gt;\n                          &lt;/xsd:element&gt;\n                       &lt;/xsd:sequence&gt;\n                    &lt;/xsd:complexType&gt;\n                 &lt;/xsd:element&gt;\n              &lt;/xsd:choice&gt;\n              &lt;xsd:anyAttribute namespace=\"http://www.w3.org/XML/1998/namespace\" processContents=\"lax\" /&gt;\n           &lt;/xsd:complexType&gt;\n        &lt;/xsd:element&gt;\n     &lt;/xsd:schema&gt;&lt;rozpisobjednavek&gt;\n&lt;datum&gt;2026-10-07&lt;/datum&gt;\n&lt;druh&gt;2&lt;/druh&gt;\n&lt;pocet&gt;1&lt;/pocet&gt;\n&lt;/rozpisobjednavek&gt;&lt;rozpisobjednavek&gt;\n&lt;datum&gt;2026-10-07&lt;/datum&gt;\n&lt;druh&gt;1&lt;/druh&gt;\n&lt;pocet&gt;0&lt;/pocet&gt;\n&lt;/rozpisobjednavek&gt;&lt;rozpisobjednavek&gt;\n&lt;datum&gt;2026-10-08&lt;/datum&gt;\n&lt;druh&gt;3&lt;/druh&gt;\n&lt;pocet&gt;0&lt;/pocet&gt;\n&lt;/rozpisobjednavek&gt;\n&lt;/VFPData&gt;"
+    },
+    {
+      "fn": "apiRoot",
+      "args": [
+        "strava.cz"
+      ],
+      "expected": "https://app.strava.cz"
+    },
+    {
+      "fn": "apiRoot",
+      "args": [
+        "https://www.strava.cz/jidlo"
+      ],
+      "expected": "https://app.strava.cz"
+    },
+    {
+      "fn": "apiRoot",
+      "args": [
+        "app.strava.cz"
+      ],
+      "expected": "https://app.strava.cz"
+    },
+    {
+      "fn": "apiRoot",
+      "args": [
+        ""
+      ],
+      "expected": "https://app.strava.cz"
+    },
+    {
+      "fn": "apiRoot",
+      "args": [
+        "kantyna.example.test:8080"
+      ],
+      "expected": "https://kantyna.example.test:8080"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 2 · Next step: Phase 2 — port strava (extractors + client + ordering).
+Current phase: 2 · Next step: Phase 2 — parity_fetch (demo-server JSON parity), then phase 3.
 Phase 1 (core foundation) is done: models, helpers, config, cache, i18n,
 audit, excuse_history, Fernet + secret_store, parity harness.
 
@@ -44,7 +44,7 @@ State: todo = not started, tests = Dart tests written, done = ported + green.
 | strakalari/core/excuse_history.py | core automation/excuse_history.dart | test_excuse_history.py, test_unconfirmed_excuses.py (pure cases) → excuse_history_test.dart (17) + parity_excuse_history_test.dart | done |
 | strakalari/core/extractors/__init__.py | core bakalari/ + strava/ barrels | — | todo |
 | strakalari/core/extractors/bakalari.py | core bakalari/extractors.dart | grades/sent-excuses/substitution/parity cases → extractors_test.dart + parity_bakalari_test.dart | done |
-| strakalari/core/extractors/strava.py | core strava/extractors.dart | (covered by strava tests) | todo |
+| strakalari/core/extractors/strava.py | core strava/extractors.dart | menu/food asserts in strava_test.dart + parity_strava_test.dart | done |
 | strakalari/core/forecast.py | core planning/forecast.dart | test_forecast.py | todo |
 | strakalari/core/gemini.py | core lunches/gemini.dart | test_gemini_key.py, test_gemini_picks.py, test_ai_recommend.py | todo |
 | strakalari/core/grades.py | core planning/grades.dart | test_grades.py, test_grades_math.py, test_grades_minus.py | todo |
@@ -65,8 +65,8 @@ State: todo = not started, tests = Dart tests written, done = ported + green.
 | strakalari/core/school_presets.py | core planning/school_presets.dart | test_school_calendar.py | todo |
 | strakalari/core/secret_store.py | core storage/secret_store.dart + platform/keystore.dart (+ android_bridge.dart iface) | test_secret_store.py → secret_store_test.dart (10); Fernet roundtrip/tamper/key tests → fernet_test.dart (5) | done |
 | strakalari/core/status_notification.py | core status_notification.dart | test_status_notification.py | todo |
-| strakalari/core/strava_client.py | core strava/client.dart | test_strava_client.py, test_strava_low_balance.py | todo |
-| strakalari/core/strava_ordering.py | core strava/ordering.dart | test_strava_ordering.py, test_order_latch.py, test_strava_blacklist_edits.py | todo |
+| strakalari/core/strava_client.py | core strava/client.dart (StravaClientBase) | test_strava_client.py (client cases) → strava_test.dart (19) + parity (strava cases in strava.json) | done |
+| strakalari/core/strava_ordering.py | core strava/ordering.dart (OrderingMixin) | test_strava_client.py (order/save cases) → strava_test.dart + order-sheet byte test | done |
 | strakalari/core/tls.py | — (dropped, see below) | test_tls_bundle.py, test_frozen_ssl.py | dropped |
 | strakalari/core/update.py | core update.dart | test_update.py | todo |
 | strakalari/core/wakeup.py | core wakeup.dart | test_wakeup_and_widget.py, test_wake_ui.py | todo |
@@ -181,6 +181,13 @@ test_tls_bundle.py, test_frozen_ssl.py (frozen CA bundle no longer exists).
   (needs `AppState` ignore list).
 - test_unconfirmed_excuses.py → `TestSendPath`, `TestOutboxSettles`,
   `TestRefreshGate` move to phase 4 (need `Strakalari` / `run_refresh`).
+- test_strava_ordering.py → phase 4 (needs `Strakalari.strava_order_selected`).
+- test_strava_low_balance.py → phase 4 (`strava_order_selected` low-balance
+  path); the refresh/notice/UI tail (`run_refresh`, `claim_low_balance_notice`,
+  `AppState._warn_low_balance`) → phase 4/5 with their owners.
+- test_order_latch.py → phase 4 (needs `Strakalari`).
+- test_strava_blacklist_edits.py + `test_default_blacklist_template_is_empty`
+  → phase 5 (needs `AppState` blacklist editing + the shipped example file).
 - test_grades.py → extractor cases live in `extractors_test.dart`;
   `get_grades` client cases live in `bakalari_data_test.dart` (done).
 - test_excuse_generation.py → phase 4 (needs `automation`
@@ -281,6 +288,15 @@ test_tls_bundle.py, test_frozen_ssl.py (frozen CA bundle no longer exists).
   an hour over DST and truncates a day off (parity case pins the value).
 - Parity caught `calendarState.selectedDates` being a list, not a bare
   string — fixed before commit.
+- `apiRoot` keeps the port/userinfo (Python compares the whole lowercased
+  netloc, not just the host) — parity-caught.
+- `stravaBlacklistJson` is `List<String>` (`'$kw'`); Python keeps raw
+  values. The shipped-template/placeholder and fail-closed quarantine
+  rules are ported as-is.
+- The Strava retry rule reuses `isNeverSentCause` (refused/unreachable =
+  no retry, like Python's ConnectError; dropped reads retry once).
+- `tls.ensure_ca_bundle` has no Dart counterpart: `DartIoHttpTransport`
+  uses the system store (noted, not ported).
 
 ## Questions for the owner / reviewer
 

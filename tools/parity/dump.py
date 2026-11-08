@@ -579,6 +579,80 @@ def http_cases() -> list[dict]:
     return cases
 
 
+def strava_cases() -> list[dict]:
+    from strakalari.core.extractors import strava as _x
+    from strakalari.core import strava_client as _c
+    from strakalari.core import strava_ordering as _o
+
+    cases = []
+    cases.append(_case("cleanText",
+                       _x.clean_text("<b>Guláš</b> &amp; knedlík<br>zítra"),
+                       "<b>Guláš</b> &amp; knedlík<br>zítra"))
+    cases.append(_case("cleanText", _x.clean_text("  a\t\nb  "),
+                       "  a\t\nb  "))
+    cases.append(_case("cleanText", _x.clean_text(""), ""))
+    cases.append(_case("cleanText", _x.clean_text(None), None))
+    reply = {"table1": [{"id": 1}], "other": [{"id": 2}],
+             "table0": [{"id": 3}], "table2": [], "tableX": [{"id": 4}]}
+    cases.append(_case("menuTables", _x.menu_tables(dict(reply)),
+                       dict(reply)))
+    cases.append(_case("menuTables", _x.menu_tables([]), []))
+    cases.append(_case("isOrderableMeal",
+                       _x.is_orderable_meal({"polevka": "A",
+                                             "zkratkaProduktu": "x"}),
+                       {"polevka": "A", "zkratkaProduktu": "x"}))
+    cases.append(_case("isOrderableMeal",
+                       _x.is_orderable_meal({"polevka": "N",
+                                             "zkratkaProduktu": ""}),
+                       {"polevka": "N", "zkratkaProduktu": ""}))
+    cases.append(_case("isOrderableMeal",
+                       _x.is_orderable_meal({"polevka": "N",
+                                             "zkratkaProduktu": "zkratka"}),
+                       {"polevka": "N", "zkratkaProduktu": "zkratka"}))
+    cases.append(_case("mealText",
+                       _x.meal_text({"druh_popis": "oběd 1",
+                                     "nazev": "Guláš ",
+                                     "alergeny": [["01", "Obiloviny"],
+                                                  ["07", "Mléko"],
+                                                  ["", "prázdné"],
+                                                  "neplatné"]}),
+                       {"druh_popis": "oběd 1", "nazev": "Guláš ",
+                        "alergeny": [["01", "Obiloviny"],
+                                     ["07", "Mléko"],
+                                     ["", "prázdné"], "neplatné"]}))
+    cases.append(_case("mealText",
+                       _x.meal_text({"druh_popis": "polévka",
+                                     "nazev": "Rajská", "alergeny": []}),
+                       {"druh_popis": "polévka", "nazev": "Rajská",
+                        "alergeny": []}))
+    menu = {"table0": [{"datum": "07.09.2026", "druh": "P", "id": 0,
+                        "pocet": 0, "polevka": "A", "zkratkaProduktu": "",
+                        "druh_popis": "polévka", "nazev": "Rajská",
+                        "alergeny": []},
+                       {"datum": "07.09.2026", "druh": "1", "id": 1,
+                        "pocet": 1, "polevka": "N",
+                        "zkratkaProduktu": "zkratka",
+                        "druh_popis": "oběd 1", "nazev": "Guláš",
+                        "alergeny": [["01", "Obiloviny"]]}]}
+    cases.append(_case("menuFromReply", _x.menu_from_reply(dict(menu)),
+                       dict(menu)))
+    cases.append(_case("menuFromReply", _x.menu_from_reply({}), {}))
+    cases.append(_case("orderSheet",
+                       _o.order_sheet([{"date": "2026-10-07", "druh": "2",
+                                        "pocet": 1},
+                                       {"date": "2026-10-07", "druh": "1",
+                                        "pocet": 0},
+                                       {"date": "2026-10-08", "druh": "3",
+                                        "pocet": 0}]),
+                       [{"date": "2026-10-07", "druh": "2", "pocet": 1},
+                        {"date": "2026-10-07", "druh": "1", "pocet": 0},
+                        {"date": "2026-10-08", "druh": "3", "pocet": 0}]))
+    for url in ["strava.cz", "https://www.strava.cz/jidlo",
+                "app.strava.cz", "", "kantyna.example.test:8080"]:
+        cases.append(_case("apiRoot", _c.api_root(url), url))
+    return cases
+
+
 def main() -> None:
     _dump("helpers", helpers_cases())
     _dump("models", models_cases())
@@ -589,6 +663,7 @@ def main() -> None:
     _dump("history", history_cases())
     _dump("bakalari", bakalari_cases())
     _dump("http", http_cases())
+    _dump("strava", strava_cases())
 
 
 if __name__ == "__main__":
