@@ -181,7 +181,7 @@ Future<void> _runInline(AndroidChannel channel, String reason) async {
   notifierBackend = AndroidNotifications(channel);
   wakeupPhoneBridge = _ChannelWakeupBridge(channel);
 
-  final ran = await withSessionLock((held) async {
+  final ran = await withSessionLockAsync((held) async {
     if (!held) {
       // Another process (a desktop build) holds the session: skip, keep
       // the schedule by re-arming below.

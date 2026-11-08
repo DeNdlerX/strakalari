@@ -42,14 +42,35 @@ class SessionLock {
 ///
 /// [body] receives true when the lock is held, false when another
 /// refresh or submit (this or another process) kept it — callers must
-/// then skip, not run in parallel. The `session.lock` file and the
-/// byte-0 `LockFileEx` range are shared with the Python app, so a Python
-/// and a Dart app on one PC still exclude each other.
+/// then skip, not run in parallel. The `session.lock` file is shared with
+/// the Python app, so a Python and a Dart app on one PC still exclude
+/// each other.
+///
+/// [body] must be synchronous: returning a [Future] would release the lock
+/// as soon as the body returns it, before the async work runs (asserted in
+/// debug builds). Use [withSessionLockAsync] for async work.
 T withSessionLock<T>(T Function(bool held) body,
     {double timeoutS = 0.0, String lockFile = sessionLockFile}) {
   final lock = SessionLock.acquire(timeoutS: timeoutS, lockFile: lockFile);
   try {
-    return body(lock != null);
+    final result = body(lock != null);
+    assert(result is! Future,
+        'withSessionLock body returned a Future: the lock is released when '
+        'the body returns, so async work would run unlocked; use '
+        'withSessionLockAsync instead.');
+    return result;
+  } finally {
+    lock?.release();
+  }
+}
+
+/// Async variant of [withSessionLock]: awaits [body] inside the
+/// try/finally, so the lock stays held for the whole async work.
+Future<T> withSessionLockAsync<T>(Future<T> Function(bool held) body,
+    {double timeoutS = 0.0, String lockFile = sessionLockFile}) async {
+  final lock = SessionLock.acquire(timeoutS: timeoutS, lockFile: lockFile);
+  try {
+    return await body(lock != null);
   } finally {
     lock?.release();
   }

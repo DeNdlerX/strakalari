@@ -5,6 +5,7 @@
 // the password codec (and imports this file for the lock) — the same
 // mutual dependency Python resolves with lazy imports.
 import 'dart:convert';
+import 'dart:ffi' as ffi;
 import 'dart:io';
 
 import 'package:clock/clock.dart';
@@ -361,30 +362,61 @@ void releaseFileLock(String? token) {
 ///
 /// Unlike [tryFileLock], the OS drops the lock when the holder dies, so a
 /// killed tray or window can never leave a stale lock behind.
+///
+/// On POSIX the lock is `flock(fd, LOCK_EX | LOCK_NB)` through libc
+/// (`dart:ffi`), the same primitive Python uses (`fcntl.flock` in
+/// `strakalari/core/helpers.py`), so a Python and a Dart app on one PC
+/// exclude each other. `dart:io`'s `lockSync` uses `fcntl` record locks
+/// instead, which belong to the process (several isolates of one process
+/// can all hold one) and ignore `flock` holders. On Windows the lock stays
+/// byte 0 via `lockSync` (`LockFileEx`), which overlaps Python's
+/// `msvcrt.locking(0, LK_NBLCK, 1)`.
+///
+/// Also exclusive between handles of one process: an in-process registry
+/// of held paths makes a second acquire fail, like Python's second handle
+/// (a POSIX `flock` lets the same process lock twice).
 class InterProcessLock {
   final String path;
   RandomAccessFile? _handle;
+  int? _fd;
+
+  /// Absolute lock paths currently held by this process (any object).
+  static final Set<String> _heldPaths = {};
 
   InterProcessLock(this.path);
 
+  static String _key(String path) => p.normalize(p.absolute(path));
+
   bool _tryOnce() {
     Directory(p.dirname(p.absolute(path))).createSync(recursive: true);
+    final key = _key(path);
+    if (_heldPaths.contains(key)) return false;
+    if (!Platform.isWindows && _loadLibc() != null) {
+      final fd = _flockExclusive(path);
+      if (fd == null) return false;
+      _fd = fd;
+      _heldPaths.add(key);
+      return true;
+    }
+    // Windows (`LockFileEx` overlaps Python's `msvcrt.locking`), or POSIX
+    // without a usable libc (practically never): the old `lockSync`.
     final handle = File(path).openSync(mode: FileMode.append);
     try {
       // Byte 0 overlaps Python's msvcrt.locking(0, LK_NBLCK, 1), so the
-      // two apps exclude each other; on POSIX flock covers the file.
+      // two apps exclude each other.
       handle.lockSync(FileLock.exclusive, 0, 1);
     } on FileSystemException {
       handle.closeSync();
       return false;
     }
     _handle = handle;
+    _heldPaths.add(key);
     return true;
   }
 
   /// True once held; False when still busy after [timeoutS].
   bool acquire({double timeoutS = 0}) {
-    if (_handle != null) {
+    if (held) {
       throw StateError('lock $path is already held by this object');
     }
     final deadline =
@@ -402,19 +434,151 @@ class InterProcessLock {
 
   void release() {
     final handle = _handle;
+    final fd = _fd;
     _handle = null;
-    if (handle == null) return;
-    try {
-      handle.unlockSync();
-    } on FileSystemException {
-      // Closing the handle releases it anyway.
-    } finally {
-      handle.closeSync();
+    _fd = null;
+    if (handle == null && fd == null) return;
+    _heldPaths.remove(_key(path));
+    if (handle != null) {
+      try {
+        handle.unlockSync();
+      } on FileSystemException {
+        // Closing the handle releases it anyway.
+      } finally {
+        handle.closeSync();
+      }
     }
+    if (fd != null) _flockRelease(fd);
   }
 
   /// Whether this object currently holds the lock.
-  bool get held => _handle != null;
+  bool get held => _handle != null || _fd != null;
+}
+
+/// `flock(2)` operation flags (identical on Linux, macOS and Android).
+const int _lockEx = 2; // LOCK_EX
+const int _lockNb = 4; // LOCK_NB
+const int _lockUn = 8; // LOCK_UN
+
+/// `open(2)` flags: `O_RDWR` is 2 everywhere, `O_CREAT` differs per OS.
+const int _oRdwr = 2;
+int get _oCreat => Platform.isMacOS ? 0x200 : 64;
+
+typedef _FlockC = ffi.Int32 Function(ffi.Int32 fd, ffi.Int32 operation);
+typedef _OpenC = ffi.Int32 Function(
+    ffi.Pointer<ffi.Int8> path, ffi.Int32 flags, ffi.Int32 mode);
+typedef _CloseC = ffi.Int32 Function(ffi.Int32 fd);
+typedef _MallocC = ffi.Pointer<ffi.Void> Function(ffi.Size size);
+typedef _FreeC = ffi.Void Function(ffi.Pointer<ffi.Void> ptr);
+
+/// Bound libc entry points for the POSIX `flock` path.
+final class _Libc {
+  const _Libc(this.flock, this.open, this.close, this.malloc, this.free);
+  final int Function(int fd, int operation) flock;
+  final int Function(ffi.Pointer<ffi.Int8> path, int flags, int mode) open;
+  final int Function(int fd) close;
+  final ffi.Pointer<ffi.Uint8> Function(int size) malloc;
+  final void Function(ffi.Pointer<ffi.Void> ptr) free;
+}
+
+_Libc? _libcCache;
+bool _libcFailed = false;
+
+/// Opens libc and binds the calls [_flockExclusive] needs, or null when
+/// no usable libc exists (then [_tryOnce] keeps the old `lockSync`).
+_Libc? _loadLibc() {
+  if (_libcCache != null) return _libcCache;
+  if (_libcFailed) return null;
+  try {
+    final name = Platform.isMacOS
+        ? '/usr/lib/libSystem.dylib'
+        : Platform.isAndroid
+            ? 'libc.so'
+            : 'libc.so.6';
+    ffi.DynamicLibrary lib;
+    try {
+      lib = ffi.DynamicLibrary.open(name);
+    } catch (_) {
+      lib = ffi.DynamicLibrary.process();
+    }
+    final flock = lib.lookupFunction<_FlockC, int Function(int, int)>('flock');
+    final open = lib.lookupFunction<_OpenC,
+        int Function(ffi.Pointer<ffi.Int8>, int, int)>('open');
+    final close = lib.lookupFunction<_CloseC, int Function(int)>('close');
+    final mallocRaw =
+        lib.lookupFunction<_MallocC, ffi.Pointer<ffi.Void> Function(int)>(
+            'malloc');
+    final free =
+        lib.lookupFunction<_FreeC, void Function(ffi.Pointer<ffi.Void>)>(
+            'free');
+    ffi.Pointer<ffi.Uint8> malloc(int size) {
+      final ptr = mallocRaw(size);
+      if (ptr.address == 0) throw StateError('malloc failed');
+      return ptr.cast<ffi.Uint8>();
+    }
+    return _libcCache = _Libc(flock, open, close, malloc, free);
+  } catch (_) {
+    _libcFailed = true;
+    return null;
+  }
+}
+
+/// Opens [path] (creating it) and takes `LOCK_EX | LOCK_NB` on it.
+///
+/// Returns the fd, or null when another process holds the lock, the file
+/// cannot be opened, or libc itself is unusable (the caller falls back to
+/// `lockSync` then).
+int? _flockExclusive(String path) {
+  final libc = _loadLibc();
+  if (libc == null) return null;
+  ffi.Pointer<ffi.Uint8> native;
+  try {
+    final bytes = utf8.encode(path);
+    native = libc.malloc(bytes.length + 1);
+  } catch (_) {
+    return null;
+  }
+  try {
+    final bytes = utf8.encode(path);
+    for (var i = 0; i < bytes.length; i++) {
+      native[i] = bytes[i];
+    }
+    native[bytes.length] = 0;
+    // Mode 0666 (umask applies): the lock file carries no secrets.
+    final fd = libc.open(native.cast<ffi.Int8>(), _oRdwr | _oCreat, 438);
+    if (fd < 0) return null;
+    if (libc.flock(fd, _lockEx | _lockNb) != 0) {
+      libc.close(fd);
+      return null;
+    }
+    return fd;
+  } catch (_) {
+    return null;
+  } finally {
+    try {
+      libc.free(native.cast<ffi.Void>());
+    } catch (_) {
+      // Nothing to do: the lock attempt already failed.
+    }
+  }
+}
+
+/// Drops a lock taken by [_flockExclusive] (unlock + close; closing alone
+/// would release it too).
+void _flockRelease(int fd) {
+  final libc = _loadLibc();
+  if (libc == null) return;
+  try {
+    libc.flock(fd, _lockUn);
+  } catch (_) {
+    // Closing the fd below drops the lock anyway.
+  } finally {
+    try {
+      libc.close(fd);
+    } catch (_) {
+      // Already closed.
+    }
+  }
 }
 
 /// One log line for an exception a scraper deliberately carries on after.

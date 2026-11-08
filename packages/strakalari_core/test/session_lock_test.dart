@@ -40,6 +40,57 @@ Future<String> _tryLockInChild(String lockPath) async {
   return (result.stdout as String).trim();
 }
 
+/// Walks up from the test working dir to the repo root (the dir containing
+/// `strakalari/core/helpers.py`), or null when not found.
+String? _findRepoRoot() {
+  var dir = Directory.current;
+  for (var i = 0; i < 10; i++) {
+    if (File('${dir.path}${Platform.pathSeparator}strakalari'
+            '${Platform.pathSeparator}core'
+            '${Platform.pathSeparator}helpers.py')
+        .existsSync()) {
+      return dir.path;
+    }
+    final parent = dir.parent;
+    if (parent.path == dir.path) return null;
+    dir = parent;
+  }
+  return null;
+}
+
+/// Python body: holds `flock(LOCK_EX)` on `sys.argv[1]` for 60 s.
+///
+/// Loads `strakalari/core/helpers.py` by path (not via the package: the
+/// package `__init__` pulls in the heavy automation engine).
+String _pythonHoldScript(String repoRoot) => '''
+import importlib.util, sys, time
+spec = importlib.util.spec_from_file_location(
+    "b5_helpers", ${jsonEncode('$repoRoot/strakalari/core/helpers.py')})
+helpers = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(helpers)
+lock = helpers.InterProcessLock(sys.argv[1])
+print("held" if lock.acquire(0.0) else "failed", flush=True)
+time.sleep(60)
+''';
+
+/// Runs one Python `InterProcessLock.acquire(0.0)` attempt on [lockPath],
+/// returns 'true' or 'false'.
+Future<String> _pythonTryLock(String repoRoot, String lockPath) async {
+  final script = '''
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location(
+    "b5_helpers", ${jsonEncode('$repoRoot/strakalari/core/helpers.py')})
+helpers = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(helpers)
+lock = helpers.InterProcessLock(sys.argv[1])
+print("true" if lock.acquire(0.0) else "false")
+''';
+  final result = await Process.run('python3', ['-c', script, lockPath])
+      .timeout(const Duration(seconds: 60));
+  expect(result.exitCode, 0, reason: 'python stderr: ${result.stderr}');
+  return (result.stdout as String).trim();
+}
+
 void main() {
   _maybeRunAsHolder();
 
@@ -156,5 +207,120 @@ void main() {
               as Map<String, Object?>)['theme'],
           'dark');
     });
+  });
+
+  group('withSessionLockAsync', () {
+    test('holdsAcrossAwait', () async {
+      await withSessionLockAsync((held) async {
+        expect(held, isTrue);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        // Still held after the await: a nested job must skip.
+        withSessionLock((inner) {
+          expect(inner, isFalse);
+        }, lockFile: lockPath());
+      }, lockFile: lockPath());
+      withSessionLock((again) {
+        expect(again, isTrue);
+      }, lockFile: lockPath());
+    });
+
+    test('releasesAfterBody', () async {
+      final seen = <bool>[];
+      final result = await withSessionLockAsync((held) async {
+        seen.add(held);
+        return 'done';
+      }, lockFile: lockPath());
+      expect(result, 'done');
+      expect(seen, [true]);
+      withSessionLock((again) {
+        expect(again, isTrue);
+      }, lockFile: lockPath());
+    });
+
+    test('skipsWhileBusy', () async {
+      final inner = <bool>[];
+      await withSessionLockAsync((held) async {
+        expect(held, isTrue);
+        inner.add(await withSessionLockAsync((busy) async => busy,
+            lockFile: lockPath()));
+      }, lockFile: lockPath());
+      expect(inner, [false]);
+    });
+
+    test('syncVariantRejectsFutureBody', () {
+      expect(
+        () => withSessionLock((held) => Future.value(held),
+            lockFile: lockPath()),
+        throwsA(isA<AssertionError>()),
+      );
+      // The rejected body still released the lock: acquirable again.
+      withSessionLock((again) {
+        expect(again, isTrue);
+      }, lockFile: lockPath());
+    });
+  });
+
+  group('pythonInterop', () {
+    test(
+      'matchesPythonFlock',
+      () async {
+        final repoRoot = _findRepoRoot();
+        if (repoRoot == null) {
+          markTestSkipped('repo root with strakalari/ not found.');
+          return;
+        }
+        try {
+          final version = await Process.run('python3', ['--version'])
+              .timeout(const Duration(seconds: 30));
+          if (version.exitCode != 0) {
+            markTestSkipped('python3 is not usable.');
+            return;
+          }
+        } catch (_) {
+          markTestSkipped('python3 is not available.');
+          return;
+        }
+
+        // Python holds -> Dart refuses.
+        final holder = await Process.start(
+          'python3',
+          ['-c', _pythonHoldScript(repoRoot), lockPath()],
+        );
+        final stderrText = holder.stderr.transform(utf8.decoder).join();
+        try {
+          final firstLine = await holder.stdout
+              .transform(utf8.decoder)
+              .transform(const LineSplitter())
+              .first
+              .timeout(const Duration(seconds: 60));
+          if (firstLine.trim() != 'held') {
+            final err = await stderrText;
+            fail('Python holder did not acquire the lock '
+                '(got "$firstLine"). stderr: $err');
+          }
+          final blocked = InterProcessLock(lockPath());
+          expect(blocked.acquire(), isFalse);
+          expect(blocked.held, isFalse);
+        } finally {
+          holder.kill(ProcessSignal.sigkill);
+          await holder.exitCode;
+        }
+        final afterPython = InterProcessLock(lockPath());
+        expect(afterPython.acquire(), isTrue);
+        afterPython.release();
+
+        // Dart holds -> Python refuses; released -> Python acquires.
+        final dartLock = InterProcessLock(lockPath());
+        expect(dartLock.acquire(), isTrue);
+        try {
+          expect(await _pythonTryLock(repoRoot, lockPath()), 'false');
+        } finally {
+          dartLock.release();
+        }
+        expect(await _pythonTryLock(repoRoot, lockPath()), 'true');
+      },
+      skip: Platform.isLinux ? false : 'flock parity probe runs on Linux only.',
+      timeout: const Timeout(Duration(seconds: 180)),
+    );
   });
 }
