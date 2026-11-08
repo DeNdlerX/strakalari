@@ -1,12 +1,22 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 3 · Next step: Phase 3 — domain logic (schedule first).
+Current phase: 4 done, checkpoint A pending · Next step: reviewer check of Checkpoint A (do NOT start phase 5 before sign-off).
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
 Phase 1 (core foundation) is done: models, helpers, config, cache, i18n,
 audit, excuse_history, Fernet + secret_store, parity harness.
+Phase 3 (domain logic) is done: schedule, matching, planned_skips,
+forecast, grades (pure math), planner, school_presets, lunch_cutoff,
+lunch_auto, gemini, news, update, status_notification, wakeup,
+notify (core interface). 16 new parity JSON fixtures (344 cases);
+`dart analyze` + `flutter analyze` clean.
+Phase 4 (automation) is done: error_report (full), scheduler,
+session_lock, automation (Strakalari), refresh (run_refresh).
+A dry-run refresh against the demo server gives identical result,
+cache keys (incl. `stable_baseline`), audit entries (modulo ts),
+outbox and history in Python and Dart. ⛔ Checkpoint A: core review.
 
 ## Phase 0 (done)
 
@@ -32,47 +42,47 @@ State: todo = not started, tests = Dart tests written, done = ported + green.
 | strakalari/core/__init__.py | core barrel | — | todo |
 | strakalari/core/android.py | core platform/android_bridge.dart + app MethodChannel | test_notify.py, test_wake_ui.py, test_wakeup_and_widget.py | todo |
 | strakalari/core/audit.py | core automation/audit.dart | test_automation_safety.py (audit cases) → audit_test.dart (3) + parity_audit_test.dart | done |
-| strakalari/core/automation.py | core automation/automation.dart | test_automation_safety.py | todo |
+| strakalari/core/automation.py | core automation/automation.dart | test_automation_safety.py + deferred send-path cases (test_excuse_generation, test_order_latch, test_strava_low_balance, test_strava_ordering, test_unconfirmed_excuses, test_excuse_history/TestSendPath…) → automation_test.dart + refresh_test.dart; `bin/refresh_dryrun.dart` dry-run parity vs demo server | done |
 | strakalari/core/autostart.py | core platform/autostart.dart + app impl | test_autostart.py, test_autostart_platforms.py | todo |
 | strakalari/core/bakalari_client.py | core bakalari/client.dart | test_bakalari_client.py (base cases) → bakalari_client_test.dart | done |
 | strakalari/core/bakalari_common.py | core bakalari/common.dart | client/data tests (hour-index, week offsets, removed/room-move rows) → common_test.dart | done |
-| strakalari/core/bakalari_data.py | core bakalari/data.dart (DataMixin) | test_bakalari_http.py (read cases), test_sent_excuses.py, test_grades.py (client cases) → bakalari_data_test.dart (15) | done |
+| strakalari/core/bakalari_data.py | core bakalari/data.dart (DataMixin) | test_bakalari_http.py (read cases), test_sent_excuses.py, test_grades.py (client cases) → bakalari_data_test.dart (15); phase 3+: `update_stable_baseline` ported, fetch order details → stable → substitutions → baseline wired in `fetchBakalariData` | done |
 | strakalari/core/bakalari_excuse.py | core bakalari/excuse.dart (ExcuseFormMixin) | test_bakalari_excuse.py → bakalari_excuse_test.dart (14) + parity (excuse cases in bakalari.json) | done |
 | strakalari/core/bakalari_http.py | core bakalari/http_session.dart | test_bakalari_http.py (session cases) → http_session_test.dart (10) + parity_http_session_test.dart | done |
 | strakalari/core/bakalari_timetable.py | core bakalari/timetable.dart (TimetableMixin on BakalariClientBase) | test_bakalari_client.py (add/perm/stable/week cases) → timetable_test.dart | done |
 | strakalari/core/cache.py | core storage/cache.dart | test_cache.py + merge/seed/busy cases from test_timetable_cache_merge, test_data_safety, test_scheduler → cache_test.dart (21) + parity_cache_test.dart | done |
 | strakalari/core/cancel.py | core automation/cancel.dart | ported with the session (covered by http_session_test); test_cancel_responsive.py, test_refresh_cancel_keeps_data.py → phase 5/4 | done |
 | strakalari/core/config.py | core storage/config.dart | test_config.py, test_config_save_lock.py → config_test.dart (34) + parity_config_test.dart | done |
-| strakalari/core/error_report.py | core error_report.dart (slim: UserError, timeoutUserMessage; full port → phase 4) | test_error_report.py, test_log_redaction.py | todo |
+| strakalari/core/error_report.py | core error_report.dart (full port: redaction, report builders; `UserError`/`timeoutUserMessage` API unchanged) | test_error_report.py, test_log_redaction.py → error_report_test.dart + parity_error_report_test.dart | done |
 | strakalari/core/excuse_history.py | core automation/excuse_history.dart | test_excuse_history.py, test_unconfirmed_excuses.py (pure cases) → excuse_history_test.dart (17) + parity_excuse_history_test.dart | done |
 | strakalari/core/extractors/__init__.py | core bakalari/ + strava/ barrels | — | todo |
 | strakalari/core/extractors/bakalari.py | core bakalari/extractors.dart | grades/sent-excuses/substitution/parity cases → extractors_test.dart + parity_bakalari_test.dart | done |
 | strakalari/core/extractors/strava.py | core strava/extractors.dart | menu/food asserts in strava_test.dart + parity_strava_test.dart | done |
-| strakalari/core/forecast.py | core planning/forecast.dart | test_forecast.py | todo |
-| strakalari/core/gemini.py | core lunches/gemini.dart | test_gemini_key.py, test_gemini_picks.py, test_ai_recommend.py | todo |
-| strakalari/core/grades.py | core planning/grades.dart | test_grades.py, test_grades_math.py, test_grades_minus.py | todo |
-| strakalari/core/helpers.py | core storage/helpers.dart | test_helpers.py → helpers_test.dart (21) + parity_helpers_test.dart; test_session_lock.py → phase 4 (deferred, see below) | done |
+| strakalari/core/forecast.py | core planning/forecast.dart | test_forecast.py, test_absence_details.py → forecast_test.dart + parity_forecast_test.dart | done |
+| strakalari/core/gemini.py | core lunches/gemini.dart | test_gemini_key.py, test_gemini_picks.py, test_ai_recommend.py → gemini_test.dart + parity_gemini_test.dart (network calls covered by fakes/seams, never real) | done |
+| strakalari/core/grades.py | core planning/grades.dart | test_grades.py, test_grades_math.py, test_grades_minus.py (pure math; extractor/client cases already in extractors/bakalari_data) → grades_test.dart + parity_grades_test.dart | done |
+| strakalari/core/helpers.py | core storage/helpers.dart | test_helpers.py → helpers_test.dart (21) + parity_helpers_test.dart; test_session_lock.py → session_lock_test.dart (phase 4, done) | done |
 | strakalari/core/i18n.py | core i18n.dart | test_i18n.py (core cases) → i18n_test.dart 4 + parity_i18n_test.dart | done |
-| strakalari/core/lunch_auto.py | core lunches/lunch_auto.dart | test_lunch_auto.py, test_lunch_auto_user_choice.py, test_lunch_same_pick.py | todo |
-| strakalari/core/lunch_cutoff.py | core lunches/lunch_cutoff.dart | test_lunch_cutoff.py, test_lunch_day_keys.py, test_lunch_deadline_calendar.py | todo |
-| strakalari/core/matching.py | core planning/matching.dart | test_matching.py | todo |
+| strakalari/core/lunch_auto.py | core lunches/lunch_auto.dart | test_lunch_auto.py, test_lunch_auto_user_choice.py, test_lunch_same_pick.py → lunch_auto_test.dart + parity_lunch_auto_test.dart (ban matching delegates to planning/matching.dart) | done |
+| strakalari/core/lunch_cutoff.py | core lunches/lunch_cutoff.dart | test_lunch_cutoff.py, test_lunch_day_keys.py, test_lunch_deadline_calendar.py → lunch_cutoff_test.dart + parity_lunch_cutoff_test.dart | done |
+| strakalari/core/matching.py | core planning/matching.dart | test_matching.py → matching_test.dart + parity_matching_test.dart | done |
 | strakalari/core/models.py | core models.dart | test_models.py (minus 2 automation cases → phase 4) → models_test.dart (14) + parity_models_test.dart | done |
-| strakalari/core/news.py | core news.dart | test_news.py | todo |
-| strakalari/core/notify.py | core platform/notifier.dart + app impl | test_notify.py | todo |
+| strakalari/core/news.py | core news.dart | test_news.py → news_test.dart + parity_news_test.dart | done |
+| strakalari/core/notify.py | core platform/notifier.dart (abstract Notifier interface; OS impls → phase 7) | test_notify.py → notifier_test.dart | done |
 | strakalari/core/packaging.py | core platform/packaging.dart | test_mobile.py (predicates) → packaging_test.dart 9 | done |
-| strakalari/core/planned_skips.py | core planning/planned_skips.dart | test_planned_skips.py, test_early_leave.py | todo |
-| strakalari/core/planner.py | core planning/planner.dart | test_plan_picker.py, test_plan_reserve.py, test_year_planner.py | todo |
-| strakalari/core/refresh.py | core automation/refresh.dart | test_refresh_pipeline.py, test_data_safety.py | todo |
-| strakalari/core/schedule.py | core planning/schedule.dart | test_schedule.py | todo |
-| strakalari/core/scheduler.py | core automation/scheduler.dart | test_scheduler.py, test_scheduler_retry.py | todo |
-| strakalari/core/school_presets.py | core planning/school_presets.dart | test_school_calendar.py | todo |
+| strakalari/core/planned_skips.py | core planning/planned_skips.dart | test_planned_skips.py, test_early_leave.py → planned_skips_test.dart + parity_planned_skips_test.dart | done |
+| strakalari/core/planner.py | core planning/planner.dart | test_year_planner.py (pure plan cases; dialog/AppState cases → phase 5/6), test_plan_reserve.py (pure reserve parts) → planner_test.dart + parity_planner_test.dart | done |
+| strakalari/core/refresh.py | core automation/refresh.dart | test_refresh_pipeline.py, test_data_safety.py, test_refresh_cancel_keeps_data.py, test_session_lock.py + deferred gate cases → refresh_test.dart; `bin/refresh_dryrun.dart` | done |
+| strakalari/core/schedule.py | core planning/schedule.dart | test_schedule.py, test_substitution_feed_days.py → schedule_test.dart + parity_schedule_test.dart | done |
+| strakalari/core/scheduler.py | core automation/scheduler.dart | test_scheduler.py, test_scheduler_retry.py → scheduler_test.dart + parity_scheduler_test.dart | done |
+| strakalari/core/school_presets.py | core planning/school_presets.dart | test_school_calendar.py → school_presets_test.dart + parity_school_presets_test.dart | done |
 | strakalari/core/secret_store.py | core storage/secret_store.dart + platform/keystore.dart (+ android_bridge.dart iface) | test_secret_store.py → secret_store_test.dart (10); Fernet roundtrip/tamper/key tests → fernet_test.dart (5) | done |
-| strakalari/core/status_notification.py | core status_notification.dart | test_status_notification.py | todo |
+| strakalari/core/status_notification.py | core status_notification.dart | test_status_notification.py → status_notification_test.dart + parity_status_notification_test.dart | done |
 | strakalari/core/strava_client.py | core strava/client.dart (StravaClientBase) | test_strava_client.py (client cases) → strava_test.dart (19) + parity (strava cases in strava.json) | done |
 | strakalari/core/strava_ordering.py | core strava/ordering.dart (OrderingMixin) | test_strava_client.py (order/save cases) → strava_test.dart + order-sheet byte test | done |
 | strakalari/core/tls.py | — (dropped, see below) | test_tls_bundle.py, test_frozen_ssl.py | dropped |
-| strakalari/core/update.py | core update.dart | test_update.py | todo |
-| strakalari/core/wakeup.py | core wakeup.dart | test_wakeup_and_widget.py, test_wake_ui.py | todo |
+| strakalari/core/update.py | core update.dart | test_update.py → update_test.dart + parity_update_test.dart (network via hook seam; app startup must set `currentAppVersion`, phases 7) | done |
+| strakalari/core/wakeup.py | core wakeup.dart (pure scheduling/message logic; alarms/receivers → phase 8) | test_wakeup_and_widget.py, test_wake_ui.py (pure cases; Flet/UI cases → phase 5–8) → wakeup_test.dart + parity_wakeup_test.dart | done |
 | strakalari/flet_ui/__init__.py | app barrel | — | todo |
 | strakalari/flet_ui/__main__.py | app/lib/main.dart | test_entry_routing.py | todo |
 | strakalari/flet_ui/app.py | app/lib/main.dart + shell/ | test_ui_views.py, test_open_url.py | todo |
@@ -154,6 +164,47 @@ Expected drops (decide at port, subject likely absent in Flutter):
 test_tls_bundle.py, test_frozen_ssl.py (frozen CA bundle no longer exists).
 
 ## Deferred test cases (not dropped — ported with the phase that owns their SUT)
+
+Phase 4 resolutions (all landed in `automation_test.dart` / `refresh_test.dart`
+unless noted; remaining phase-5 owners unchanged below):
+- test_models.py 2 engine cases → done (need `automation.Strakalari`).
+- test_config.py `TestPasswordOverridesEncrypted`,
+  `test_integer_strava_id_handling`, `TestStravaEnableDefault` → done.
+- test_excuse_history.py deferred cases (`test_concurrent_sends_submit_once`,
+  `test_covered_excuse_is_not_resent`, `TestExampleHistoryFilter` automation
+  case, `TestHistoryCoverage`, `test_excuse_dry_run_fills_without_submitting`)
+  → done. `TestHistoryCoverage` UI half stays phase 5 (`AppState`).
+- test_unconfirmed_excuses.py `TestSendPath`/`TestOutboxSettles`/
+  `TestRefreshGate` → done.
+- test_strava_ordering.py → done (needs `Strakalari`).
+- test_strava_low_balance.py → done (refresh/notice/UI tail → phase 5 owners).
+- test_order_latch.py → done except the AppState latch (phase 5).
+- test_strava_blacklist_edits.py → still phase 5 (AppState + shipped template).
+- test_grades.py extractor/client cases → already in `extractors_test.dart` /
+  `bakalari_data_test.dart` (done, phase 2).
+- test_excuse_generation.py → done (in `automation_test.dart`).
+- test_sent_excuses.py sync tests → done.
+- test_excuse_day_scope.py → still phase 5 (`AppState.day_excuse_plan`).
+- test_excuse_ignore_list.py `TestIgnoredExcuses` → done (in
+  `automation_test.dart`); the rest still phase 5 (AppState ignore list).
+- test_absence_details.py → done in `forecast_test.dart` (+ parity).
+- test_substitution_feed_days.py → done in `schedule_test.dart`.
+- test_session_lock.py → done in `session_lock_test.dart` (+ manual
+  cross-process proof, see Checkpoint notes).
+- test_timetable_cache_merge.py dry-run send cases → covered by the phase-4
+  dry-run parity (Python vs Dart audit/outbox/history identical).
+- test_stable_change_signals.py → no automation/refresh-SUT cases found
+  (schedule/extractors/UI only); nothing to port.
+- `HistoryLock` test (`test_concurrent_sends_submit_once`) → done; the
+  one-isolate static mutex restoring check-submit-write serialization is
+  proven by it.
+- test_timetable_week_nav.py, test_timetable_week_switch.py,
+  test_marks_view.py, test_refresh_cancel_keeps_data.py UI tails,
+  test_cancel_responsive.py AppState branches → still phase 5.
+- test_early_leave.py → evaluated: entirely soon/early detection +
+  AppState/UI wiring (no pure schedule cases); nothing to port to core.
+- test_plan_picker.py (12 Flet dialog cases) → still phase 6 (no Dart
+  dialog subject exists).
 
 - test_i18n.py → `test_core_messages_follow_language` moves to phase 4
   (needs `error_report.timeout_user_message`); `test_new_flet_strings_present`
@@ -300,15 +351,125 @@ test_tls_bundle.py, test_frozen_ssl.py (frozen CA bundle no longer exists).
   no retry, like Python's ConnectError; dropped reads retry once).
 - `tls.ensure_ca_bundle` has no Dart counterpart: `DartIoHttpTransport`
   uses the system store (noted, not ported).
+- Phase 3/4 port adaptations (behavior identical unless noted):
+  - Canonical-name unification (each mirrors Python's own imports):
+    `canonSubject`/`normalizeHolidays`/`schoolDaysBetween` live in
+    `forecast.dart` (planner imports them); `normalizePlannedEntry`/
+    `entryDays` live in `planned_skips.dart`; `bandsValid`/`defaultBands`/
+    `normalizeBands` live in `grades.dart`, `isValidCutoffTime`/
+    `normalizeCutoffTime` in `lunch_cutoff.dart` (school_presets imports
+    them); `handledKey` lives in `lunch_auto.dart` (refresh imports it).
+    `config.dart` delegates `isValidCutoffTime`→lunch_cutoff,
+    `bandsValid`→grades, `statusNotificationItems`→status_notification.items,
+    `defaultUpdateChannel()`→update.defaultChannel() (follows the running
+    build, like Python). Barrel hides `wakeup.periodOf` (wakeup.py keeps
+    its own simpler `_period_of`, like Python) and
+    `status_notification.mealText` (formats a name; strava's formats a
+    meal map — both exist in Python too).
+  - `lunch_auto` ban matching delegates to `matching.isFoodBanned`
+    (same stems/suffixes; the mirror wrongly folded ł/ø/ß, Python NFD
+    keeps them — the canonical port is the faithful one).
+  - DST-safe day stepping: `schoolDaysBetween` (forecast),
+    `entryDays` (planned_skips) and the planner use constructor
+    arithmetic; Python `date + timedelta` has no DST. The sibling
+    `Duration(days: …)` day iterations (schedule, wakeup,
+    status_notification comparisons) are untouched — same latent drift,
+    flagged for the reviewer.
+  - `bandsValid` accepts bools (`float(True) == 1.0`, like Python).
+  - `LessonSource` also accepts live `SlotBaseline` objects (Python reads
+    any object with `.subject` via hasattr) — parity-oracle caught the gap.
+  - `validatePreset` bad-entry messages use a `_pyRepr` (`['bad', 'label']`,
+    like `{entry!r}`) instead of Dart's `[bad, label]`.
+  - `mealText` blanks every falsy input (`str(name or "")`), not just
+    null — parity-oracle caught `"Null"`/`"0"`.
+  - `buildPrompt` (cs) reads "Odpověz ve formátu …", like Python (the port
+    had "Odpověď …") — parity-oracle caught the rewording.
+  - `updateStableBaseline` is ported into `DataMixin`; `fetchBakalariData`
+    runs weeks → details → stable view → substitutions → baseline →
+    absence → grades → directory (Python's `fetch_data` order).
+  - Automation/refresh seam hooks default to the real phase-3 functions
+    (`schoolYearTerms`, `baselineToDict`, `findNews`, `plannedLunchDays`,
+    `updateHandledDays`, `resolveLunchCutoff`, `effectiveCalendar`,
+    `isLunchOrderOpen`); tests assign fakes. Only `planAutoOrdersHook`
+    still throws: the real `planAutoOrders` is async (network/Gemini)
+    while the hook contract is sync.
+  - Static async mutex in `Strakalari` around check-submit-write (Dart's
+    `HistoryLock` is re-entrant per isolate; Python threads block on the
+    file lock — the mutex restores the no-double-submit serialization,
+    proven by `concurrentSendsSubmitOnce`).
+  - `RefreshApp` interface replaces Python duck typing;
+    `runRefresh`/`Strakalari` methods are async; `InterruptedError`→
+    `CancelledError`, `RuntimeError`→`StateError`.
+  - Optional params are all-named; `sendExcuseOutcome` delegates to
+    `sendExcuse(source: 'manual')`; public names for test-used privates
+    per the phase-1 precedent.
+  - Log redaction in automation is a minimal local mirror of
+    `error_report` secret-values (secret keys only); the error_report
+    port owns the canonical copy.
 
 ## Questions for the owner / reviewer
 
+- ⛔ Checkpoint A reached: please have a reviewer model check phases 3–4
+  (Checkpoint notes below) before phase 5 starts. Open decisions:
+  1. `planAutoOrdersHook` is sync but the real `planAutoOrders` is async
+     (network/Gemini) — confirm the hook stays throwing until the async
+     boundary is reworked (phase 5/9), or dictate the async contract now.
+  2. Should `bin/refresh_dryrun.dart` (`--send-day` real-submit proof,
+     demo server only) stay in-tree after review, or move to scratch-only?
+  3. `planAutoOrders` has no `today` param in Python (past-day skip uses
+     the real clock) — add an optional `today` seam for determinism, or
+     keep line-by-line?
+  4. Confirm the seam-hook names/signatures as the phase-3↔4 contract.
+  5. Same-latent-DST-drift `Duration(days: …)` iterations left untouched
+     in schedule/wakeup/status_notification — fix everywhere now, or
+     accept (tests green either way; Prague DST only matters Mar/Oct)?
 - App version stays the flutter-create template `1.0.0+1` (resolved 2026-11-07:
   CI stamps the real version from the tag at build time).
 - (Resolved 2026-11-07: PLAN.md rows 7–8 and REVIEW_PROMPT.md are the owner's
   intended edits, committed as-is.)
 
 ## Checkpoint notes
+
+### ⛔ Checkpoint A: core review (phases 3–4)
+
+Done: all 15 phase-3 modules + automation/refresh/scheduler/session_lock/
+error_report ported with Dart tests first (same cases, camelCase, same
+values); `tools/parity/dump.py` extended with 16 generators (344 cases);
+`dart analyze` + `flutter analyze` clean; Dart suite 720/720 green;
+Python suite 1643/1643 green (reference, unchanged); dry-run refresh
+parity Python-vs-Dart fully equal (result, cache keys incl.
+`stable_baseline`, audit modulo ts, outbox, history).
+
+Every deviation from Python is listed under Deviations above; Python
+behavior that looked wrong was ported as-is (nothing "fixed").
+How to verify:
+- `dart analyze` + `dart test` in `packages/strakalari_core`,
+  `flutter analyze` in `app` (template test only until phase 5).
+- `PYTHONUTF8=1 python tools/parity/dump.py` then
+  `git diff --exit-code packages/strakalari_core/test/parity/`
+  (hand-edits would show; the 4 oracle-caught fixes are recorded above).
+- Dry-run parity: `python tools/bakalari_demo_server.py --port 18080`,
+  Python `scratch parity4/refresh_dryrun.py --data-dir <tmp>` vs Dart
+  `bin/refresh_dryrun.dart --url … --data-dir <tmp>`; canonical JSON
+  must match modulo `ts`. (`--send-day DD.MM.YYYY` real-submit proof was
+  run on fresh servers on both sides: sent/history/outbox equal.)
+- Cross-process session lock proof: set `STRAKALARI_SESSION_LOCK_HOLDER=1`
+  + `STRAKALARI_SESSION_LOCK_PATH=<lock>` and run
+  `dart test/session_lock_test.dart` while Python holds the same lock
+  (and vice versa) — both directions proven on this PC.
+Unsure / needs a second pair of eyes:
+- The sibling `Duration(days: …)` day iterations (see Deviations) and
+  the `planAutoOrdersHook` async boundary (see Questions).
+- `error_report.collectContext` keys `dart` (not `python`),
+  `app_version: '?'` (no update module at port time — since landed,
+  still `'?'`), `build: 'source'`; `currentTraceback` frames are Dart
+  `#0` style. Shapes match; values are platform truth.
+- `summarize` keeps insertion order on equal/None dates explicitly
+  (Dart sort isn't stable; Python's is); `summarizeAll`/`canonSubject`
+  use `toLowerCase` (Python `casefold` — differs only for exotic
+  Unicode like ß); `int(True)`-style bool periods return null.
+- Gemini `localFallbackRecommendation` keyword lists ported line by
+  line (Czech stems); only covered via parity fixtures + fakes.
 
 Phase 1 cross-implementation proofs (for Checkpoint A):
 - Fernet: Dart decrypted a Python-made token and Python decrypted a
@@ -319,5 +480,4 @@ Phase 1 cross-implementation proofs (for Checkpoint A):
   Dart `InterProcessLock.acquire()` returned false (same LockFileEx byte
   on Windows, PLAN §3.5); same-process second-handle contention is
   covered by `helpers_test.dart` (`secondObjectFailsWhileHeld`).
-
-None yet otherwise (first checkpoint is A at end of phase 4).
+- Session lock: both directions proven live (see Checkpoint A above).
