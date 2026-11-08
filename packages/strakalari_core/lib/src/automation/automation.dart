@@ -1005,7 +1005,7 @@ class Strakalari implements RefreshApp {
       try {
         // No save button (immediate-save frontend): staged clicks
         // persisted at once.
-        immediate = client.findSaveButton();
+        immediate = !client.findSaveButton();
       } on CancelledError {
         rethrow;
       } on Object {

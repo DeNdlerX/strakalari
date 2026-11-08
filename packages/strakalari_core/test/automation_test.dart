@@ -1071,7 +1071,7 @@ void main() {
     });
 
     test('failedRunReportsDaysSavedByImmediateFrontend', () async {
-      final c = client({'a&2&0': true})..saveButton = true;
+      final c = client({'a&2&0': true})..saveButton = false;
       final a = app(c);
       expect(await a.stravaOrderSelected({day1: 'a&2&0', day2: 'b&2&0'}),
           isFalse);
@@ -1081,7 +1081,17 @@ void main() {
     });
 
     test('failedRunOnSaveButtonFrontendReportsNothingClicked', () async {
-      final c = client({'a&2&0': true})..saveButton = false;
+      final c = client({'a&2&0': true})..saveButton = true;
+      final a = app(c);
+      expect(await a.stravaOrderSelected({day1: 'a&2&0', day2: 'b&2&0'}),
+          isFalse);
+      expect(c.restoredDays, [day2]);
+      expect(a.lastOrderedDays, isEmpty);
+      expect(c.orderedDict[day1], 'a&1&0');
+    });
+
+    test('failedRunWithDefaultClientReportsNothingClicked', () async {
+      final c = client({'a&2&0': true});
       final a = app(c);
       expect(await a.stravaOrderSelected({day1: 'a&2&0', day2: 'b&2&0'}),
           isFalse);
