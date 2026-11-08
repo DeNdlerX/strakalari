@@ -583,25 +583,6 @@ class BakalariSession {
       }
     }
   }
-
-  bool _isRefused(SocketException e) {
-    final code = e.osError?.errorCode;
-    if (code != null &&
-        {
-          1, 7, 8, 51, 61, 64, 65, 99, 101, 110, 111, 112, 113, //
-          10060, 10061, 11001, 11004, //
-        }.contains(code)) {
-      return true;
-    }
-    final message = e.message.toLowerCase();
-    return message.contains('refused') ||
-        message.contains('unreachable') ||
-        message.contains('getaddrinfo') ||
-        message.contains('no address') ||
-        message.contains('failed host lookup') ||
-        message.contains('network is down');
-  }
-
   /// One request; a read is retried once when the connection broke
   /// before any reply (the server dropped an idle kept-alive connection).
   /// `once` requests (the excuse post) are never repeated.
@@ -659,18 +640,18 @@ class BakalariSession {
           );
           _storeCookies(resp);
         }
-      } on TimeoutException {
+      } on TimeoutException catch (e) {
         log('Bakaláři request timed out after '
             '${timeoutS.toStringAsFixed(0)} s: $currentMethod $path');
-        throw UserError(timeoutUserMessage());
+        throw UserError(timeoutUserMessage(), e);
       } on IOException catch (e) {
         log('Bakaláři request failed: $currentMethod $path: '
             '${e.runtimeType}: $e');
         if (e is SocketException && _isRefused(e)) {
           throw UserError(
-              t('bak_unreachable', args: {'host': host}));
+              t('bak_unreachable', args: {'host': host}), e);
         }
-        throw UserError(t('bak_connection_lost'));
+        throw UserError(t('bak_connection_lost'), e);
       }
       if (followRedirects &&
           const {301, 302, 303, 307, 308}
@@ -869,4 +850,36 @@ class BakalariSession {
         headers: post.headers, body: post.body);
     return dxCallbackResult(resp.text);
   }
+}
+
+/// Transport failures that happen before the request could reach the
+/// server: refused / unreachable / unknown host (like a refused
+/// connection) and connect timeouts. The excuse post uses this to tell
+/// "certainly never sent" from "maybe sent" (read timeouts and anything
+/// else may already have arrived).
+bool isNeverSentCause(Object? error) {
+  if (error is TimeoutException) return false;
+  if (error is SocketException) {
+    return _isRefused(error) ||
+        error.message.toLowerCase().contains('timed out');
+  }
+  return false;
+}
+
+bool _isRefused(SocketException e) {
+  final code = e.osError?.errorCode;
+  if (code != null &&
+      {
+        1, 7, 8, 51, 61, 64, 65, 99, 101, 110, 111, 112, 113, //
+        10060, 10061, 11001, 11004, //
+      }.contains(code)) {
+    return true;
+  }
+  final message = e.message.toLowerCase();
+  return message.contains('refused') ||
+      message.contains('unreachable') ||
+      message.contains('getaddrinfo') ||
+      message.contains('no address') ||
+      message.contains('failed host lookup') ||
+      message.contains('network is down');
 }

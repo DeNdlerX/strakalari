@@ -173,7 +173,7 @@ mixin DataMixin on BakalariClientBase {
     try {
       final session = bakalariSession();
       final (page, ids) =
-          await _outboxExcuseIds(session, capped + 1);
+          await fetchOutboxIds(session, capped + 1);
       sentExcusesFrom = _outboxPeriodStart(page);
       if (ids.isEmpty) {
         log('No sent excuses (OMLUVENKA) found in Komens → Odeslané.');
@@ -196,7 +196,7 @@ mixin DataMixin on BakalariClientBase {
         raiseIfCancelledNow();
         late final Object? detail;
         try {
-          detail = await _outboxDetail(session, msgId);
+          detail = await fetchOutboxDetail(session, msgId);
         } on CancelledError {
           rethrow;
         } on Object catch (e) {
@@ -246,7 +246,7 @@ mixin DataMixin on BakalariClientBase {
 
   /// `(pageHtml, ids)`: Komens → Odeslané and the message ids of its
   /// excuse rows, loaded the way the page does (its list callback).
-  Future<(String, List<String>)> _outboxExcuseIds(
+  Future<(String, List<String>)> fetchOutboxIds(
       BakalariSession session, int pageSize) async {
     final page = await session.getHtml(_outboxPath);
     final listType = RegExp('id="hfListType"[^>]*?value="([^"]*)"')
@@ -277,7 +277,7 @@ mixin DataMixin on BakalariClientBase {
   }
 
   /// The detail of one sent message (`/Komens/GetMessageDataAsync`).
-  static Future<Object?> _outboxDetail(
+  static Future<Object?> fetchOutboxDetail(
       BakalariSession session, String msgId) {
     return session.json(
       'POST',

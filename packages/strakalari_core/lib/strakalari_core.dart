@@ -22,4 +22,5 @@ export 'src/bakalari/http_session.dart';
 export 'src/bakalari/client.dart';
 export 'src/bakalari/timetable.dart';
 export 'src/bakalari/data.dart';
+export 'src/bakalari/excuse.dart';
 export 'src/error_report.dart';

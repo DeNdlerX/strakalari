@@ -8,7 +8,12 @@ import 'i18n.dart';
 /// A failure the user can fix themselves (missing URL, bad login, ...).
 class UserError implements Exception {
   final String message;
-  const UserError(this.message);
+
+  /// The transport error that caused this failure, if any (lets the
+  /// excuse post tell "certainly never sent" from "maybe sent").
+  final Object? cause;
+
+  const UserError(this.message, [this.cause]);
 
   @override
   String toString() => 'UserError: $message';

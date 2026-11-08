@@ -468,6 +468,81 @@ def bakalari_cases() -> list[dict]:
     cases.append(_case("storeRows",
                        _x.store_rows({"data": [1], "totalCount": 1}),
                        {"data": [1], "totalCount": 1}))
+    from datetime import date as _date, datetime as _datetime
+
+    from strakalari.core import bakalari_excuse as _e
+    cases.append(_case("minutesText", _e._minutes_text(605), 605))
+    cases.append(_case("minutesText", _e._minutes_text(60), 60))
+    cases.append(_case("hourText",
+                       _e._hour_text({"Caption": "3", "Begin": 605,
+                                      "End": 650}),
+                       {"Caption": "3", "Begin": 605, "End": 650}))
+    cases.append(_case("hourText",
+                       _e._hour_text({"Caption": "", "Begin": 480,
+                                      "End": 525}),
+                       {"Caption": "", "Begin": 480, "End": 525}))
+    cases.append(_case("lesson",
+                       _e._lesson([{"Caption": "3"}, {"Caption": "4"}], 3),
+                       [{"Caption": "3"}, {"Caption": "4"}], 3))
+    cases.append(_case("lesson",
+                       _e._lesson([{"Caption": "3"}], 9),
+                       [{"Caption": "3"}], 9))
+    cases.append(_case("textToHtml", _e.text_to_html("a&b\nJan"),
+                       "a&b\nJan"))
+    cases.append(_case("textToHtml", _e.text_to_html(""), ""))
+    cases.append(_case("jsDate", _e._js_date(_date(2026, 10, 1)),
+                       _date(2026, 10, 1), False))
+    cases.append(_case("jsDate",
+                       _e._js_date(_datetime(2026, 10, 5, 22, 14, 30,
+                                            123000)),
+                       _datetime(2026, 10, 5, 22, 14, 30, 123000), True))
+    cases.append(_case("dateState",
+                       _e._date_state(_date(2026, 10, 1)),
+                       _date(2026, 10, 1)))
+    cases.append(_case("calendarState",
+                       _e._calendar_state(_date(2026, 10, 1)),
+                       _date(2026, 10, 1)))
+    form = ('<html><head>'
+            '<link rel="stylesheet" '
+            'href="../App_Themes/NextBlueTheme/Basicstyl.css?v=1">'
+            '<link rel="stylesheet" href="/DXR.axd?r=1_73,1_67-AbCd">'
+            '<script src="/DXR.axd?r=1_11,1_12-AbCd"></script>'
+            '</head><body><form id="formbaka" method="post">'
+            '<input type="hidden" name="__VIEWSTATE" value="vs-1">'
+            '<input type="hidden" name="cphmain_cmbRecipient_VI" '
+            'value="U">'
+            '<input type="text" name="ctl00$cphmain$cmbRecipient" '
+            'value="Novák">'
+            '<input type="submit" name="ctl00$cphmain$button_poslat" '
+            'value="Odeslat">'
+            '</form>'
+            '<script>ASPx.createControl(ASPxClientHtmlEditor,'
+            '\'cphmain_MessageEditor\',\'MessageEditor\','
+            '{\'callBack\':function(arg) { },'
+            '\'uniqueID\':\'ctl00$cphmain$MessageEditor\','
+            '\'stateObject\':{\'cssFiles\':'
+            '[\'../App_Themes/X/styles.css\'],'
+            '\'clientState\':\'ActiveView|6|\'}});</script>'
+            '</body></html>')
+    cases.append(_case("pageResources", _e._page_resources(form), form))
+    cases.append(_case("editorDefaults", _e._editor_defaults(form),
+                       form))
+    cases.append(_case("excusePostback",
+                       _e.excuse_postback(
+                           form, day_from=_date(2026, 10, 1),
+                           day_to=_date(2026, 10, 2), whole_day=False,
+                           hour_from={"Caption": "3", "Begin": 605,
+                                      "End": 650},
+                           hour_to={"Caption": "7", "Begin": 820,
+                                    "End": 865},
+                           text="Omluvte prosím absenci.",
+                           now=_datetime(2026, 10, 5, 22, 14)),
+                       form, _date(2026, 10, 1), _date(2026, 10, 2),
+                       False,
+                       {"Caption": "3", "Begin": 605, "End": 650},
+                       {"Caption": "7", "Begin": 820, "End": 865},
+                       "Omluvte prosím absenci.",
+                       _datetime(2026, 10, 5, 22, 14)))
     return cases
 
 

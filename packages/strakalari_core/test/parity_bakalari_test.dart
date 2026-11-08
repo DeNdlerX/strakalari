@@ -1,6 +1,7 @@
 import 'package:test/test.dart';
 
 import 'package:strakalari_core/src/bakalari/common.dart';
+import 'package:strakalari_core/src/bakalari/excuse.dart';
 import 'package:strakalari_core/src/bakalari/extractors.dart';
 
 import 'parity_cases.dart';
@@ -43,6 +44,40 @@ void main() {
           result = outboxExcuseIds(args[0] as String);
         case 'storeRows':
           result = storeRows(args[0]);
+        case 'minutesText':
+          result = minutesText(args[0] as int);
+        case 'hourText':
+          result = hourText(strMap(args[0]));
+        case 'lesson':
+          result = lesson(
+              (args[0] as List).cast<Object?>(), args[1]);
+        case 'textToHtml':
+          result = textToHtml(args[0] as String);
+        case 'jsDate':
+          result = jsDate(args[0] as DateTime,
+              includeTime: args[1] as bool);
+        case 'dateState':
+          result = dateState(args[0] as DateTime);
+        case 'calendarState':
+          result = calendarState(args[0] as DateTime);
+        case 'pageResources':
+          final res = pageResources(args[0] as String);
+          result = [res.$1, res.$2];
+        case 'editorDefaults':
+          final def = editorDefaults(args[0] as String);
+          result = [def.$1, def.$2];
+        case 'excusePostback':
+          result = excusePostback(args[0] as String,
+                  dayFrom: args[1] as DateTime,
+                  dayTo: args[2] as DateTime,
+                  wholeDay: args[3] as bool,
+                  hourFrom:
+                      args[4] == null ? null : strMap(args[4]),
+                  hourTo: args[5] == null ? null : strMap(args[5]),
+                  text: args[6] as String,
+                  now: args[7] as DateTime)
+              .map((f) => [f.$1, f.$2])
+              .toList();
         default:
           fail('unknown parity fn $fn');
       }

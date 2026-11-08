@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 2 · Next step: Phase 2 — port bakalari_excuse.
+Current phase: 2 · Next step: Phase 2 — port strava (extractors + client + ordering).
 Phase 1 (core foundation) is done: models, helpers, config, cache, i18n,
 audit, excuse_history, Fernet + secret_store, parity harness.
 
@@ -34,7 +34,7 @@ State: todo = not started, tests = Dart tests written, done = ported + green.
 | strakalari/core/bakalari_client.py | core bakalari/client.dart | test_bakalari_client.py (base cases) → bakalari_client_test.dart | done |
 | strakalari/core/bakalari_common.py | core bakalari/common.dart | client/data tests (hour-index, week offsets, removed/room-move rows) → common_test.dart | done |
 | strakalari/core/bakalari_data.py | core bakalari/data.dart (DataMixin) | test_bakalari_http.py (read cases), test_sent_excuses.py, test_grades.py (client cases) → bakalari_data_test.dart (15) | done |
-| strakalari/core/bakalari_excuse.py | core bakalari/excuse.dart | test_bakalari_excuse.py, test_excuse_generation.py | todo |
+| strakalari/core/bakalari_excuse.py | core bakalari/excuse.dart (ExcuseFormMixin) | test_bakalari_excuse.py → bakalari_excuse_test.dart (14) + parity (excuse cases in bakalari.json) | done |
 | strakalari/core/bakalari_http.py | core bakalari/http_session.dart | test_bakalari_http.py (session cases) → http_session_test.dart (10) + parity_http_session_test.dart | done |
 | strakalari/core/bakalari_timetable.py | core bakalari/timetable.dart (TimetableMixin on BakalariClientBase) | test_bakalari_client.py (add/perm/stable/week cases) → timetable_test.dart | done |
 | strakalari/core/cache.py | core storage/cache.dart | test_cache.py + merge/seed/busy cases from test_timetable_cache_merge, test_data_safety, test_scheduler → cache_test.dart (21) + parity_cache_test.dart | done |
@@ -183,6 +183,9 @@ test_tls_bundle.py, test_frozen_ssl.py (frozen CA bundle no longer exists).
   `TestRefreshGate` move to phase 4 (need `Strakalari` / `run_refresh`).
 - test_grades.py → extractor cases live in `extractors_test.dart`;
   `get_grades` client cases live in `bakalari_data_test.dart` (done).
+- test_excuse_generation.py → phase 4 (needs `automation`
+  `Strakalari.generate_excuses`; the form-sending half is done in
+  `bakalari_excuse_test.dart`).
 - test_sent_excuses.py → `TestSentExcuseEntries` + `TestMergeSentExcuses`
   are ported (`extractors_test.dart`, `excuse_history_test.dart`); the
   sync tests move to phase 4 (need `Strakalari`).
@@ -266,6 +269,18 @@ test_tls_bundle.py, test_frozen_ssl.py (frozen CA bundle no longer exists).
 - `session.json` grew optional `queryParams` + `jsonBody` (the data and
   excuse mixins need both); `update_stable_baseline` / `fetch_data`
   stay in `data.dart`'s future: they need `schedule.dart` (phase 3).
+- `UserError` carries an optional `cause` (the transport error); `_send`
+  attaches it, and the excuse post's `isNeverSentCause` mirrors Python's
+  connect-vs-maybe-sent rule (refused/unreachable/DNS/connect-timeout =
+  never sent, read timeouts and the rest = uncertain).
+- The outbox helpers are public `DataMixin.fetchOutboxIds` /
+  `fetchOutboxDetail` (shared with `ExcuseFormMixin`, which is
+  constrained `on BakalariClientBase, DataMixin`); the extractor's pure
+  `outboxExcuseIds` parser keeps its name.
+- `dateState` counts the day in UTC: a local-midnight difference loses
+  an hour over DST and truncates a day off (parity case pins the value).
+- Parity caught `calendarState.selectedDates` being a list, not a bare
+  string — fixed before commit.
 
 ## Questions for the owner / reviewer
 

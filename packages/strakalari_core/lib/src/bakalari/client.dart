@@ -17,6 +17,7 @@ import '../i18n.dart';
 import 'http_session.dart';
 import 'timetable.dart';
 import 'data.dart';
+import 'excuse.dart';
 
 export 'common.dart' show parseTimetableDetail, weekOffsets;
 
@@ -270,7 +271,7 @@ abstract class BakalariClientBase {
 /// Bakaláři web session: login and requests; data fetching and the
 /// excuse form live in the mixins below.
 class BakalariClient extends BakalariClientBase
-    with TimetableMixin, DataMixin {
+    with TimetableMixin, DataMixin, ExcuseFormMixin {
   BakalariClient(super.configData, {super.logger, super.transport});
 }
 

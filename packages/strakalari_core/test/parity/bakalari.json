@@ -453,6 +453,391 @@
       "expected": [
         1
       ]
+    },
+    {
+      "fn": "minutesText",
+      "args": [
+        605
+      ],
+      "expected": "10:05"
+    },
+    {
+      "fn": "minutesText",
+      "args": [
+        60
+      ],
+      "expected": "1:00"
+    },
+    {
+      "fn": "hourText",
+      "args": [
+        {
+          "Caption": "3",
+          "Begin": 605,
+          "End": 650
+        }
+      ],
+      "expected": "3 (10:05 - 10:50)"
+    },
+    {
+      "fn": "hourText",
+      "args": [
+        {
+          "Caption": "",
+          "Begin": 480,
+          "End": 525
+        }
+      ],
+      "expected": "(8:00 - 8:45)"
+    },
+    {
+      "fn": "lesson",
+      "args": [
+        [
+          {
+            "Caption": "3"
+          },
+          {
+            "Caption": "4"
+          }
+        ],
+        3
+      ],
+      "expected": {
+        "Caption": "3"
+      }
+    },
+    {
+      "fn": "lesson",
+      "args": [
+        [
+          {
+            "Caption": "3"
+          }
+        ],
+        9
+      ],
+      "expected": null
+    },
+    {
+      "fn": "textToHtml",
+      "args": [
+        "a&b\nJan"
+      ],
+      "expected": "<p>a&amp;b</p><p>Jan</p>"
+    },
+    {
+      "fn": "textToHtml",
+      "args": [
+        ""
+      ],
+      "expected": "<p>&nbsp;</p>"
+    },
+    {
+      "fn": "jsDate",
+      "args": [
+        {
+          "__date__": "2026-10-01"
+        },
+        false
+      ],
+      "expected": "new Date(2026,9,1)"
+    },
+    {
+      "fn": "jsDate",
+      "args": [
+        {
+          "__datetime__": "2026-10-05T22:14:30.123000"
+        },
+        true
+      ],
+      "expected": "new Date(2026,9,5,22,14,30,123)"
+    },
+    {
+      "fn": "dateState",
+      "args": [
+        {
+          "__date__": "2026-10-01"
+        }
+      ],
+      "expected": {
+        "rawValue": "1790812800000",
+        "useMinDateInsteadOfNull": false
+      }
+    },
+    {
+      "fn": "calendarState",
+      "args": [
+        {
+          "__date__": "2026-10-01"
+        }
+      ],
+      "expected": {
+        "visibleDate": "10/01/2026",
+        "initialVisibleDate": "10/01/2026",
+        "selectedDates": [
+          "10/01/2026"
+        ]
+      }
+    },
+    {
+      "fn": "pageResources",
+      "args": [
+        "<html><head><link rel=\"stylesheet\" href=\"../App_Themes/NextBlueTheme/Basicstyl.css?v=1\"><link rel=\"stylesheet\" href=\"/DXR.axd?r=1_73,1_67-AbCd\"><script src=\"/DXR.axd?r=1_11,1_12-AbCd\"></script></head><body><form id=\"formbaka\" method=\"post\"><input type=\"hidden\" name=\"__VIEWSTATE\" value=\"vs-1\"><input type=\"hidden\" name=\"cphmain_cmbRecipient_VI\" value=\"U\"><input type=\"text\" name=\"ctl00$cphmain$cmbRecipient\" value=\"Novák\"><input type=\"submit\" name=\"ctl00$cphmain$button_poslat\" value=\"Odeslat\"></form><script>ASPx.createControl(ASPxClientHtmlEditor,'cphmain_MessageEditor','MessageEditor',{'callBack':function(arg) { },'uniqueID':'ctl00$cphmain$MessageEditor','stateObject':{'cssFiles':['../App_Themes/X/styles.css'],'clientState':'ActiveView|6|'}});</script></body></html>"
+      ],
+      "expected": [
+        "1_11,1_12",
+        "../App_Themes/NextBlueTheme/Basicstyl.css?v=1,1_73,1_67"
+      ]
+    },
+    {
+      "fn": "editorDefaults",
+      "args": [
+        "<html><head><link rel=\"stylesheet\" href=\"../App_Themes/NextBlueTheme/Basicstyl.css?v=1\"><link rel=\"stylesheet\" href=\"/DXR.axd?r=1_73,1_67-AbCd\"><script src=\"/DXR.axd?r=1_11,1_12-AbCd\"></script></head><body><form id=\"formbaka\" method=\"post\"><input type=\"hidden\" name=\"__VIEWSTATE\" value=\"vs-1\"><input type=\"hidden\" name=\"cphmain_cmbRecipient_VI\" value=\"U\"><input type=\"text\" name=\"ctl00$cphmain$cmbRecipient\" value=\"Novák\"><input type=\"submit\" name=\"ctl00$cphmain$button_poslat\" value=\"Odeslat\"></form><script>ASPx.createControl(ASPxClientHtmlEditor,'cphmain_MessageEditor','MessageEditor',{'callBack':function(arg) { },'uniqueID':'ctl00$cphmain$MessageEditor','stateObject':{'cssFiles':['../App_Themes/X/styles.css'],'clientState':'ActiveView|6|'}});</script></body></html>"
+      ],
+      "expected": [
+        [
+          "../App_Themes/X/styles.css"
+        ],
+        "ActiveView|6|"
+      ]
+    },
+    {
+      "fn": "excusePostback",
+      "args": [
+        "<html><head><link rel=\"stylesheet\" href=\"../App_Themes/NextBlueTheme/Basicstyl.css?v=1\"><link rel=\"stylesheet\" href=\"/DXR.axd?r=1_73,1_67-AbCd\"><script src=\"/DXR.axd?r=1_11,1_12-AbCd\"></script></head><body><form id=\"formbaka\" method=\"post\"><input type=\"hidden\" name=\"__VIEWSTATE\" value=\"vs-1\"><input type=\"hidden\" name=\"cphmain_cmbRecipient_VI\" value=\"U\"><input type=\"text\" name=\"ctl00$cphmain$cmbRecipient\" value=\"Novák\"><input type=\"submit\" name=\"ctl00$cphmain$button_poslat\" value=\"Odeslat\"></form><script>ASPx.createControl(ASPxClientHtmlEditor,'cphmain_MessageEditor','MessageEditor',{'callBack':function(arg) { },'uniqueID':'ctl00$cphmain$MessageEditor','stateObject':{'cssFiles':['../App_Themes/X/styles.css'],'clientState':'ActiveView|6|'}});</script></body></html>",
+        {
+          "__date__": "2026-10-01"
+        },
+        {
+          "__date__": "2026-10-02"
+        },
+        false,
+        {
+          "Caption": "3",
+          "Begin": 605,
+          "End": 650
+        },
+        {
+          "Caption": "7",
+          "Begin": 820,
+          "End": 865
+        },
+        "Omluvte prosím absenci.",
+        {
+          "__datetime__": "2026-10-05T22:14:00"
+        }
+      ],
+      "expected": [
+        [
+          "__VIEWSTATE",
+          "vs-1"
+        ],
+        [
+          "cphmain_cmbRecipient_VI",
+          "U"
+        ],
+        [
+          "ctl00$cphmain$cmbRecipient",
+          "Novák"
+        ],
+        [
+          "ctl00$cphmain$cmbMessageType$DDDState",
+          "{&quot;windowsState&quot;:&quot;0:0:-1:0:0:0:-10000:-10000:1:0:0:0&quot;}"
+        ],
+        [
+          "ctl00$cphmain$cmbMessageType$DDD$L$State",
+          "{&quot;CustomCallback&quot;:&quot;&quot;}"
+        ],
+        [
+          "ctl00$cphmain$cmbTypeOfRating$State",
+          "{&quot;rawValue&quot;:&quot;&quot;}"
+        ],
+        [
+          "ctl00$cphmain$cmbTypeOfRating$DDDState",
+          "{&quot;windowsState&quot;:&quot;0:0:-1:0:0:0:-10000:-10000:1:0:0:0&quot;}"
+        ],
+        [
+          "ctl00$cphmain$cmbTypeOfRating$DDD$L$State",
+          "{&quot;CustomCallback&quot;:&quot;&quot;}"
+        ],
+        [
+          "ctl00$cphmain$excuseFromDate$State",
+          "{&quot;rawValue&quot;:&quot;1790812800000&quot;,&quot;useMinDateInsteadOfNull&quot;:false}"
+        ],
+        [
+          "ctl00$cphmain$excuseFromDate$DDDState",
+          "{&quot;windowsState&quot;:&quot;0:0:-1:0:0:0:-10000:-10000:1:0:0:0&quot;}"
+        ],
+        [
+          "ctl00$cphmain$excuseFromDate$DDD$C",
+          "{&quot;visibleDate&quot;:&quot;10/05/2026&quot;,&quot;initialVisibleDate&quot;:&quot;10/05/2026&quot;,&quot;selectedDates&quot;:[&quot;10/05/2026&quot;]}"
+        ],
+        [
+          "ctl00$cphmain$comboExcuseFromPeriod$DDDState",
+          "{&quot;windowsState&quot;:&quot;0:0:-1:0:0:0:-10000:-10000:1:0:0:0&quot;}"
+        ],
+        [
+          "ctl00$cphmain$comboExcuseFromPeriod$DDD$L$State",
+          "{&quot;CustomCallback&quot;:&quot;&quot;}"
+        ],
+        [
+          "ctl00$cphmain$excuseFromTime$State",
+          "{&quot;rawValue&quot;:&quot;1791231240000&quot;,&quot;useMinDateInsteadOfNull&quot;:false}"
+        ],
+        [
+          "ctl00$cphmain$excuseToDate$State",
+          "{&quot;rawValue&quot;:&quot;1790899200000&quot;,&quot;useMinDateInsteadOfNull&quot;:false}"
+        ],
+        [
+          "ctl00$cphmain$excuseToDate$DDDState",
+          "{&quot;windowsState&quot;:&quot;0:0:-1:0:0:0:-10000:-10000:1:0:0:0&quot;}"
+        ],
+        [
+          "ctl00$cphmain$excuseToDate$DDD$C",
+          "{&quot;visibleDate&quot;:&quot;10/05/2026&quot;,&quot;initialVisibleDate&quot;:&quot;10/05/2026&quot;,&quot;selectedDates&quot;:[&quot;10/05/2026&quot;]}"
+        ],
+        [
+          "ctl00$cphmain$comboExcuseToPeriod$DDDState",
+          "{&quot;windowsState&quot;:&quot;0:0:-1:0:0:0:-10000:-10000:1:0:0:0&quot;}"
+        ],
+        [
+          "ctl00$cphmain$comboExcuseToPeriod$DDD$L$State",
+          "{&quot;CustomCallback&quot;:&quot;&quot;}"
+        ],
+        [
+          "ctl00$cphmain$excuseToTime$State",
+          "{&quot;rawValue&quot;:&quot;1791231240000&quot;,&quot;useMinDateInsteadOfNull&quot;:false}"
+        ],
+        [
+          "ctl00$cphmain$cmbRecipientType$DDDState",
+          "{&quot;windowsState&quot;:&quot;0:0:-1:0:0:0:-10000:-10000:1:0:0:0&quot;}"
+        ],
+        [
+          "ctl00$cphmain$cmbRecipientType$DDD$L$State",
+          "{&quot;CustomCallback&quot;:&quot;&quot;}"
+        ],
+        [
+          "ctl00$cphmain$cmbRecipient$DDDState",
+          "{&quot;windowsState&quot;:&quot;0:0:-1:0:0:0:-10000:-10000:1:0:0:0&quot;}"
+        ],
+        [
+          "ctl00$cphmain$cmbRecipient$DDD$L$State",
+          "{&quot;CustomCallback&quot;:&quot;&quot;}"
+        ],
+        [
+          "ctl00$cphmain$cplRecipientState",
+          "{&quot;windowsState&quot;:&quot;0:0:-1:0:0:0:-10000:-10000:1:0:0:0&quot;}"
+        ],
+        [
+          "ctl00$cphmain$cplRecipient$lbRecipients$State",
+          "{&quot;CustomCallback&quot;:&quot;&quot;}"
+        ],
+        [
+          "ctl00$cphmain$cplRecipient$lbChoosenRecipients$State",
+          "{&quot;CustomCallback&quot;:&quot;&quot;}"
+        ],
+        [
+          "ctl00$cphmain$cplRecipient$cbGroupsSelection$DDDState",
+          "{&quot;windowsState&quot;:&quot;0:0:-1:0:0:0:-10000:-10000:1:0:0:0&quot;}"
+        ],
+        [
+          "ctl00$cphmain$cplRecipient$cbGroupsSelection$DDD$L$State",
+          "{&quot;CustomCallback&quot;:&quot;&quot;}"
+        ],
+        [
+          "ctl00$cphmain$pcGroupNameState",
+          "{&quot;windowsState&quot;:&quot;0:0:-1:0:0:0:-10000:-10000:1:0:0:0&quot;}"
+        ],
+        [
+          "ctl00$cphmain$cmbPostValidity$DDDState",
+          "{&quot;windowsState&quot;:&quot;0:0:-1:0:0:0:-10000:-10000:1:0:0:0&quot;}"
+        ],
+        [
+          "ctl00$cphmain$cmbPostValidity$DDD$L$State",
+          "{&quot;CustomCallback&quot;:&quot;&quot;}"
+        ],
+        [
+          "ctl00$cphmain$deValidityStart$State",
+          "{&quot;rawValue&quot;:&quot;1791231240000&quot;,&quot;useMinDateInsteadOfNull&quot;:false}"
+        ],
+        [
+          "ctl00$cphmain$deValidityStart$DDDState",
+          "{&quot;windowsState&quot;:&quot;0:0:-1:0:0:0:-10000:-10000:1:0:0:0&quot;}"
+        ],
+        [
+          "ctl00$cphmain$deValidityStart$DDD$C",
+          "{&quot;visibleDate&quot;:&quot;10/05/2026&quot;,&quot;initialVisibleDate&quot;:&quot;10/05/2026&quot;,&quot;selectedDates&quot;:[&quot;10/05/2026&quot;]}"
+        ],
+        [
+          "ctl00$cphmain$deValidityEnd$State",
+          "{&quot;rawValue&quot;:&quot;1792440840000&quot;,&quot;useMinDateInsteadOfNull&quot;:false}"
+        ],
+        [
+          "ctl00$cphmain$deValidityEnd$DDDState",
+          "{&quot;windowsState&quot;:&quot;0:0:-1:0:0:0:-10000:-10000:1:0:0:0&quot;}"
+        ],
+        [
+          "ctl00$cphmain$deValidityEnd$DDD$C",
+          "{&quot;visibleDate&quot;:&quot;10/19/2026&quot;,&quot;initialVisibleDate&quot;:&quot;10/19/2026&quot;,&quot;selectedDates&quot;:[&quot;10/19/2026&quot;]}"
+        ],
+        [
+          "ctl00$cphmain$MessageEditor",
+          "{&quot;cssFiles&quot;:[&quot;../App_Themes/X/styles.css&quot;],&quot;clientState&quot;:&quot;ActiveView|6|&quot;,&quot;validationState&quot;:&quot;&quot;,&quot;html&quot;:&quot;&amp;lt;p&amp;gt;Omluvte prosím absenci.&amp;lt;/p&amp;gt;&quot;}"
+        ],
+        [
+          "ctl00$cphmain$MessageEditor$TD$T0",
+          "{&quot;selectedItemIndexPath&quot;:&quot;&quot;,&quot;checkedState&quot;:&quot;&quot;}"
+        ],
+        [
+          "ctl00$cphmain$MessageEditor$SPC$TPCHC0$TC$ctl01$SrchBtnEdit$State",
+          "{&quot;rawValue&quot;:&quot;&quot;}"
+        ],
+        [
+          "ctl00$cphmain$MessageEditor$SPCState",
+          "{&quot;windowsState&quot;:&quot;0:0:-1:0:0:0:-10000:-10000:1:0:0:0;0:0:-1:0:0:0:-10000:-10000:1:0:0:0&quot;}"
+        ],
+        [
+          "ctl00$cphmain$MessageEditor$SPC$ctl39$ResultList$State",
+          "{&quot;CustomCallback&quot;:&quot;&quot;}"
+        ],
+        [
+          "ctl00$cphmain$MessageEditor$DPPState",
+          "{&quot;windowsState&quot;:&quot;0:0:-1:0:0:0:-10000:-10000:1:0:0:0&quot;}"
+        ],
+        [
+          "pcAttachments_MessageState",
+          "{&quot;windowsState&quot;:&quot;0:0:-1:0:0:0:-10000:-10000:1:0:0:0&quot;}"
+        ],
+        [
+          "ctl00$cphmain$pcErrorState",
+          "{&quot;windowsState&quot;:&quot;0:0:-1:0:0:0:-10000:-10000:1:0:0:0&quot;}"
+        ],
+        [
+          "ctl00$cphmain$pcWarningState",
+          "{&quot;windowsState&quot;:&quot;0:0:-1:0:0:0:-10000:-10000:1:0:0:0&quot;}"
+        ],
+        [
+          "ctl00$cphmain$button_poslat",
+          "Odeslat"
+        ],
+        [
+          "ctl00$pcConfirmDialogState",
+          "{&quot;windowsState&quot;:&quot;0:0:-1:0:0:0:-10000:-10000:1:0:0:0&quot;}"
+        ],
+        [
+          "DXScript",
+          "1_11,1_12"
+        ],
+        [
+          "DXCss",
+          "../App_Themes/NextBlueTheme/Basicstyl.css?v=1,1_73,1_67"
+        ],
+        [
+          "DXMVCEditorsValues",
+          "{\"cphmain_cmbMessageType_DDD_L\":[\"OMLUVENKA\"],\"cphmain_cbExcuseWholeDay\":false,\"cphmain_teachingLesson\":true,\"cphmain_specificTime\":null,\"cphmain_cmbTypeOfRating_DDD_L\":[],\"cphmain_cmbTypeOfRating\":null,\"cphmain_RatingScale\":0,\"cphmain_excuseFromDate\":new Date(2026,9,1),\"comboExcuseFromPeriod_DDD_L\":[605],\"cphmain_excuseFromTime\":new Date(2026,9,5,22,14,0,0),\"cphmain_excuseToDate\":new Date(2026,9,2),\"comboExcuseToPeriod_DDD_L\":[865],\"cphmain_excuseToTime\":new Date(2026,9,5,22,14,0,0),\"cphmain_cmbRecipientType_DDD_L\":[\"\"],\"cphmain_cmbRecipient_DDD_L\":[\"U\"],\"cphmain_cplRecipient_tbRecipientSearch\":null,\"cphmain_cplRecipient_lbRecipients\":[],\"cphmain_cplRecipient_lbChoosenRecipients\":[],\"cphmain_cplRecipient_cbGroupsSelection_DDD_L\":[],\"cphmain_cplRecipient_cbGroupsSelection\":null,\"cphmain_pcGroupName_tbGroupName\":null,\"cmbPostValidity_DDD_L\":[\"V\"],\"cmbPostValidity\":\"V\",\"cphmain_deValidityStart\":new Date(2026,9,5,22,14,0,0),\"cphmain_deValidityEnd\":new Date(2026,9,19,22,14,0,0),\"cphmain_cbMailNotification\":false,\"cphmain_cbCcClassTeacher\":false,\"cphmain_cbCcDirector\":false,\"cphmain_cbCcParent\":false,\"cphmain_cbCcStudent\":false,\"cphmain_tbTitle\":null,\"cphmain_MessageEditor_SPC_TPCHC0_ctl01_0_SrchBtnEdit_0\":null,\"cphmain_MessageEditor_SPC_ctl39_SrchBtnEdit\":null,\"cphmain_MessageEditor_SPC_ctl39_ReplaceTb\":null,\"cphmain_MessageEditor_SPC_ctl39_ResultList\":[],\"cphmain_MessageEditor_SPC_ctl39_MatchCase\":null,\"comboExcuseFromPeriod\":605,\"comboExcuseToPeriod\":865,\"cphmain_cmbRecipient\":\"U\",\"cphmain_cmbRecipientType\":\"\",\"cphmain_cmbMessageType\":\"OMLUVENKA\",\"cphmain_cbWithConfirmation\":true}"
+        ]
+      ]
     }
   ]
 }
