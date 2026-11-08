@@ -228,6 +228,10 @@ test_tls_bundle.py, test_frozen_ssl.py (frozen CA bundle no longer exists).
     runs one event loop per isolate, so a static depth counter gives the
     same re-entrant semantics; callers use `acquire()` / `release()`
     instead of `with`.
+  - Entity unescape uses `html_unescape` (`html`'s `parseFragment().text`
+    drops attribute content, which is where `data-clasif` lives).
+  - `absence_from_subjects` rounds halves to even (`_round2`), mirroring
+    Python's `round()` (Dart rounds half away from zero).
 
 ## Questions for the owner / reviewer
 
