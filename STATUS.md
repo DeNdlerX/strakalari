@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 2 · Next step: Phase 2 — port bakalari_client.
+Current phase: 2 · Next step: Phase 2 — port bakalari_timetable.
 Phase 1 (core foundation) is done: models, helpers, config, cache, i18n,
 audit, excuse_history, Fernet + secret_store, parity harness.
 
@@ -31,7 +31,7 @@ State: todo = not started, tests = Dart tests written, done = ported + green.
 | strakalari/core/audit.py | core automation/audit.dart | test_automation_safety.py (audit cases) → audit_test.dart (3) + parity_audit_test.dart | done |
 | strakalari/core/automation.py | core automation/automation.dart | test_automation_safety.py | todo |
 | strakalari/core/autostart.py | core platform/autostart.dart + app impl | test_autostart.py, test_autostart_platforms.py | todo |
-| strakalari/core/bakalari_client.py | core bakalari/client.dart | test_bakalari_client.py | todo |
+| strakalari/core/bakalari_client.py | core bakalari/client.dart | test_bakalari_client.py (base cases) → bakalari_client_test.dart | done |
 | strakalari/core/bakalari_common.py | core bakalari/common.dart | client/data tests (hour-index, week offsets, removed/room-move rows) → common_test.dart | done |
 | strakalari/core/bakalari_data.py | core bakalari/data.dart | test_absence_details.py, test_marks_view.py, test_sent_excuses.py, test_substitution_feed_days.py | todo |
 | strakalari/core/bakalari_excuse.py | core bakalari/excuse.dart | test_bakalari_excuse.py, test_excuse_generation.py | todo |
@@ -243,6 +243,10 @@ test_tls_bundle.py, test_frozen_ssl.py (frozen CA bundle no longer exists).
   - `cancel.dart` is ported with the session; its dedicated tests
     (`test_cancel_responsive.py`) need `AppState` and land in phase 5 —
     both branches are covered by `http_session_test.dart`.
+  - `BakalariClient` lands as the base class now; `timetable.dart`,
+    `data.dart` and `excuse.dart` attach as mixins in later commits.
+    Password validation is eager like Python (constructor argument),
+    while the provider still re-reads on every login.
 
 ## Questions for the owner / reviewer
 

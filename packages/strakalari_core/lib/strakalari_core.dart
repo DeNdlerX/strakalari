@@ -19,4 +19,5 @@ export 'src/automation/cancel.dart';
 export 'src/bakalari/common.dart';
 export 'src/bakalari/extractors.dart';
 export 'src/bakalari/http_session.dart';
+export 'src/bakalari/client.dart';
 export 'src/error_report.dart';
