@@ -1,15 +1,20 @@
 // Bakaláři data fetching: marks, absence, sent excuses, subjects,
-// substitutions.
+// substitutions, stable baseline.
 //
-// Port of strakalari/core/bakalari_data.py (without
-// `update_stable_baseline` / `fetch_data`, which need `schedule.dart`
-// from phase 3). A mixin of [BakalariClientBase]; uses its session state.
+// Port of strakalari/core/bakalari_data.py. A mixin of [BakalariClientBase];
+// uses its session state.
 import 'dart:convert';
 
 import 'package:clock/clock.dart';
 
 import '../automation/cancel.dart';
 import '../models.dart';
+import '../planning/schedule.dart' show
+    LessonDiff,
+    applySubstitutionFeed,
+    backfillStableFacts,
+    baselineFromStableTimetable,
+    iterChanges;
 import '../storage/helpers.dart';
 import 'client.dart';
 import 'extractors.dart';
@@ -382,6 +387,88 @@ mixin DataMixin on BakalariClientBase {
       log('Could not sync substitution feed: $e — will retry next time.');
       return null;
     }
+  }
+
+  /// Builds the stable baseline and diffs the loaded weeks against it.
+  ///
+  /// Port of `bakalari_data.update_stable_baseline`. The baseline comes
+  /// only from the scraped "Stálý rozvrh" view ([stableTimetableData]):
+  /// when that scrape failed there is no baseline at all. Stores the
+  /// baseline on [stableBaseline] and the diffs on [weekChanges], logs a
+  /// short summary, and returns the baseline. Never raises.
+  Map<Object, Object?> updateStableBaseline() {
+    Map<Object, Object?> baseline = {};
+    if (stableTimetableData.isNotEmpty) {
+      try {
+        baseline = baselineFromStableTimetable(stableTimetableData);
+      } on Object catch (e) {
+        log('Warning: could not use the stable timetable: $e');
+        baseline = {};
+      }
+    }
+    final usedScraped = baseline.isNotEmpty;
+    const source = 'stable timetable (Stálý rozvrh)';
+    if (baseline.isEmpty) {
+      log("No stable timetable this run — changes come from Bakaláři's own flags.");
+    }
+    stableBaseline = baseline;
+    // The scraped template week is complete: an empty slot is a free
+    // period, so added/missing lessons are real changes.
+    stableComplete = usedScraped;
+    try {
+      final feed = substitutions;
+      if (feed != null && feed.isNotEmpty) {
+        final stamped = applySubstitutionFeed(timetableData, feed);
+        if (stamped > 0) {
+          log('Substitution feed stamped $stamped lesson(s).');
+        }
+      }
+    } on Object catch (e) {
+      log('Warning: could not apply substitution feed: $e');
+    }
+    try {
+      final matched = backfillStableFacts(timetableData, baseline);
+      if (matched > 0) {
+        log('Stable: $matched cancelled lesson(s) matched to stable slots.');
+      }
+    } on Object catch (e) {
+      log('Warning: could not match cancelled lessons to stable: $e');
+    }
+    try {
+      weekChanges = iterChanges(timetableData, baseline, usedScraped);
+    } on Object catch (e) {
+      log('Warning: could not compare weeks against stable: $e');
+      weekChanges = [];
+    }
+    if (baseline.isNotEmpty) {
+      log('Stable timetable: ${baseline.length} slots ($source).');
+    }
+    if (weekChanges.isNotEmpty) {
+      log('Schedule changes vs stable: ${weekChanges.length}.');
+      for (final item in weekChanges.take(5)) {
+        try {
+          if (item is! Map) continue;
+          final lesson = item['lesson'];
+          final diff = item['diff'];
+          final fields = diff is LessonDiff ? diff.changed.join(', ') : '';
+          final subject =
+              lesson is Map ? '${lesson['subject'] ?? '?'}' : '?';
+          final dayKey = '${item['day_key'] ?? '?'}';
+          final note = diff is LessonDiff ? diff.note : '';
+          var detail = '$subject $dayKey [$fields]'.trim();
+          if (note.isNotEmpty) detail += ': $note';
+          log('  Change: $detail');
+        } on Object {
+          continue;
+        }
+      }
+      if (weekChanges.length > 5) {
+        log('  … and ${weekChanges.length - 5} more.');
+      }
+    } else {
+      log('No schedule changes vs stable.');
+    }
+    return stableBaseline;
   }
 }
 
