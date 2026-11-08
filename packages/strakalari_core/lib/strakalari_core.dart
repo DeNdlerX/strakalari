@@ -15,5 +15,8 @@ export 'src/models.dart';
 export 'src/i18n.dart';
 export 'src/automation/audit.dart';
 export 'src/automation/excuse_history.dart';
+export 'src/automation/cancel.dart';
 export 'src/bakalari/common.dart';
 export 'src/bakalari/extractors.dart';
+export 'src/bakalari/http_session.dart';
+export 'src/error_report.dart';

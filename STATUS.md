@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 2 · Next step: Phase 2 — port bakalari_http (session).
+Current phase: 2 · Next step: Phase 2 — port bakalari_client.
 Phase 1 (core foundation) is done: models, helpers, config, cache, i18n,
 audit, excuse_history, Fernet + secret_store, parity harness.
 
@@ -35,12 +35,12 @@ State: todo = not started, tests = Dart tests written, done = ported + green.
 | strakalari/core/bakalari_common.py | core bakalari/common.dart | client/data tests (hour-index, week offsets, removed/room-move rows) → common_test.dart | done |
 | strakalari/core/bakalari_data.py | core bakalari/data.dart | test_absence_details.py, test_marks_view.py, test_sent_excuses.py, test_substitution_feed_days.py | todo |
 | strakalari/core/bakalari_excuse.py | core bakalari/excuse.dart | test_bakalari_excuse.py, test_excuse_generation.py | todo |
-| strakalari/core/bakalari_http.py | core bakalari/http_session.dart | test_bakalari_http.py | todo |
+| strakalari/core/bakalari_http.py | core bakalari/http_session.dart | test_bakalari_http.py (session cases) → http_session_test.dart (10) + parity_http_session_test.dart | done |
 | strakalari/core/bakalari_timetable.py | core bakalari/timetable.dart | test_timetable_cache_merge.py | todo |
 | strakalari/core/cache.py | core storage/cache.dart | test_cache.py + merge/seed/busy cases from test_timetable_cache_merge, test_data_safety, test_scheduler → cache_test.dart (21) + parity_cache_test.dart | done |
-| strakalari/core/cancel.py | core automation/cancel.dart | test_cancel_responsive.py, test_refresh_cancel_keeps_data.py | todo |
+| strakalari/core/cancel.py | core automation/cancel.dart | ported with the session (covered by http_session_test); test_cancel_responsive.py, test_refresh_cancel_keeps_data.py → phase 5/4 | done |
 | strakalari/core/config.py | core storage/config.dart | test_config.py, test_config_save_lock.py → config_test.dart (34) + parity_config_test.dart | done |
-| strakalari/core/error_report.py | core error_report.dart | test_error_report.py, test_log_redaction.py | todo |
+| strakalari/core/error_report.py | core error_report.dart (slim: UserError, timeoutUserMessage; full port → phase 4) | test_error_report.py, test_log_redaction.py | todo |
 | strakalari/core/excuse_history.py | core automation/excuse_history.dart | test_excuse_history.py, test_unconfirmed_excuses.py (pure cases) → excuse_history_test.dart (17) + parity_excuse_history_test.dart | done |
 | strakalari/core/extractors/__init__.py | core bakalari/ + strava/ barrels | — | todo |
 | strakalari/core/extractors/bakalari.py | core bakalari/extractors.dart | grades/sent-excuses/substitution/parity cases → extractors_test.dart + parity_bakalari_test.dart | done |
@@ -232,6 +232,17 @@ test_tls_bundle.py, test_frozen_ssl.py (frozen CA bundle no longer exists).
     drops attribute content, which is where `data-clasif` lives).
   - `absence_from_subjects` rounds halves to even (`_round2`), mirroring
     Python's `round()` (Dart rounds half away from zero).
+  - The HTTP session runs on an injectable `HttpTransport` over `dart:io`
+    (no `package:http`/`cookie_jar`: a transparent client would follow the
+    login 302 before the session stores its cookie — PLAN §3.5 requires
+    following redirects by hand; `FakeBakalari` replaces `MockClient` in
+    tests). `RuntimeError` → `StateError`, `ValueError` → `ArgumentError`,
+    `InterruptedError` → `CancelledError`.
+  - `error_report.dart` lands slim in phase 2 (`UserError`,
+    `timeoutUserMessage`); phase 4 ports the redaction/report builders.
+  - `cancel.dart` is ported with the session; its dedicated tests
+    (`test_cancel_responsive.py`) need `AppState` and land in phase 5 —
+    both branches are covered by `http_session_test.dart`.
 
 ## Questions for the owner / reviewer
 

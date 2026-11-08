@@ -471,6 +471,39 @@ def bakalari_cases() -> list[dict]:
     return cases
 
 
+def http_cases() -> list[dict]:
+    from strakalari.core import bakalari_http as _s
+
+    cases = []
+    for url in ["bakaweb.example.test",
+                "https://x.example.test/login",
+                "https://x.example.test/bakaweb/next/komens.aspx", ""]:
+        cases.append(_case("appRoot", _s.app_root(url), url))
+    form_html = ('<form id="other"><input name="x" value="1"></form>'
+                 '<form id="formbaka"><input name="a" value="1">'
+                 '<input type="submit" name="s">'
+                 '<input type="checkbox" name="c1">'
+                 '<input type="checkbox" name="c2" checked>'
+                 '<select name="sel"><option value="p">P</option>'
+                 '<option value="q" selected>Q</option>'
+                 '</select><textarea name="t">text</textarea></form>')
+    cases.append(_case("formFields",
+                       [list(pair) for pair in
+                        _s.form_fields(form_html)],
+                       form_html))
+    cases.append(_case("dxEncodeHtml",
+                       _s.dx_encode_html('a&b"c<d>e&amp;'),
+                       'a&b"c<d>e&amp;'))
+    cases.append(_case("dxState",
+                       _s.dx_state({"a": 1, "b": "x"}),
+                       {"a": 1, "b": "x"}))
+    cases.append(_case("dxCallbackResult",
+                       _s.dx_callback_result(
+                           "1|/*DX*/({'id':0,'result':'a\\'b\\u0041'})"),
+                       "1|/*DX*/({'id':0,'result':'a\\'b\\u0041'})"))
+    return cases
+
+
 def main() -> None:
     _dump("helpers", helpers_cases())
     _dump("models", models_cases())
@@ -480,6 +513,7 @@ def main() -> None:
     _dump("audit", audit_cases())
     _dump("history", history_cases())
     _dump("bakalari", bakalari_cases())
+    _dump("http", http_cases())
 
 
 if __name__ == "__main__":

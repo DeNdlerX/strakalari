@@ -1,0 +1,81 @@
+{
+  "module": "http",
+  "cases": [
+    {
+      "fn": "appRoot",
+      "args": [
+        "bakaweb.example.test"
+      ],
+      "expected": "https://bakaweb.example.test"
+    },
+    {
+      "fn": "appRoot",
+      "args": [
+        "https://x.example.test/login"
+      ],
+      "expected": "https://x.example.test"
+    },
+    {
+      "fn": "appRoot",
+      "args": [
+        "https://x.example.test/bakaweb/next/komens.aspx"
+      ],
+      "expected": "https://x.example.test/bakaweb"
+    },
+    {
+      "fn": "appRoot",
+      "args": [
+        ""
+      ],
+      "expected": ""
+    },
+    {
+      "fn": "formFields",
+      "args": [
+        "<form id=\"other\"><input name=\"x\" value=\"1\"></form><form id=\"formbaka\"><input name=\"a\" value=\"1\"><input type=\"submit\" name=\"s\"><input type=\"checkbox\" name=\"c1\"><input type=\"checkbox\" name=\"c2\" checked><select name=\"sel\"><option value=\"p\">P</option><option value=\"q\" selected>Q</option></select><textarea name=\"t\">text</textarea></form>"
+      ],
+      "expected": [
+        [
+          "a",
+          "1"
+        ],
+        [
+          "c2",
+          "on"
+        ],
+        [
+          "sel",
+          "q"
+        ],
+        [
+          "t",
+          "text"
+        ]
+      ]
+    },
+    {
+      "fn": "dxEncodeHtml",
+      "args": [
+        "a&b\"c<d>e&amp;"
+      ],
+      "expected": "a&amp;b&quot;c&lt;d&gt;e&amp;ampx;"
+    },
+    {
+      "fn": "dxState",
+      "args": [
+        {
+          "a": 1,
+          "b": "x"
+        }
+      ],
+      "expected": "{&quot;a&quot;:1,&quot;b&quot;:&quot;x&quot;}"
+    },
+    {
+      "fn": "dxCallbackResult",
+      "args": [
+        "1|/*DX*/({'id':0,'result':'a\\'b\\u0041'})"
+      ],
+      "expected": "a'bA"
+    }
+  ]
+}
