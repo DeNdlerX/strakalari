@@ -45,11 +45,11 @@ void main() {
       expect(runner.running, isFalse);
     });
 
-    test('failedRunRetriesSoon', () {
+    test('failedRunRetriesSoon', () async {
       final runner = PeriodicRunner(intervalMinutes: 60);
       runner.addJob('bad', () => throw StateError('x'));
       final before = DateTime.now();
-      runner.runAllOnce();
+      await runner.runAllOnce();
       final dueIn = (runner.lastRun!
                   .add(const Duration(minutes: 60))
                   .difference(before))
@@ -60,15 +60,34 @@ void main() {
       expect(dueIn, lessThanOrEqualTo(6));
     });
 
-    test('runNowLeavesTimerAlone', () {
+    test('asyncJobFailureTriggersEarlyRetry', () async {
+      final seen = <JobResult>[];
+      final runner =
+          PeriodicRunner(intervalMinutes: 60, onResult: seen.add);
+      runner.addJob('async_refresh', () async {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        throw const JobFailed('async network failure');
+      });
+      final before = DateTime.now();
+      final results = await runner.runAllOnce();
+      expect(results.single.ok, isFalse);
+      expect(results.single.reported, isTrue);
+      expect(seen.single.ok, isFalse);
+      final dueIn =
+          nextDue(runner.lastRun, 60, before).difference(before);
+      expect(dueIn, greaterThan(Duration.zero));
+      expect(dueIn, lessThan(const Duration(minutes: 6)));
+    });
+
+    test('runNowLeavesTimerAlone', () async {
       final runner = PeriodicRunner(intervalMinutes: 60);
       runner.addJob('good', () => 'ok');
       expect(runner.lastRun, isNull);
-      runner.runNow();
+      await runner.runNow();
       expect(runner.lastRun, isNull);
     });
 
-    test('runsJobsAndCapturesErrors', () {
+    test('runsJobsAndCapturesErrors', () async {
       final calls = <int>[];
       final runner = PeriodicRunner(intervalMinutes: 60);
       runner.addJob('good', () {
@@ -76,7 +95,7 @@ void main() {
         return 'ok';
       });
       runner.addJob('bad', () => throw StateError('x'));
-      final results = runner.runNow();
+      final results = await runner.runNow();
       expect(calls, [1]);
       final byName = {for (final r in results) r.name: r};
       expect(byName['good']!.ok, isTrue);
@@ -84,7 +103,7 @@ void main() {
       expect(byName['bad']!.error, isNotEmpty);
     });
 
-    test('keepsFullTraceback', () {
+    test('keepsFullTraceback', () async {
       void inner() => throw StateError('deep cause');
       void middle() => inner();
       void outer() => middle();
@@ -92,8 +111,9 @@ void main() {
       final runner = PeriodicRunner(intervalMinutes: 60);
       runner.addJob('deep', () => outer());
       late final List<JobResult> results;
-      expect(() => results = runner.runNow(),
-          prints(contains("scheduled job 'deep' failed")));
+      await expectLater(() async {
+        results = await runner.runNow();
+      }, prints(contains("scheduled job 'deep' failed")));
       // The innermost frame is where the bug is.
       expect(results.single.error, contains('inner'));
       expect(results.single.error, contains('deep cause'));
@@ -109,7 +129,7 @@ void main() {
       expect(runner.intervalMinutes, 15);
     });
 
-    test('jobFailedCountsAsFailureButReported', () {
+    test('jobFailedCountsAsFailureButReported', () async {
       void job() => throw const JobFailed('login failed');
 
       final seen = <JobResult>[];
@@ -117,7 +137,7 @@ void main() {
           PeriodicRunner(intervalMinutes: 60, onResult: seen.add);
       runner.addJob('refresh', job);
       final before = DateTime.now();
-      runner.runAllOnce();
+      await runner.runAllOnce();
       expect(seen.single.ok, isFalse);
       expect(seen.single.reported, isTrue);
       // Early retry: due in ~5 minutes, not a full interval.

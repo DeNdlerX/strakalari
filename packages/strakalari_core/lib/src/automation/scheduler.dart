@@ -79,7 +79,7 @@ class JobResult {
 }
 
 /// A scheduled unit of work; its return value becomes [JobResult.detail].
-typedef Job = Object? Function();
+typedef Job = FutureOr<Object?> Function();
 
 /// Receives one [JobResult] per finished job.
 typedef ResultCallback = void Function(JobResult result);
@@ -118,6 +118,7 @@ class PeriodicRunner {
   final List<JobResult> _history = [];
   Timer? _timer;
   Completer<bool>? _stopSignal;
+  bool _inFlight = false;
 
   PeriodicRunner({
     double? intervalMinutes = 60,
@@ -142,12 +143,12 @@ class PeriodicRunner {
 
   bool get running => _timer?.isActive ?? false;
 
-  List<JobResult> _runAllOnce({bool advanceTimer = true}) {
+  Future<List<JobResult>> _runAllOnce({bool advanceTimer = true}) async {
     final jobs = Map<String, Job>.of(_jobs);
     final results = <JobResult>[];
     for (final entry in jobs.entries) {
       try {
-        final detail = entry.value();
+        final detail = await entry.value();
         results.add(
             JobResult(name: entry.key, ok: true, detail: _detailString(detail)));
       } on JobFailed catch (e) {
@@ -203,10 +204,10 @@ class PeriodicRunner {
   ///
   /// Never touches the periodic timer, so a manual refresh neither
   /// postpones the next auto run nor masks a failed run's early retry.
-  List<JobResult> runNow() => _runAllOnce(advanceTimer: false);
+  Future<List<JobResult>> runNow() => _runAllOnce(advanceTimer: false);
 
   /// Runs all jobs on the periodic schedule (test seam).
-  List<JobResult> runAllOnce({bool advanceTimer = true}) =>
+  Future<List<JobResult>> runAllOnce({bool advanceTimer = true}) =>
       _runAllOnce(advanceTimer: advanceTimer);
 
   /// Re-reads the live interval (test seam for the per-tick poll).
@@ -225,12 +226,17 @@ class PeriodicRunner {
   void start() {
     if (running) return;
     _stopSignal = null;
-    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (_isPaused()) return;
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) async {
+      if (_inFlight || _isPaused()) return;
       pollInterval();
       final now = clock.now();
       if (!now.isBefore(nextDue(lastRun, intervalMinutes, now))) {
-        _runAllOnce();
+        _inFlight = true;
+        try {
+          await _runAllOnce();
+        } finally {
+          _inFlight = false;
+        }
       }
       // No extra sleep: the 5 s tick above already paces the loop,
       // so intervals stay exact and stop() stays responsive.
