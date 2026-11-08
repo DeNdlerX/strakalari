@@ -10,7 +10,10 @@ any difference means hand-edited expectations or drift.
 
 Only OS- and environment-independent pure functions belong here (no data
 dir, no keyring, no network, no ``now``). Dates are dumped as ISO strings.
-``fn`` names are the Dart function names (lowerCamelCase).
+``fn`` names are the Dart function names (lowerCamelCase). The script
+re-executes itself with ``PYTHONHASHSEED=0`` when that is not already set
+so set-iteration order (e.g. ``schedule.stable_weekly_hours``) is
+reproducible across runs.
 """
 
 from __future__ import annotations
@@ -2335,4 +2338,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    if os.environ.get("PYTHONHASHSEED") != "0":
+        import subprocess
+
+        env = dict(os.environ, PYTHONHASHSEED="0")
+        raise SystemExit(
+            subprocess.call([sys.executable, __file__, *sys.argv[1:]], env=env)
+        )
     main()
