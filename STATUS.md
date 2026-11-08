@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 5–9 done (integration by owner-agent) · Next step: Fix every finding in `docs/flutter-migration/reviews/checkpoint-A.md` (blockers first), one commit per finding, then stop for re-review. No work on phases 5–10 until Checkpoint A passes.
+Current phase: 5–9 done (integration by owner-agent) · Next step: Checkpoint A rework — B1 DONE (ee364bd, dst_test 11/11 green under TZ=Europe/Prague); next fix B2 (isNeverSentCause phase rule), one commit per finding, then stop for re-review. No work on phases 5–10 until Checkpoint A passes.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
