@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 4 (Checkpoint A rework; phases 5–9 in progress, unreviewed) · Next step: Checkpoint A rework — ALL BLOCKERS DONE (B1 ee364bd, B2 7a045dd, B3 e0d0ebf, B4 441a05e, B5 2eff0b5) + M1 DONE (56c34aa), M2 DONE (5857842), M3 DONE (73cd892), M4 DONE (e734e04, 763ec48), M5 DONE (f5f7f16), M6 DONE (57a54f4), M7 DONE (0d37753), M8 DONE; next: S1–S10, one commit per finding, then stop for re-review. No work on phases 5–10 until Checkpoint A passes.
+Current phase: 4 (⛔ Checkpoint A rework complete; phases 5–9 in progress, unreviewed) · Next step: ⛔ Checkpoint A re-review — all findings resolved (B1 ee364bd, B2 7a045dd, B3 e0d0ebf, B4 441a05e, B5 2eff0b5; M1 56c34aa, M2 5857842, M3 73cd892, M4 e734e04/763ec48, M5 f5f7f16, M6 57a54f4, M7 0d37753, M8 a3811a3; S1 92181d8, S2 b8b37d8, S3 c9dc71f, S4 c6b4941, S5 d2f9eba, S6 bcb07bf, S7 e4bb8e1, S8 cfaf7f4, S9 1a97efa, S10+N1 b953c09). Waiting for reviewer sign-off before resuming phases 5–10.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -14,7 +14,7 @@ notify (core interface). 16 new parity JSON fixtures (344 cases);
 `dart analyze` + `flutter analyze` clean.
 Phase 4 (automation) is done: error_report (full), scheduler,
 session_lock, automation (Strakalari), refresh (run_refresh).
-⛔ Checkpoint A: core review (rework in progress).
+⛔ Checkpoint A: core review (rework complete, ready for re-review).
 Phase 5 (app shell) is in progress, unreviewed: Riverpod controllers (AppState + 6 facades),
 go_router (8 routes + wizard + more), adaptive scaffold (720/520
 breakpoints, rail ↔ bar + More, landscape side rail), theme tokens,
@@ -499,10 +499,11 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
     passes a non-dict).
   - Map equality is deep (`_jsonEquals`): Dart maps compare by identity,
     Python dicts by value — needed for merge dedup and coverage checks.
-  - `HistoryLock` replaces the `threading.RLock` + context manager: Dart
-    runs one event loop per isolate, so a static depth counter gives the
-    same re-entrant semantics; callers use `acquire()` / `release()`
-    instead of `with`.
+  - `HistoryLock` uses an async mutex inside the isolate plus the OS
+    `InterProcessLock` on the outer acquisition (`depth: 0 -> 1`), so
+    concurrent async callers in one isolate and separate isolates /
+    processes both serialize on the same byte-0 lock as Python
+    (reworked in A-M1).
   - Entity unescape uses `html_unescape` (`html`'s `parseFragment().text`
     drops attribute content, which is where `data-clasif` lives).
   - `absence_from_subjects` rounds halves to even (`_round2`), mirroring
@@ -550,8 +551,11 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
 - `stravaBlacklistJson` is `List<String>` (`'$kw'`); Python keeps raw
   values. The shipped-template/placeholder and fail-closed quarantine
   rules are ported as-is.
-- The Strava retry rule reuses `isNeverSentCause` (refused/unreachable =
-  no retry, like Python's ConnectError; dropped reads retry once).
+- `DartIoHttpTransport` wraps DNS/connect/connect-timeout (`min(timeout, 20s)`)
+  in `ConnectFailure` (`isNeverSentCause == true`), while read retries
+  use `isDroppedReadError` (only dropped-connection `HttpException` /
+  `SocketException`, excluding `ConnectFailure` and `TlsException` —
+  reworked in A-B2, A-S8, A-S9).
 - `tls.ensure_ca_bundle` has no Dart counterpart: `DartIoHttpTransport`
   uses the system store (noted, not ported).
 - Phase 3/4 port adaptations (behavior identical unless noted):
@@ -697,6 +701,21 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
 ## Checkpoint notes
 
 - 2026-11-08 · Checkpoint A review: **FAIL** (5 blockers, 8 must-fix) — [docs/flutter-migration/reviews/checkpoint-A.md](docs/flutter-migration/reviews/checkpoint-A.md)
+- 2026-11-08 · Checkpoint A rework: **COMPLETE** (all 5 blockers, 8 must-fix, 10 should-fix, and N1 resolved in 23 atomic commits `ee364bd..b953c09`; ready for re-review):
+  - **A-B1** (`ee364bd`): replaced `Duration(days:)` with `addDays` across all 14 core files; added `test/dst_test.dart` covering spring-forward and fall-back transitions.
+  - **A-B2** (`7a045dd`): introduced `ConnectFailure` in `DartIoHttpTransport.send` around `openUrl` so only pre-connection failures classify as `isNeverSentCause`, while post-connect `SocketException`s enter the uncertain/outbox path.
+  - **A-B3** (`e0d0ebf`): fixed `loadExcuses(decrypt: true)` to pass the full entry map to `decryptEntry` so `reason_encrypted: true` entries decrypt.
+  - **A-B4** (`441a05e`): made `planAutoOrdersHook` async (`FutureOr`), wired its default to `planAutoOrders`, added optional `today` parameter, and added end-to-end auto-lunch refresh tests.
+  - **A-B5** (`2eff0b5`): aligned `parseInt` in `models.dart` (`Lesson.fromJson`, `Grade.fromJson`), `extractors.dart`, and `grades.dart` with Python `int()`.
+  - **A-M1** (`56c34aa`): made `HistoryLock` acquire an async in-isolate mutex plus the OS `InterProcessLock` on outer entry (`depth: 0 -> 1`), verified across isolates.
+  - **A-M2** (`5857842`): aligned `hasValidCredentials` and `Strakalari` init with Python truthiness (`use_strava: "false"` is truthy; whitespace-only fields are blank).
+  - **A-M3** (`73cd892`): moved `tryEncrypt` before `with HistoryLock` in `saveExcuses`.
+  - **A-M4** (`e734e04`, `763ec48`): matched Python `json.loads` (`NaN`/`Infinity`) and `float()` (trimmed string, `Infinity`, bools) in `grades.dart` and `extractors.dart`.
+  - **A-M5** (`f5f7f16`): preserved input map order when sorting ties in `grades.summarize` and `news.findNews`.
+  - **A-M6** (`57a54f4`): failed closed (`KeyStoreUnavailable`) on desktop when `keyStoreBackend == null` unless `STRAKALARI_NO_KEYRING` is set.
+  - **A-M7** (`0d37753`): made `tools/parity/dump.py` re-exec with `PYTHONHASHSEED=0` when unset and regenerated `schedule.json`.
+  - **A-M8** (`a3811a3`): marked phases 5–9 `in progress, unreviewed`, added `keepLunchChoiceIsStoredAndHonored`, listed dropped TLS/import tests, and mapped all 94 Python test files test-by-test.
+  - **A-S1..A-S10 + A-N1** (`92181d8..b953c09`): two-pass cancellation-first staging (`A-S1`), Python float formatting in JSON writers (`A-S2`), `Stopwatch`/`clock.now()` lock timing (`A-S3`), `STRAKALARI_NO_KEYRING=1` in parity scripts (`A-S4`), localhost guard on `refresh_dryrun.dart --send-day` (`A-S5`), full dry-run parity comparison including `excusePending()` (`A-S6`), async `PeriodicRunner` jobs (`A-S7`), narrowed `isDroppedReadError` read retry (`A-S8`), bounded `DartIoHttpTransport` connect timeout (`A-S9`), delegated log redaction to `error_report.dart` (`A-S10`), and aligned `refresh.dart`/`writeLog` error handling (`A-N1`).
 
 ### ⛔ Checkpoint A: core review (phases 3–4)
 
