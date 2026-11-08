@@ -33,6 +33,7 @@ import '../storage/helpers.dart';
 import 'audit.dart' as audit;
 import 'cancel.dart';
 import 'excuse_history.dart';
+import '../error_report.dart' show redactValues, secretValues;
 import '../i18n.dart';
 
 /// Resolved lunch cutoff `HH:MM` (`school_presets.resolve_lunch_cutoff`,
@@ -547,9 +548,9 @@ class Strakalari implements RefreshApp {
 
   /// `message` with stored passwords / API keys scrubbed out.
   ///
-  /// Mirrors `error_report.redact_values`/`secret_values` for the
-  /// secret keys only (usernames stay, like in Python). The full
-  /// error_report port owns the canonical copy — keep in sync.
+  /// Exception texts can echo a typed secret; `log.txt` is plain text on
+  /// disk. The decrypted values are cached per stored ciphertexts, so a
+  /// routine line costs a few `contains` checks.
   String _redactLog(String message) {
     try {
       final cfg = configData;
@@ -558,48 +559,12 @@ class Strakalari implements RefreshApp {
         '${cfg['strava_password'] ?? ''}',
         '${cfg['gemini_api_key'] ?? ''}',
       ].join('\x00');
-      if (_logSecretsKey == null || _logSecretsKey!.join('\x01') != key) {
-        final values = <String>{};
-        for (final name in [
-          'bakalari_password',
-          'strava_password',
-          'gemini_api_key'
-        ]) {
-          final stored = cfg[name];
-          if (stored == null || '$stored'.isEmpty) continue;
-          values.add('$stored');
-          if (cfg['${name}_encrypted'] == true) {
-            try {
-              final plain = decryptStrict('$stored');
-              if (plain != null && plain.isNotEmpty) values.add(plain);
-            } on Object {
-              // Ciphertext still scrubbed.
-            }
-          }
-        }
-        values.remove('');
+      if (_logSecretsKey == null || _logSecretsKey!.join('\x00') != key) {
         _logSecretsKey = key.split('\x00');
-        _logSecrets = values;
+        _logSecrets = secretValues(cfg);
       }
-      final secrets = _logSecrets ?? <String>{};
-      if (secrets.isEmpty) return message;
-      var out = message;
-      final ordered = secrets.toList()
-        ..sort((a, b) => b.length.compareTo(a.length));
-      for (final secret in ordered) {
-        if (secret.length >= 4) {
-          if (out.contains(secret)) out = out.replaceAll(secret, '***');
-        } else {
-          try {
-            out = out.replaceAllMapped(
-                RegExp('(?<!\\S)${RegExp.escape(secret)}(?!\\S)'),
-                (_) => '***');
-          } on Object {
-            continue;
-          }
-        }
-      }
-      return out;
+      final secrets = _logSecrets ?? const <String>{};
+      return secrets.isEmpty ? message : redactValues(message, secrets);
     } on Object {
       // Fail closed: never write it raw.
       return '(log line withheld: redaction failed)';
@@ -629,9 +594,6 @@ class Strakalari implements RefreshApp {
       String two(int n) => n.toString().padLeft(2, '0');
       final stamp =
           '${now.year}-${two(now.month)}-${two(now.day)} ${two(now.hour)}:${two(now.minute)}:${two(now.second)}';
-      Directory(
-              File(logFile).parent.absolute.path)
-          .createSync(recursive: true);
       File(logFile).writeAsStringSync(
           toPlatformNewlines('[$stamp] $message\n\n'),
           mode: FileMode.append, encoding: utf8);

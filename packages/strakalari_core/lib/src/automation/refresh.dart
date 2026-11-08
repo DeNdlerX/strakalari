@@ -232,14 +232,8 @@ Future<RefreshResult> runRefresh(
   }
 
   void checkCancel() {
-    if (isCancelled != null) {
-      try {
-        if (isCancelled()) throw const CancelledError();
-      } on CancelledError {
-        rethrow;
-      } on Object {
-        // A broken predicate reads as "not cancelled".
-      }
+    if (isCancelled != null && isCancelled()) {
+      throw const CancelledError();
     }
   }
 
@@ -345,14 +339,8 @@ int _goBackWeeks(RefreshApp app, Map<String, Object?> cfg) {
 }
 
 DateTime _schoolYearStart(DateTime today) {
-  try {
-    final start = schoolYearStartHook(today);
-    return DateTime(start.year, start.month, start.day);
-  } on Object {
-    // Unreachable once phase 3 wires the hook; fail open (no pruning)
-    // rather than fail a refresh on a missing school-year start.
-    return DateTime(today.year, today.month, today.day);
-  }
+  final start = schoolYearStartHook(today);
+  return DateTime(start.year, start.month, start.day);
 }
 
 /// Past school-year Mondays neither in the history nor in the regular window.
