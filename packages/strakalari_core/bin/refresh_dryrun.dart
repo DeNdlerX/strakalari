@@ -40,11 +40,24 @@ Object? canonical(Object? value) {
   return value;
 }
 
+/// True when [url] targets a loopback host (`127.0.0.1`, `localhost`,
+/// `::1` / `[::1]`). `--send-day` is refused for any other host so the
+/// CLI can never submit a real excuse to a school server.
+bool isLoopbackSendUrl(String url) {
+  final uri = Uri.tryParse(url.trim());
+  if (uri == null || !uri.hasScheme || !uri.hasAuthority) return false;
+  final host = uri.host.toLowerCase();
+  return host == '127.0.0.1' ||
+      host == 'localhost' ||
+      host == '::1' ||
+      host == '[::1]';
+}
+
 Future<void> main(List<String> args) async {
   var url = 'http://127.0.0.1:8080';
   var user = 'demo';
   var password = 'demo';
-  var dataDir = Directory.systemTemp.createTempSync('dart_dry_').path;
+  String? dataDirArg;
   String? sendDay;
   for (var i = 0; i < args.length; i++) {
     if (args[i] == '--url' && i + 1 < args.length) url = args[++i];
@@ -53,7 +66,7 @@ Future<void> main(List<String> args) async {
       password = args[++i];
     }
     if (args[i] == '--data-dir' && i + 1 < args.length) {
-      dataDir = args[++i];
+      dataDirArg = args[++i];
     }
     // Opt-in REAL submit of one whole-day excuse (demo server only):
     // `--send-day DD.MM.YYYY` switches excuse_mode to confirm.
@@ -61,6 +74,12 @@ Future<void> main(List<String> args) async {
       sendDay = args[++i];
     }
   }
+  if (sendDay != null && !isLoopbackSendUrl(url)) {
+    throw ArgumentError(
+        'Refusing --send-day unless target host is localhost/127.0.0.1/[::1]: $url');
+  }
+  final dataDir =
+      dataDirArg ?? Directory.systemTemp.createTempSync('dart_dry_').path;
   Directory(dataDir).createSync(recursive: true);
   setEnvironmentOverride({
     'STRAKALARI_DATA_DIR': dataDir,

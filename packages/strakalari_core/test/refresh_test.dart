@@ -14,6 +14,7 @@ import 'dart:io';
 import 'package:clock/clock.dart';
 import 'package:test/test.dart';
 
+import '../bin/refresh_dryrun.dart' as refresh_dryrun;
 import 'package:strakalari_core/src/automation/automation.dart';
 import 'package:strakalari_core/src/automation/cancel.dart';
 import 'package:strakalari_core/src/automation/refresh.dart';
@@ -759,6 +760,23 @@ void main() {
       a.save();
       final onDisk = File(path).readAsStringSync();
       expect(onDisk.contains('"theme": "dark"'), isTrue);
+    });
+
+    test('refreshDryrunSendDayRequiresLocalhost', () async {
+      expect(refresh_dryrun.isLoopbackSendUrl('http://127.0.0.1:8080'), isTrue);
+      expect(refresh_dryrun.isLoopbackSendUrl('http://localhost:18080/b'), isTrue);
+      expect(refresh_dryrun.isLoopbackSendUrl('http://[::1]:8080'), isTrue);
+      expect(refresh_dryrun.isLoopbackSendUrl('https://bakalari.school.cz'), isFalse);
+      expect(refresh_dryrun.isLoopbackSendUrl('http://192.168.1.10:8080'), isFalse);
+      await expectLater(
+        refresh_dryrun.main([
+          '--url',
+          'https://bakalari.school.cz',
+          '--send-day',
+          '15.09.2026',
+        ]),
+        throwsArgumentError,
+      );
     });
   });
 }
