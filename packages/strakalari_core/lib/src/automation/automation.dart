@@ -1551,8 +1551,7 @@ class Strakalari implements RefreshApp {
     // the same absence flips included/excluded depending on run hour.
     final todayDate =
         DateTime(todayParam.year, todayParam.month, todayParam.day);
-    final cutoffDate =
-        todayDate.subtract(Duration(days: delayDays));
+    final cutoffDate = addDays(todayDate, -delayDays);
     final cleanedDays = <DateTime, Map<int, String>>{};
     // Dates that need no excuse themselves but must break a consecutive
     // full-day chain (fully excused days) or downgrade it to partial
@@ -1673,7 +1672,7 @@ class Strakalari implements RefreshApp {
       // silently bridged into one over-long excuse range.
       if (consecutiveFullDays.isNotEmpty &&
           prevDate != null &&
-          day.difference(prevDate).inDays > 1) {
+          daysBetween(prevDate, day) > 1) {
         flushFullDays();
       }
       prevDate = day;

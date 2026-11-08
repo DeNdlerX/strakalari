@@ -36,6 +36,7 @@ import '../i18n.dart';
 import '../models.dart';
 import '../storage/cache.dart';
 import '../lunches/lunch_auto.dart' show handledKey, updateHandledDays;
+import '../storage/helpers.dart';
 import '../news.dart' show findNews;
 import '../planning/planned_skips.dart' show plannedLunchDays;
 import '../planning/planner.dart' show schoolYearTerms;
@@ -329,7 +330,7 @@ void _persist(RefreshApp app, Map<String, Object?> cfg,
     final startedDate =
         DateTime(started.year, started.month, started.day);
     final windowStart = [
-      startedDate.subtract(Duration(days: back * 7 + 7)),
+      addDays(startedDate, -(back * 7 + 7)),
       // The running school year stays: it is the timetable history.
       _schoolYearStart(startedDate),
     ].reduce((a, b) => a.isBefore(b) ? a : b);
@@ -370,8 +371,7 @@ DateTime _schoolYearStart(DateTime today) {
 List<DateTime> _missingHistoryWeeks(RefreshApp app,
     Map<String, Object?> cfg, DateTime today, Set<DateTime> done) {
   final yearStart = _schoolYearStart(today);
-  final thisMonday = today
-      .subtract(Duration(days: today.weekday - 1));
+  final thisMonday = addDays(today, -(today.weekday - 1));
   var forward = app.goForwardWeeks;
   if (forward == 0) {
     final raw = cfg['go_forward_weeks'];
@@ -383,17 +383,16 @@ List<DateTime> _missingHistoryWeeks(RefreshApp app,
   final back = _goBackWeeks(app, cfg);
   final regular = {
     for (final off in weekOffsets(back, forward))
-      thisMonday.add(Duration(days: off * 7))
+      addDays(thisMonday, off * 7)
   };
-  final firstMonday =
-      yearStart.subtract(Duration(days: yearStart.weekday - 1));
+  final firstMonday = addDays(yearStart, -(yearStart.weekday - 1));
   final missing = <DateTime>[];
   var monday = firstMonday;
   while (monday.isBefore(thisMonday)) {
     if (!regular.contains(monday) && !done.contains(monday)) {
       missing.add(monday);
     }
-    monday = monday.add(const Duration(days: 7));
+    monday = addDays(monday, 7);
   }
   return missing;
 }
@@ -402,10 +401,8 @@ List<DateTime> _missingHistoryWeeks(RefreshApp app,
 void _recordHistoryWeeks(RefreshApp app, Map<String, Object?> fresh,
     DateTime today, Set<DateTime> done) {
   final yearStart = _schoolYearStart(today);
-  final firstMonday =
-      yearStart.subtract(Duration(days: yearStart.weekday - 1));
-  final thisMonday =
-      today.subtract(Duration(days: today.weekday - 1));
+  final firstMonday = addDays(yearStart, -(yearStart.weekday - 1));
+  final thisMonday = addDays(today, -(today.weekday - 1));
   final loaded = {
     for (final m in app.timetableLoadedWeeks)
       if (!m.isBefore(firstMonday) && m.isBefore(thisMonday))

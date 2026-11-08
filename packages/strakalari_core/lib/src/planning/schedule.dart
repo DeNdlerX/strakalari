@@ -998,11 +998,11 @@ Map<DateTime, List<Map<String, Object?>>> stableTemplateWeek(Map<Object?, Object
   DateTime anchor;
   if (monday == null) {
     final today = clock.now();
-    anchor = DateTime(today.year, today.month, today.day)
-        .subtract(Duration(days: today.weekday - 1));
+    anchor = addDays(DateTime(today.year, today.month, today.day),
+        -(today.weekday - 1));
   } else {
-    anchor = DateTime(monday.year, monday.month, monday.day)
-        .subtract(Duration(days: monday.weekday - 1));
+    anchor = addDays(DateTime(monday.year, monday.month, monday.day),
+        -(monday.weekday - 1));
   }
   final days = <DateTime, List<Map<String, Object?>>>{};
   for (final entry in (baseline ?? {}).entries) {
@@ -1029,7 +1029,7 @@ Map<DateTime, List<Map<String, Object?>>> stableTemplateWeek(Map<Object?, Object
       } else {
         continue;
       }
-      final day = anchor.add(Duration(days: key.$1));
+      final day = addDays(anchor, key.$1);
       (days[day] ??= []).add({
         'subject': subject,
         'teacher': teacher,

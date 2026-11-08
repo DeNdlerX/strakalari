@@ -34,6 +34,7 @@ import 'package:clock/clock.dart';
 import 'i18n.dart';
 import 'lunches/lunch_cutoff.dart';
 import 'models.dart';
+import 'storage/helpers.dart';
 import 'planning/planned_skips.dart';
 import 'planning/school_presets.dart';
 import 'wakeup.dart'
@@ -286,12 +287,12 @@ String _dayPhrase(
   day = _dayOnly(day);
   today = _dayOnly(today);
   if (day == today) return t('status_today', lang: lang);
-  if (day == today.add(const Duration(days: 1))) {
+  if (day == addDays(today, 1)) {
     return t('status_tomorrow', lang: lang);
   }
   final names = plain ? _dayPlain : _dayAfter;
   var text = names[lang]![day.weekday - 1];
-  if (!day.isBefore(today.add(const Duration(days: 7)))) {
+  if (!day.isBefore(addDays(today, 7))) {
     text += ' ${_date(day)}';
   }
   return text;
@@ -426,7 +427,7 @@ String _shortWhen(DateTime day, DateTime today, String lang) {
   day = _dayOnly(day);
   today = _dayOnly(today);
   if (day == today) return '';
-  if (day == today.add(const Duration(days: 1))) {
+  if (day == addDays(today, 1)) {
     return t('status_tomorrow', lang: lang);
   }
   return _dayShort[lang]![day.weekday - 1];
@@ -445,12 +446,12 @@ StatusRow? buildLunchRow(StatusInputs inputs, DateTime now, String lang) {
       lunchOverAt(inputs, today) ?? lunchSwitch.$1 * 60 + lunchSwitch.$2;
   final first = now.hour * 60 + now.minute < over
       ? today
-      : today.add(const Duration(days: 1));
+      : addDays(today, 1);
   final days = _menuDays(inputs);
   final upcoming = [
     for (final day in days.keys)
       if (!day.isBefore(first) &&
-          !day.isAfter(today.add(const Duration(days: lunchAheadDays))))
+          !day.isAfter(addDays(today, lunchAheadDays)))
         day,
   ]..sort();
   if (upcoming.isEmpty) return null;
@@ -484,7 +485,7 @@ StatusRow? _nextLessonRow(StatusInputs inputs, DateTime now, String lang) {
   final today = _dayOnly(now);
   final nowMin = now.hour * 60 + now.minute;
   for (var ahead = 0; ahead <= lessonAheadDays; ahead++) {
-    final day = today.add(Duration(days: ahead));
+    final day = addDays(today, ahead);
     if (freeDays.contains(day)) continue;
     final lessons = lessonsFor(days, day, inputs.stableBaseline);
     if (lessons.isEmpty) continue;
@@ -543,7 +544,7 @@ StatusRow? buildLunchOrdersRow(StatusInputs inputs, DateTime now, String lang) {
         _dayOnly(day).isBefore(today) ||
         _dayOnly(
           day,
-        ).isAfter(today.add(const Duration(days: orderAheadDays))) ||
+        ).isAfter(addDays(today, orderAheadDays)) ||
         _realMeals(entry.value).isEmpty ||
         _orderedMeal(inputs.webOrders, canon).isNotEmpty ||
         skipped.contains(canon)) {

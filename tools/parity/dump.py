@@ -90,6 +90,21 @@ def helpers_cases() -> list[dict]:
         cases.append(_case("templateText", h.template_text(entry), entry))
     for value in [True, "1", "yes", False, "", "0"]:
         cases.append(_case("isEncryptedFlag", h.is_encrypted_flag(value), value))
+    # DST day arithmetic (Europe/Prague switches 29.3.2026 and 25.10.2026):
+    # plain date math has no DST, the Dart port must match it exactly.
+    from datetime import date as _date, timedelta as _td
+    for y, m, d, n in [(2026, 3, 30, -2), (2026, 10, 28, -5),
+                       (2026, 3, 27, 5),
+                       (2026, 10, 19, 14), (2026, 4, 15, -30)]:
+        start = _date(y, m, d)
+        cases.append(_case("addDays", start + _td(days=n), start, n))
+    for first, last in [((2026, 3, 28), (2026, 3, 30)),
+                        ((2026, 10, 23), (2026, 10, 28)),
+                        ((2026, 10, 26), (2026, 10, 19)),
+                        ((2026, 10, 26), (2026, 10, 25)),
+                        ((2026, 3, 27), (2026, 4, 1))]:
+        a, b = _date(*first), _date(*last)
+        cases.append(_case("daysBetween", (b - a).days, a, b))
     return cases
 
 
@@ -346,6 +361,26 @@ def history_cases() -> list[dict]:
     cases.append(_case("resolveUnconfirmed", [still, confirmed, not_sent],
                        [sent_e, day_e], [dict(lesson)],
                        date(2026, 8, 26), now))
+    # DST rows (spring switch 29.3.2026, autumn switch 25.10.2026).
+    cases.append(_case("excuseWindowStart",
+                       h.excuse_window_start(date(2026, 4, 15)),
+                       date(2026, 4, 15), None))
+    cases.append(_case("excuseWindowStart",
+                       h.excuse_window_start(date(2026, 4, 15),
+                                             date(2026, 3, 20)),
+                       date(2026, 4, 15), date(2026, 3, 20)))
+    oct_excuse = {"type": "pure days", "starting_day": "24.10.2026",
+                  "ending_day": "26.10.2026"}
+    oct_pending = [h.unconfirmed_entry(
+        {"type": "pure days", "starting_day": "26.10.2026",
+         "ending_day": "26.10.2026"}, datetime(2026, 10, 26, 12, 0))]
+    cases.append(_case("unconfirmedBlocks",
+                       h.unconfirmed_blocks(dict(oct_excuse),
+                                            [dict(e) for e in oct_pending]),
+                       dict(oct_excuse), [dict(e) for e in oct_pending]))
+    cases.append(_case("excuseCovered",
+                       h.excuse_covered(dict(oct_excuse), list(oct_pending)),
+                       dict(oct_excuse), list(oct_pending)))
     return cases
 
 
@@ -1534,6 +1569,21 @@ def lunch_cutoff_cases() -> list[dict]:
         lc.is_lunch_order_open(date(2026, 9, 8), date(2026, 9, 4),
                                "09:30"),
         date(2026, 9, 8), date(2026, 9, 4), "09:30"))
+    # DST rows (spring switch 29.3.2026, autumn switch 25.10.2026).
+    cases.append(_case("previousBusinessDay",
+                       lc.previous_business_day(date(2026, 3, 31)),
+                       date(2026, 3, 31)))
+    cases.append(_case("previousBusinessDay",
+                       lc.previous_business_day(date(2026, 10, 26)),
+                       date(2026, 10, 26)))
+    deadline = lc.lunch_order_deadline(date(2026, 3, 31), "12:00")
+    cases.append(_case("lunchOrderDeadline",
+                       deadline.strftime("%Y-%m-%dT%H:%M"),
+                       date(2026, 3, 31), "12:00"))
+    deadline = lc.lunch_order_deadline(date(2026, 10, 27), "12:00")
+    cases.append(_case("lunchOrderDeadline",
+                       deadline.strftime("%Y-%m-%dT%H:%M"),
+                       date(2026, 10, 27), "12:00"))
     return cases
 
 
@@ -1606,6 +1656,27 @@ def lunch_auto_cases() -> list[dict]:
         ["20.09.2026", "01.09.2026"],
         {"28.09.2026": "table0&1&102", "29.09.2026": "table0&-1&0"},
         ["29.09.2026"], today))
+    # DST rows (spring switch 29.3.2026, autumn switch 25.10.2026).
+    cases.append(_case(
+        "shouldRunGeminiAuto",
+        la.should_run_gemini_auto(True, "2026-03-29", 1,
+                                  date(2026, 3, 30)),
+        True, "2026-03-29", 1, date(2026, 3, 30)))
+    cases.append(_case(
+        "shouldRunGeminiAuto",
+        la.should_run_gemini_auto(True, "2026-10-24", 2,
+                                  date(2026, 10, 26)),
+        True, "2026-10-24", 2, date(2026, 10, 26)))
+    oct_today = date(2026, 10, 28)
+    cases.append(_case(
+        "updateHandledDays",
+        la.update_handled_days(["20.10.2026", "01.10.2026"],
+                               {"27.10.2026": "table0&1&102",
+                                "28.10.2026": "table0&-1&0"},
+                               ["28.10.2026"], oct_today),
+        ["20.10.2026", "01.10.2026"],
+        {"27.10.2026": "table0&1&102", "28.10.2026": "table0&-1&0"},
+        ["28.10.2026"], oct_today))
     return cases
 
 

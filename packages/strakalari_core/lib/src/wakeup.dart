@@ -242,9 +242,9 @@ List<Map<String, Object?>> lessonsFor(
 ) {
   final dayOnly = DateTime(day.year, day.month, day.day);
   if (days.containsKey(dayOnly)) return days[dayOnly]!;
-  final monday = dayOnly.subtract(Duration(days: dayOnly.weekday - 1));
+  final monday = addDays(dayOnly, -(dayOnly.weekday - 1));
   if ([
-    for (var i = 0; i < 7; i++) monday.add(Duration(days: i)),
+    for (var i = 0; i < 7; i++) addDays(monday, i),
   ].any(days.containsKey)) {
     return [];
   }
@@ -443,7 +443,7 @@ List<WakeupAlarm> upcomingWakeupAlarms(
   final alarms = <WakeupAlarm>[];
   final today = DateTime(now.year, now.month, now.day);
   for (var ahead = 0; ahead <= (horizonDays < 0 ? 0 : horizonDays); ahead++) {
-    final day = today.add(Duration(days: ahead));
+    final day = addDays(today, ahead);
     if (skipped.contains(day)) continue;
     final alarm = planner.alarm(day);
     if (alarm != null && alarm.alarmDt.isAfter(now)) {
@@ -748,11 +748,11 @@ Map<String, Object?> buildWidgetPayload(
   final slots = periodSlots(days);
   final names = _dayNames[lang]!;
   final today = DateTime(now.year, now.month, now.day);
-  final monday = today.subtract(Duration(days: today.weekday - 1));
+  final monday = addDays(today, -(today.weekday - 1));
 
   final out = <Map<String, Object?>>[];
   for (var offset = 0; offset < widgetSpanDays; offset++) {
-    final day = monday.add(Duration(days: offset));
+    final day = addDays(monday, offset);
     final lessons = lessonsFor(days, day, stableBaseline);
     if (day.weekday >= 6 && lessons.isEmpty) continue;
     final rows = buildWidgetDayRows(

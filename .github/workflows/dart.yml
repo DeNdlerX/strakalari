@@ -47,6 +47,10 @@ jobs:
       - name: Test core
         run: dart test
         working-directory: packages/strakalari_core
+        env:
+          # DST day-arithmetic regressions (A-B1) only fail in a zone with
+          # DST switches; UTC would hide them.
+          TZ: Europe/Prague
 
       - name: Test app
         run: flutter test

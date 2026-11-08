@@ -21,6 +21,7 @@
 import 'package:clock/clock.dart';
 
 import '../models.dart';
+import '../storage/helpers.dart';
 
 /// Scales a subject can be graded on.
 const List<String> scales = ['grade', 'percent'];
@@ -678,7 +679,7 @@ SubjectSummary summarize(String name, List<Object?>? marks,
       ? history.last.$2 - history[history.length - 2].$2
       : null;
 
-  final cutoff = todayDay.subtract(Duration(days: newDays));
+  final cutoff = addDays(todayDay, -newDays);
   var newCount = 0;
   for (final m in given) {
     if (_truthy(m['New'])) {

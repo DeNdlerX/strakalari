@@ -240,7 +240,7 @@ List<(String, String)> excusePostback(
   ];
 
   // Client state the DevExpress controls add in the browser.
-  final validityEnd = effectiveNow.add(const Duration(days: 14));
+  final validityEnd = addDays(effectiveNow, 14);
 
   List<(String, String)> combo(String name) => [
         ('$_p$name\$DDDState', dxState(_closed)),

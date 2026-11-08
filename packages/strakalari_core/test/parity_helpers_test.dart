@@ -35,6 +35,10 @@ void main() {
           result = templateText(args[0]);
         case 'isEncryptedFlag':
           result = isEncryptedFlag(args[0]);
+        case 'addDays':
+          result = addDays(args[0] as DateTime, args[1] as int);
+        case 'daysBetween':
+          result = daysBetween(args[0] as DateTime, args[1] as DateTime);
         default:
           fail('unknown parity fn $fn');
       }

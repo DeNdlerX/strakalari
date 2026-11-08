@@ -295,6 +295,70 @@
           }
         ]
       ]
+    },
+    {
+      "fn": "excuseWindowStart",
+      "args": [
+        {
+          "__date__": "2026-04-15"
+        },
+        null
+      ],
+      "expected": {
+        "__date__": "2026-03-16"
+      }
+    },
+    {
+      "fn": "excuseWindowStart",
+      "args": [
+        {
+          "__date__": "2026-04-15"
+        },
+        {
+          "__date__": "2026-03-20"
+        }
+      ],
+      "expected": {
+        "__date__": "2026-03-20"
+      }
+    },
+    {
+      "fn": "unconfirmedBlocks",
+      "args": [
+        {
+          "type": "pure days",
+          "starting_day": "24.10.2026",
+          "ending_day": "26.10.2026"
+        },
+        [
+          {
+            "type": "pure days",
+            "starting_day": "26.10.2026",
+            "ending_day": "26.10.2026",
+            "submitted_at": "2026-10-26T12:00:00"
+          }
+        ]
+      ],
+      "expected": true
+    },
+    {
+      "fn": "excuseCovered",
+      "args": [
+        {
+          "type": "pure days",
+          "starting_day": "24.10.2026",
+          "ending_day": "26.10.2026"
+        },
+        [
+          {
+            "type": "pure days",
+            "starting_day": "26.10.2026",
+            "ending_day": "26.10.2026",
+            "submitted_at": "2026-10-26T12:00:00"
+          }
+        ]
+      ],
+      "expected": false
     }
   ]
 }

@@ -10,6 +10,7 @@
 // The legacy `{"date": iso, "template": str}` single-day shape is upgraded
 // by [normalizePlannedEntry].
 import '../models.dart';
+import '../storage/helpers.dart';
 
 /// Canonical planned-skip entry, or null for unparseable input.
 Map<String, Object?>? normalizePlannedEntry(Object? raw) {
@@ -138,9 +139,9 @@ bool entryCovers(Map<String, Object?> entry, DateTime day, int? period) {
 DateTime _nextWeekday(DateTime day) {
   // Dart weekday: Monday = 1 … Sunday = 7
   // (Python weekday(): Monday = 0, so Python skips >= 5).
-  var next = day.add(const Duration(days: 1));
+  var next = addDays(day, 1);
   while (next.weekday >= DateTime.saturday) {
-    next = next.add(const Duration(days: 1));
+    next = addDays(next, 1);
   }
   return next;
 }
@@ -220,7 +221,7 @@ List<Map<String, Object?>> entriesForSelection({
       if (head &&
           open != null &&
           _nextWeekday(DateTime.parse(open['end_date'] as String)) == day &&
-          day.difference(DateTime.parse(open['start_date'] as String)).inDays <
+          daysBetween(DateTime.parse(open['start_date'] as String), day) <
               maxDays) {
         open['end_date'] = iso(day);
         open['end_period'] = tail ? null : ordered[last];

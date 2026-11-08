@@ -16,6 +16,8 @@
 // are Prague wall time.
 import 'package:clock/clock.dart';
 
+import '../storage/helpers.dart';
+
 /// (hour, minute) from `HH:MM`; [fallback] on anything unparseable.
 (int, int) parseCutoffTime(Object? value,
     [(int, int) fallback = (12, 0)]) {
@@ -74,7 +76,7 @@ DateTime _lastSunday(int year, int month) {
   final lastDay = DateTime(year, month + 1, 0).day;
   final day = DateTime(year, month, lastDay);
   // Dart weekday: Monday = 1 .. Sunday = 7 (Python: Monday = 0).
-  return day.subtract(Duration(days: day.weekday % 7));
+  return addDays(day, -(day.weekday % 7));
 }
 
 /// Fixed-offset Europe/Prague UTC offset for [day] (no tz database needed).
@@ -109,10 +111,10 @@ bool isBusinessDay(DateTime day, [Iterable<DateTime>? freeDays]) {
 DateTime previousBusinessDay(DateTime day, [Iterable<DateTime>? freeDays]) {
   final date = _asDate(day);
   final free = _normalizeFree(freeDays);
-  var cursor = date.subtract(const Duration(days: 1));
+  var cursor = addDays(date, -1);
   for (var i = 0; i < 366; i++) {
     if (isBusinessDay(cursor, free)) return cursor;
-    cursor = cursor.subtract(const Duration(days: 1));
+    cursor = addDays(cursor, -1);
   }
   return cursor;
 }

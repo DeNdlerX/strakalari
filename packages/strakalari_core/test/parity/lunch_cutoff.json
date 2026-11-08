@@ -323,6 +323,48 @@
         "09:30"
       ],
       "expected": true
+    },
+    {
+      "fn": "previousBusinessDay",
+      "args": [
+        {
+          "__date__": "2026-03-31"
+        }
+      ],
+      "expected": {
+        "__date__": "2026-03-30"
+      }
+    },
+    {
+      "fn": "previousBusinessDay",
+      "args": [
+        {
+          "__date__": "2026-10-26"
+        }
+      ],
+      "expected": {
+        "__date__": "2026-10-23"
+      }
+    },
+    {
+      "fn": "lunchOrderDeadline",
+      "args": [
+        {
+          "__date__": "2026-03-31"
+        },
+        "12:00"
+      ],
+      "expected": "2026-03-30T12:00"
+    },
+    {
+      "fn": "lunchOrderDeadline",
+      "args": [
+        {
+          "__date__": "2026-10-27"
+        },
+        "12:00"
+      ],
+      "expected": "2026-10-26T12:00"
     }
   ]
 }

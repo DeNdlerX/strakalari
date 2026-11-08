@@ -121,7 +121,7 @@ bool shouldRunGeminiAuto(
   final last = parseLastRun(lastRunIso);
   if (last == null) return true;
   try {
-    return refDay.difference(last).inDays >= interval;
+    return daysBetween(last, refDay) >= interval;
   } catch (_) {
     return true;
   }
@@ -552,7 +552,7 @@ List<String> updateHandledDays(
   for (final day in days) {
     final parsed = parseCzDate(day);
     if (parsed == null ||
-        refDay.difference(DateTime(parsed.year, parsed.month, parsed.day)).inDays <=
+        daysBetween(DateTime(parsed.year, parsed.month, parsed.day), refDay) <=
             7) {
       kept.add(day);
     }

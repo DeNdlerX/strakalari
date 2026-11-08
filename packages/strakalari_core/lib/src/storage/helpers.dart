@@ -28,6 +28,28 @@ Fernet _createFernet() => Fernet.fromKeyBytes(getKey(getUserDataDir()));
 
 Fernet _getFernet() => fernetFactory();
 
+/// Calendar-day arithmetic, DST-proof.
+///
+/// `DateTime.add(Duration(days: n))` on a local midnight lands at 23:00 or
+/// 01:00 across the Prague DST switches (29.3.2026, 25.10.2026) and breaks
+/// midnight comparisons; the constructor form is real date arithmetic like
+/// Python's naive `datetime + timedelta` (wall time preserved, date shifted).
+DateTime addDays(DateTime d, int n) => d.isUtc
+    ? DateTime.fromMicrosecondsSinceEpoch(
+        d.microsecondsSinceEpoch + n * Duration.microsecondsPerDay,
+        isUtc: true)
+    : DateTime(d.year, d.month, d.day + n, d.hour, d.minute, d.second,
+        d.millisecond, d.microsecond);
+
+/// Whole calendar days from [a] to [b] (DST-proof: UTC has no transitions).
+///
+/// Python `(b - a).days` floors; Dart's `inDays` truncates, so the UTC
+/// normalization also fixes negative ranges.
+int daysBetween(DateTime a, DateTime b) =>
+    DateTime.utc(b.year, b.month, b.day)
+        .difference(DateTime.utc(a.year, a.month, a.day))
+        .inDays;
+
 /// Returns a writable user data directory depending on platform and
 /// installation mode. `STRAKALARI_DATA_DIR` overrides everything.
 String getUserDataDir() {

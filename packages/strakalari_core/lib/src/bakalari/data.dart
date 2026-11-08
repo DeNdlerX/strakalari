@@ -357,12 +357,9 @@ mixin DataMixin on BakalariClientBase {
     raiseIfCancelledNow();
     final now = clock.now();
     final today = DateTime(now.year, now.month, now.day);
-    final start =
-        today.subtract(Duration(days: today.weekday - 1));
-    final endDay = today.add(const Duration(days: 14));
-    final end = endDay
-        .subtract(Duration(days: endDay.weekday - 1))
-        .add(const Duration(days: 4));
+    final start = addDays(today, -(today.weekday - 1));
+    final endDay = addDays(today, 14);
+    final end = addDays(addDays(endDay, -(endDay.weekday - 1)), 4);
     try {
       final post = formBody([
         ('dateFrom', utcIso(start)),

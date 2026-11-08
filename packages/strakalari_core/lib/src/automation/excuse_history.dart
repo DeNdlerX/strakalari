@@ -83,7 +83,7 @@ Map<String, Object?> baseExcuse(Map<String, Object?>? excuse) {
 /// [outboxFrom] is the start of the range Odeslané actually showed;
 /// when it is later than the default month, the narrower range wins.
 DateTime excuseWindowStart(DateTime today, [DateTime? outboxFrom]) {
-  final start = today.subtract(const Duration(days: excuseWindowDays));
+  final start = addDays(today, -excuseWindowDays);
   if (outboxFrom != null &&
       start.isBefore(outboxFrom) &&
       !today.isBefore(outboxFrom)) {
@@ -205,7 +205,7 @@ List<(DateTime, int?)> _excusePoints(Map<String, Object?> excuse) {
     var cursor = start;
     while (!cursor.isAfter(end) && days.length < 366) {
       days.add((cursor, null));
-      cursor = cursor.add(const Duration(days: 1));
+      cursor = addDays(cursor, 1);
     }
     return days;
   }

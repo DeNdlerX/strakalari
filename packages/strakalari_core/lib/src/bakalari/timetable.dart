@@ -73,13 +73,11 @@ mixin TimetableMixin on BakalariClientBase {
     // Timetable history: older school-year weeks the cache still lacks
     // (all of them on the first run, none afterwards). Fetched after
     // the regular window so a slow backfill never delays fresh data.
-    final thisMonday = currentWeek
-        .subtract(Duration(days: currentWeek.weekday - 1));
+    final thisMonday = addDays(currentWeek, -(currentWeek.weekday - 1));
     final extra = historyWeeks.toList()
       ..sort((a, b) => b.compareTo(a));
     for (final monday in extra) {
-      final off =
-          monday.difference(thisMonday).inDays ~/ 7;
+      final off = (daysBetween(thisMonday, monday) / 7).floor();
       if (off < 0 && !offsets.contains(off)) offsets.add(off);
     }
     timetableLoadedWeeks = {};
@@ -89,15 +87,13 @@ mixin TimetableMixin on BakalariClientBase {
     }
     for (final off in offsets) {
       raiseIfCancelledNow();
-      final weekDate =
-          currentWeek.add(Duration(days: off * 7));
-      final monday = weekDate
-          .subtract(Duration(days: weekDate.weekday - 1));
+      final weekDate = addDays(currentWeek, off * 7);
+      final monday = addDays(weekDate, -(weekDate.weekday - 1));
       final details = await timetableView('cal', monday);
       final shown = detailDays(details);
       final targetDays = {
         for (var i = 0; i < 7; i++)
-          monday.add(Duration(days: i))
+          addDays(monday, i)
       };
       if (shown.isNotEmpty &&
           shown.intersection(targetDays).isEmpty) {
