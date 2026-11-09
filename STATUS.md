@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 5 (Checkpoint A passed 2026-11-09 in re-review 3; phases 5–9 in progress, unreviewed) · Next step: Checkpoint A passed (2026-11-09). Start phase 5. (The phase 5–9 code drafted earlier is unreviewed: finish phase 5 to its "done when" in PLAN §4, beginning with PROMPT step 2, `git merge main`. Notes for Checkpoints B and C are in `reviews/checkpoint-A.md`: R-N*, R2-N*, R3-N*.)
+Current phase: 5 (Checkpoint A passed 2026-11-09 in re-review 3; phases 5–9 in progress, unreviewed) · Next step: phase 5 live wiring. AppState now runs real refresh/test/update jobs (activity.dart, spawn seam); NEXT bridge each screen's feature-local controller (features/*/*_controller.dart, still fed empty defaults by shell/router.dart) to AppState, then port the excuse send + order submit workers (excuses.dart/lunches.dart stubs), then the deferred AppState tests. Earlier note: (The phase 5–9 code drafted earlier is unreviewed: finish phase 5 to its "done when" in PLAN §4, beginning with PROMPT step 2, `git merge main`. Notes for Checkpoints B and C are in `reviews/checkpoint-A.md`: R-N*, R2-N*, R3-N*.)
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -683,6 +683,10 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
   CI stamps the real version from the tag at build time).
 - (Resolved 2026-11-07: PLAN.md rows 7–8 and REVIEW_PROMPT.md are the owner's
   intended edits, committed as-is.)
+
+
+### Phase 5 wiring finding (2026-11-09)
+The 10 screen views are driven by feature-local controllers (features/*), parallel to the AppState ports in controllers/*; router.dart builds them with empty config, so no screen shows real data yet. Plan: adapt each feature controller to read/write AppState (one screen per commit). Done: AppState refresh/test-connection/update-check workers (port of _refresh_work/_test_work/_update_work) + app/test/app_state_refresh_test.dart (3 tests). Still stubs: excuse send worker, order submit and AI workers.
 
 ## Checkpoint notes
 
