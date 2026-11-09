@@ -131,6 +131,23 @@ void main() {
       expect(await _tryLockInChild(lockPath()), 'true');
     });
 
+    test(
+      'freshLockFileIsOwnerReadWritable',
+      () {
+        // `open` is variadic: a wrongly declared mode argument gives random
+        // permission bits on Apple arm64 and the lock looks busy forever.
+        final path = lockPath();
+        final first = InterProcessLock(path);
+        expect(first.acquire(), isTrue);
+        first.release();
+        expect(FileStat.statSync(path).mode & 0x180, 0x180);
+        final second = InterProcessLock(path);
+        expect(second.acquire(), isTrue);
+        second.release();
+      },
+      skip: Platform.isWindows ? 'POSIX permission bits only.' : false,
+    );
+
     test('guardedJobSkipsWhileSessionHeld', () {
       final ran = <int>[];
       String guardedJob() => withSessionLock((held) {

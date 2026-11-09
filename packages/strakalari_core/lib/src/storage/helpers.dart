@@ -465,8 +465,10 @@ const int _oRdwr = 2;
 int get _oCreat => Platform.isMacOS ? 0x200 : 64;
 
 typedef _FlockC = ffi.Int32 Function(ffi.Int32 fd, ffi.Int32 operation);
+/// `open` is variadic (`int open(const char *, int, ...)`): on Apple arm64
+/// variadic arguments go on the stack, so the mode must be declared as one.
 typedef _OpenC = ffi.Int32 Function(
-    ffi.Pointer<ffi.Int8> path, ffi.Int32 flags, ffi.Int32 mode);
+    ffi.Pointer<ffi.Int8> path, ffi.Int32 flags, ffi.VarArgs<(ffi.Int32,)>);
 typedef _CloseC = ffi.Int32 Function(ffi.Int32 fd);
 typedef _MallocC = ffi.Pointer<ffi.Void> Function(ffi.Size size);
 typedef _FreeC = ffi.Void Function(ffi.Pointer<ffi.Void> ptr);
