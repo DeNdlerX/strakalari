@@ -607,7 +607,8 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
     `redactValues` (reworked in A-S10).
   - POSIX `InterProcessLock` uses `flock(fd, LOCK_EX | LOCK_NB)` via `dart:ffi`
     (with `open` declared variadic for Apple arm64, R-M1; macOS execution
-    *unverified* locally until macOS CI runs) plus an in-process path registry
+    *unverified* until the owner runs the `dart-macos-locks` CI job in
+    `.github/workflows/dart.yml`) plus an in-process path registry
     (reworked in A-B5, R-S7).
 
 - Phase 5–6 port adaptations (behavior identical unless noted):
@@ -713,7 +714,7 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
   - **A-S10 + A-N1** (`b953c09`): delegated `Strakalari._redactLog` in `automation.dart` to `error_report.secretValues` / `redactValues`, removed parent-dir creation in `writeLog`, and let cancel-predicate / school-year-start errors propagate in `refresh.dart`.
 - 2026-11-08 · Checkpoint A re-review: **FAIL** (all A-* findings fixed; 0 blockers, 3 must-fix, 7 should-fix new) — [docs/flutter-migration/reviews/checkpoint-A.md](docs/flutter-migration/reviews/checkpoint-A.md#re-review-2026-11-08)
 - 2026-11-09 · Checkpoint A re-review rework: **COMPLETE** (all R-* findings resolved in atomic commits; ready for re-review):
-  - **R-M1** (`2ae814b`): declared libc `open` in `storage/helpers.dart` as variadic (`ffi.VarArgs<(ffi.Int32,)>`) for Apple arm64 ABI compatibility and added `freshLockFileIsOwnerReadWritable` in `session_lock_test.dart` (macOS execution *unverified* locally until macOS CI runs).
+  - **R-M1** (`2ae814b`): declared libc `open` in `storage/helpers.dart` as variadic (`ffi.VarArgs<(ffi.Int32,)>`) for Apple arm64 ABI compatibility and added `freshLockFileIsOwnerReadWritable` in `session_lock_test.dart` (macOS execution *unverified* until the owner runs the `dart-macos-locks` CI job).
   - **R-M3** (`6e6c723`): ported `test_gemini_fallback_is_not_a_gemini_run` as `geminiFallbackIsNotAGeminiRun` in `refresh_test.dart` and updated item 58 of the test map.
   - **R-S1** (`8f70936`): replaced dead `on OSError` catches with `on FileSystemException` in `automation.dart` (`writeLog` rotation), `secret_store.dart` (`carryKey`), and `helpers.dart` (`decrypt`, plus `on KeyStoreUnavailable`), updated `decryptSurvivesKeyFileOSError` in `secret_store_test.dart`, and added `failedLogRotationStillAppendsTheLine` in `automation_test.dart`.
   - **R-S2** (`2cd35ae`): removed the delete-then-rename fallback from `_replaceFile` in `storage/helpers.dart` and `_writeFile` in `storage/secret_store.dart` so `renameSync` matches `os.replace`, and added `replacesAnExistingFile` and `failedReplaceNeverDeletesTheTarget` in `helpers_test.dart`.
@@ -748,7 +749,8 @@ How to verify:
 Unsure / needs a second pair of eyes:
 - macOS execution of the variadic `open()` POSIX `flock` path (`R-M1`): verified
   by static types and Linux/Windows tests; marked *unverified* on macOS until
-  the owner's macOS CI runs.
+  the owner runs the `dart-macos-locks` CI job (`.github/workflows/dart.yml`;
+  manual run or release tag, Apple silicon).
 - `error_report.collectContext` keys `dart` (not `python`),
   `app_version: '?'`, `build: 'source'`; `currentTraceback` frames are Dart
   `#0` style. Shapes match; values are platform truth.

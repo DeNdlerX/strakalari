@@ -56,6 +56,43 @@ jobs:
         run: flutter test
         working-directory: app
 
+  # The POSIX lock on Apple silicon (R-M1, reviews/checkpoint-A.md R2-S3):
+  # libc `open` is variadic, and only arm64 macOS passes variadic
+  # arguments on the stack, so Linux can't prove this. Manual runs and
+  # release tags only, to save macOS CI minutes.
+  dart-macos-locks:
+    name: Core lock tests (macOS, Apple silicon)
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter 3.44.8
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          cache: true
+
+      # helpers_test.dart has the Python app write files for a byte check.
+      - name: Set up Python 3.11
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: '3.11'
+
+      - name: Install the Python app's pinned cryptography
+        run: python -m pip install cryptography==50.0.1
+
+      - name: Resolve workspace dependencies
+        run: dart pub get --enforce-lockfile
+
+      - name: Test the locks
+        run: dart test test/session_lock_test.dart test/helpers_test.dart
+        working-directory: packages/strakalari_core
+        env:
+          TZ: Europe/Prague
+
   # Phase-7 release jobs (Flutter builds; the Python build.yml is
   # untouched until the phase-10 switch). Same tag/version contract:
   #   tag v1.2.3        -> version 1.2.3, full release (draft to review)
