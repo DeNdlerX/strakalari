@@ -9,6 +9,8 @@
 // confirms that it went out.
 import 'dart:convert';
 
+import 'package:clock/clock.dart';
+
 import '../automation/cancel.dart';
 import '../error_report.dart';
 import '../models.dart';
@@ -189,7 +191,7 @@ List<(String, String)> excusePostback(
   required String text,
   DateTime? now,
 }) {
-  final effectiveNow = now ?? DateTime.now();
+  final effectiveNow = now ?? clock.now();
   final fields = formFields(pageHtml);
   final values = <String, String>{
     for (final field in fields) field.$1: field.$2

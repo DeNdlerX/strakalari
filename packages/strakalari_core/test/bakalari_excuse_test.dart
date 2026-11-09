@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:clock/clock.dart';
 import 'package:test/test.dart';
 
 import 'package:strakalari_core/src/automation/cancel.dart';
@@ -410,6 +411,20 @@ void main() {
           editorHtml(school.posts.single)
               .startsWith('<p>Pozdní příchod 01.10.2026, hodina 3.</p>'),
           isTrue);
+    });
+
+    test('postbackWithoutNowReadsTheClock', () {
+      // Python `datetime.now()`: the form's timestamps follow the clock.
+      List<(String, String)> build({DateTime? now}) => excusePostback(
+          formPage,
+          dayFrom: DateTime(2026, 10, 1),
+          dayTo: DateTime(2026, 10, 1),
+          wholeDay: true,
+          text: 'x',
+          now: now);
+      final at = DateTime(2026, 10, 5, 22, 14);
+      final viaClock = withClock(Clock.fixed(at), () => build());
+      expect(viaClock, build(now: at));
     });
 
     test('editorFieldMatchesTheBrowserByteForByte', () {
