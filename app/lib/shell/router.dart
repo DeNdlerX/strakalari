@@ -7,8 +7,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../features/absences/absences_controller.dart';
-import '../features/absences/absences_view.dart';
+import '../features/absences/absences_live.dart';
 import '../features/activity/activity_live.dart';
 import '../features/common/app_tokens.dart' as ft;
 import '../features/lunches/lunches_controller.dart';
@@ -118,8 +117,7 @@ GoRoute _route(String name) => GoRoute(
             return TimetableView(
                 controller: TimetableController(), tokens: tokens, narrow: narrow);
           case 'absences':
-            return AbsencesView(
-                controller: AbsencesController(), tokens: tokens, narrow: narrow);
+            return LiveAbsencesView(tokens: tokens, narrow: narrow);
           case 'marks':
             return MarksView(
                 controller: MarksController(), tokens: tokens, narrow: narrow);
