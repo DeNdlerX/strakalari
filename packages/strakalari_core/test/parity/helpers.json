@@ -670,6 +670,86 @@
       "expected": "{'05.10.2099': 'a&1&0'}"
     },
     {
+      "fn": "describeSwallowed",
+      "args": [
+        "waiting for the grid",
+        "timeout\ncall log: page.wait"
+      ],
+      "expected": "Debug: waiting for the grid — ProbeError: timeout"
+    },
+    {
+      "fn": "describeSwallowed",
+      "args": [
+        "waiting for the grid",
+        "first\r\nsecond"
+      ],
+      "expected": "Debug: waiting for the grid — ProbeError: first"
+    },
+    {
+      "fn": "describeSwallowed",
+      "args": [
+        "waiting for the grid",
+        "only\rcarriage"
+      ],
+      "expected": "Debug: waiting for the grid — ProbeError: only"
+    },
+    {
+      "fn": "describeSwallowed",
+      "args": [
+        "waiting for the grid",
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nmore"
+      ],
+      "expected": "Debug: waiting for the grid — ProbeError: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+      "fn": "describeSwallowed",
+      "args": [
+        "waiting for the grid",
+        "   padded line  \n\n"
+      ],
+      "expected": "Debug: waiting for the grid — ProbeError: padded line"
+    },
+    {
+      "fn": "describeSwallowed",
+      "args": [
+        "waiting for the grid",
+        ""
+      ],
+      "expected": "Debug: waiting for the grid — ProbeError"
+    },
+    {
+      "fn": "describeSwallowed",
+      "args": [
+        "waiting for the grid",
+        "one line"
+      ],
+      "expected": "Debug: waiting for the grid — ProbeError: one line"
+    },
+    {
+      "fn": "describeSwallowed",
+      "args": [
+        "waiting for the grid",
+        "Příliš žluťoučký 😀Příliš žluťoučký 😀Příliš žluťoučký 😀Příliš žluťoučký 😀Příliš žluťoučký 😀Příliš žluťoučký 😀Příliš žluťoučký 😀Příliš žluťoučký 😀Příliš žluťoučký 😀Příliš žluťoučký 😀Příliš žluťoučký 😀Příliš žluťoučký 😀\nnext"
+      ],
+      "expected": "Debug: waiting for the grid — ProbeError: Příliš žluťoučký 😀Příliš žluťoučký 😀Příliš žluťoučký 😀Příliš žluťoučký 😀Příliš žluťoučký 😀Příliš žluťoučký 😀Příliš žluťoučký 😀Příliš žluťoučký 😀Příliš žluťoučký"
+    },
+    {
+      "fn": "describeSwallowed",
+      "args": [
+        "waiting for the grid",
+        "form\ffeed"
+      ],
+      "expected": "Debug: waiting for the grid — ProbeError: form"
+    },
+    {
+      "fn": "describeSwallowed",
+      "args": [
+        "waiting for the grid",
+        "line separator"
+      ],
+      "expected": "Debug: waiting for the grid — ProbeError: line"
+    },
+    {
       "fn": "entryName",
       "args": [
         "C:\\Users\\Student\\AppData\\Local\\Strakalari",

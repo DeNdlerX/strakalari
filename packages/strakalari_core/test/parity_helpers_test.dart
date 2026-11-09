@@ -14,6 +14,17 @@ import 'package:strakalari_core/src/storage/secret_store.dart';
 
 import 'parity_cases.dart';
 
+/// Mirrors dump.py's `ProbeError`: the text is the whole message, so
+/// `describeSwallowed` prints the same type name and line as Python.
+class ProbeError implements Exception {
+  ProbeError(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 Map<String, String> _runRoundTripFiles(Map<String, Object?> pyFiles) {
   final tmp = Directory.systemTemp.createTempSync('parity_rt_files_');
   try {
@@ -121,6 +132,9 @@ void main() {
           result = pyJsonDumps(args[0]);
         case 'pyRepr':
           result = pyRepr(args[0]);
+        case 'describeSwallowed':
+          result =
+              describeSwallowed(args[0] as String, ProbeError(args[1] as String));
         case 'jsonIndent2':
           result = jsonIndent2(args[0]);
         case 'entryName':

@@ -585,14 +585,19 @@ void _flockRelease(int fd) {
   }
 }
 
+/// The line breaks Python's `str.splitlines()` splits on.
+final RegExp _pyLineBreak =
+    RegExp(r'\r\n|[\n\r\x0B\x0C\x1C\x1D\x1E\x85  ]');
+
 /// One log line for an exception a scraper deliberately carries on after.
 String describeSwallowed(String what, Object exc) {
   var first = '';
   try {
     final text = '$exc'.trim();
     if (text.isNotEmpty) {
-      first = text.split('\n').first.substring(
-          0, text.split('\n').first.length > 160 ? 160 : text.length);
+      // Python `text.splitlines()[0][:160]` (code points, not UTF-16 units).
+      final line = text.split(_pyLineBreak).first;
+      first = String.fromCharCodes(line.runes.take(160));
     }
   } catch (_) {
     // The type alone still helps.

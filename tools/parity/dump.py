@@ -138,6 +138,22 @@ def helpers_cases() -> list[dict]:
     ]
     for sample in repr_samples:
         cases.append(_case("pyRepr", repr(sample), sample))
+    # describe_swallowed: first message line (``splitlines``), cut to 160
+    # code points. The Dart test raises a ``ProbeError`` of its own whose
+    # text is the message, so the type name matches too.
+
+    class ProbeError(Exception):
+        pass
+
+    for text in ["timeout\ncall log: page.wait", "first\r\nsecond",
+                 "only\rcarriage", "x" * 200 + "\nmore",
+                 "   padded line  \n\n", "", "one line",
+                 "Příliš žluťoučký 😀" * 12 + "\nnext",
+                 "form\x0cfeed", "line separator"]:
+        cases.append(_case(
+            "describeSwallowed",
+            h.describe_swallowed("waiting for the grid", ProbeError(text)),
+            "waiting for the grid", text))
     # Key store entry name normalization (A-M5): normcase(abspath(data_dir)).
     import hashlib
     import ntpath
