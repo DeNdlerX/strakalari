@@ -223,9 +223,29 @@ extension ActivityLogic on AppState {
     if (updateCheckRunning) return false;
     updateCheckRunning = true;
     _emit();
-    // Flet: spawned `_update_work` (check_for_updates, banner refresh,
-    // notification). Phase 7 runs it via the update seam.
+    spawn(() => _updateWork(force), 'strakalari-update-check');
     return true;
+  }
+
+  Future<void> _updateWork(bool force) async {
+    try {
+      final info = await checkForUpdates(force: force, channel: updateChannel);
+      if (info != null && updateAvailable(info)) {
+        updateInfo = info;
+        final prefs = get('notifications', {});
+        notifyNewRelease(
+            info, prefs is Map ? prefs.cast<String, Object?>() : null);
+      } else if (force || info != null) {
+        // Manual re-check with no newer release clears a stale banner.
+        updateInfo = null;
+        updateDismissed = '';
+      }
+    } catch (_) {
+      // Update checks never surface errors.
+    } finally {
+      updateCheckRunning = false;
+      _emit();
+    }
   }
 
   /// Starts a refresh run. Returns false when busy. Phase 7 performs
@@ -241,9 +261,156 @@ extension ActivityLogic on AppState {
     currentStep = '';
     refreshRunning = true;
     _emit();
-    // Flet: spawned `_refresh_work` (session lock, run_refresh pipeline,
-    // cache reload, news notifications, `_finish_run`).
+    spawn(() => _refreshWork(scope), 'strakalari-refresh');
     return true;
+  }
+
+  /// Background refresh: the shared core pipeline + UI bookkeeping.
+  /// Port of `_refresh_work()`.
+  Future<void> _refreshWork(String scope) async {
+    final started = clock.now();
+    if (demoMode && !_hasAnyCredentials()) {
+      // No login yet (fresh install / setup not finished): abort before
+      // logging in. Recorded as a failed run, never a popup.
+      workerLog(Strings.get('missing_credentials_log'));
+      finishRun(started, scope, false,
+          'missing credentials (setup not finished)');
+      return;
+    }
+    // One refresh at a time across processes: the tray runs its own
+    // scheduler, and two parallel runs would both log in, both auto-send
+    // and overwrite each other's cache.
+    var ran = false;
+    try {
+      await withSessionLockAsync((held) async {
+        if (held) {
+          ran = true;
+          await _refreshLocked(scope, started);
+        }
+      });
+    } catch (e) {
+      // The lock itself failed (not a refresh error): fail loudly.
+      if (!ran) {
+        final detail = ActivityLogic.failureDetail(e);
+        workerLog(Strings.format('refresh_failed_log', {'detail': detail}));
+        reportError('refresh ($scope)', e,
+            detail, '', {'scope': scope});
+        finishRun(started, scope, false, detail);
+        return;
+      }
+      rethrow;
+    }
+    if (ran) return;
+    workerLog(Strings.get('session_busy'));
+    // Not a failure: the other process is refreshing right now.
+    finishRun(started, scope, false, Strings.get('session_busy'),
+        skipped: true);
+  }
+
+  /// The refresh proper; runs while the session lock is held.
+  /// Port of `_refresh_locked()`.
+  Future<void> _refreshLocked(String scope, DateTime started) async {
+    var detail = '';
+    var ok = false;
+    var cancelled = false;
+    try {
+      workerLog(Strings.format('refresh_started_log', {'scope': scope}));
+      final app = Strakalari(onLog: coreLog);
+      RefreshResult result;
+      try {
+        app.cancelCallback = () => cancelRequested;
+        result = await runRefresh(
+          app,
+          app.configData,
+          scope: scope,
+          cancelledLunchDays: Set<String>.of(cancelledLunches),
+          isCancelled: () => cancelRequested,
+          emit: (key, [fmt = const {}]) =>
+              workerLog(Strings.format(key, fmt)),
+          lunchPrompt: lunchPrefs,
+        );
+      } finally {
+        try {
+          app.close();
+        } catch (_) {
+          // Closing is best-effort.
+        }
+      }
+      if (result.usedGemini) {
+        try {
+          final now = clock.now();
+          config.set('gemini_last_run', fmtIso(now));
+          config.save();
+        } catch (exc) {
+          // ignore: avoid_print
+          print('Warning: could not stamp gemini_last_run: $exc');
+        }
+      }
+      if (result.autoOrderedDays.isNotEmpty) {
+        // Auto-submitted days are web truth now - applied BEFORE
+        // reloadCache emits so no frame shows a stale "to send".
+        pendingOrders.removeAll(result.autoOrderedDays);
+      }
+      reloadCache();
+      for (final news in result.news) {
+        notifyEvent(news.$1, news.$2);
+      }
+      final extras = <String>[];
+      if (result.excusesSent > 0) {
+        extras.add(Strings.format('auto_excuses_sent', {'n': result.excusesSent}));
+      }
+      if (result.lunchesOrdered > 0) {
+        extras.add(Strings.format('auto_lunch_sent', {'n': result.lunchesOrdered}));
+      }
+      detail = [
+        Strings.format('subjects_count', {'n': absence().length}),
+        ...extras,
+      ].join(' · ');
+      var autoErrors = result.automationErrors;
+      final fetchErrors = [
+        for (final e in result.errors)
+          if (!autoErrors.contains(e)) e
+      ];
+      if (fetchErrors.isNotEmpty) {
+        // ignore: only_throw_errors
+        throw fetchErrors.first.$2;
+      }
+      if (autoErrors.isNotEmpty && result.onlyLowBalance) {
+        // An empty Strava account is the user's to fix, not a bug: a
+        // warning (toast at most once a day, banner on Obědy) instead of
+        // the error popup, and the run counts as done so the scheduler
+        // does not retry every 5 minutes.
+        warnLowBalance('${autoErrors.first.$2}');
+        autoErrors = [];
+      }
+      if (autoErrors.isNotEmpty) {
+        // Fail loudly: something that should have been sent or ordered
+        // under the user's account was not.
+        final (phase, exc) = autoErrors.first;
+        detail = failureDetail(exc);
+        workerLog(Strings.format('automation_failed_body', {'detail': detail}));
+        notifyEvent('automation_failed',
+            Strings.format('automation_failed_body', {'detail': detail}));
+        reportError('automation ($phase)', exc, detail, '', {'scope': scope});
+        return;
+      }
+      ok = true;
+      notifyEvent('refresh_done', Strings.get('refresh_done_body'));
+      workerLog(Strings.get('refresh_finished_log'));
+    } on CancelledError {
+      detail = Strings.get('cancelled_by_user');
+      cancelled = true;
+      workerLog(Strings.get('refresh_cancelled_log'));
+    } catch (exc) {
+      detail = failureDetail(exc);
+      workerLog(Strings.format('refresh_failed_log', {'detail': detail}));
+      reportError('refresh ($scope)', exc, detail, '', {'scope': scope});
+      notifyEvent('refresh_failed',
+          Strings.format('refresh_failed_body', {'detail': detail}));
+    } finally {
+      // Latch release + run record for EVERY exit.
+      finishRun(started, scope, ok, detail, cancelled: cancelled);
+    }
   }
 
   void cancelRefresh() {
@@ -356,17 +523,98 @@ extension ActivityLogic on AppState {
   /// Phase 7 performs the network test and clears `testing` + the flight
   /// flag; until then the flag stays claimed exactly like the original's
   /// in-flight window. Port of `test_connection()`.
-  bool testConnection(String service, [Map<String, Object?>? overrides]) {
+  bool testConnection(String service,
+      [Map<String, Object?>? overrides,
+      void Function(bool ok, String message)? onDone]) {
     if (service != 'bakalari' && service != 'strava' && service != 'ai') {
       return false;
     }
     if (!claimFlight('testing')) return false;
     testing = service;
     _emit();
-    // Flet: spawned `_test_work` (login check, `last_test` record,
-    // wizard `on_done` auto-advance). Phase 7 runs it via the test seam.
+    spawn(() => _testWork(service, Map<String, Object?>.of(overrides ?? {}),
+        onDone), 'strakalari-test-login');
     return true;
   }
+
+  /// Port of `_test_work()`.
+  Future<void> _testWork(String service, Map<String, Object?> overrides,
+      void Function(bool ok, String message)? onDone) async {
+    var ok = false;
+    var message = '';
+    try {
+      if (service == 'ai') {
+        var key = '${overrides['gemini_api_key'] ?? ''}'.trim();
+        var model = '${overrides['gemini_model'] ?? get('gemini_model', 'gemini-3.8-flash') ?? ''}'
+            .trim();
+        if (key.isEmpty && !_truthy(overrides['gemini_api_key'])) {
+          var raw = '${get('gemini_api_key', '') ?? ''}';
+          if (raw.isNotEmpty && _truthy(get('gemini_api_key_encrypted'))) {
+            raw = decryptStrict(raw) ?? '';
+          }
+          key = raw.trim();
+        }
+        if (model.isEmpty) model = 'gemini-3.8-flash';
+        String language;
+        try {
+          language = getLanguage();
+        } catch (_) {
+          language = 'cs';
+        }
+        addLog(Strings.format('test_ai_key_log', {'model': model}));
+        (ok, message) =
+            await testApiKey(key, model: model, language: language);
+      } else {
+        addLog(Strings.format('test_login_log', {'service': service}));
+        final app = Strakalari(
+            configData: overrides.isEmpty ? null : overrides);
+        try {
+          if (service == 'bakalari') {
+            (ok, message) = await app.checkBakalariLogin();
+          } else {
+            (ok, message) = await app.checkStravaLogin();
+          }
+        } finally {
+          try {
+            app.close();
+          } catch (_) {
+            // Closing is best-effort.
+          }
+        }
+      }
+    } catch (exc) {
+      var first = '$exc'.trim().isEmpty
+          ? 'unknown error'
+          : '$exc'.split('\n').first;
+      if (first.length > 200) first = first.substring(0, 200);
+      ok = false;
+      message = '${exc.runtimeType}: $first';
+    }
+    lastTest = {
+      'service': service,
+      'ok': ok,
+      'message': message,
+      'at': fmtClock(clock.now()),
+    };
+    addLog('Test $service: '
+        '${ok ? Strings.get('connection_ok') : Strings.get('connection_failed')}'
+        ' — $message');
+    testing = '';
+    releaseFlight('testing');
+    _emit();
+    if (onDone != null) {
+      try {
+        onDone(ok, message);
+      } catch (exc) {
+        // ignore: avoid_print
+        print('Warning: test on_done failed: $exc');
+      }
+    }
+  }
+
+  static bool _truthy(Object? v) =>
+      !(v == null || v == false || v == 0 || v == '' ||
+          (v is Map && v.isEmpty) || (v is List && v.isEmpty));
 }
 
 /// Riverpod facade for the activity screen (phase 6).

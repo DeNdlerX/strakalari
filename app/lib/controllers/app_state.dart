@@ -13,6 +13,7 @@
 //
 // All timestamps use package:clock (`clock.now()`), never `DateTime.now()`
 // directly, so tests can run inside `withClock()`.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -213,6 +214,15 @@ class AppState {
   Object? yearPlanCache;
   (int, Map<String, Object?>)? baselineCacheKey;
   Map<(int, int), Object>? baselineCache;
+
+  // -- background jobs ------------------------------------------------------------
+  /// Runs a background job (port of `_spawn`). The live app wires this to
+  /// run the job on the event loop ([AppStateController]); a bare
+  /// [AppState] (unit tests) only records intent and never touches the
+  /// network, exactly like the earlier phase-5 stubs.
+  void Function(Future<void> Function() job, String name) spawn =
+      _noSpawn;
+  static void _noSpawn(Future<void> Function() job, String name) {}
 
   // -- reactive ---------------------------------------------------------------
   final Set<String> _flights = {};
@@ -719,6 +729,15 @@ class AppStateController extends Notifier<AppState> {
     state.onChanged = () {
       // ignore: avoid_self_assignment
       this.state = this.state;
+    };
+    state.onProgress = state.onChanged;
+    state.spawn = (job, name) {
+      // A failing job must never crash the app: the jobs report their
+      // own errors, this is the last-resort net (Python: `_spawn`).
+      unawaited(job().catchError((Object e, StackTrace s) {
+        // ignore: avoid_print
+        print('Warning: background job $name failed: $e');
+      }));
     };
     return state;
   }
