@@ -122,10 +122,28 @@ class AppScaffold extends ConsumerWidget {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (context.mounted) context.go('/wizard');
       });
+    } else if (route == 'wizard' &&
+        appState.wizardShown &&
+        appState.wizardDismissed) {
+      appState.wizardShown = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) context.go('/today');
+      });
     }
 
-    if (route == 'wizard' && !appState.wizardShown) {
+    if (route == 'wizard' && !appState.wizardShown && !appState.wizardDismissed) {
       appState.wizardShown = true;
+    }
+
+    if (appState.lastSnackMessage.isNotEmpty) {
+      final msg = appState.lastSnackMessage;
+      appState.lastSnackMessage = '';
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(msg)));
+      });
     }
 
     if (route == 'more' && !narrow) route = 'today';

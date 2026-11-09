@@ -17,8 +17,7 @@ import '../features/planner/planner_live.dart';
 import '../features/settings/settings_live.dart';
 import '../features/timetable/timetable_live.dart';
 import '../features/today/today_live.dart';
-import '../features/wizard/wizard_controller.dart';
-import '../features/wizard/wizard_view.dart';
+import '../features/wizard/wizard_live.dart';
 import '../l10n/strings.dart';
 import '../shell/scaffold.dart';
 
@@ -123,8 +122,7 @@ GoRoute _route(String name) => GoRoute(
           case 'more':
             return MorePage(onOpen: (r) => context.go('/$r'));
           case 'wizard':
-            return WizardView(
-                controller: WizardController(), tokens: tokens, narrow: narrow);
+            return LiveWizardView(tokens: tokens, narrow: narrow);
           default:
             return PlaceholderScreen(route: name);
         }

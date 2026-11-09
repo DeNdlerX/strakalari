@@ -45,6 +45,13 @@ class WizardController extends ChangeNotifier {
   /// Sets the app language (`cs | en`).
   final void Function(String lang) onSetLanguage;
 
+  /// Optional delegation hooks for shared [AppState] backing.
+  final void Function(String key, String value)? onDraftChanged;
+  final void Function(String prefix)? onClearDrafts;
+  final void Function(int step)? onStepChanged;
+  final void Function()? onFinished;
+  final void Function(String service, String fp)? onVerified;
+
   WizardController({
     this.s = const AppStrings(),
     Map<String, Object?>? config,
@@ -56,6 +63,11 @@ class WizardController extends ChangeNotifier {
     void Function()? onAlarmPermission,
     void Function()? onLimitsRefresh,
     void Function(String lang)? onSetLanguage,
+    this.onDraftChanged,
+    this.onClearDrafts,
+    this.onStepChanged,
+    this.onFinished,
+    this.onVerified,
   })  : config = config ?? {},
         onSave = onSave ?? ((_) => false),
         onTestRequest = onTestRequest ?? ((_, _) {}),
@@ -109,12 +121,14 @@ class WizardController extends ChangeNotifier {
 
   void setDraft(String key, String value) {
     drafts[key] = value;
+    onDraftChanged?.call(key, value);
     notifyListeners();
   }
 
   /// Writes a draft without notifying (free typing in text fields).
   void setDraftSilent(String key, String value) {
     drafts[key] = value;
+    onDraftChanged?.call(key, value);
   }
 
   void clearDrafts([String prefix = '']) {
@@ -123,6 +137,7 @@ class WizardController extends ChangeNotifier {
     } else {
       drafts.removeWhere((k, _) => k.startsWith(prefix));
     }
+    onClearDrafts?.call(prefix);
   }
 
   List<int> shownSteps() => [
@@ -147,6 +162,7 @@ class WizardController extends ChangeNotifier {
 
   void goTo(int target) {
     step = target.clamp(0, stepDone);
+    onStepChanged?.call(step);
     notifyListeners();
   }
 
@@ -155,6 +171,7 @@ class WizardController extends ChangeNotifier {
     step = 0;
     clearDrafts('wiz:');
     verified.clear();
+    onFinished?.call();
     notifyListeners();
   }
 
@@ -543,6 +560,7 @@ class WizardController extends ChangeNotifier {
     final fp = fingerprintFor(service);
     if (!_saveFor(service)) return s.get('save_failed');
     verified[service] = fp;
+    onVerified?.call(service, fp);
     // Auto-advance only when still on the same step with unchanged fields.
     if (fingerprintFor(service) == fp) {
       // The caller re-reads the current step; the view passes it in.
