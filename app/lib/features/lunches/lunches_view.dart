@@ -75,7 +75,9 @@ class LunchesView extends StatelessWidget {
       if (past.isNotEmpty)
         TextButton(
           onPressed: () {
-            c.showPastLunches = !c.showPastLunches;
+            final next = !c.showPastLunches;
+            c.showPastLunches = next;
+            c.setShowPastLunchesHook?.call(next);
           },
           child: Text(c.showPastLunches
               ? Str.t('lunch_hide_past')
@@ -110,9 +112,13 @@ class LunchesView extends StatelessWidget {
         icon: const Icon(Icons.tune_outlined),
         onPressed: () {
           if (narrow) {
-            c.lunchToolsOpen = !c.lunchToolsOpen;
+            final next = !c.lunchToolsOpen;
+            c.lunchToolsOpen = next;
+            c.setLunchToolsHook?.call(next);
           } else {
-            c.sidebarOpen = !c.sidebarOpen;
+            final next = !c.sidebarOpen;
+            c.sidebarOpen = next;
+            c.setSidebarHook?.call(next);
           }
         },
       ),
@@ -361,7 +367,10 @@ class LunchesView extends StatelessWidget {
                   hintText: Str.t('ai_prefs_hint')),
               controller: TextEditingController(text: c.lunchPrefs),
               maxLines: 2,
-              onChanged: (v) => c.lunchPrefs = v,
+              onChanged: (v) {
+                c.lunchPrefs = v;
+                c.setLunchPrefsHook?.call(v);
+              },
             ),
             if (!hasKey) Text(Str.t('ai_no_key')),
             if (!hasKey)

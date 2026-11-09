@@ -10,8 +10,7 @@ import 'package:go_router/go_router.dart';
 import '../features/absences/absences_live.dart';
 import '../features/activity/activity_live.dart';
 import '../features/common/app_tokens.dart' as ft;
-import '../features/lunches/lunches_controller.dart';
-import '../features/lunches/lunches_view.dart';
+import '../features/lunches/lunches_live.dart';
 import '../features/marks/marks_controller.dart';
 import '../features/marks/marks_view.dart';
 import '../features/more.dart';
@@ -125,8 +124,7 @@ GoRoute _route(String name) => GoRoute(
             return PlannerView(
                 controller: PlannerController(<String, dynamic>{}), narrow: narrow);
           case 'lunches':
-            return LunchesView(
-                controller: LunchController(<String, dynamic>{}), narrow: narrow);
+            return LiveLunchesView(narrow: narrow);
           case 'activity':
             return LiveActivityView(narrow: narrow);
           case 'settings':

@@ -39,6 +39,17 @@ class LunchController {
   void Function(String event)? onTutorialEvent;
   void Function(String message)? onLog;
 
+  /// Live-wiring hooks into the shared `AppState` (when non-null).
+  bool Function(String day, String mealId)? orderLunchHook;
+  void Function(String day)? cancelLunchOrderHook;
+  void Function(String prefs)? applyFoodFilterHook;
+  bool Function(String word)? addBlacklistWordHook;
+  bool Function(String word)? removeBlacklistWordHook;
+  void Function(bool show)? setShowPastLunchesHook;
+  void Function(bool open)? setLunchToolsHook;
+  void Function(bool open)? setSidebarHook;
+  void Function(String prefs)? setLunchPrefsHook;
+
   LunchController(
     this.config, {
     this.isOrderOpen,
@@ -93,6 +104,7 @@ class LunchController {
 
   /// Records a lunch choice. False (stages nothing) past the cutoff.
   bool orderLunch(String day, String mealId) {
+    if (orderLunchHook != null) return orderLunchHook!(day, mealId);
     if (!stravaOn) return false;
     if (isOrderOpen != null) {
       var open = false;
@@ -114,6 +126,7 @@ class LunchController {
   }
 
   void cancelLunchOrder(String day) {
+    if (cancelLunchOrderHook != null) return cancelLunchOrderHook!(day);
     orders.remove(day);
     pendingOrders.remove(day);
     _emit();
@@ -132,6 +145,7 @@ class LunchController {
   }
 
   void applyFoodFilter(String prefs) {
+    if (applyFoodFilterHook != null) return applyFoodFilterHook!(prefs);
     final blacklist = blacklistWords();
     final prefWords = prefsBanKeywords(prefs);
     final seen = {for (final w in blacklist) w.toLowerCase()};
@@ -174,6 +188,7 @@ class LunchController {
 
   // -- blacklist edits ----------------------------------------------------------
   bool addBlacklistWord(String word) {
+    if (addBlacklistWordHook != null) return addBlacklistWordHook!(word);
     blacklistEditError = '';
     word = word.trim();
     if (word.length < 3) return false;
@@ -189,6 +204,7 @@ class LunchController {
   }
 
   bool removeBlacklistWord(String word) {
+    if (removeBlacklistWordHook != null) return removeBlacklistWordHook!(word);
     blacklistEditError = '';
     final current = _wordsForEdit();
     if (current == null) return false;
