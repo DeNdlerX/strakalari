@@ -26,6 +26,20 @@ class PlannerController {
   String? plannerTerm;
   bool stravaEnabled = false;
 
+  /// Optional live-state delegation hooks (wired by `planner_live.dart`).
+  bool Function(int days)? setPlannerTargetHook;
+  void Function(String? key)? selectPlannerTermHook;
+  bool Function(
+    String startIso,
+    String endIso,
+    int? startPeriod,
+    int? endPeriod,
+    String template, {
+    required bool cancelLunch,
+  })? planCustomSkipHook;
+  int Function(List<Map<String, dynamic>> rawEntries)? planEntriesHook;
+  bool Function(Map<String, dynamic> entry)? unplanEntryHook;
+
   PlannerController(
     this.config, {
     this.persist,
@@ -63,6 +77,12 @@ class PlannerController {
     } catch (_) {
       days = 0;
     }
+    if (setPlannerTargetHook != null) {
+      final ok = setPlannerTargetHook!(days);
+      if (ok) config['planner_target_days'] = days;
+      _emit();
+      return ok;
+    }
     config['planner_target_days'] = days;
     _emit();
     return true;
@@ -70,6 +90,7 @@ class PlannerController {
 
   void selectPlannerTerm(String? key) {
     plannerTerm = key;
+    selectPlannerTermHook?.call(key);
     _emit();
   }
 
@@ -86,6 +107,18 @@ class PlannerController {
     String template, {
     bool cancelLunch = true,
   }) {
+    if (planCustomSkipHook != null) {
+      final ok = planCustomSkipHook!(
+        startIso,
+        endIso,
+        startPeriod,
+        endPeriod,
+        template,
+        cancelLunch: cancelLunch,
+      );
+      _emit();
+      return ok;
+    }
     final entry = normalizePlannedEntry({
       'start_date': startIso,
       'end_date': endIso,
@@ -112,6 +145,11 @@ class PlannerController {
   }
 
   int planEntries(List<Map<String, dynamic>> rawEntries) {
+    if (planEntriesHook != null) {
+      final n = planEntriesHook!(rawEntries);
+      _emit();
+      return n;
+    }
     final entries = <Map<String, dynamic>>[];
     for (final raw in rawEntries) {
       final entry = normalizePlannedEntry(raw);
@@ -183,6 +221,11 @@ class PlannerController {
   }
 
   bool unplanEntry(Map<String, dynamic> entry) {
+    if (unplanEntryHook != null) {
+      final ok = unplanEntryHook!(entry);
+      _emit();
+      return ok;
+    }
     final target = normalizePlannedEntry(entry);
     final before = plannedSkips.length;
     final prevSkips = List.of(plannedSkips);

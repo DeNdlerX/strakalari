@@ -13,8 +13,7 @@ import '../features/common/app_tokens.dart' as ft;
 import '../features/lunches/lunches_live.dart';
 import '../features/marks/marks_live.dart';
 import '../features/more.dart';
-import '../features/planner/planner_controller.dart';
-import '../features/planner/planner_view.dart';
+import '../features/planner/planner_live.dart';
 import '../features/settings/settings_controller.dart';
 import '../features/settings/settings_view.dart';
 import '../features/timetable/timetable_live.dart';
@@ -115,8 +114,7 @@ GoRoute _route(String name) => GoRoute(
           case 'marks':
             return LiveMarksView(tokens: tokens, narrow: narrow);
           case 'planner':
-            return PlannerView(
-                controller: PlannerController(<String, dynamic>{}), narrow: narrow);
+            return LivePlannerView(narrow: narrow);
           case 'lunches':
             return LiveLunchesView(narrow: narrow);
           case 'activity':
