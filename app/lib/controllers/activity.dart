@@ -315,7 +315,7 @@ extension ActivityLogic on AppState {
     var cancelled = false;
     try {
       workerLog(Strings.format('refresh_started_log', {'scope': scope}));
-      final app = Strakalari(onLog: coreLog);
+      final app = createApp(onLog: coreLog);
       RefreshResult result;
       try {
         app.cancelCallback = () => cancelRequested;
@@ -566,7 +566,7 @@ extension ActivityLogic on AppState {
             await testApiKey(key, model: model, language: language);
       } else {
         addLog(Strings.format('test_login_log', {'service': service}));
-        final app = Strakalari(
+        final app = createApp(
             configData: overrides.isEmpty ? null : overrides);
         try {
           if (service == 'bakalari') {

@@ -224,6 +224,29 @@ class AppState {
       _noSpawn;
   static void _noSpawn(Future<void> Function() job, String name) {}
 
+  /// Factory for [Strakalari] sessions (test seam: tests inject fakes
+  /// without touching the network).
+  Strakalari Function(
+          {void Function(String)? onLog, Map<String, Object?>? configData})
+      createApp = (
+              {void Function(String)? onLog,
+              Map<String, Object?>? configData}) =>
+          Strakalari(onLog: onLog, configData: configData);
+
+  /// AI lunch recommendation seam (defaults to core [recommendLunches];
+  /// tests inject fakes without touching the Gemini network API).
+  Future<(String, Map<String, String>)> Function(
+    Map<Object?, Object?> foodData,
+    String pref,
+    String apiKey, {
+    String model,
+    String language,
+  }) recommendLunchesFn = recommendLunches;
+
+  /// Last snackbar-equivalent message from a background worker
+  /// (excuse send, order submit, AI recommend).
+  String lastSnackMessage = '';
+
   // -- reactive ---------------------------------------------------------------
   final Set<String> _flights = {};
 

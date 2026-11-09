@@ -35,6 +35,17 @@ Map<String, Object?> lessonExcuse(Object? kind, String dayLabel, int period) {
 
 /// Excuse-task listing/ignore/send logic. Port of `ExcuseTasksMixin`.
 extension ExcuseTasksLogic on AppState {
+  /// Test hook: overrides the computed pending excuse tasks (mirrors
+  /// `state.excuse_tasks = lambda: tasks` in Python tests).
+  List<Map<String, Object?>> Function()? get excuseTasksOverride =>
+      _excuseTasksOverrides[this];
+  set excuseTasksOverride(List<Map<String, Object?>> Function()? fn) {
+    _excuseTasksOverrides[this] = fn;
+  }
+
+  static final Expando<List<Map<String, Object?>> Function()>
+      _excuseTasksOverrides = Expando();
+
   List<Map<String, Object?>> _allExcuseTasks() {
     if (demoMode) return [];
     return [
@@ -96,6 +107,8 @@ extension ExcuseTasksLogic on AppState {
   /// Pending one-click tasks (window-clipped, ignored filtered out).
   /// Port of `excuse_tasks()`.
   List<Map<String, Object?>> excuseTasks() {
+    final override = excuseTasksOverride;
+    if (override != null) return override();
     final windowStart = fmtIso(excuseWindowStart());
     return [
       for (final t in unexcusedTasks())
@@ -193,12 +206,13 @@ extension ExcuseTasksLogic on AppState {
     if (emit) _emit();
   }
 
-  /// Validates and stages a one-lesson excuse send. The real Bakaláři
-  /// submit runs in phase 7 via [ExcuseSendPort]; until then the task is
-  /// staged as in-flight and the caller toasts `excuse_failed`-style
-  /// pending state. Returns false when a submit is already running or
-  /// the task lacks the data for a request. Port of `submit_excuse()`
-  /// (Flet page/snackbar/threading bits dropped — see comment there).
+  /// Submits one excuse to Bakaláři in the background.
+  ///
+  /// Returns false when a submit for the task is already running or the
+  /// task lacks the data needed to build a request. Marks the task only
+  /// after the server confirms — never optimistically. [template] is
+  /// the user-chosen excuse text (sent verbatim); empty falls back to
+  /// the configured default template. Port of `submit_excuse()`.
   bool submitExcuse(Map<String, Object?> task, [String template = '']) {
     final key = '${task['key'] ?? ''}';
     if (key.isEmpty || sendingExcuses.contains(key)) return false;
@@ -209,21 +223,38 @@ extension ExcuseTasksLogic on AppState {
       logLine('${Strings.get('excuse_failed')}: ${task['label'] ?? key}');
       return false;
     }
-    if (demoMode && !_hasAnyCredentials()) {
+    if (demoMode && !_hasCredentials()) {
       logLine(Strings.get('need_credentials'));
+      lastSnackMessage = Strings.get('need_credentials');
       return false;
     }
-    lessonExcuse(task['kind'], fmtDay(day), period);
+    final excuse = lessonExcuse(task['kind'], fmtDay(day), period);
     if (sendingExcuses.contains(key)) return false;
     sendingExcuses.add(key);
     currentStep = Strings.get('excuse_sending');
     logLine('${Strings.get('excuse_sending')}: ${task['label'] ?? key}');
     tutorialEvent('excuse_done');
     _emit();
-    // Flet: spawned `_excuse_worker` thread (session lock, one Bakaláři
-    // session, outcomes sent/covered/dry_run/failed/unconfirmed/skipped,
-    // snackbar + notification + error dialog). Phase 7 runs this via
-    // ExcuseSendPort and clears `sendingExcuses` on completion.
+
+    final trimmed = template.trim();
+    final customText = trimmed.isEmpty ? null : trimmed;
+    final label = '${task['label'] ?? key}';
+
+    void onSent() {
+      markExcused(task, template, sent: true);
+    }
+
+    spawn(
+      () => _excuseWorker(
+        [(excuse, customText)],
+        key,
+        label,
+        onSent,
+        'excuse',
+        {'label': label},
+      ),
+      'strakalari-excuse',
+    );
     return true;
   }
 
@@ -344,27 +375,163 @@ extension ExcuseTasksLogic on AppState {
     return plan;
   }
 
-  /// Validates and stages a whole-day excuse send (phase 7 submits it).
-  /// Port of `submit_day_excuse()` (worker/snackbar bits dropped).
+  /// Excuses every pending task of one day in one Bakaláři session.
+  ///
+  /// A fully absent day goes out as ONE whole-day request; a partly
+  /// attended day as lesson ranges (see [dayExcusePlan]) — a whole-day
+  /// excuse would claim lessons the student attended. [perLesson] sends
+  /// one request (one message) per lesson instead. [template] is used
+  /// for the absence excuses; late arrivals and early leaves get their
+  /// configured default text. Port of `submit_day_excuse()`.
   bool submitDayExcuse(String dayIso,
       [String template = '', bool perLesson = false]) {
     final day = parseCzDate(dayIso);
     if (day == null) return false;
+    final dayLabel = fmtDay(day);
     final key = 'day|$dayIso';
     if (sendingExcuses.contains(key)) return false;
     final plan = dayExcusePlan(dayIso, perLesson);
     if (plan.isEmpty) return false;
-    if (demoMode && !_hasAnyCredentials()) {
+    if (demoMode && !_hasCredentials()) {
       logLine(Strings.get('need_credentials'));
+      lastSnackMessage = Strings.get('need_credentials');
       return false;
     }
     sendingExcuses.add(key);
     currentStep = Strings.get('excuse_sending');
-    logLine('${Strings.get('excuse_sending')}: ${fmtDay(day)}');
+    logLine('${Strings.get('excuse_sending')}: $dayLabel');
     tutorialEvent('excuse_done');
     _emit();
-    // Flet: spawned `_excuse_worker` (see `submitExcuse` comment).
+
+    final trimmed = template.trim();
+    final customText = trimmed.isEmpty ? null : trimmed;
+    // Snapshot now: once sent, the history hides these tasks.
+    final dayTasks = [
+      for (final t in excuseTasks())
+        if ('${t['date'] ?? ''}' == dayIso) t,
+    ];
+    final jobs = [
+      for (final excuse in plan)
+        (
+          excuse,
+          const {'pure days', 'days and hours'}.contains('${excuse['type']}')
+              ? customText
+              : null,
+        ),
+    ];
+
+    void onSent() {
+      for (final task in dayTasks) {
+        markExcused(task, template, sent: true, emit: false);
+      }
+    }
+
+    spawn(
+      () => _excuseWorker(
+        jobs,
+        key,
+        dayLabel,
+        onSent,
+        perLesson ? 'excuse (day, per lesson)' : 'excuse (whole day)',
+        {'day': dayIso, 'excuses': jobs.length, 'per_lesson': perLesson},
+      ),
+      'strakalari-excuse-day',
+    );
     return true;
+  }
+
+  /// Background part of a manual excuse send (one lesson or one day).
+  ///
+  /// [jobs] are `(excuse, customText)` pairs sent in one Bakaláři
+  /// session. Every outcome is visible: sent / already excused / dry run
+  /// / failed go to the log and [lastSnackMessage], a failure also to a
+  /// notification, a crash to [reportError]. Port of `_excuse_worker()`.
+  Future<void> _excuseWorker(
+    List<(Map<String, Object?>, String?)> jobs,
+    String key,
+    String label,
+    void Function() onSent,
+    String operation,
+    Map<String, Object?> extra,
+  ) async {
+    final outcomes = <String>[];
+    var dry = false;
+    var crashed = false;
+    var busy = false;
+    try {
+      // A refresh (here or in the tray process) may be talking to the
+      // school sites right now: never send in parallel with it.
+      await withSessionLockAsync((held) async {
+        if (!held) {
+          busy = true;
+          return;
+        }
+        final app = createApp(onLog: coreLog);
+        try {
+          dry = app.excuseMode == 'dry_run';
+          for (final (excuse, customText) in jobs) {
+            final copy = Map<String, Object?>.of(excuse);
+            final outcome = await app.sendExcuseOutcome(copy, customText);
+            outcomes.add(outcome);
+          }
+        } finally {
+          try {
+            app.close();
+          } catch (exc) {
+            // ignore: avoid_print
+            print('Warning: session close failed: $exc');
+          }
+        }
+      });
+    } catch (exc) {
+      crashed = true;
+      final line =
+          '${Strings.get('excuse_failed')}: ${exc.runtimeType}: $exc'
+              .split('\n')
+              .first;
+      workerLog(line.length > 200 ? line.substring(0, 200) : line);
+      reportError(operation, exc, '', '', extra);
+    }
+    sendingExcuses.remove(key);
+    final total = jobs.length;
+    final done =
+        outcomes.where((o) => o == 'sent' || o == 'covered').length;
+    final ok = !crashed && total > 0 && done == total;
+    String msg;
+    if (busy) {
+      // Nothing was sent; the user retries once the other run is done.
+      msg = Strings.get('session_busy');
+    } else if (dry &&
+        outcomes.isNotEmpty &&
+        outcomes.every((o) => o == 'dry_run')) {
+      // Dry run simulates success without sending — never mark sent.
+      msg = Strings.get('excuse_dry_run');
+    } else if (ok) {
+      onSent();
+      msg = outcomes.every((o) => o == 'covered')
+          ? Strings.get('excuse_already_covered')
+          : Strings.get('excuse_sent');
+    } else if (crashed) {
+      msg = Strings.get('excuse_failed');
+    } else if (outcomes.contains('unconfirmed')) {
+      // May have gone out: never offer it as a plain failure to retry.
+      msg = Strings.get('excuse_unconfirmed');
+      notifyEvent('automation_failed', '$msg: $label');
+    } else if (outcomes.contains('skipped')) {
+      msg = Strings.get('excuse_blocked_unconfirmed');
+    } else {
+      msg = Strings.get('excuse_failed');
+      if (total > 1 && done > 0) {
+        msg =
+            '$msg (${Strings.format('excuse_day_result', {'ok': done, 'n': total})})';
+      }
+      notifyEvent('automation_failed', '$msg: $label');
+    }
+    if (!crashed) {
+      workerLog('$msg: $label');
+    }
+    lastSnackMessage = msg;
+    _emit();
   }
 }
 

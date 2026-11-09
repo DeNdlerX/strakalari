@@ -131,9 +131,13 @@ extension LunchLogic on AppState {
 
   /// Builds the transmittable order payload: only user-changed days,
   /// plus planner-cancelled days (deorder derived from the menu), stays
-  /// within the order window. Pure part of `submit_orders()` — the
-  /// thread + Strava session run in phase 7.
+  /// within the order window. Pure part of `submit_orders()`.
   Map<String, String> lunchSubmitPayload() {
+    final (_, payload) = _buildSubmitPayload();
+    return payload;
+  }
+
+  (List<String>, Map<String, String>) _buildSubmitPayload() {
     final pending = Set<String>.of(pendingOrders);
     final payload = {
       for (final e in orders.entries)
@@ -159,34 +163,47 @@ extension LunchLogic on AppState {
     }
     // Days past the previous-business-day cutoff: Strava would reject
     // them. Picks stay staged; only the payload is filtered.
-    payload.removeWhere((day, _) => !isLunchOrderOpen(day));
-    return payload;
+    final closed = [
+      for (final day in payload.keys)
+        if (!isLunchOrderOpen(day)) day,
+    ];
+    for (final day in closed) {
+      payload.remove(day);
+    }
+    return (closed, payload);
   }
 
   /// Sends the local lunch choices (and planned-skip deorders) to
-  /// Strava. Returns false when nothing is pending or a submit already
-  /// runs. Phase 7 performs the network submit; until then the payload
-  /// is validated and the in-flight flag set exactly like the original.
-  /// Port of `submit_orders()` (thread/snackbar bits dropped).
+  /// Strava. Runs in the background; returns false when nothing is
+  /// pending or a submit is already running. Port of `submit_orders()`.
   bool submitOrders() {
     if (!stravaEnabled()) return false;
     if (refreshRunning || !claimFlight('order_running')) return false;
+    // Any exit below that does NOT hand the payload to the worker must
+    // release the latch — otherwise Odeslat stays dead until restart.
     var spawned = false;
     try {
-      final payload = lunchSubmitPayload();
-      if (payload.isNotEmpty && demoMode && !_hasAnyCredentials()) {
-        logLine(Strings.get('need_credentials'));
-        return false;
+      final (closed, payload) = _buildSubmitPayload();
+      if (closed.isNotEmpty) {
+        logLine('${Strings.get('lunch_order_closed')} (${closed.length})');
+        lastSnackMessage = Strings.get('lunch_order_closed');
       }
       if (payload.isEmpty) return false;
+      if (demoMode && !_hasAnyCredentials()) {
+        logLine(Strings.get('need_credentials'));
+        lastSnackMessage = Strings.get('need_credentials');
+        return false;
+      }
       orderRunning = true;
       currentStep = Strings.get('orders_sending');
       logLine('${Strings.get('orders_sending')} (${payload.length})');
       tutorialEvent('orders_sent');
       _emit();
-      // Flet: spawned `_work` (session lock, one Strava session,
-      // placed-days bookkeeping, low-balance banner, snackbar). Phase 7
-      // runs it and clears `orderRunning` + the flight flag.
+
+      spawn(
+        () => _ordersWork(Map<String, String>.of(payload)),
+        'strakalari-orders',
+      );
       spawned = true;
       return true;
     } finally {
@@ -197,18 +214,237 @@ extension LunchLogic on AppState {
     }
   }
 
-  /// Validates an AI recommendation run. Phase 7 performs the Gemini
-  /// call + staging; until then the in-flight flag is claimed exactly
-  /// like the original. Port of `start_ai_recommend()` (head).
+  Future<void> _ordersWork(Map<String, String> payload) async {
+    var ok = false;
+    var dry = false;
+    var placed = <String, String>{};
+    var busy = false;
+    var unfunded = <String>[];
+    try {
+      // The tray (another process) may be mid-refresh: never order in
+      // parallel with it.
+      await withSessionLockAsync((held) async {
+        if (!held) {
+          busy = true;
+          workerLog(Strings.get('session_busy'));
+          return;
+        }
+        final app = createApp(onLog: coreLog);
+        try {
+          app.cancelRequested = false;
+          dry = app.stravaOrderMode == 'dry_run';
+          ok = await app.stravaOrderSelected(Map<String, String>.of(payload));
+          if (!dry) {
+            // Days that really went through, even when another day failed.
+            final done = Set<String>.of(app.lastOrderedDays);
+            placed = {
+              for (final e in payload.entries)
+                if (done.contains(e.key)) e.key: e.value,
+            };
+            if (app.lastOrderLowBalance) {
+              unfunded = List<String>.of(app.lastUnfundedDays);
+            }
+          }
+        } finally {
+          try {
+            app.close();
+          } catch (exc) {
+            // ignore: avoid_print
+            print('Warning: session close failed: $exc');
+          }
+        }
+      });
+      if (placed.isNotEmpty) {
+        recordWebOrders(placed);
+      }
+    } catch (exc) {
+      final line =
+          '${Strings.get('orders_failed')}: ${exc.runtimeType}: $exc'
+              .split('\n')
+              .first;
+      workerLog(line.length > 200 ? line.substring(0, 200) : line);
+      reportError('orders', exc, '', '', {'days': payload.length});
+    } finally {
+      orderRunning = false;
+      releaseFlight('order_running');
+    }
+    var lowBalanceMsg = '';
+    if (unfunded.isNotEmpty) {
+      lowBalanceMsg =
+          core.t('strava_low_balance_manual', args: {'n': unfunded.length});
+      recordLowBalance(unfunded);
+      setLowBalanceMemory(unfunded);
+    } else if (ok && !dry) {
+      recordLowBalance(null);
+      setLowBalanceMemory(null);
+    }
+    if (ok && dry) {
+      // Dry run simulates success without ordering — web truth untouched.
+      workerLog(Strings.get('orders_dry_run'));
+    } else if (ok) {
+      workerLog(Strings.get('orders_sent'));
+    } else if (lowBalanceMsg.isNotEmpty) {
+      // The user's to fix (top up), not a bug: the snackbar says what
+      // to do, no failure toast on top of it.
+      workerLog(lowBalanceMsg);
+    } else if (!busy) {
+      // Fail loudly: the reason is in the log lines above.
+      workerLog(Strings.get('orders_failed'));
+      notifyEvent('automation_failed', Strings.get('orders_failed'));
+    }
+    if (busy) {
+      lastSnackMessage = Strings.get('session_busy');
+    } else if (ok) {
+      lastSnackMessage =
+          dry ? Strings.get('orders_dry_run') : Strings.get('orders_sent');
+    } else if (lowBalanceMsg.isNotEmpty) {
+      lastSnackMessage = lowBalanceMsg;
+    } else {
+      lastSnackMessage = Strings.get('orders_failed');
+    }
+    _emit();
+  }
+
+  /// Mirrors the cached low-balance warning into [data] (banner).
+  /// Port of `_set_low_balance_memory()`.
+  void setLowBalanceMemory(List<String>? days) {
+    try {
+      final copy = Map<String, Object?>.of(data);
+      if (days == null) {
+        copy['strava_low_balance'] = null;
+      } else {
+        final now = clock.now();
+        String two(int n) => n.toString().padLeft(2, '0');
+        final stamp = '${now.year.toString().padLeft(4, '0')}-'
+            '${two(now.month)}-${two(now.day)}T'
+            '${two(now.hour)}:${two(now.minute)}:${two(now.second)}';
+        final unique = {for (final d in days) d}.toList()..sort();
+        copy['strava_low_balance'] = {'at': stamp, 'days': unique};
+      }
+      data = copy;
+    } catch (_) {
+      // Banner update is best-effort.
+    }
+  }
+
+  /// Marks successfully placed picks as web truth (memory + cache).
+  ///
+  /// Merges into the cached `strava_ordered` map — replacing it with
+  /// just this batch would drop every other ordered day.
+  /// Port of `_record_web_orders()`.
+  void recordWebOrders(Map<String, String> placed) {
+    final canonPlaced = {
+      for (final e in placed.entries) canonicalDayKey(e.key): e.value,
+    };
+    for (final e in canonPlaced.entries) {
+      webOrders[e.key] = e.value;
+    }
+    pendingOrders.removeAll(canonPlaced.keys);
+    try {
+      final cached = loadDataCache()['strava_ordered'];
+      final merged = <String, Object?>{};
+      if (cached is Map) {
+        for (final e in cached.entries) {
+          if (!canonPlaced.containsKey(canonicalDayKey(e.key))) {
+            merged['${e.key}'] = e.value;
+          }
+        }
+      }
+      merged.addAll(canonPlaced);
+      saveDataCache({'strava_ordered': merged});
+    } catch (exc) {
+      // ignore: avoid_print
+      print('Warning: could not cache placed orders: $exc');
+    }
+  }
+
+  /// Runs the AI lunch recommendation in the background.
+  ///
+  /// Returns false when a run is already in flight. Port of
+  /// `start_ai_recommend()`.
   bool startAiRecommend() {
     if (!claimFlight('ai_running')) return false;
+    aiRunning = true;
     logLine(Strings.get('ai_started'));
     _emit();
-    // Flet: spawned `_work` (Gemini call, same-menu/cutoff/skip guards,
-    // batched staging, snackbar). Phase 7 runs it and clears
-    // `aiRunning` + the flight flag.
-    aiRunning = true;
+
+    spawn(_aiRecommendWork, 'strakalari-recommend');
     return true;
+  }
+
+  Future<void> _aiRecommendWork() async {
+    var msg = Strings.get('no_changes');
+    try {
+      var rawKey = '${get('gemini_api_key', '') ?? ''}';
+      if (get('gemini_api_key_encrypted') == true ||
+          '${get('gemini_api_key_encrypted')}' == 'true') {
+        rawKey = decryptStrict(rawKey) ?? '';
+      }
+      final menu = food();
+      final model =
+          '${get('gemini_model', 'gemini-3.8-flash') ?? 'gemini-3.8-flash'}';
+      final (_, recOrders) = await recommendLunchesFn(
+        menu,
+        lunchPrefs,
+        rawKey,
+        model: model,
+        language: getLanguage(),
+      );
+      var staged = 0;
+      var skipped = 0;
+      var closed = 0;
+      for (final e in recOrders.entries) {
+        final day = e.key;
+        final mid = e.value;
+        // Only a meal from that same day's menu is orderable.
+        if (!(menu[day]?.containsKey(mid) ?? false)) continue;
+        if (cancelledLunches.contains(day)) {
+          // A planned skip owns this day: recommending onto it would
+          // stage (and Send) a lunch on a vacation day.
+          skipped++;
+          continue;
+        }
+        bool open;
+        try {
+          open = isLunchOrderOpen(day);
+        } catch (_) {
+          open = false;
+        }
+        if (!open) {
+          closed++;
+          continue;
+        }
+        cancelledLunches.remove(day);
+        if (stagePick(day, mid)) {
+          staged++;
+        }
+      }
+      if (staged > 0) {
+        msg = '${Strings.get('to_send')} ($staged)';
+        if (skipped > 0) {
+          msg += ' · ${Strings.get('skipped_reason')}: $skipped';
+        }
+        if (closed > 0) {
+          msg += ' · ${Strings.get('lunch_closed_count')}: $closed';
+        }
+      } else if (closed > 0) {
+        msg = Strings.get('lunch_order_closed');
+      } else if (skipped > 0) {
+        msg = Strings.get('no_lunch');
+      } else {
+        msg = Strings.get('no_changes');
+      }
+      logLine(msg);
+    } catch (exc) {
+      msg = '$exc';
+      final line = '${Strings.get('ai_failed')}: $msg'.split('\n').first;
+      logLine(line.length > 200 ? line.substring(0, 200) : line);
+    } finally {
+      aiRunning = false;
+      releaseFlight('ai_running');
+    }
+    lastSnackMessage = msg;
+    _emit();
   }
 
   /// Hides banned meals and stages first-allowed picks. Port of
