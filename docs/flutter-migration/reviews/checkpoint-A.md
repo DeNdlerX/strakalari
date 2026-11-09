@@ -720,3 +720,107 @@ and the install-over tests (Checkpoint C), and phases 5–9, which stay unreview
 
 Left on this PC at the owner's request: the Dart 3.12.2 Linux SDK in WSL at
 `~/dart-3.12.2`.
+
+---
+
+# Re-review 3 (2026-11-09)
+
+Reviewed at `259f3c4` (branch tip) by a fresh reviewer session. Commits since re-review 2
+(`25dc096`): `ff41575` (R2-S1), `212dac2` + `a8545b1` (R2-S2), `730f61a` (R2-S3), and
+the STATUS commits `dffa710`, `259f3c4`. The previous reviewer made these fixes at the
+owner's request, so this session checked them independently. Since re-review 2
+(`4045a11`), the only code change in `packages/` is `describeSwallowed` in
+`storage/helpers.dart`. Everything else is tests, parity data, `dump.py` and CI.
+
+## Verdict: **PASS**
+
+All three findings of re-review 2 are fixed in the code, not just marked fixed. With
+the old bug put back, each new test fails, and with the fix it passes (checked by
+temporarily reverting the code). Nothing else broke: every suite is green, the parity
+oracle regenerates without a single difference, and a dry run against the demo server
+again gives the same audit, outbox, history and files as Python. The session lock
+still excludes Python and Dart in both directions. No blockers, must-fix or should-fix
+items are left. The notes below are for later checkpoints.
+
+Checkpoint A covers the core (phases 1–4) only. Phases 5–9 stay unreviewed, and macOS
+and Android are still unverified (see the end).
+
+## Status of re-review 2's findings
+
+| ID | Commit | How I checked | Result |
+|---|---|---|---|
+| R2-S1 DST forward rows | `ff41575` | `dst_cases` (`tools/parity/dump.py:2416`) now also runs from 23.3 and 19.10.2026, for all three row kinds; `dst.json` regenerates unchanged. **Mutation:** `fetchSubstitutions` with `today.add(Duration(days: 14))` (`bakalari/data.dart:363`) fails `substitutionRangeIsPythonsCalendarRange` at 19.10 (expected 19.10–6.11, got 19.10–30.10); `fetchTimetableWeeks` with `Duration(days: off * 7)` (`bakalari/timetable.dart:90`) fails `fetchTimetableWeeksAsksForPythonsMondays`. Both reverted | fixed |
+| R2-S2 `describeSwallowed` | `212dac2`, `a8545b1` | `storage/helpers.dart:588-607` vs `helpers.py:414-428`: splits once on Python's line breaks, cuts 160 code points (`runes.take`), like `splitlines()[0][:160]`. `_pyLineBreak` equals the set Python's `splitlines` breaks on: I computed it from Python over every code point (`\n \v \f \r \x1c \x1d \x1e \x85    `, plus `\r\n` as one break). 10 parity cases (multi-line, `\r\n`, `\r`, 200 characters, padding, empty, emoji, form feed, U+2028). **Mutation:** the pre-fix `helpers.dart` fails the parity test (`…ProbeError` instead of `…ProbeError: timeout`) | fixed |
+| R2-S3 macOS CI job | `730f61a` | `dart.yml` `dart-macos-locks`: `macos-latest` (Apple silicon), only on `workflow_dispatch` or `v*` tags, Flutter 3.44.8, `--enforce-lockfile`, `TZ: Europe/Prague`, runs `session_lock_test.dart` + `helpers_test.dart`. `setup-python` is pinned to the same SHA as `build.yml` / `test.yml`; `cryptography==50.0.1` equals `requirements.txt` (and `helpers.py` imports it optionally anyway). `freshLockFileIsOwnerReadWritable`, the R-M1 test, skips only on Windows, so it runs on the Mac. The three STATUS lines name the job. The job itself has not run yet (owner's CI) | fixed; see R3-N1 |
+
+## New findings
+
+None: no blockers, no must-fix, no should-fix items.
+
+### Notes (nothing to do for Checkpoint A)
+
+- **R3-N1** (Checkpoint C) `packages/strakalari_core/test/session_lock_test.dart:339`:
+  `matchesPythonFlock` (Python holds → Dart refused, and the reverse) is skipped
+  everywhere except Linux. So the new macOS job proves the `flock` binding and the
+  exclusion between Dart processes on a Mac, but not between the Python and the Dart app.
+  Both use `flock` (`helpers.py:364`), so the risk is low. The probe script is plain
+  POSIX, so `skip: Platform.isWindows ? '…' : false` would let it run on macOS too. Do
+  this at Checkpoint C, before macOS counts as verified.
+- **R3-N2** (Checkpoint C, phase 7) `installer.iss:58-67`: the `\r` of `x64\runner` was
+  written as a real line break. The comment and both `Source:` lines are split into
+  `…\build\windows\x64` and `unner\Release\…`, so Inno Setup cannot compile the
+  installer. Check with `git grep -n "^unner"` (3 hits; no other file in the branch has
+  this). Fix the paths to `app\build\windows\x64\runner\Release\…` when phase 7 is
+  reviewed.
+- **R3-N3** `storage/helpers.dart:596` `'$exc'.trim()` vs Python `str(exc).strip()`
+  (`helpers.py:424`): Python also strips U+001C–U+001F, and Dart also strips U+FEFF. Only
+  an error text that starts with one of those characters prints differently, and only in
+  `log.txt`. Accepted.
+- **R3-N4** `packages/strakalari_core/test/parity_dst_test.dart:4-5`: the header comment
+  still names only 30.3 and 26.10.2026; the rows now also start on 23.3 and 19.10. It is
+  a comment only, so fix it when the file is next touched.
+- The notes of the earlier rounds (R-N1, R-N2, R-N3, R-N6, R2-N1, R2-N2, R2-N4) stay
+  open for Checkpoints B and C.
+
+### Deviations of this round: sign-off
+
+Accepted: `describeSwallowed` cutting code points (matches Python's `str` slicing), the
+test's `ProbeError` mirroring `dump.py`'s class so the type names match, and the
+macOS job running only on manual runs and tags (to save CI minutes). Process: the
+previous reviewer made the R2 fixes instead of the migrating agent. This session
+re-reviewed them independently, which is what the rule protects. The Dropped list
+(`tls.py`, `test_tls_bundle.py`, `test_frozen_ssl.py`, `test_imports_resolve.py`) is
+unchanged and its reasons stay valid.
+
+## What I verified in re-review 3, and how
+
+Flutter 3.44.8 / Dart 3.12.2 on this PC (Windows 11, Europe/Prague, `TZ=Europe/Prague`
+set for the core suite). Probes, throwaway data folders and outputs are in the
+reviewer's scratchpad, not committed. Each temporary code change for a mutation check
+was reverted with `git checkout`, and the tree was clean afterwards. Nothing touched the
+owner's data, key store or real servers (`STRAKALARI_NO_KEYRING=1` everywhere; the
+demo server ran on 127.0.0.1:18080 and was stopped afterwards).
+
+| Check | Result |
+|---|---|
+| `dart analyze` / `dart test` (core) | clean / **766**: 764 passed, 2 skipped (`freshLockFileIsOwnerReadWritable`: POSIX only; `matchesPythonFlock`: Linux only) |
+| `flutter analyze` / `flutter test` (app) | clean / **124**: 123 passed, 1 skipped (APK scan, needs `STRAKALARI_APK`) |
+| Python suite (`pytest tests/`) | **1643 passed** |
+| `dump.py` regeneration + `git diff --exit-code` on `test/parity/` | **clean** (27 files, incl. the new `dst.json` rows and the 10 `describeSwallowed` rows) |
+| Mutation checks (old bug back → test must fail) | 3 of 3 caught: substitution range, timetable week step, `describeSwallowed`. All reverted |
+| Dry-run parity (`soak_refresh.py` vs `bin/refresh_dryrun.dart`, demo server, two throwaway folders) | `soak_compare.py`: **IDENTICAL**. Both: 2 audit records (`excuse`/`dry_run`, manual + auto), 4 outbox items, 4 history items, empty sidecar, 60 timetable days. Files: `already_excused_lessons.json` byte-identical; `automation_history.jsonl`, `data_cache.json` and `log.txt` identical after masking timestamps (same sizes); only `secret.key` differs (a random throwaway key) |
+| Session lock on Windows: Python's real `refresh.session_lock` vs Dart `SessionLock`, separate processes, same `STRAKALARI_DATA_DIR` | Python holds → Dart refused; Python exits → Dart gets it; Dart holds → Python refused; Dart exits → Python gets it |
+| Send path, re-read with fresh eyes | `automation.dart:1222-1370` (`sendExcuse`, `_sendExcuseInner`, `_recordUnconfirmed`) vs `automation.py:761-877`: the lock is held across the history check, the unconfirmed check, the submit and the write; covered → `covered`; unreadable sidecar → `failed`; blocked → `skipped`; uncertain → sidecar, falling back to the history; every outcome is audited. Unchanged since re-review 2 and still the same as Python |
+| Test integrity (`git diff 25dc096..HEAD` on Dart tests) | additions only (`ProbeError`, one `case`); nothing removed or loosened, no `skip:`, `anything`, `isNotNull`, `try`/`catch` around `expect` |
+| §3.5 pitfalls in the changed code | one new `RegExp` (`_pyLineBreak`, checked above); no `~/`, `%`, `round`, `weekday`, `DateTime.now`, `DateTime.parse`, `jsonEncode`; no `DateTime.now()` in core `lib/` |
+| Fail loudly | the only catch in the change is `describeSwallowed`'s `catch (_)`, which matches Python's `except Exception: pass`, and it only builds a log line |
+| Architecture | no `package:flutter` in core sources; no build_runner / `*.g.dart`; the workspace `pubspec.lock` is committed; all 5 `flutter-action` steps pin 3.44.8, and all 5 `pub get` steps use `--enforce-lockfile` |
+| Hygiene | no `config.json`, `data_cache.json`, `log.txt`, `htmls/`, `*.key`, `*.jks` in the branch history (only `test/parity/config.json`, which holds test values and is unchanged); no real hosts in the changed tests; no upstream and no remote configured; all 88 branch commits by DeNdlerX, none with `Co-Authored-By` / `Claude-Session` |
+| `main` merged and ported | `main` = `0ffdcff`, an ancestor of the branch; STATUS says `0ffdcff`; `strakalari/` and `tests/` are unchanged against `main` |
+| STATUS claims of this round | each R2 line matches its diff, and the suite counts match my runs |
+
+**Still not verified** (list for the owner's CI and later checkpoints):
+- Apple-silicon macOS: R-M1 needs a manual run of `dart-macos-locks` in GitHub Actions.
+  The Python ↔ Dart lock on macOS also needs R3-N1.
+- Android, the headless background run and the install-over tests (Checkpoint C).
+- Phases 5–9, which stay unreviewed (Checkpoints B, C, D).

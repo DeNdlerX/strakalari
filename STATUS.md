@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 4 (⛔ Checkpoint A re-review 2: PASS WITH FIXES; its fixes `R2-S1..R2-S3` are done, ready for re-review; phases 5–9 in progress, unreviewed) · Next step: Stop and wait: a new reviewer session re-reviews Checkpoint A (every commit after `25dc096`: fixes `ff41575`, `212dac2` + `a8545b1`, `730f61a`; they were made by the reviewer at the owner's request, so the re-review must be a fresh session). No work on phases 5–10 until Checkpoint A passes.
+Current phase: 5 (Checkpoint A passed 2026-11-09 in re-review 3; phases 5–9 in progress, unreviewed) · Next step: Checkpoint A passed (2026-11-09). Start phase 5. (The phase 5–9 code drafted earlier is unreviewed: finish phase 5 to its "done when" in PLAN §4, beginning with PROMPT step 2, `git merge main`. Notes for Checkpoints B and C are in `reviews/checkpoint-A.md`: R-N*, R2-N*, R3-N*.)
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -14,7 +14,7 @@ notify (core interface). 16 new parity JSON fixtures (344 cases);
 `dart analyze` + `flutter analyze` clean.
 Phase 4 (automation) is done: error_report (full), scheduler,
 session_lock, automation (Strakalari), refresh (run_refresh).
-⛔ Checkpoint A: core review (re-review 2: PASS WITH FIXES; `R2-S1..R2-S3` fixed, ready for re-review).
+⛔ Checkpoint A: core review (re-review 3: **PASS**, 2026-11-09).
 Phase 5 (app shell) is in progress, unreviewed: Riverpod controllers (AppState + 6 facades),
 go_router (8 routes + wizard + more), adaptive scaffold (720/520
 breakpoints, rail ↔ bar + More, landscape side rail), theme tokens,
@@ -659,11 +659,10 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
 
 ## Questions for the owner / reviewer
 
-- ⛔ Checkpoint A reached: please have a reviewer model check phases 1–4
-  (Checkpoint notes below) before any work on phases 5–10 continues.
-  (Original Checkpoint A questions 1–5 were answered in
+- (Resolved 2026-11-09: Checkpoint A passed in re-review 3; the original
+  Checkpoint A questions 1–5 were answered in
   `docs/flutter-migration/reviews/checkpoint-A.md`.)
-- Phases 5–8 are in progress, unreviewed (waiting on Checkpoint A sign-off).
+- Phases 5–8 are in progress, unreviewed (Checkpoint A signed off 2026-11-09).
   Open questions deferred to Checkpoints B / C / D:
   1. Unify the three string/token tables + feature `schedule_logic`/
      `grades_logic` onto the canonical core ports now, or keep the
@@ -729,6 +728,7 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
   - **R2-S1** (`ff41575`): `dst_cases` in `tools/parity/dump.py` also starts on 23.3.2026 and 19.10.2026 (the Monday a week before each switch), so the forward steps (next timetable week, 14-day substitution range) cross a switch; `test/parity/dst.json` regenerated. Reintroducing `Duration(days: 14)` in `fetchSubstitutions` now fails `substitutionRangeIsPythonsCalendarRange`.
   - **R2-S2** (`212dac2`, `a8545b1` writes the U+2028/U+2029 regex and oracle characters as escapes): `describeSwallowed` in `storage/helpers.dart` takes the first line like Python `splitlines()[0][:160]` (all Python line breaks, 160 code points); 10 `describeSwallowed` parity cases in `dump.py` / `parity_helpers_test.dart` (the old code fails them).
   - **R2-S3** (`730f61a`): new `dart-macos-locks` job in `.github/workflows/dart.yml` (Apple silicon, manual run or release tag) runs `session_lock_test.dart` + `helpers_test.dart` with `TZ=Europe/Prague`; the three STATUS lines name it.
+- 2026-11-09 · Checkpoint A re-review 3: **PASS** (all R2-* findings fixed; 0 blockers, 0 must-fix, 0 should-fix; notes R3-N1..R3-N4 for later checkpoints) — [docs/flutter-migration/reviews/checkpoint-A.md](docs/flutter-migration/reviews/checkpoint-A.md#re-review-3-2026-11-09)
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 
