@@ -507,7 +507,52 @@ class AppState {
 
   /// The wake-up alarm rings on the Android phone only; phase 8 reports
   /// it via the platform channel. Port of `wakeup_available()`.
-  bool get wakeupAvailable => false;
+  bool? wakeupAvailableOverride;
+  bool get wakeupAvailable =>
+      wakeupAvailableOverride ?? (wakeupPhoneBridge != null);
+
+  /// The phone's next [WakeupAlarm], or null. Port of `next_wakeup_alarm()`.
+  WakeupAlarm? nextWakeupAlarm([DateTime? now]) {
+    if (!wakeupAvailable) return null;
+    try {
+      final tt = <String, Object?>{
+        for (final e in phoneTimetable().entries) e.key: e.value,
+      };
+      return core.nextWakeupAlarm(
+        tt,
+        config: Map<String, Object?>.of(config.data),
+        now: now,
+        stableBaseline: stableBaseline(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Skipped days whose alarm is still ahead, each with the alarm a
+  /// restore gives back. Port of `skipped_wakeup_days()`.
+  List<(DateTime, WakeupAlarm?)> skippedWakeupDays([DateTime? now]) {
+    if (!wakeupAvailable) return [];
+    try {
+      final tt = <String, Object?>{
+        for (final e in phoneTimetable().entries) e.key: e.value,
+      };
+      return upcomingSkippedDays(
+        tt,
+        config: Map<String, Object?>.of(config.data),
+        now: now,
+        stableBaseline: stableBaseline(),
+      );
+    } catch (_) {
+      final cur = now ?? clock.now();
+      final today = DateTime(cur.year, cur.month, cur.day);
+      final days = skippedDays(Map<String, Object?>.of(config.data))
+          .where((d) => !d.isBefore(today))
+          .toList()
+        ..sort();
+      return [for (final d in days) (d, null)];
+    }
+  }
 
   /// Hands the widget data and the alarm queue to the phone (a no-op
   /// elsewhere). Port of `sync_android_state()`.

@@ -20,8 +20,7 @@ import '../features/settings/settings_controller.dart';
 import '../features/settings/settings_view.dart';
 import '../features/timetable/timetable_controller.dart';
 import '../features/timetable/timetable_view.dart';
-import '../features/today/today_controller.dart';
-import '../features/today/today_view.dart';
+import '../features/today/today_live.dart';
 import '../features/wizard/wizard_controller.dart';
 import '../features/wizard/wizard_view.dart';
 import '../l10n/strings.dart';
@@ -110,8 +109,7 @@ GoRoute _route(String name) => GoRoute(
         final tokens = ft.AppTokens.of(Theme.of(context).brightness);
         switch (name) {
           case 'today':
-            return TodayView(
-                controller: TodayController(), tokens: tokens, narrow: narrow);
+            return LiveTodayView(tokens: tokens, narrow: narrow);
           case 'timetable':
             return TimetableView(
                 controller: TimetableController(), tokens: tokens, narrow: narrow);

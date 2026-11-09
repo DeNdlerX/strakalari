@@ -200,6 +200,14 @@ class TodayController extends ChangeNotifier {
   /// Pending signature-gated send (the `_when_signed` dialog state).
   ExcuseSendRequest? pendingUnsignedRequest;
 
+  /// Optional live-state delegation hooks (wired by `today_live.dart`).
+  String Function(String key)? ignoreExcuseHook;
+  List<String> Function(String dayIso)? ignoreDayHook;
+  bool Function(List<String> keys)? unignoreKeysHook;
+  void Function(String key, int index)? chooseTemplateHook;
+  void Function(String key, bool expanded)? setDayExpandedHook;
+  bool Function(bool on)? setExcuseDayPerLessonHook;
+
   // -- config helpers -----------------------------------------------------------
 
   Object? get(String key, [Object? fallback]) =>
@@ -295,6 +303,12 @@ class TodayController extends ChangeNotifier {
   /// Hides one task — like `state.ignore_excuse`. Returns the hidden
   /// key, or `''` when nothing was hidden.
   String ignoreExcuse(String key) {
+    if (ignoreExcuseHook != null) {
+      final res = ignoreExcuseHook!(key);
+      if (res.isNotEmpty) lastMessage = s.get('ignored_msg');
+      notifyListeners();
+      return res;
+    }
     lastIgnoreError = '';
     if (key.isEmpty) return '';
     if (!_changeIgnored(add: [key])) return '';
@@ -306,6 +320,12 @@ class TodayController extends ChangeNotifier {
   /// Hides every pending task of one day — like `state.ignore_day`.
   /// Returns the hidden keys ([] when nothing was hidden / save failed).
   List<String> ignoreDay(String dayIso, {DateTime? today}) {
+    if (ignoreDayHook != null) {
+      final added = ignoreDayHook!(dayIso);
+      if (added.isNotEmpty) lastMessage = s.get('ignored_msg');
+      notifyListeners();
+      return added;
+    }
     lastIgnoreError = '';
     final added = excuseTasks(today: today)
         .where((t) =>
@@ -319,8 +339,14 @@ class TodayController extends ChangeNotifier {
   }
 
   /// Like `state.unignore_excuse` / `state.unignore_keys`.
-  bool unignoreKeys(List<String> keys) =>
-      _changeIgnored(remove: keys.where((k) => k.isNotEmpty).toList());
+  bool unignoreKeys(List<String> keys) {
+    if (unignoreKeysHook != null) {
+      final ok = unignoreKeysHook!(keys);
+      notifyListeners();
+      return ok;
+    }
+    return _changeIgnored(remove: keys.where((k) => k.isNotEmpty).toList());
+  }
 
   // -- templates ----------------------------------------------------------------------
 
@@ -405,8 +431,10 @@ class TodayController extends ChangeNotifier {
 
   /// Clamps a template pick into range — like `today._choose`.
   void chooseTemplate(String key, String? value, int n) {
-    pickedTemplates[key] =
+    final idx =
         (int.tryParse(value ?? '') ?? 0).clamp(0, (n - 1).clamp(0, 1 << 30));
+    pickedTemplates[key] = idx;
+    chooseTemplateHook?.call(key, idx);
     notifyListeners();
   }
 
@@ -438,6 +466,16 @@ class TodayController extends ChangeNotifier {
   /// Like `state.excuse_day_per_lesson` + `set_excuse_day_per_lesson`
   /// (saved; false restores the old mode when the save fails).
   bool setExcuseDayPerLesson(bool on) {
+    if (setExcuseDayPerLessonHook != null) {
+      final ok = setExcuseDayPerLessonHook!(on);
+      if (ok) {
+        config['excuse_day_per_lesson'] = on;
+      } else {
+        lastMessage = s.get('save_failed');
+      }
+      notifyListeners();
+      return ok;
+    }
     final previous = excuseDayPerLesson;
     config['excuse_day_per_lesson'] = on;
     if (onSave({'excuse_day_per_lesson': on})) {
@@ -455,6 +493,7 @@ class TodayController extends ChangeNotifier {
 
   void setDayExpanded(String key, bool expanded) {
     expandedDays[key] = expanded;
+    setDayExpandedHook?.call(key, expanded);
     notifyListeners();
   }
 
