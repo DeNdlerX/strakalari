@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 4 (⛔ Checkpoint A re-review: FAIL, 3 must-fix open; phases 5–9 in progress, unreviewed) · Next step: Fix every finding in `reviews/checkpoint-A.md` (blockers first), one commit per finding, then stop for re-review. The open findings are the R-* items in its "Re-review (2026-11-08)" section (R-M1–R-M3, then R-S1–R-S7); every A-* item is done. No work on phases 5–10 until Checkpoint A passes.
+Current phase: 4 (⛔ Checkpoint A re-review rework complete, ready for re-review; phases 5–9 in progress, unreviewed) · Next step: Have a reviewer model re-review Checkpoint A (all R-* findings `R-M1..R-M3` and `R-S1..R-S7` + `R-N4`, `R-N5` are fixed). No work on phases 5–10 until Checkpoint A passes.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -194,9 +194,9 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
    - `test_perm_view_is_told_apart_by_ident_code` → `timetable_test.dart`: `isToldApartByIdentCode`
    - `test_extract_stable_timetable_scrapes_perm_view` → `timetable_test.dart`: `extractStableTimetableScrapesPermView`
    - `test_extract_stable_timetable_rejects_stale_actual_week` → `timetable_test.dart`: `extractStableTimetableRejectsStaleActualWeek`
-7. `tests/test_bakalari_excuse.py` (12) → `bakalari_excuse_test.dart` (12 1:1 camelCase cases): `lessonExcusePostsTheFormOnceAndIsConfirmedByTheOutbox`, `wholeDayExcusePostsTheDayRange`, `lessonNotInTheTimetableIsNeverPosted`, `unreadableOutboxBeforeSendingMeansNothingIsPosted`, `postMissingFromTheOutboxIsUncertainAndNeverRepeated`, `otherExcuseAppearingDoesNotConfirmThisOne`, `tellsNeverSentFromMaybeSent`, `expiredSessionOnThePostIsNotSentAndNotRetried`, `cancelBeforeThePostSendsNothing`, `dryRunPreparesTheExcuseWithoutPosting`, `defaultTextComesFromTheTemplates`, `editorFieldMatchesTheBrowserByteForByte`
-8. `tests/test_bakalari_http.py` (22):
-   - Session cases (11) → `http_session_test.dart`: `dropsPageNames`, `areWhatABrowserSubmits`, `readsTheResultOrRaises`, `postsTheFormOnceAndReusesTheSession`, `rejectedLoginRaisesUserErrorWithTheReason`, `wrongAddressSaysSo`, `serverErrorAtLoginIsNeverALogin`, `networkFailuresExplainThemselves`, `cancelStopsBeforeAnyRequest`, `stillValidSessionNeedsNoNewLogin`, `droppedConnectionIsRetriedOnceForReads`
+7. `tests/test_bakalari_excuse.py` (14 [12 functions]) → `bakalari_excuse_test.dart` (17 cases, covering all 14 collected cases + connect-phase and clock tests): `lessonExcusePostsTheFormOnceAndIsConfirmedByTheOutbox`, `wholeDayExcusePostsTheDayRange`, `lessonNotInTheTimetableIsNeverPosted`, `unreadableOutboxBeforeSendingMeansNothingIsPosted`, `postMissingFromTheOutboxIsUncertainAndNeverRepeated`, `otherExcuseAppearingDoesNotConfirmThisOne`, `tellsNeverSentFromMaybeSent`, `expiredSessionOnThePostIsNotSentAndNotRetried`, `cancelBeforeThePostSendsNothing`, `dryRunPreparesTheExcuseWithoutPosting`, `defaultTextComesFromTheTemplates`, `postbackWithoutNowReadsTheClock`, `editorFieldMatchesTheBrowserByteForByte`
+8. `tests/test_bakalari_http.py` (25 [22 functions]):
+   - Session cases (14 [11 functions]) → `http_session_test.dart`: `dropsPageNames`, `areWhatABrowserSubmits`, `readsTheResultOrRaises`, `postsTheFormOnceAndReusesTheSession`, `rejectedLoginRaisesUserErrorWithTheReason`, `wrongAddressSaysSo`, `serverErrorAtLoginIsNeverALogin`, `networkFailuresExplainThemselves`, `connectTimeoutIsATimeoutNotUnreachable`, `cancelStopsBeforeAnyRequest`, `stillValidSessionNeedsNoNewLogin`, `droppedConnectionIsRetriedOnceForReads`
    - Data/outbox/absence/substitutions cases (10) → `bakalari_data_test.dart`: `expiredSessionLogsInAgainAndRetriesOnce`, `outboxReadsEveryExcuseDetail`, `wholeDayExcuseIsOneEntry`, `emptyOutboxIsARealEmptyList`, `anotherFolderIsUnknownNotEmpty`, `outboxListNotLoadingIsUnknownNotEmpty`, `parsesTheSubjectRows`, `replyWithoutRowsIsFlagged`, `areParsedFromTheWeekReply`, `failedSubstitutionsAreUnknown`
    - `test_each_week_is_requested_by_its_monday` → `timetable_test.dart`: `eachWeekIsRequestedByItsMonday`
 9. `tests/test_cache.py` (11) → `cache_test.dart` (11 1:1 camelCase cases): `missingFileReturnsEmptyDict`, `saveAndLoadCache`, `saveCacheMergesWithExisting`, `loadCorruptedCacheFallback`, `mismatchedVersionIgnored`, `currentVersionLoads`, `staleDetection`, `describeMentionsStale`, `replaceDropsStaleKeys`, `corruptCacheIsQuarantined`, `cacheLabelFollowsLanguage`
@@ -223,7 +223,7 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
     - 4 UI dialog cases → `app/test/overlays_test.dart` (in progress, unreviewed): `error dialog shows summary and traceback`, `error dialog with user message hides traceback`, `copy button records a copied confirmation`, `showErrorDialog never throws`
     - Remaining 9 Flet/AppState popup queue & clipboard cases → **Deferred (phase 5 — `AppState` error queue + clipboard wiring)**
 17. `tests/test_excuse_day_scope.py` (8) → **Deferred (phase 5/6 — `AppState.day_excuse_plan` / `submit_day_excuse` / day card switch)**
-18. `tests/test_excuse_generation.py` (25) → `automation_test.dart` (25 1:1 camelCase cases): `gapDaysAreNotMerged`, `trulyConsecutiveDaysStillMerge`, `stillExcuses $notice`, `staysCancelled $notice`, `variantsGenerate ${v.$1}/${v.$2}`, `lateVariantsAreIncome ${v.$1}`, `cutoffIsDateBasedNotHourBased`, `excusedTypeSkipped`, `excusedTextWithAbsentTypeSkipped`, `fullyExcusedDayProducesNothing`, `fridayAndTuesdayDoNotBridge`, `presentDayStillBreaksChain`, `firstMode`, `randomModePicksFromList`, `emptyTemplates`, `defaultDelay`, `customDelay`, `multiGroupStatusPrioritization`, `pureDaysConsecutive`, `lateIncomeExcuse`, `pureDaysAcrossWeekend`, `delayDaysCutoff`, `fragmentedSameDayAbsences`, `genericEarlyLeaveIsAutoExcusedLikeUi`, `notCountedAbsenceIsNeverExcused`
+18. `tests/test_excuse_generation.py` (41 [25 functions]) → `automation_test.dart` (41 parameterized cases across 25 1:1 camelCase functions): `gapDaysAreNotMerged`, `trulyConsecutiveDaysStillMerge`, `stillExcuses $notice`, `staysCancelled $notice`, `variantsGenerate ${v.$1}/${v.$2}`, `lateVariantsAreIncome ${v.$1}`, `cutoffIsDateBasedNotHourBased`, `excusedTypeSkipped`, `excusedTextWithAbsentTypeSkipped`, `fullyExcusedDayProducesNothing`, `fridayAndTuesdayDoNotBridge`, `presentDayStillBreaksChain`, `firstMode`, `randomModePicksFromList`, `emptyTemplates`, `defaultDelay`, `customDelay`, `multiGroupStatusPrioritization`, `pureDaysConsecutive`, `lateIncomeExcuse`, `pureDaysAcrossWeekend`, `delayDaysCutoff`, `fragmentedSameDayAbsences`, `genericEarlyLeaveIsAutoExcusedLikeUi`, `notCountedAbsenceIsNeverExcused`
 19. `tests/test_excuse_history.py` (17):
     - 10 pure/config cases → `excuse_history_test.dart`: `broaderWebExcuseCoversSingleDay`, `partialOverlapIsNotCovered`, `hourRangeNeverCoversWholeDay`, `multiDayHourSpanSemantics`, `taskCoveredMatchesUiRules`, `nonPaddedDatesCanonicalized`, `stripsUiKeys`, `historyEntriesStoreEveryHourShape`, `managerFiltersExampleFallback`, `historyQuarantine`
     - 4 automation cases → `automation_test.dart`: `concurrentSendsSubmitOnce`, `coveredExcuseIsNotResent`, `automationFiltersExampleFallback`, `excuseDryRunFillsWithoutSubmitting`
@@ -258,7 +258,7 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
 26. `tests/test_grades.py` (12):
     - 8 extractor cases → `extractors_test.dart`: `emptyAndNoneInput`, `groupsBySubject`, `sortsEachSubjectByDate`, `skipsMalformedAndIncomplete`, `unparseableDatesSortLast`, `optionalDetailsKeptWhenPresent`, `nestedBracesAndBraceInString`, `readsQuarterlyMarks`
     - 4 client cases → `bakalari_data_test.dart`: `fetchesParsesAndSorts` (covers `test_get_grades_fetches_parses_and_sorts` + `test_get_grades_reads_quarterly_marks_from_the_same_page`), `failureKeepsErrorWithoutRaising`, `emptyOtherPageIsAnErrorNotNoMarks`
-27. `tests/test_grades_math.py` (23) → `grades_test.dart`:
+27. `tests/test_grades_math.py` (37 [23 functions]) → `grades_test.dart`:
     - `test_parse_raw` → `reads each mark on its own`
     - `test_non_counting_marks` → `non-counting marks`
     - `test_points_field_used_when_mark_text_is_not_a_number` → `points field used when mark text is not a number`
@@ -292,7 +292,7 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
     - `test_core_messages_follow_language` → `error_report_test.dart`: `namesFix` (tests `timeoutUserMessage` in cs/en)
     - `test_new_flet_strings_present`, `test_dead_keys_removed_and_live_keys_kept` → **Deferred (phase 5 — `flet_ui.strings` / ARB key audit)**
 31. `tests/test_icons.py` (13) → **Deferred (phase 6/7 — app icon assets verification)**
-32. `tests/test_imports_resolve.py` (1) → **Dropped (Python AST relative-import check; replaced by `dart analyze` and `flutter analyze`)**
+32. `tests/test_imports_resolve.py` (354 [1 function]) → **Dropped (Python AST relative-import check; replaced by `dart analyze` and `flutter analyze`)**
 33. `tests/test_log_redaction.py` (3) → `error_report_test.dart`: `plaintextAndCiphertextSecretsAreScrubbed`, `followsChangedPassword`, `skipPersonalData`
 34. `tests/test_lunch_auto.py` (11) → `lunch_auto_test.dart`:
     - `test_disabled_never_runs` → `disabled never runs`
@@ -332,9 +332,9 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
 41. `tests/test_macos_data_dir.py` (9) → **Deferred (phase 7 — macOS bundle → Application Support migration)**
 42. `tests/test_macos_tray_host.py` (15) → **Deferred (phase 7 — macOS tray/window lifecycle)**
 43. `tests/test_marks_view.py` (15) → **Deferred (phase 5/6 — `flet_ui.views.marks` / `state_marks` UI view & predictor state)**
-44. `tests/test_matching.py` (8) → `matching_test.dart` (8 1:1 cases): `$keyword bans $meal`, `$keyword allows $meal`, `rybiDoesNotBanRybiz`, `inflectionStillMatches`, `wholeWordNotSubstring`, `diacriticsInsensitive`, `inflectionVariant`, `caseInsensitive`
+44. `tests/test_matching.py` (22 [8 functions]) → `matching_test.dart` (22 parameterized cases across 8 1:1 functions): `$keyword bans $meal`, `$keyword allows $meal`, `rybiDoesNotBanRybiz`, `inflectionStillMatches`, `wholeWordNotSubstring`, `diacriticsInsensitive`, `inflectionVariant`, `caseInsensitive`
 45. `tests/test_minimize_to_tray.py` (8) → **Deferred (phase 7 — desktop window close-to-tray behavior)**
-46. `tests/test_mobile.py` (48):
+46. `tests/test_mobile.py` (70 [48 functions]):
     - `TestPlatform.*` (4) → `packaging_test.dart`: `desktopIsNotMobile`, `fletPlatformEnv`, `desktopFletBuildIsNotMobile`, `defaultsToFalse`
     - ` test_update_check_per_distribution`, `test_repo_has_no_distribution_marker` → `packaging_test.dart`: `iosComesFromAppStore`, `androidWithoutDistributionIsNull`, `androidPlayChannel`, `offPhoneIsNull`, `emptyEnvironmentIsNull`
     - `TestNarrowShell.*` (12) → `app/test/widget_test.dart` (`Layout breakpoints match the Python shell`, `Router builds every main screen without throwing`, in progress, unreviewed); remaining narrow-shell cases **Deferred (phase 5/6)**
@@ -350,7 +350,7 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
     - Core dispatch/prefs/safety cases → `notifier_test.dart` (9): `appIdIsPlainAscii`, `knownEvents`, `defaultsToOn`, `unknownEventThrows`, `disabledEventNeverTouchesTheBackend`, `dispatchesToTheBackend`, `backendFailureFallsBackToStdout`, `noBackendPrintsAndReturnsFalse`, `neverRaisesFromBackend`
     - Desktop OS script/command cases (`test_ps_single_quote_escapes_apostrophe`, `test_cdata_guards_closing_sequence`, `test_toast_script_*`, `test_send_windows_*`, `test_send_linux_*`, `test_send_macos_*`) → **Deferred (phase 7 — desktop notification backends)**
 50. `tests/test_open_url.py` (5) → **Deferred (phase 5/6 — UI URL launcher helper)**
-51. `tests/test_order_latch.py` (4) → **Deferred (phase 5 — `flet_ui.state.AppState` `submit_orders` latch & `submit_excuse` kind mapping)**: `test_empty_payload_releases_latch`, `test_demo_no_credentials_releases_latch`, `test_nothing_pending_releases_latch`, `test_excuse_kind_to_web_type`
+51. `tests/test_order_latch.py` (7 [4 functions]) → **Deferred (phase 5 — `flet_ui.state.AppState` `submit_orders` latch & `submit_excuse` kind mapping)**: `test_empty_payload_releases_latch`, `test_demo_no_credentials_releases_latch`, `test_nothing_pending_releases_latch`, `test_excuse_kind_to_web_type`
 52. `tests/test_packaging_privacy.py` (4) → `app/test/packaging_privacy_test.dart` (in progress, unreviewed; desktop Inno/spec checks **Deferred phase 7**)
 53. `tests/test_plan_picker.py` (12) → `app/test/planner_view_test.dart` (`custom picker taps a day whole and confirms`, in progress, unreviewed); remaining 11 picker cases **Deferred (phase 6 — custom plan picker dialog)**
 54. `tests/test_plan_reserve.py` (5) → `planner_test.dart` (`reserveValidation`) + `app/test/planner_reserve_test.dart` (in progress, unreviewed): `reserve lowers plan limit, not school limit`, `default example 25 minus 10 is 15`, `zero reserve keeps old behavior`, `handbuilt states fall back to school values`, `reserve validation`
@@ -368,7 +368,7 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
     - `test_strava_status_tells_why_the_menu_is_missing` → `stravaStatusTellsWhyTheMenuIsMissing`
     - `test_unavailable_extras_survive_refresh` → `unavailableExtrasSurviveRefresh`
     - `test_failed_absence_scrape_keeps_last_good_absence` → `failedAbsenceScrapeKeepsLastGoodAbsence`
-    - `test_gemini_fallback_is_not_a_gemini_run` → `lunch_auto_test.dart` (`gemini answer is used when due` / fallback in `gemini_test.dart`)
+    - `test_gemini_fallback_is_not_a_gemini_run` → `geminiFallbackIsNotAGeminiRun`
 59. `tests/test_schedule.py` (24) → `schedule_test.dart` (24 1:1 camelCase cases; `test_forecast_prefers_stable_hours_over_raw_weeks` → `forecast_test.dart`: `counts the stable week` + `schedule_test.dart`: `stableHoursIgnoreClocklessExtraRow`)
 60. `tests/test_scheduler.py` (13):
     - 10 core cases → `scheduler_test.dart`: `stopWithoutStartIsSafe`, `failedRunRetriesSoon`, `runNowLeavesTimerAlone`, `scheduling` (`test_scheduler_next_due`), `runsJobsAndCapturesErrors`, `lastUpdatedTimeParsesFormats`, `startupSeedNeedsPositiveEvidence`, `seedDefersFirstAutoRun`, `runnerAcceptsLastRunSeed`, `keepsFullTraceback` (also in `cache_test.dart`: `lastUpdatedTimeParsesFormats`, `startupSeedNeedsPositiveEvidence`)
@@ -388,8 +388,8 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
     - `test_sent_excuses_tristate` → `bakalari_data_test.dart`: `emptyOutboxIsARealEmptyList` / `anotherFolderIsUnknownNotEmpty`
 65. `tests/test_session_lock.py` (6) → `session_lock_test.dart` (`isExclusiveWithinProcess`, `blocksOtherProcess`, `keepsOtherProcessEdits`, `ownEditWinsOnSameKey`, `guardedJobSkipsWhileSessionHeld`, `guardedWorkRecordsFailedRunWhileHeld`) + `refresh_test.dart` (`lockIsExclusiveWithinProcess`, `configSaveKeepsOtherProcessEdits`, `configSaveOwnEditWinsOnSameKey`)
 66. `tests/test_settings_quiet_save.py` (6) → `app/test/settings_quietsave_test.dart` (6 cases, in progress, unreviewed)
-67. `tests/test_settings_refresh_interactive.py` (3) → **Deferred (phase 5/6 — `AppState` interactive settings during refresh)**
-68. `tests/test_settings_sections.py` (13) → `app/test/settings_sections_test.dart` (13 1:1 cases, in progress, unreviewed)
+67. `tests/test_settings_refresh_interactive.py` (4 [3 functions]) → **Deferred (phase 5/6 — `AppState` interactive settings during refresh)**
+68. `tests/test_settings_sections.py` (16 [13 functions]) → `app/test/settings_sections_test.dart` (15 cases covering the 13 functions, in progress, unreviewed)
 69. `tests/test_shutdown.py` (23) → **Deferred (phase 7 — desktop shutdown / process cleanup; Flet-view orphan sweepers decide at phase 7 review)**
 70. `tests/test_single_instance.py` (22) → **Deferred (phase 7 — desktop single-instance loopback TCP tests)**
 71. `tests/test_stable_change_signals.py` (39):
@@ -418,10 +418,10 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
 82. `tests/test_tls_bundle.py` (7) → **Dropped (frozen CA bundle `strakalari/core/tls.py` does not exist in Flutter; Dart uses OS trust store per PLAN §3.2)**
 83. `tests/test_tray_language.py` (1) → **Deferred (phase 7 — desktop tray language)**
 84. `tests/test_tray_ui_command.py` (4) → **Deferred (phase 7 — desktop tray UI command & refresh)**
-85. `tests/test_tutorial.py` (28):
+85. `tests/test_tutorial.py` (36 [28 functions]):
     - `test_config_validation_rejects_bad_progress` → `config_test.dart`: `validateCatchesBadModeAndThresholds`
     - 19 gating/progress/rendering cases → `app/test/tutorial_test.dart` (in progress, unreviewed)
-    - Remaining 8 screen-specific anchor/walkthrough cases (`test_order_lunch_fires_its_event`, `test_missing_first_anchor_suspends`, `test_missing_later_anchor_floats`, `test_other_screen_suspends_the_tour`, `test_intro_floats_on_any_screen`, `test_today_view_anchors_first_excuse`, `test_shell_stacks_the_floating_bubble`, `TestMarksTour.*`) → **Deferred (phase 5/6 — screen tour anchor wiring)**
+    - Remaining 8 screen-specific anchor/walkthrough functions (`test_order_lunch_fires_its_event`, `test_missing_first_anchor_suspends`, `test_missing_later_anchor_floats`, `test_other_screen_suspends_the_tour`, `test_intro_floats_on_any_screen`, `test_today_view_anchors_first_excuse`, `test_shell_stacks_the_floating_bubble`, `TestMarksTour.*`) → **Deferred (phase 5/6 — screen tour anchor wiring)**
 86. `tests/test_ui_state.py` (13):
     - 5 activity/status cases → `app/test/activity_state_test.dart` (in progress, unreviewed): `status kind transitions`, `manual sends show as working`, `last run label`, `next run label`, `log ring buffer caps`
     - 2 setup cases → `app/test/wizard_settings_test.dart` (in progress, unreviewed): `needs setup false with strava only`, `needs setup fresh`
@@ -444,12 +444,12 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
     - 5 `TestStrings` / `TestChannelState` (`flet_ui` banner/diagnostics/config channel state) → **Deferred (phase 5/6)**
 90. `tests/test_version_sync.py` (3) → **Deferred (phase 7/10 — version sync across `pubspec.yaml`, Inno installer, MSIX)**
 91. `tests/test_wake_ui.py` (2) → **Deferred (phase 5/8 — UI isolate wakeup from background worker)**
-92. `tests/test_wakeup_and_widget.py` (42):
-    - 21 core `TestWakeupAlarm`, `TestWidgetPayload`, `TestSyncAndroid` cases → `wakeup_test.dart` (21 1:1 camelCase cases)
-    - 21 UI/widget/extension-wheel cases (`TestTimetableViews.*`, `TestCollapsibleDays.*`, `TestWakeupUI.*`, `test_extension_wheel_ships_widget_and_alarm`) → **Deferred (phase 6/8 — timetable/today/settings wakeup UI & Android build)**
-93. `tests/test_wizard_setup.py` (30):
+92. `tests/test_wakeup_and_widget.py` (44 [42 functions]):
+    - 21 core `TestWakeupAlarm`, `TestWidgetPayload`, `TestSyncAndroid` functions → `wakeup_test.dart` (21 1:1 camelCase cases)
+    - 21 UI/widget/extension-wheel functions (`TestTimetableViews.*`, `TestCollapsibleDays.*`, `TestWakeupUI.*`, `test_extension_wheel_ships_widget_and_alarm`) → **Deferred (phase 6/8 — timetable/today/settings wakeup UI & Android build)**
+93. `tests/test_wizard_setup.py` (34 [30 functions]):
     - 3 setup-detection cases → `app/test/wizard_settings_test.dart` (in progress, unreviewed): `needs setup fresh`, `needs setup false with bakalari`, `needs setup false with strava only`
-    - Remaining 27 wizard step/validation/scheduler-gate cases → **Deferred (phase 5/6 — `WizardController` / `AppState` setup flow)**
+    - Remaining 27 wizard step/validation/scheduler-gate functions → **Deferred (phase 5/6 — `WizardController` / `AppState` setup flow)**
 94. `tests/test_year_planner.py` (23):
     - 18 pure planner cases → `planner_test.dart` (18 1:1 camelCase cases)
     - 5 `AppState`/view cases (`test_plan_days_batches_one_save`, `test_year_plan_is_cached_until_inputs_change`, `test_first_plannable_day_is_clock_aware`, `test_target_days_setting_limits_the_plan`, `test_planner_view_builds_with_data_and_calendar_opens_dialog`) → `app/test/planner_view_test.dart` (in progress, unreviewed) + **Deferred (phase 5/6)**
@@ -499,11 +499,11 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
     passes a non-dict).
   - Map equality is deep (`_jsonEquals`): Dart maps compare by identity,
     Python dicts by value — needed for merge dedup and coverage checks.
-  - `HistoryLock` uses an async mutex inside the isolate plus the OS
-    `InterProcessLock` on the outer acquisition (`depth: 0 -> 1`), so
-    concurrent async callers in one isolate and separate isolates /
-    processes both serialize on the same byte-0 lock as Python
-    (reworked in A-M1).
+  - `HistoryLock` uses a per-path FIFO async mutex inside the isolate
+    (re-entrant only for the same logical task via a `Zone` value) plus
+    `tryFileLock` (the create-exclusive `.lock` file, matching Python's
+    `history_lock` in `excuse_history.py:327`) polled asynchronously with a
+    `Stopwatch` deadline (reworked in A-M1).
   - Entity unescape uses `html_unescape` (`html`'s `parseFragment().text`
     drops attribute content, which is where `data-clasif` lives).
   - `absence_from_subjects` rounds halves to even (`_round2`), mirroring
@@ -576,43 +576,39 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
   - `lunch_auto` ban matching delegates to `matching.isFoodBanned`
     (same stems/suffixes; the mirror wrongly folded ł/ø/ß, Python NFD
     keeps them — the canonical port is the faithful one).
-  - DST-safe day stepping: `schoolDaysBetween` (forecast),
-    `entryDays` (planned_skips) and the planner use constructor
-    arithmetic; Python `date + timedelta` has no DST. The sibling
-    `Duration(days: …)` day iterations (schedule, wakeup,
-    status_notification comparisons) are untouched — same latent drift,
-    flagged for the reviewer.
+  - DST-safe day stepping: all calendar-day moves and differences across core
+    use `addDays` (constructor arithmetic `DateTime(y, m, d + n)`) and
+    `daysBetween` (UTC midnights), matching Python `date ± timedelta` across
+    Prague DST transitions (reworked in A-B1, R-S4).
   - `bandsValid` accepts bools (`float(True) == 1.0`, like Python).
   - `LessonSource` also accepts live `SlotBaseline` objects (Python reads
     any object with `.subject` via hasattr) — parity-oracle caught the gap.
-  - `validatePreset` bad-entry messages use a `_pyRepr` (`['bad', 'label']`,
-    like `{entry!r}`) instead of Dart's `[bad, label]`.
+  - `validatePreset` bad-entry messages and log lines interpolating maps/lists
+    use `pyRepr` (`['bad', 'label']`, `{'type': 'days and hours'}`), matching
+    Python `repr()` (reworked in R-S6).
   - `mealText` blanks every falsy input (`str(name or "")`), not just
     null — parity-oracle caught `"Null"`/`"0"`.
   - `buildPrompt` (cs) reads "Odpověz ve formátu …", like Python (the port
     had "Odpověď …") — parity-oracle caught the rewording.
-  - `updateStableBaseline` is ported into `DataMixin`; `fetchBakalariData`
-    runs weeks → details → stable view → substitutions → baseline →
-    absence → grades → directory (Python's `fetch_data` order).
+  - `updateStableBaseline` and `fetchData` (including per-run state reset and
+    cancel/login prelude) are ported into `DataMixin` (reworked in A-M3).
   - Automation/refresh seam hooks default to the real phase-3 functions
-    (`schoolYearTerms`, `baselineToDict`, `findNews`, `plannedLunchDays`,
-    `updateHandledDays`, `resolveLunchCutoff`, `effectiveCalendar`,
-    `isLunchOrderOpen`); tests assign fakes. Only `planAutoOrdersHook`
-    still throws: the real `planAutoOrders` is async (network/Gemini)
-    while the hook contract is sync.
-  - Static async mutex in `Strakalari` around check-submit-write (Dart's
-    `HistoryLock` is re-entrant per isolate; Python threads block on the
-    file lock — the mutex restores the no-double-submit serialization,
-    proven by `concurrentSendsSubmitOnce`).
+    (`schoolYearTerms`, `baselineToDict`, `findNews`, `planAutoOrders`,
+    `plannedLunchDays`, `updateHandledDays`, `resolveLunchCutoff`,
+    `effectiveCalendar`, `isLunchOrderOpen`); tests assign fakes (reworked in
+    A-B4).
   - `RefreshApp` interface replaces Python duck typing;
     `runRefresh`/`Strakalari` methods are async; `InterruptedError`→
     `CancelledError`, `RuntimeError`→`StateError`.
   - Optional params are all-named; `sendExcuseOutcome` delegates to
     `sendExcuse(source: 'manual')`; public names for test-used privates
     per the phase-1 precedent.
-  - Log redaction in automation is a minimal local mirror of
-    `error_report` secret-values (secret keys only); the error_report
-    port owns the canonical copy.
+  - Log redaction in automation delegates to `error_report.secretValues` /
+    `redactValues` (reworked in A-S10).
+  - POSIX `InterProcessLock` uses `flock(fd, LOCK_EX | LOCK_NB)` via `dart:ffi`
+    (with `open` declared variadic for Apple arm64, R-M1; macOS execution
+    *unverified* locally until macOS CI runs) plus an in-process path registry
+    (reworked in A-B5, R-S7).
 
 - Phase 5–6 port adaptations (behavior identical unless noted):
   - Six subagents worked in parallel with disjoint file sets, integrated
@@ -662,8 +658,12 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
 
 ## Questions for the owner / reviewer
 
-- ⛔ Checkpoints B + C reached: please have a reviewer model check phases
-  5–8 (Checkpoint notes below) before phase 10. Open decisions:
+- ⛔ Checkpoint A reached: please have a reviewer model check phases 1–4
+  (Checkpoint notes below) before any work on phases 5–10 continues.
+  (Original Checkpoint A questions 1–5 were answered in
+  `docs/flutter-migration/reviews/checkpoint-A.md`.)
+- Phases 5–8 are in progress, unreviewed (waiting on Checkpoint A sign-off).
+  Open questions deferred to Checkpoints B / C / D:
   1. Unify the three string/token tables + feature `schedule_logic`/
      `grades_logic` onto the canonical core ports now, or keep the
      duplication until the `AppState` live-data wiring lands?
@@ -679,20 +679,6 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
   5. Screenshots parity (`build/parity-screens/`): produce Flet shots
      first (`tools/demo_data.py screenshots`), then Flutter shots?
   6. Beta release (Checkpoint D): cut from the branch only on your go.
-- ⛔ Checkpoint A reached: please have a reviewer model check phases 3–4
-  (Checkpoint notes below) before phase 5 starts. Open decisions:
-  1. `planAutoOrdersHook` is sync but the real `planAutoOrders` is async
-     (network/Gemini) — confirm the hook stays throwing until the async
-     boundary is reworked (phase 5/9), or dictate the async contract now.
-  2. Should `bin/refresh_dryrun.dart` (`--send-day` real-submit proof,
-     demo server only) stay in-tree after review, or move to scratch-only?
-  3. `planAutoOrders` has no `today` param in Python (past-day skip uses
-     the real clock) — add an optional `today` seam for determinism, or
-     keep line-by-line?
-  4. Confirm the seam-hook names/signatures as the phase-3↔4 contract.
-  5. Same-latent-DST-drift `Duration(days: …)` iterations left untouched
-     in schedule/wakeup/status_notification — fix everywhere now, or
-     accept (tests green either way; Prague DST only matters Mar/Oct)?
 - App version stays the flutter-create template `1.0.0+1` (resolved 2026-11-07:
   CI stamps the real version from the tag at build time).
 - (Resolved 2026-11-07: PLAN.md rows 7–8 and REVIEW_PROMPT.md are the owner's
@@ -701,56 +687,69 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
 ## Checkpoint notes
 
 - 2026-11-08 · Checkpoint A review: **FAIL** (5 blockers, 8 must-fix) — [docs/flutter-migration/reviews/checkpoint-A.md](docs/flutter-migration/reviews/checkpoint-A.md)
-- 2026-11-08 · Checkpoint A rework: **COMPLETE** (all 5 blockers, 8 must-fix, 10 should-fix, and N1 resolved in 23 atomic commits `ee364bd..b953c09`; ready for re-review):
-  - **A-B1** (`ee364bd`): replaced `Duration(days:)` with `addDays` across all 14 core files; added `test/dst_test.dart` covering spring-forward and fall-back transitions.
-  - **A-B2** (`7a045dd`): introduced `ConnectFailure` in `DartIoHttpTransport.send` around `openUrl` so only pre-connection failures classify as `isNeverSentCause`, while post-connect `SocketException`s enter the uncertain/outbox path.
-  - **A-B3** (`e0d0ebf`): fixed `loadExcuses(decrypt: true)` to pass the full entry map to `decryptEntry` so `reason_encrypted: true` entries decrypt.
-  - **A-B4** (`441a05e`): made `planAutoOrdersHook` async (`FutureOr`), wired its default to `planAutoOrders`, added optional `today` parameter, and added end-to-end auto-lunch refresh tests.
-  - **A-B5** (`2eff0b5`): aligned `parseInt` in `models.dart` (`Lesson.fromJson`, `Grade.fromJson`), `extractors.dart`, and `grades.dart` with Python `int()`.
-  - **A-M1** (`56c34aa`): made `HistoryLock` acquire an async in-isolate mutex plus the OS `InterProcessLock` on outer entry (`depth: 0 -> 1`), verified across isolates.
-  - **A-M2** (`5857842`): aligned `hasValidCredentials` and `Strakalari` init with Python truthiness (`use_strava: "false"` is truthy; whitespace-only fields are blank).
-  - **A-M3** (`73cd892`): moved `tryEncrypt` before `with HistoryLock` in `saveExcuses`.
-  - **A-M4** (`e734e04`, `763ec48`): matched Python `json.loads` (`NaN`/`Infinity`) and `float()` (trimmed string, `Infinity`, bools) in `grades.dart` and `extractors.dart`.
-  - **A-M5** (`f5f7f16`): preserved input map order when sorting ties in `grades.summarize` and `news.findNews`.
-  - **A-M6** (`57a54f4`): failed closed (`KeyStoreUnavailable`) on desktop when `keyStoreBackend == null` unless `STRAKALARI_NO_KEYRING` is set.
-  - **A-M7** (`0d37753`): made `tools/parity/dump.py` re-exec with `PYTHONHASHSEED=0` when unset and regenerated `schedule.json`.
-  - **A-M8** (`a3811a3`): marked phases 5–9 `in progress, unreviewed`, added `keepLunchChoiceIsStoredAndHonored`, listed dropped TLS/import tests, and mapped all 94 Python test files test-by-test.
-  - **A-S1..A-S10 + A-N1** (`92181d8..b953c09`): two-pass cancellation-first staging (`A-S1`), Python float formatting in JSON writers (`A-S2`), `Stopwatch`/`clock.now()` lock timing (`A-S3`), `STRAKALARI_NO_KEYRING=1` in parity scripts (`A-S4`), localhost guard on `refresh_dryrun.dart --send-day` (`A-S5`), full dry-run parity comparison including `excusePending()` (`A-S6`), async `PeriodicRunner` jobs (`A-S7`), narrowed `isDroppedReadError` read retry (`A-S8`), bounded `DartIoHttpTransport` connect timeout (`A-S9`), delegated log redaction to `error_report.dart` (`A-S10`), and aligned `refresh.dart`/`writeLog` error handling (`A-N1`).
+- 2026-11-08 · Checkpoint A rework: **COMPLETE** (all 5 blockers, 8 must-fix, 10 should-fix, and N1 resolved in 23 atomic commits `ee364bd..b953c09`, verified from `git show --stat`):
+  - **A-B1** (`ee364bd`): added DST-safe `addDays` and `daysBetween` helpers in `storage/helpers.dart`, replaced `Duration(days:)` day arithmetic across 13 core files (`automation.dart`, `excuse_history.dart`, `refresh.dart`, `bakalari/data.dart`, `bakalari/excuse.dart`, `bakalari/timetable.dart`, `lunch_auto.dart`, `lunch_cutoff.dart`, `grades.dart`, `planned_skips.dart`, `schedule.dart`, `status_notification.dart`, `wakeup.dart`), set `TZ: Europe/Prague` in `.github/workflows/dart.yml`, and added `test/dst_test.dart` plus DST parity cases in `tools/parity/dump.py`.
+  - **A-B2** (`7a045dd`): wrapped `openUrl` (DNS + connect) in `DartIoHttpTransport.send` with `ConnectFailure` (`bakalari/http_session.dart`, `strava/client.dart`) so `isNeverSentCause` is true only for pre-connection failures, and added phase-based excuse/session tests.
+  - **A-B3** (`e0d0ebf`): fixed the inverted `findSaveButton()` check in `automation.dart` (`final immediate = !client.findSaveButton();`), restored the fake `saveButton` flags in `automation_test.dart`, and added a default-client failed-order test.
+  - **A-B4** (`441a05e`): made `planAutoOrdersHook` async (`Future<(Map<String, String>, bool)> Function(...)` taking `ordered: Map<String, String>`), defaulted it to `planAutoOrders` in `refresh.dart`, aligned `lunch_auto.dart`, and added `defaultHookOrdersGapDay` in `refresh_test.dart`.
+  - **A-B5** (`2eff0b5`): implemented POSIX `flock(fd, LOCK_EX | LOCK_NB)` via `dart:ffi` plus an in-process held-path registry in `storage/helpers.dart`, added `withSessionLockAsync` in `automation/session_lock.dart` (and wired `app/lib/platform/android/background.dart` to it), and added lock/cross-process tests in `session_lock_test.dart`.
+  - **A-M1** (`56c34aa`): reworked `HistoryLock` in `automation/excuse_history.dart` to use a per-path FIFO async mutex with `Zone`-scoped re-entrancy and async polling of `tryFileLock`, removed `_sendTail` from `automation.dart`, and added `concurrentSyncWaitsForSendAndKeepsBoth` in `automation_test.dart`.
+  - **A-M2** (`5857842`): updated `loadUnconfirmed` in `automation/excuse_history.dart` to quarantine corrupt JSON or bad UTF-8 via `quarantineCorruptFile` and return `[]` while rethrowing other `FileSystemException`s, with tests in `excuse_history_test.dart` and `automation_test.dart`.
+  - **A-M3** (`73cd892`): ported `DataMixin.fetchData()` in `bakalari/data.dart` (with full per-run field reset, cancel check, and `login()` prelude), delegated `Strakalari.fetchBakalariData` in `automation.dart` to it, and added `aSecondRunSeesOnlyFreshData` in `bakalari_data_test.dart`.
+  - **A-M4** (`e734e04`, `763ec48`): added platform CRLF newline conversion (`toPlatformNewlines`) and Python JSON separators (`pyJsonDumps`, `jsonIndent2`) in `storage/helpers.dart`, `automation/audit.dart`, and `automation/automation.dart` (`e734e04`); added cross-language byte-identity round-trip tests across config, cache, history, sidecar, planned skips, and presets in `helpers_test.dart`, `parity_helpers_test.dart`, and `tools/parity/dump.py` (`763ec48`).
+  - **A-M5** (`f5f7f16`): normalized `dataDir` in `secret_store.entryName` (`p.normalize(p.absolute(dataDir))` + lowercase on Windows) and added path-normalization parity cases in `tools/parity/dump.py` and `secret_store_test.dart`.
+  - **A-M6** (`57a54f4`): made `secret_store.dart` throw `KeyStoreUnavailable` on desktop when `keyStoreBackend == null` unless `STRAKALARI_NO_KEYRING` is set, opted CLI tools (`bin/parity_fetch.dart`, `bin/refresh_dryrun.dart`) and tests in explicitly, and added `missingBackendOnDesktopThrowsInsteadOfCreatingFile` in `secret_store_test.dart`.
+  - **A-M7** (`0d37753`): made `tools/parity/dump.py` re-exec itself with `PYTHONHASHSEED=0` when unset and regenerated `test/parity/schedule.json`.
+  - **A-M8** (`a3811a3`): updated `STATUS.md` to mark phases 5–9 `in progress, unreviewed`, mapped all 94 Python test files, and added `keepLunchChoiceIsStoredAndHonored` in `planned_skips_test.dart`.
+  - **A-S1** (`92181d8`): replaced `List.sort` in `automation.dart` with two-pass cancellation-first then order staging to preserve day order, with a test in `automation_test.dart`.
+  - **A-S2** (`b8b37d8`): implemented `_pyFloatRepr` in `storage/helpers.dart` so JSON writers match Python float formatting (`1e-07`, `1e+16`), with tests in `helpers_test.dart` and `tools/parity/dump.py`.
+  - **A-S3** (`c9dc71f`): switched lock acquisition deadlines to `Stopwatch` and stale-lock age checks to `clock.now()` in `storage/helpers.dart`, with tests in `helpers_test.dart`.
+  - **A-S4** (`c6b4941`): set `STRAKALARI_NO_KEYRING=1` before imports in `tools/parity/fetch.py` and `tools/parity/soak_refresh.py`.
+  - **A-S5** (`d2f9eba`): made `bin/refresh_dryrun.dart` refuse `--send-day` unless the target host is `127.0.0.1`, `localhost`, or `[::1]`, with a test in `refresh_test.dart`.
+  - **A-S6** (`bcb07bf`): updated `bin/refresh_dryrun.dart`, `tools/parity/soak_refresh.py`, and `tools/parity/soak_compare.py` to run `excusePending()` in dry run and compare the full cache, history, sidecar, and audit.
+  - **A-S7** (`e4bb8e1`): changed `PeriodicRunner`'s `Job` typedef in `automation/scheduler.dart` to `FutureOr<Object?> Function()` and awaited jobs so async failures trigger the 5-minute retry, updating `scheduler_test.dart`.
+  - **A-S8** (`cfaf7f4`): narrowed HTTP read retries in `bakalari/http_session.dart` and `strava/client.dart` to `isDroppedReadError`, with tests in `http_session_test.dart`.
+  - **A-S9** (`1a97efa`): bounded `DartIoHttpTransport.send` connect phase by `min(timeout, 20 s)` (`connectionTimeout` + `openUrl.timeout`), with a test in `http_session_test.dart`.
+  - **A-S10 + A-N1** (`b953c09`): delegated `Strakalari._redactLog` in `automation.dart` to `error_report.secretValues` / `redactValues`, removed parent-dir creation in `writeLog`, and let cancel-predicate / school-year-start errors propagate in `refresh.dart`.
 - 2026-11-08 · Checkpoint A re-review: **FAIL** (all A-* findings fixed; 0 blockers, 3 must-fix, 7 should-fix new) — [docs/flutter-migration/reviews/checkpoint-A.md](docs/flutter-migration/reviews/checkpoint-A.md#re-review-2026-11-08)
+- 2026-11-09 · Checkpoint A re-review rework: **COMPLETE** (all R-* findings resolved in atomic commits; ready for re-review):
+  - **R-M1** (`2ae814b`): declared libc `open` in `storage/helpers.dart` as variadic (`ffi.VarArgs<(ffi.Int32,)>`) for Apple arm64 ABI compatibility and added `freshLockFileIsOwnerReadWritable` in `session_lock_test.dart` (macOS execution *unverified* locally until macOS CI runs).
+  - **R-M3** (`6e6c723`): ported `test_gemini_fallback_is_not_a_gemini_run` as `geminiFallbackIsNotAGeminiRun` in `refresh_test.dart` and updated item 58 of the test map.
+  - **R-S1** (`8f70936`): replaced dead `on OSError` catches with `on FileSystemException` in `automation.dart` (`writeLog` rotation), `secret_store.dart` (`carryKey`), and `helpers.dart` (`decrypt`, plus `on KeyStoreUnavailable`), updated `decryptSurvivesKeyFileOSError` in `secret_store_test.dart`, and added `failedLogRotationStillAppendsTheLine` in `automation_test.dart`.
+  - **R-S2** (`2cd35ae`): removed the delete-then-rename fallback from `_replaceFile` in `storage/helpers.dart` and `_writeFile` in `storage/secret_store.dart` so `renameSync` matches `os.replace`, and added `replacesAnExistingFile` and `failedReplaceNeverDeletesTheTarget` in `helpers_test.dart`.
+  - **R-S3** (`4aafeb3`): changed `excusePostback` in `bakalari/excuse.dart` to use `clock.now()` instead of `DateTime.now()`, and added `postbackWithoutNowReadsTheClock` in `bakalari_excuse_test.dart`.
+  - **R-S4** (`a487824`): added `dst_cases()` in `tools/parity/dump.py` (`test/parity/dst.json`) and replaced the re-implemented arithmetic tests with `test/parity_dst_test.dart` (`fetchTimetableWeeksAsksForPythonsMondays`, `substitutionRangeIsPythonsCalendarRange`) and `missingHistoryWeeksStepByCalendarDaysLikePython` in `refresh_test.dart`, driving the real code under `withClock`.
+  - **R-S5** (`d5366ea`): added `ConnectFailure.isTimeout` in `bakalari/http_session.dart` so connect timeouts produce `timeoutUserMessage()` in both Bakaláři and Strava (`strava/client.dart`), while post-connect `SocketException`s in Strava produce `strava_connection_lost` (only `ConnectFailure` gives `strava_unreachable`), with tests in `http_session_test.dart` and `strava_test.dart`.
+  - **R-S6** (`998906d`): added `pyRepr` in `storage/helpers.dart` (with parity cases in `tools/parity/dump.py` and `parity_helpers_test.dart`), formatted map/list log interpolations in `automation.dart` (and `school_presets.dart`) with `pyRepr`, and added `excuseLogLinesUsePythonMapRepr` in `automation_test.dart`.
+  - **R-S7 + R-N4 + R-N5** (`c035cb1`): printed a one-time `Warning:` in `_loadLibc()` (`storage/helpers.dart`) if loading libc for `flock` fails and falls back to `lockSync`; aligned `refresh.dart` to pass `app.orderedDict.isNotEmpty ? app.orderedDict : orderedBefore` to `updateHandledDaysHook` (`R-N4`); aligned `sent_excuses_limit` float truncation in `automation.dart` with Python `int()` (`R-N5`).
+  - **R-M2** (this commit): rewrote the Checkpoint A rework list in `STATUS.md` from `git show --stat` of each commit, corrected the `HistoryLock` deviation description, updated suite counts (`764 passed, 2 skipped` in core; `123 passed, 1 skipped` in app), fixed the Checkpoint B/C status header under Questions, and added `[N functions]` alongside `pytest --collect-only` counts for all 13 parameterized test files.
 
-### ⛔ Checkpoint A: core review (phases 3–4)
+### ⛔ Checkpoint A: core review (phases 1–4)
 
-Done: all 15 phase-3 modules + automation/refresh/scheduler/session_lock/
-error_report ported with Dart tests first (same cases, camelCase, same
-values); `tools/parity/dump.py` extended with 16 generators (344 cases);
-`dart analyze` + `flutter analyze` clean; Dart suite 720/720 green;
-Python suite 1643/1643 green (reference, unchanged); dry-run refresh
-parity Python-vs-Dart fully equal (result, cache keys incl.
-`stable_baseline`, audit modulo ts, outbox, history).
+Done: all phase 1–4 core modules ported with Dart tests first; `tools/parity/dump.py`
+generates 17 parity JSON fixtures (including `dst.json`); `dart analyze` + `flutter analyze`
+clean; Dart core suite **764 passed, 2 skipped** (1 Linux-only `flock` probe, 1 POSIX-only
+permission-bit check on Windows); Flutter app suite **123 passed, 1 skipped** (APK scan,
+needs `STRAKALARI_APK`); Python suite **1643 passed** (reference, unchanged); dry-run
+refresh parity Python-vs-Dart (`soak_compare.py`) **IDENTICAL**.
 
 Every deviation from Python is listed under Deviations above; Python
 behavior that looked wrong was ported as-is (nothing "fixed").
 How to verify:
 - `dart analyze` + `dart test` in `packages/strakalari_core`,
-  `flutter analyze` in `app` (template test only until phase 5).
+  `flutter analyze` + `flutter test` in `app`.
 - `PYTHONUTF8=1 python tools/parity/dump.py` then
-  `git diff --exit-code packages/strakalari_core/test/parity/`
-  (hand-edits would show; the 4 oracle-caught fixes are recorded above).
+  `git diff --exit-code packages/strakalari_core/test/parity/`.
 - Dry-run parity: `python tools/bakalari_demo_server.py --port 18080`,
-  Python `scratch parity4/refresh_dryrun.py --data-dir <tmp>` vs Dart
-  `bin/refresh_dryrun.dart --url … --data-dir <tmp>`; canonical JSON
-  must match modulo `ts`. (`--send-day DD.MM.YYYY` real-submit proof was
-  run on fresh servers on both sides: sent/history/outbox equal.)
-- Cross-process session lock proof: set `STRAKALARI_SESSION_LOCK_HOLDER=1`
-  + `STRAKALARI_SESSION_LOCK_PATH=<lock>` and run
-  `dart test/session_lock_test.dart` while Python holds the same lock
-  (and vice versa) — both directions proven on this PC.
+  `python tools/parity/soak_refresh.py` vs `dart run bin/refresh_dryrun.dart`,
+  then `python tools/parity/soak_compare.py`.
+- Cross-process session lock proof: `dart test test/session_lock_test.dart`.
 Unsure / needs a second pair of eyes:
-- The sibling `Duration(days: …)` day iterations (see Deviations) and
-  the `planAutoOrdersHook` async boundary (see Questions).
+- macOS execution of the variadic `open()` POSIX `flock` path (`R-M1`): verified
+  by static types and Linux/Windows tests; marked *unverified* on macOS until
+  the owner's macOS CI runs.
 - `error_report.collectContext` keys `dart` (not `python`),
-  `app_version: '?'` (no update module at port time — since landed,
-  still `'?'`), `build: 'source'`; `currentTraceback` frames are Dart
+  `app_version: '?'`, `build: 'source'`; `currentTraceback` frames are Dart
   `#0` style. Shapes match; values are platform truth.
 - `summarize` keeps insertion order on equal/None dates explicitly
   (Dart sort isn't stable; Python's is); `summarizeAll`/`canonSubject`
