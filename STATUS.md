@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 4 (⛔ Checkpoint A re-review 2: PASS WITH FIXES; its fixes `R2-S1..R2-S3` are done, ready for re-review; phases 5–9 in progress, unreviewed) · Next step: Stop and wait: a new reviewer session re-reviews Checkpoint A (the three fix commits `ff41575`, `212dac2`, `730f61a`; they were made by the reviewer at the owner's request, so the re-review must be a fresh session). No work on phases 5–10 until Checkpoint A passes.
+Current phase: 4 (⛔ Checkpoint A re-review 2: PASS WITH FIXES; its fixes `R2-S1..R2-S3` are done, ready for re-review; phases 5–9 in progress, unreviewed) · Next step: Stop and wait: a new reviewer session re-reviews Checkpoint A (every commit after `25dc096`: fixes `ff41575`, `212dac2` + `a8545b1`, `730f61a`; they were made by the reviewer at the owner's request, so the re-review must be a fresh session). No work on phases 5–10 until Checkpoint A passes.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -727,7 +727,7 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
 - 2026-11-09 · Checkpoint A re-review 2: **PASS WITH FIXES** (all R-* findings fixed; 0 blockers, 0 must-fix, 3 should-fix new: `R2-S1..R2-S3`) — [docs/flutter-migration/reviews/checkpoint-A.md](docs/flutter-migration/reviews/checkpoint-A.md#re-review-2-2026-11-09)
 - 2026-11-09 · Re-review 2 fixes: **COMPLETE**, made by the reviewer at the owner's request (so the next review must be a fresh session):
   - **R2-S1** (`ff41575`): `dst_cases` in `tools/parity/dump.py` also starts on 23.3.2026 and 19.10.2026 (the Monday a week before each switch), so the forward steps (next timetable week, 14-day substitution range) cross a switch; `test/parity/dst.json` regenerated. Reintroducing `Duration(days: 14)` in `fetchSubstitutions` now fails `substitutionRangeIsPythonsCalendarRange`.
-  - **R2-S2** (`212dac2`): `describeSwallowed` in `storage/helpers.dart` takes the first line like Python `splitlines()[0][:160]` (all Python line breaks, 160 code points); 10 `describeSwallowed` parity cases in `dump.py` / `parity_helpers_test.dart` (the old code fails them).
+  - **R2-S2** (`212dac2`, `a8545b1` writes the U+2028/U+2029 regex and oracle characters as escapes): `describeSwallowed` in `storage/helpers.dart` takes the first line like Python `splitlines()[0][:160]` (all Python line breaks, 160 code points); 10 `describeSwallowed` parity cases in `dump.py` / `parity_helpers_test.dart` (the old code fails them).
   - **R2-S3** (`730f61a`): new `dart-macos-locks` job in `.github/workflows/dart.yml` (Apple silicon, manual run or release tag) runs `session_lock_test.dart` + `helpers_test.dart` with `TZ=Europe/Prague`; the three STATUS lines name it.
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
