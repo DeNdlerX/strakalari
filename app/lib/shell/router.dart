@@ -18,8 +18,7 @@ import '../features/planner/planner_controller.dart';
 import '../features/planner/planner_view.dart';
 import '../features/settings/settings_controller.dart';
 import '../features/settings/settings_view.dart';
-import '../features/timetable/timetable_controller.dart';
-import '../features/timetable/timetable_view.dart';
+import '../features/timetable/timetable_live.dart';
 import '../features/today/today_live.dart';
 import '../features/wizard/wizard_controller.dart';
 import '../features/wizard/wizard_view.dart';
@@ -111,8 +110,7 @@ GoRoute _route(String name) => GoRoute(
           case 'today':
             return LiveTodayView(tokens: tokens, narrow: narrow);
           case 'timetable':
-            return TimetableView(
-                controller: TimetableController(), tokens: tokens, narrow: narrow);
+            return LiveTimetableView(tokens: tokens, narrow: narrow);
           case 'absences':
             return LiveAbsencesView(tokens: tokens, narrow: narrow);
           case 'marks':

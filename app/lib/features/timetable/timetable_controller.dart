@@ -104,6 +104,12 @@ class TimetableController extends ChangeNotifier {
   /// Day cards folded open (`tt:<iso>` keys).
   final Map<String, bool> expandedDays = {};
 
+  /// Optional live-state delegation hooks (wired by `timetable_live.dart`).
+  void Function(String? mondayIso)? goTimetableWeekHook;
+  void Function(String view)? setTimetableViewHook;
+  void Function(bool show)? setShowStableHook;
+  void Function(String key, bool expanded)? setDayExpandedHook;
+
   // -- week grouping ---------------------------------------------------------------
 
   /// Groups `{day: lessons}` by week Monday — like `timetable._weeks`.
@@ -156,6 +162,7 @@ class TimetableController extends ChangeNotifier {
       timetableMondayIso = mondayIso;
       changed = true;
     }
+    goTimetableWeekHook?.call(mondayIso);
     if (changed) notifyListeners();
   }
 
@@ -177,12 +184,14 @@ class TimetableController extends ChangeNotifier {
     if (view != 'table' && view != 'list') return;
     if (timetableView == view) return;
     timetableView = view;
+    setTimetableViewHook?.call(view);
     notifyListeners();
   }
 
   void setShowStable(bool show) {
     if (showStableTimetable == show) return;
     showStableTimetable = show;
+    setShowStableHook?.call(show);
     notifyListeners();
   }
 
@@ -191,6 +200,7 @@ class TimetableController extends ChangeNotifier {
 
   void setDayExpanded(String key, bool expanded) {
     expandedDays[key] = expanded;
+    setDayExpandedHook?.call(key, expanded);
     notifyListeners();
   }
 
