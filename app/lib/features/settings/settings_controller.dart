@@ -13,6 +13,18 @@ class SettingsController {
   /// Persist [updates] into [config]. False/throw = save failed.
   /// Null = write into [config] directly (tests).
   final bool Function(Map<String, dynamic> updates)? persist;
+  final bool Function(Map<String, dynamic> updates)? persistQuiet;
+
+  /// Optional delegation hooks for shared [AppState] backing.
+  final void Function(String key, String value)? onDraftChanged;
+  final void Function(String prefix)? onClearDrafts;
+  final void Function(String section)? onSetSection;
+  final void Function()? onCloseSection;
+  final bool Function(String service, Map<String, Object?> overrides)?
+      onTestConnection;
+  final bool Function()? onClearCache;
+  final bool Function(String channel)? onSetUpdateChannel;
+  final List<String> Function()? validateConfig;
 
   /// Confirm switching a mode to auto. Return 'confirm' | 'dry_run' |
   /// 'cancel' (mirrors safety.confirm_auto_mode callbacks).
@@ -36,6 +48,15 @@ class SettingsController {
   SettingsController(
     this.config, {
     this.persist,
+    this.persistQuiet,
+    this.onDraftChanged,
+    this.onClearDrafts,
+    this.onSetSection,
+    this.onCloseSection,
+    this.onTestConnection,
+    this.onClearCache,
+    this.onSetUpdateChannel,
+    this.validateConfig,
     this.confirmAutoMode,
     this.autostartEnabled,
     this.setAutostart,
@@ -84,7 +105,8 @@ class SettingsController {
   bool saveQuiet(Map<String, dynamic> updates) {
     config.addAll(updates);
     try {
-      if (persist != null && persist!(updates) == false) return false;
+      final writer = persistQuiet ?? persist;
+      if (writer != null && writer(updates) == false) return false;
     } catch (_) {
       return false;
     }
@@ -98,10 +120,31 @@ class SettingsController {
 
   void setDraft(String key, String value) {
     drafts[key] = value;
+    onDraftChanged?.call(key, value);
   }
 
   void clearDrafts(String prefix) {
     drafts.removeWhere((k, _) => k.startsWith(prefix));
+    onClearDrafts?.call(prefix);
+  }
+
+  bool testConnection(String service, [Map<String, Object?> overrides = const {}]) {
+    if (onTestConnection != null) return onTestConnection!(service, overrides);
+    testing = service;
+    _emit();
+    return true;
+  }
+
+  bool clearCache() {
+    if (onClearCache != null) return onClearCache!();
+    return true;
+  }
+
+  bool changeUpdateChannel(String channel) {
+    updateChannel = channel;
+    if (onSetUpdateChannel != null) return onSetUpdateChannel!(channel);
+    _emit();
+    return true;
   }
 
   // -- navigation -------------------------------------------------------------------
@@ -158,11 +201,19 @@ class SettingsController {
   void setSettingsSection(String section) {
     settingsSection = section;
     settingsOpen = true;
+    for (final k in ['acc:bakalari_password', 'acc:strava_password', 'ai:key']) {
+      drafts.remove(k);
+    }
+    onSetSection?.call(section);
     _emit();
   }
 
   void closeSettingsSection() {
     settingsOpen = false;
+    for (final k in ['acc:bakalari_password', 'acc:strava_password', 'ai:key']) {
+      drafts.remove(k);
+    }
+    onCloseSection?.call();
     _emit();
   }
 

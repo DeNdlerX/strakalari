@@ -98,13 +98,13 @@ class _AutosaveFieldState extends State<AutosaveField> {
     }
     if (!widget.password &&
         SettingsController.sameValue(c.get(widget.configKey), newVal)) {
-      c.drafts.remove(widget.draftKey);
+      c.clearDrafts(widget.draftKey);
       _showValue(newVal);
       return; // focus moved without an edit: nothing to save
     }
     if (!c.saveQuiet({widget.configKey: newVal})) return;
     if (!widget.password) {
-      c.drafts.remove(widget.draftKey);
+      c.clearDrafts(widget.draftKey);
       _showValue(newVal);
     }
     widget.onSaved?.call(newVal);
@@ -367,24 +367,63 @@ class SettingsView extends StatelessWidget {
       case 'appearance':
         return _appearance(context);
       case 'ai':
-        return _ai();
+        return _ai(context);
       case 'advanced':
         return _advanced();
       case 'notifications':
         return _notifications();
       case 'diagnostics':
-        return _diagnostics();
+        return _diagnostics(context);
       case 'accounts':
       default:
-        return _accounts();
+        return _accounts(context);
     }
   }
 
+  Map<String, Object?> _accountOverrides() {
+    final c = controller;
+    final ov = <String, Object?>{
+      'bakalari_url': c.draft('acc:bakalari_url', '${c.get('bakalari_url', '')}'),
+      'bakalari_username':
+          c.draft('acc:bakalari_username', '${c.get('bakalari_username', '')}'),
+      'strava_url': c.draft('acc:strava_url', '${c.get('strava_url', '')}'),
+      'strava_username':
+          c.draft('acc:strava_username', '${c.get('strava_username', '')}'),
+      'strava_canteen_id':
+          c.draft('acc:strava_canteen_id', '${c.get('strava_canteen_id', '')}'),
+    };
+    if (c.draft('acc:bakalari_password').trim().isNotEmpty) {
+      ov['bakalari_password'] = c.draft('acc:bakalari_password');
+    }
+    if (c.draft('acc:strava_password').trim().isNotEmpty) {
+      ov['strava_password'] = c.draft('acc:strava_password');
+    }
+    return ov;
+  }
+
+  Widget? _testResultCard(String service) {
+    final c = controller;
+    if (c.lastTest['service'] != service) return null;
+    final ok = c.lastTest['ok'] == true;
+    final msg = '${c.lastTest['message'] ?? ''}';
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Text(
+          '${ok ? Str.t('connection_ok') : Str.t('connection_failed')} — $msg',
+          style: TextStyle(color: ok ? Colors.green : Colors.red),
+        ),
+      ),
+    );
+  }
+
   // -- accounts -------------------------------------------------------------------
-  List<Widget> _accounts() {
+  List<Widget> _accounts(BuildContext context) {
     final c = controller;
     final bPassSet = '${c.get('bakalari_password', '')}'.isNotEmpty;
     final sPassSet = '${c.get('strava_password', '')}'.isNotEmpty;
+    final bRes = _testResultCard('bakalari');
+    final sRes = _testResultCard('strava');
     return [
       Card(
         child: Padding(
@@ -463,13 +502,23 @@ class SettingsView extends StatelessWidget {
         spacing: 8,
         children: [
           OutlinedButton(
-              onPressed: () {},
+              onPressed: () {
+                final ok = c.testConnection('bakalari', _accountOverrides());
+                appSnack(context, Str.t(ok ? 'testing' : 'already_running'));
+                onChanged?.call();
+              },
               child: Text(Str.t('test_bakalari'))),
           OutlinedButton(
-              onPressed: () {},
+              onPressed: () {
+                final ok = c.testConnection('strava', _accountOverrides());
+                appSnack(context, Str.t(ok ? 'testing' : 'already_running'));
+                onChanged?.call();
+              },
               child: Text(Str.t('test_strava'))),
         ],
       ),
+      ?bRes,
+      ?sRes,
     ];
   }
 
@@ -1085,7 +1134,10 @@ class SettingsView extends StatelessWidget {
                       value: 'en', child: Text('English')),
                 ],
                 onChanged: (v) {
-                  if (v != null) Str.language = v;
+                  if (v != null) {
+                    Str.language = v;
+                    c.save({'language': v});
+                  }
                   onChanged?.call();
                 },
               ),
@@ -1133,9 +1185,10 @@ class SettingsView extends StatelessWidget {
   }
 
   // -- AI ------------------------------------------------------------------------------------------------
-  List<Widget> _ai() {
+  List<Widget> _ai(BuildContext context) {
     final c = controller;
     final hasKey = '${c.get('gemini_api_key', '')}'.isNotEmpty;
+    final aiRes = _testResultCard('ai');
     return [
       Card(
         child: Padding(
@@ -1208,7 +1261,20 @@ class SettingsView extends StatelessWidget {
         spacing: 8,
         children: [
           OutlinedButton(
-              onPressed: () {},
+              onPressed: () {
+                final ov = <String, Object?>{};
+                if (c.draft('ai:key').trim().isNotEmpty) {
+                  ov['gemini_api_key'] = c.draft('ai:key');
+                }
+                final model = c
+                    .draft('ai:model',
+                        '${c.get('gemini_model', 'gemini-3.8-flash')}')
+                    .trim();
+                if (model.isNotEmpty) ov['gemini_model'] = model;
+                final ok = c.testConnection('ai', ov);
+                appSnack(context, Str.t(ok ? 'testing' : 'already_running'));
+                onChanged?.call();
+              },
               child: Text(Str.t('wiz_test_key'))),
           if (hasKey)
             OutlinedButton(
@@ -1224,6 +1290,7 @@ class SettingsView extends StatelessWidget {
             ),
         ],
       ),
+      ?aiRes,
     ];
   }
 
@@ -1311,21 +1378,29 @@ class SettingsView extends StatelessWidget {
   }
 
   // -- diagnostics ---------------------------------------------------------------------------------
-  List<Widget> _diagnostics() {
+  List<Widget> _diagnostics(BuildContext context) {
     final c = controller;
     final problems = <String>[];
-    // Minimal validation: empty keys / bad reserve type surface here.
-    for (final key in c.config.keys) {
-      if (key.isEmpty) {
-        problems.add('bad key: (empty)');
+    if (c.validateConfig != null) {
+      try {
+        problems.addAll(c.validateConfig!());
+      } catch (exc) {
+        problems.add('${Str.t('config_problems')}: $exc'.split('\n').first);
       }
-    }
-    final reserve = c.get('absence_plan_reserve_pct');
-    if (reserve != null) {
-      if (reserve is num) {
-        if (reserve < 0) problems.add('absence_plan_reserve_pct');
-      } else {
-        problems.add('absence_plan_reserve_pct');
+    } else {
+      // Minimal validation: empty keys / bad reserve type surface here.
+      for (final key in c.config.keys) {
+        if (key.isEmpty) {
+          problems.add('bad key: (empty)');
+        }
+      }
+      final reserve = c.get('absence_plan_reserve_pct');
+      if (reserve != null) {
+        if (reserve is num) {
+          if (reserve < 0) problems.add('absence_plan_reserve_pct');
+        } else {
+          problems.add('absence_plan_reserve_pct');
+        }
       }
     }
     return [
@@ -1360,7 +1435,11 @@ class SettingsView extends StatelessWidget {
                       child: Text(Str.t('update_channel_beta'))),
                 ],
                 onChanged: (v) {
-                  if (v != null) c.updateChannel = v;
+                  if (v != null) {
+                    if (!c.changeUpdateChannel(v)) {
+                      appSnack(context, Str.t('save_failed'));
+                    }
+                  }
                   onChanged?.call();
                 },
               ),
@@ -1368,7 +1447,14 @@ class SettingsView extends StatelessWidget {
               Text(
                   '${Str.t('cache_info')} ${c.get('cache_info', '')}'),
               OutlinedButton(
-                  onPressed: () {},
+                  onPressed: () {
+                    if (c.clearCache()) {
+                      appSnack(context, Str.t('cache_cleared'));
+                    } else {
+                      appSnack(context, Str.t('save_failed'));
+                    }
+                    onChanged?.call();
+                  },
                   child: Text(Str.t('clear_cache'))),
             ],
           ),

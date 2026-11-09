@@ -129,6 +129,16 @@ class AppState {
       final v = '${get('timetable_view', 'table')}';
       return (v == 'table' || v == 'list') ? v : 'table';
     }();
+    try {
+      final cached = loadCached(updateChannel);
+      if (cached != null &&
+          '${cached['version'] ?? ''}'.isNotEmpty &&
+          updateAvailable(cached)) {
+        updateInfo = cached;
+      }
+    } catch (_) {
+      // Missing or unreadable update cache is non-fatal.
+    }
   }
 
   final ConfigManager config = ConfigManager();
@@ -259,7 +269,12 @@ class AppState {
     _flights.remove(name);
   }
 
-  void _emit() => onChanged();
+  bool _quiet = false;
+
+  void _emit() {
+    if (_quiet) return;
+    onChanged();
+  }
 
   void _emitProgress() => onProgress();
 
@@ -288,6 +303,9 @@ class AppState {
     } catch (_) {
       return false;
     }
+    try {
+      core.setLanguage('${config.get('language', 'cs')}');
+    } catch (_) {}
     for (final cb in List.of(configListeners)) {
       try {
         cb();
@@ -295,15 +313,36 @@ class AppState {
         // A listener never breaks a save.
       }
     }
+    if (updates.keys.any(phoneConfigKeys.contains)) {
+      syncAndroidState();
+    }
     _emit();
     return ok;
   }
 
   /// Like [save] without re-rendering (settings field edits).
   /// Port of `save_quiet()`.
-  bool saveQuiet(Map<String, Object?> updates) => save(updates);
+  bool saveQuiet(Map<String, Object?> updates) {
+    _quiet = true;
+    try {
+      return save(updates);
+    } finally {
+      _quiet = false;
+    }
+  }
 
   bool automationPaused() {
+    // The tray toggles it in its own process: read the file so this
+    // window never shows a stale state (falls back to memory).
+    try {
+      final f = File(config.configPath);
+      if (f.existsSync()) {
+        final onDisk = jsonDecode(f.readAsStringSync());
+        if (onDisk is Map && onDisk.containsKey('automation_paused')) {
+          return core.automationPaused(strObjMap(onDisk));
+        }
+      }
+    } catch (_) {}
     try {
       return core.automationPaused(config.data);
     } catch (_) {

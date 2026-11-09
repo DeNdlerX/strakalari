@@ -14,8 +14,7 @@ import '../features/lunches/lunches_live.dart';
 import '../features/marks/marks_live.dart';
 import '../features/more.dart';
 import '../features/planner/planner_live.dart';
-import '../features/settings/settings_controller.dart';
-import '../features/settings/settings_view.dart';
+import '../features/settings/settings_live.dart';
 import '../features/timetable/timetable_live.dart';
 import '../features/today/today_live.dart';
 import '../features/wizard/wizard_controller.dart';
@@ -120,9 +119,7 @@ GoRoute _route(String name) => GoRoute(
           case 'activity':
             return LiveActivityView(narrow: narrow);
           case 'settings':
-            return SettingsView(
-                controller: SettingsController(<String, dynamic>{}),
-                narrow: narrow);
+            return LiveSettingsView(narrow: narrow);
           case 'more':
             return MorePage(onOpen: (r) => context.go('/$r'));
           case 'wizard':
