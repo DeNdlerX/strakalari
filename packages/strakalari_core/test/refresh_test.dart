@@ -18,6 +18,8 @@ import '../bin/refresh_dryrun.dart' as refresh_dryrun;
 import 'package:strakalari_core/src/automation/automation.dart';
 import 'package:strakalari_core/src/automation/cancel.dart';
 import 'package:strakalari_core/src/automation/refresh.dart';
+import 'package:strakalari_core/src/lunches/gemini.dart';
+import 'package:strakalari_core/src/lunches/lunch_auto.dart';
 import 'package:strakalari_core/src/models.dart';
 import 'package:strakalari_core/src/platform/packaging.dart';
 import 'package:strakalari_core/src/storage/cache.dart';
@@ -505,6 +507,35 @@ void main() {
       } finally {
         planAutoOrdersHook = testPlanAutoOrders;
       }
+    });
+
+    test('geminiFallbackIsNotAGeminiRun', () async {
+      // Gemini offline: the blacklist-filter pick is used and the run does
+      // not count as a Gemini run.
+      Future<GeminiHttpResponse> offline(
+        Uri url, {
+        required Map<String, String> headers,
+        List<int>? body,
+        required Duration timeout,
+      }) async {
+        throw const SocketException('offline');
+      }
+
+      final (orders, used) = await planAutoOrders(
+        {
+          otherDay: {'t2&1&0': 'Guláš'}
+        },
+        {
+          ...refreshConfig(),
+          'gemini_auto_enabled': true,
+          'gemini_api_key': 'k',
+          'gemini_api_key_encrypted': false,
+        },
+        geminiTransport: offline,
+        geminiSleep: (_) async {},
+      );
+      expect(used, isFalse);
+      expect(orders, {otherDay: 't2&1&0'});
     });
 
     test('brokenBlacklistOrdersNothing', () async {
