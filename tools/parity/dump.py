@@ -2310,6 +2310,115 @@ def scheduler_cases() -> list[dict]:
     return cases
 
 
+def dst_cases() -> list[dict]:
+    """Calendar-day arithmetic of the real Python code around the Prague
+    DST switches (29.3.2026 and 25.10.2026): the Mondays the timetable
+    fetch asks for, the history weeks a refresh still misses, and the
+    substitution feed range. ``today`` is pinned by patching the module's
+    ``datetime`` / ``date``; the Dart tests drive the real Dart code under
+    ``withClock`` and must produce the same dates.
+    """
+    from datetime import date, datetime, timedelta
+
+    from strakalari.core import bakalari_data as bd
+    from strakalari.core import bakalari_timetable as bt
+    from strakalari.core import refresh as rf
+
+    class _Probe(bt.TimetableMixin):
+        def __init__(self, back, forward, history):
+            self.go_back_weeks = back
+            self.go_forward_weeks = forward
+            self.history_weeks = history
+            self.timetable_sources = []
+            self.asked = []
+
+        def login(self):
+            pass
+
+        def _raise_if_cancelled(self):
+            pass
+
+        def log(self, message):
+            pass
+
+        def _timetable_view(self, term, day):
+            self.asked.append(day)
+            return []
+
+    class _SubProbe(bd.DataMixin):
+        def __init__(self):
+            self.substitutions = None
+            self.substitutions_error = ""
+
+        def _raise_if_cancelled(self):
+            pass
+
+        def log(self, message):
+            pass
+
+        def _session(self):
+            return self
+
+        def json(self, *args, **kwargs):
+            return []
+
+    class _App:
+        def __init__(self, back, forward):
+            self.go_back_weeks = back
+            self.go_forward_weeks = forward
+
+    def _fixed_datetime(day):
+        class _F(datetime):
+            @classmethod
+            def today(cls):
+                return datetime(day.year, day.month, day.day, 9, 30)
+        return _F
+
+    def _fixed_date(day):
+        class _F(date):
+            @classmethod
+            def today(cls):
+                return day
+        return _F
+
+    cases = []
+    for today in (date(2026, 3, 30), date(2026, 10, 26)):
+        for back, forward, history in (
+                (4, 1, []),
+                (2, 1, [today - timedelta(days=today.weekday() + 7 * n)
+                        for n in (8, 6)]),
+        ):
+            real = bt.datetime
+            bt.datetime = _fixed_datetime(today)
+            try:
+                probe = _Probe(back, forward, history)
+                probe.fetch_timetable_weeks()
+            finally:
+                bt.datetime = real
+            cases.append(_case(
+                "fetchTimetableWeeks",
+                {"asked": [d.isoformat() for d in probe.asked],
+                 "loaded": sorted(m.isoformat()
+                                  for m in probe.timetable_loaded_weeks)},
+                today, back, forward, history))
+        cases.append(_case(
+            "missingHistoryWeeks",
+            rf._missing_history_weeks(_App(4, 1), {}, today, set()),
+            today, 4, 1))
+
+        seen = []
+        real_date, real_iso = bd.date, bd._utc_iso
+        bd.date = _fixed_date(today)
+        bd._utc_iso = lambda day, at: seen.append(day) or "x"
+        try:
+            _SubProbe().fetch_substitutions()
+        finally:
+            bd.date, bd._utc_iso = real_date, real_iso
+        cases.append(_case("substitutionRange",
+                           [d.isoformat() for d in seen], today))
+    return cases
+
+
 def main() -> None:
     _dump("helpers", helpers_cases())
     _dump("models", models_cases())
@@ -2337,6 +2446,7 @@ def main() -> None:
     _dump("wakeup", wakeup_cases())
     _dump("error_report", error_report_cases())
     _dump("scheduler", scheduler_cases())
+    _dump("dst", dst_cases())
 
 
 if __name__ == "__main__":

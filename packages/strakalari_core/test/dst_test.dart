@@ -55,49 +55,6 @@ void main() {
       expect((daysBetween(day(2026, 10, 19), day(2026, 10, 26)) / 7).floor(),
           1);
     });
-
-    test('mondayAndTargetDaysStayMidnight', () {
-      // Mirrors the timetable week math for the week of 30.3.2026.
-      final currentWeek = day(2026, 3, 30);
-      final thisMonday = addDays(currentWeek, -(currentWeek.weekday - 1));
-      expect(thisMonday, day(2026, 3, 30));
-      final weekDate = addDays(currentWeek, -1 * 7);
-      final monday = addDays(weekDate, -(weekDate.weekday - 1));
-      expect(monday, day(2026, 3, 23));
-      expect(monday.hour, 0);
-      final targetDays = {for (var i = 0; i < 7; i++) addDays(monday, i)};
-      expect(targetDays, hasLength(7));
-      for (final d in targetDays) {
-        expect(d.hour, 0, reason: dmy(d));
-        expect(d.minute, 0, reason: dmy(d));
-      }
-      expect(targetDays.contains(day(2026, 3, 29)), isTrue);
-    });
-
-    test('historyWeekSteppingStaysMidnight', () {
-      // Mirrors _missingHistoryWeeks across 25.10.2026.
-      var monday = day(2026, 10, 19);
-      final seen = <DateTime>[];
-      while (monday.isBefore(day(2026, 10, 26))) {
-        seen.add(monday);
-        monday = addDays(monday, 7);
-      }
-      expect(seen, [day(2026, 10, 19)]);
-      expect(addDays(day(2026, 10, 26), -7), day(2026, 10, 19));
-    });
-
-    test('substitutionRange', () {
-      // Mirrors fetchSubstitutions for today 19.10.2026: week of 19.10
-      // through Friday of the week 14 days ahead.
-      final today = day(2026, 10, 19);
-      final start = addDays(today, -(today.weekday - 1));
-      final endDay = addDays(today, 14);
-      final end = addDays(addDays(endDay, -(endDay.weekday - 1)), 4);
-      expect(start, day(2026, 10, 19));
-      expect(endDay, day(2026, 11, 2));
-      expect(end, day(2026, 11, 6));
-      expect(end.weekday, DateTime.friday);
-    });
   });
 
   group('excuseWindow', () {

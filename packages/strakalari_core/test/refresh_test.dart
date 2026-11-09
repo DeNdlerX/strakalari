@@ -27,6 +27,8 @@ import 'package:strakalari_core/src/storage/config.dart';
 import 'package:strakalari_core/src/storage/helpers.dart';
 import 'package:strakalari_core/src/storage/secret_store.dart';
 
+import 'parity_cases.dart';
+
 const futureDay = '05.10.2099';
 const otherDay = '06.10.2099';
 
@@ -430,6 +432,16 @@ class LowBalanceApp implements RefreshApp {
   }
 }
 
+/// [FakeApp] that records the history weeks `runRefresh` hands the client.
+class HistoryProbeApp extends FakeApp {
+  HistoryProbeApp(super.calls);
+
+  List<DateTime> seenHistoryWeeks = const [];
+
+  @override
+  set historyWeeks(List<DateTime> weeks) => seenHistoryWeeks = weeks;
+}
+
 void main() {
   late Directory tmp;
 
@@ -536,6 +548,30 @@ void main() {
       );
       expect(used, isFalse);
       expect(orders, {otherDay: 't2&1&0'});
+    });
+
+    test('missingHistoryWeeksStepByCalendarDaysLikePython', () async {
+      // Real `runRefresh` under the clock on both sides of the Prague DST
+      // switches: the history weeks it asks the client for are the ones
+      // Python computes (test/parity/dst.json, `missingHistoryWeeks`).
+      final cases = loadParityCases('dst')
+          .where((c) => c['fn'] == 'missingHistoryWeeks');
+      expect(cases, isNotEmpty);
+      for (final c in cases) {
+        final today =
+            decodeParityValue((c['args'] as List).first) as DateTime;
+        final app = HistoryProbeApp([]);
+        await withClock(
+            Clock.fixed(DateTime(today.year, today.month, today.day, 9, 30)),
+            () => runRefresh(app, refreshConfig()));
+        String iso(DateTime d) =>
+            '${d.year.toString().padLeft(4, '0')}-'
+            '${d.month.toString().padLeft(2, '0')}-'
+            '${d.day.toString().padLeft(2, '0')}';
+        expect([for (final m in app.seenHistoryWeeks) iso(m)],
+            [for (final m in c['expected'] as List) m['__date__']],
+            reason: iso(today));
+      }
     });
 
     test('brokenBlacklistOrdersNothing', () async {
