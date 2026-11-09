@@ -197,7 +197,9 @@ void main() {
   });
 
   test('decryptSurvivesKeyFileOSError', () {
-    fernetFactory = () => throw const OSError('disk unavailable');
+    // Dart file APIs raise FileSystemException where Python raises OSError.
+    fernetFactory =
+        () => throw const FileSystemException('disk unavailable');
     expect(decrypt('whatever-unreadable'), 'whatever-unreadable');
   });
 }

@@ -583,7 +583,7 @@ class Strakalari implements RefreshApp {
             final oldLog = '$logFile.old';
             if (File(oldLog).existsSync()) File(oldLog).deleteSync();
             File(logFile).renameSync(oldLog);
-          } on OSError {
+          } on FileSystemException {
             // Keep appending; rotation retries next line.
           } finally {
             releaseFileLock(token);

@@ -11,6 +11,7 @@ import 'dart:io';
 import 'package:clock/clock.dart';
 import 'package:path/path.dart' as p;
 
+import '../platform/keystore.dart' show KeyStoreUnavailable;
 import '../platform/packaging.dart';
 import 'fernet.dart';
 import 'secret_store.dart';
@@ -824,8 +825,10 @@ String decrypt(String? passwordHash, [String? key]) {
     // Fall through to the legacy XOR cipher below.
   } on FormatException {
     // Non-ASCII input: undecodable as a token either.
-  } on OSError {
+  } on FileSystemException {
     // secret.key file IO failed: try the legacy cipher then.
+  } on KeyStoreUnavailable {
+    // Python's `KeyStoreUnavailable` is an `OSError`: same fallback.
   }
   try {
     final encrypted = base64.decode(passwordHash);

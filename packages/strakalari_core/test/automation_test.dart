@@ -1704,5 +1704,18 @@ void main() {
           matches(RegExp(
               r'^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] hello\n')));
     });
+
+    test('failedLogRotationStillAppendsTheLine', () {
+      final logPath = '${tmp.path}/log.txt';
+      // Past the 2 MB rotation size, and `log.txt.old` is a folder, so the
+      // rename of the log fails (another program holding it open does the
+      // same on Windows). The line must still be appended.
+      File(logPath).writeAsStringSync('x' * (2 * 1024 * 1024 + 1));
+      Directory('$logPath.old').createSync();
+      final app = realApp(tmp, {'log_file': logPath});
+      app.writeLog('after failed rotation');
+      expect(File(logPath).readAsStringSync(),
+          contains('after failed rotation'));
+    });
   });
 }

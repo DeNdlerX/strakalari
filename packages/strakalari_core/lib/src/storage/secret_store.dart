@@ -320,8 +320,8 @@ bool carryKey(String oldDir, String newDir) {
   } on KeyStoreUnavailable catch (e) {
     print('Warning: could not carry the password key to $newDir: $e');
     return false;
-  } on OSError catch (e) {
-    // Includes filesystem errors.
+  } on FileSystemException catch (e) {
+    // Python's `OSError`: the key file IO failed.
     print('Warning: could not carry the password key to $newDir: $e');
     return false;
   }
