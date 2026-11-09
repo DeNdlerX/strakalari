@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 4 (⛔ Checkpoint A re-review rework complete, ready for re-review; phases 5–9 in progress, unreviewed) · Next step: Have a reviewer model re-review Checkpoint A (all R-* findings `R-M1..R-M3` and `R-S1..R-S7` + `R-N4`, `R-N5` are fixed). No work on phases 5–10 until Checkpoint A passes.
+Current phase: 4 (⛔ Checkpoint A re-review 2: PASS WITH FIXES, should-fix items `R2-S1..R2-S3` open; phases 5–9 in progress, unreviewed) · Next step: Fix every finding in `reviews/checkpoint-A.md` (blockers first), one commit per finding, then stop for re-review. (Open: `R2-S1`, `R2-S2`, `R2-S3` under "Re-review 2"; there are no blockers or must-fix items.) No work on phases 5–10 until Checkpoint A passes.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -14,7 +14,7 @@ notify (core interface). 16 new parity JSON fixtures (344 cases);
 `dart analyze` + `flutter analyze` clean.
 Phase 4 (automation) is done: error_report (full), scheduler,
 session_lock, automation (Strakalari), refresh (run_refresh).
-⛔ Checkpoint A: core review (rework complete, ready for re-review).
+⛔ Checkpoint A: core review (re-review 2: PASS WITH FIXES, `R2-S1..R2-S3` open).
 Phase 5 (app shell) is in progress, unreviewed: Riverpod controllers (AppState + 6 facades),
 go_router (8 routes + wizard + more), adaptive scaffold (720/520
 breakpoints, rail ↔ bar + More, landscape side rail), theme tokens,
@@ -723,6 +723,7 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
   - **R-S6** (`998906d`): added `pyRepr` in `storage/helpers.dart` (with parity cases in `tools/parity/dump.py` and `parity_helpers_test.dart`), formatted map/list log interpolations in `automation.dart` (and `school_presets.dart`) with `pyRepr`, and added `excuseLogLinesUsePythonMapRepr` in `automation_test.dart`.
   - **R-S7 + R-N4 + R-N5** (`c035cb1`): printed a one-time `Warning:` in `_loadLibc()` (`storage/helpers.dart`) if loading libc for `flock` fails and falls back to `lockSync`; aligned `refresh.dart` to pass `app.orderedDict.isNotEmpty ? app.orderedDict : orderedBefore` to `updateHandledDaysHook` (`R-N4`); aligned `sent_excuses_limit` float truncation in `automation.dart` with Python `int()` (`R-N5`).
   - **R-M2** (this commit): rewrote the Checkpoint A rework list in `STATUS.md` from `git show --stat` of each commit, corrected the `HistoryLock` deviation description, updated suite counts (`764 passed, 2 skipped` in core; `123 passed, 1 skipped` in app), fixed the Checkpoint B/C status header under Questions, and added `[N functions]` alongside `pytest --collect-only` counts for all 13 parameterized test files.
+- 2026-11-09 · Checkpoint A re-review 2: **PASS WITH FIXES** (all R-* findings fixed; 0 blockers, 0 must-fix, 3 should-fix new: `R2-S1..R2-S3`) — [docs/flutter-migration/reviews/checkpoint-A.md](docs/flutter-migration/reviews/checkpoint-A.md#re-review-2-2026-11-09)
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 

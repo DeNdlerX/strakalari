@@ -564,3 +564,159 @@ key store or real servers.
 
 **Still not verified:** macOS (R-M1 must go through the owner's CI), Android
 (Checkpoint C), and phases 5–9, which stay unreviewed.
+
+---
+
+# Re-review 2 (2026-11-09)
+
+Reviewed at `4045a11` (branch tip). Commits since the last re-review: `2ae814b..4045a11`
+(10 commits: R-M1, R-M3, R-S1 … R-S7 with R-N4/R-N5, and R-M2). Same scope as above.
+
+## Verdict: **PASS WITH FIXES**
+
+Every finding of the last re-review is fixed in the code, not just marked fixed, and
+nothing else broke: all suites are green on Windows and on Linux, the parity oracle
+regenerates without a single difference, and a dry run against the demo server gives
+the same audit, history, outbox and files as Python. The send path, the order path
+and the locks changed only where the findings asked. Three should-fix items are left
+(two missing tests and one log line), plus notes for later checkpoints. None of them
+can send, order, or lose anything.
+
+## Status of the last re-review's findings
+
+| ID | Commit | How I checked | Result |
+|---|---|---|---|
+| R-M1 variadic `open` | `2ae814b` | `_OpenC` declares the mode as `ffi.VarArgs<(ffi.Int32,)>`, the Dart signature is unchanged, `dart analyze` accepts the binding. **Linux** (WSL, Dart 3.12.2, `TZ=Europe/Prague`): the libc binding loads, `freshLockFileIsOwnerReadWritable` passes and `matchesPythonFlock` passes (Python holds → Dart refused, Dart holds → Python refused, released → acquired), so the lock still holds after the change | fixed in code; Apple silicon unverified (R2-S3) |
+| R-M2 STATUS | `4045a11` | Rework list compared with `git show --stat` of all 24 A-* and 9 R-* commits: every line now describes what its diff does. `HistoryLock` deviation corrected. Suite counts equal my runs (core 764 + 2 skipped, app 123 + 1 skipped). All 94 test-map counts equal `pytest --collect-only`, cases and (where different) functions, checked by script | fixed |
+| R-M3 Gemini fallback test | `6e6c723` | `geminiFallbackIsNotAGeminiRun` is a literal port of `test_refresh_pipeline.py:159` (the same config as `CONFIG`, the same day, a failing transport, a no-op sleep, the same two asserts). `test_refresh_pipeline.py` 9 → 9 | fixed |
+| R-S1 dead `OSError` catches | `8f70936` | The three sites catch `FileSystemException` (plus `KeyStoreUnavailable` in `decrypt`), like Python's `OSError`. `failedLogRotationStillAppendsTheLine` makes the real rename fail, and the line is still written | fixed |
+| R-S2 delete-then-rename | `2cd35ae` | Both fallbacks removed; `replacesAnExistingFile` proves `renameSync` replaces on Windows; `failedReplaceNeverDeletesTheTarget` | fixed |
+| R-S3 `DateTime.now()` | `4aafeb3` | `clock.now()`; grep finds no `DateTime.now()` left in core `lib/` | fixed |
+| R-S4 DST tests | `a487824` | Rows come from the real Python functions (`dst_cases`); the Dart tests drive `fetchTimetableWeeks`, `fetchSubstitutions` and `runRefresh` under `withClock`. One gap: R2-S1 | fixed, one gap |
+| R-S5 connect messages | `d5366ea` | `ConnectFailure.isTimeout` gives the timeout message in both clients; Strava says "unreachable" only for `ConnectFailure`, otherwise "connection lost", like `bakalari_http.py:307-313` and `strava_client.py:229-235`. The excuse's never-sent rule still sees the `ConnectFailure` as the cause | fixed |
+| R-S6 log `repr` | `998906d` | `pyRepr` with 6 Python-generated parity cases; every excuse and order log line that printed a map uses it; the demo dry-run `log.txt` is now identical to Python's apart from timestamps | fixed |
+| R-S7 libc warning | `c035cb1` | One `Warning:` line, on the first failure only (`_libcFailed`) | fixed |
+| R-N4 | `c035cb1` | `orderedDict.isNotEmpty ? orderedDict : orderedBefore` is Python's `or` (`refresh.py:579`) | fixed |
+| R-N5 | `c035cb1` | A float truncates, a bool gives 1/0, a string parses or falls back to 100, like `int()` (`automation.py:651`) | fixed |
+
+## New findings
+
+No blockers, no must-fix items.
+
+### R2-S1 · should-fix · The substitution-range DST rows never cross a clock change
+
+`tools/parity/dump.py:2397` runs `dst_cases` only for "today" = 30.3.2026 and
+26.10.2026, the Monday after each switch. That is right for the timetable and history
+weeks, which step **backwards** across the switch. But the substitution range steps 14
+days **forward** (`bakalari_data.py:280-283`), so from those two days it never crosses a
+switch, and `substitutionRangeIsPythonsCalendarRange`
+(`packages/strakalari_core/test/parity_dst_test.dart:62`) cannot catch the original
+A-B1 bug (19.10 + 14 days ending a week early). The old test for 19.10 was deleted in
+R-S4. The same holds for the forward timetable week (`go_forward_weeks`): from 30.3 or
+26.10 the next Monday doesn't cross a switch either.
+
+I checked the code by hand: for today = 23.3, 27.3, 19.10 and 23.10.2026 with
+`go_back_weeks: 4`, `go_forward_weeks: 2`, the real Dart code asks for the same Mondays
+and sends the same `dateFrom` / `dateTo` strings as Python (identical JSON). So the code
+is right; only the test is missing.
+
+**Correct:** in `dst_cases`, also loop over `date(2026, 3, 23)` and `date(2026, 10, 19)`
+(the Monday one week before each switch), for all three row kinds. Regenerate
+`test/parity/dst.json`. The existing Dart tests read the new rows unchanged; run them
+with `TZ=Europe/Prague`.
+
+### R2-S2 · should-fix · Log lines for tolerated errors lose the message when it has several lines
+
+`packages/strakalari_core/lib/src/storage/helpers.dart:589-603` `describeSwallowed`
+vs `strakalari/core/helpers.py:414-428` `describe_swallowed`. Dart cuts the first line
+with `substring(0, … ? 160 : text.length)`. When the error text has more than one line
+and the first line is shorter than 160 characters, `text.length` is past the end of the
+first line, `substring` throws `RangeError`, the `catch (_)` swallows it, and the log
+line keeps only the type. Proven with a verbatim copy of the function: error text
+`'timeout\ncall log: …'` gives Dart `Debug: waiting for the grid — StateError` and
+Python `Debug: waiting for the grid — StateError: timeout`. It is used by
+`bakalari/client.dart:155` and `strava/client.dart:242`, so `log.txt` and bug reports
+lose the reason for exactly the multi-line errors Python's docstring mentions.
+Diagnostics only: nothing is sent or saved differently.
+
+**Correct:** split once and cut that line, like Python `text.splitlines()[0][:160]`:
+`final line = text.split(RegExp(r'\r\n|\r|\n')).first;` then
+`first = line.length > 160 ? line.substring(0, 160) : line;`. Add `describeSwallowed`
+cases to `dump.py` (multi-line text, `\r\n`, a 200-character first line, empty text;
+use a small Python exception class so `type(exc).__name__` is stable) and a parity test
+that compares the part after the type name.
+
+### R2-S3 · should-fix · No CI job can verify the macOS lock fix
+
+`STATUS.md:609-610`, `:716` and `:748-750` say the Apple-silicon run of R-M1 stays
+unverified "until the owner's macOS CI runs". But `.github/workflows/dart.yml:23-29`
+runs the tests only on `ubuntu-latest` and `windows-latest`; the only macOS job
+(`build-flutter-macos`, `:308`) builds the release and runs no tests. So that CI run can
+never happen as described. The bug R-M1 fixed exists **only** on Apple silicon: on
+Linux x64 (and Intel Macs) the variadic mode travels in a register, so
+`freshLockFileIsOwnerReadWritable` passes on Linux even with the old declaration.
+
+**Correct:** add a core test job on `macos-latest` (Apple silicon) that runs at least
+`dart test test/session_lock_test.dart test/helpers_test.dart` in
+`packages/strakalari_core` with `TZ: Europe/Prague`. To save CI minutes it may run only
+on `workflow_dispatch` and on tags. Name that job in the three STATUS lines. Until the
+owner runs it, macOS stays on the "not verified" list below.
+
+### Notes (nothing to do now)
+
+- **R2-N1** (Checkpoint C) `storage/helpers.dart:836` names the temp file
+  `$path.$pid.tmp`. Python uses `tempfile.mkstemp` (`helpers.py:449`), unique per call.
+  Two isolates of one process (the Android background isolate and the UI isolate) share
+  the pid, so two concurrent writes of the same file would share one temp file. Config,
+  history and the session-guarded writes are locked, so only unlocked writers could be
+  hit. Look at it with the isolate hand-off at Checkpoint C; a unique name per call (for
+  example a random suffix) would match Python.
+- **R2-N2** `ConnectFailure.isTimeout` (`bakalari/http_session.dart:489-494`) recognizes
+  dart:io's connect timeout by its message text ("HTTP connection timed out"). Fine on
+  the pinned Flutter 3.44.8, but the test builds that text itself, so an SDK change
+  wouldn't be caught. Re-check whenever Flutter is upgraded.
+- **R2-N3** `pyRepr` escapes the common invisible characters, not every one Python's
+  `repr` escapes (for example U+2000–U+200A and U+3000). Log text only. Accepted.
+- **R2-N4** `STATUS.md:26` and `:766` still say "106" app tests (now 123). Fix with the
+  Checkpoint B notes.
+
+### Deviations of this round: sign-off
+
+Accepted: `pyRepr` (Python `repr` for log lines, now shared with `school_presets`), the
+variadic `open` binding, the one-time libc warning, `ConnectFailure.isTimeout` (see
+R2-N2), and removing the delete-then-rename fallbacks. The Dropped list (`tls.py`,
+`test_tls_bundle.py`, `test_frozen_ssl.py`, `test_imports_resolve.py`) is unchanged and
+its reasons stay valid. `test_order_latch.py` (7) stays deferred to phase 5 because its
+subject is `AppState.submit_orders`; Checkpoint B must find it ported literally before
+the UI can send orders.
+
+## What I verified in re-review 2, and how
+
+Flutter 3.44.8 / Dart 3.12.2 on this PC (Windows 11, Europe/Prague). Probes and outputs
+are in the reviewer's scratchpad, not committed; temporary probe tests were deleted and
+the tree was clean afterwards. Nothing touched the owner's data, key store or real
+servers (`STRAKALARI_NO_KEYRING=1` everywhere; both throwaway folders got a file key).
+
+| Check | Result |
+|---|---|
+| `dart analyze` / `dart test` (core, Windows) | clean / **766**: 764 passed, 2 skipped (the two POSIX-only lock tests) |
+| Core suite on **Linux** (WSL Ubuntu, official Dart 3.12.2 SDK with verified checksum, `TZ=Europe/Prague`, a copy of the branch tip, packages at the locked versions from the local pub cache) | `dart analyze` clean / **766 passed**, none skipped (both POSIX-only lock tests run there) |
+| `flutter analyze` / `flutter test` (app) | clean / **124**: 123 passed, 1 skipped (APK scan, needs `STRAKALARI_APK`) |
+| Python suite | **1643 passed** |
+| `dump.py` regeneration + `git diff --exit-code` on `test/parity/` | **clean** (27 files, including the new `dst.json` and `pyRepr` rows) |
+| Dry-run parity (`soak_refresh.py` vs `bin/refresh_dryrun.dart`, demo server on :18080, two throwaway folders) | `soak_compare.py`: **IDENTICAL**. Both: 2 audit records (auto and manual `dry_run`), the same outbox, history and sidecar. Files: `already_excused_lessons.json` byte-identical; `automation_history.jsonl` and `log.txt` identical apart from timestamps (both CRLF); `data_cache.json` differs only in `last_updated` |
+| Session lock on Windows: Python's real `refresh.session_lock` vs Dart `withSessionLock` / `SessionLock` | Python holds → Dart refused; Python exits → Dart gets it; Dart holds → Python refused; Dart releases → Python gets it; a second handle in the same Dart process is refused |
+| DST forward probe (real code, today 23.3 / 27.3 / 19.10 / 23.10.2026) | Dart = Python (see R2-S1) |
+| Test parity | Test map: 94/94 files, every count equals `pytest --collect-only` (script). Safety files: `test_refresh_pipeline` 9 → 9 (+2 extra), `test_bakalari_excuse` 14 → 17, `test_session_lock` 6 → 6 (+6 lock tests), `test_unconfirmed_excuses` 16 → 16, `test_automation_safety` 12 ported + 4 UI deferred, `test_data_safety` 8 → 8, `test_excuse_history` unchanged since the last review |
+| Test integrity (`git diff bd00f33..` on all Dart tests) | Only removals: the three re-implemented DST tests (replaced by real-code tests, as R-S4 asked) and the `OSError` fake in `decryptSurvivesKeyFileOSError` (now `FileSystemException`, same assertion). No new `skip:` except the POSIX-only permission test; no `try`/`catch` around `expect`; no `anything` / `isNotNull` |
+| §3.5 pitfalls in the changed code | none (no new `RegExp`, `~/`, `%`, `round`, `weekday`, `DateTime.parse`, `jsonEncode`); no `DateTime.now()` left in core `lib/` |
+| Fail loudly (send, order and save code) | No new swallowing catch; the file replace now propagates its error like `os.replace` |
+| `package:flutter` in core, codegen, lockfiles, Flutter pin | none / none / committed / 3.44.8 + `--enforce-lockfile` |
+| Personal data, real hosts, upstream, `Co-Authored-By` / `Claude-Session` | none (`test/parity/config.json` holds only the test values of `tests/test_config.py`); the new tests use fakes and loopback only; no upstream; all 81 branch commits by DeNdlerX, no such lines |
+| `main` merged and ported | `main` = `0ffdcff`, an ancestor of the branch; STATUS says `0ffdcff` |
+
+**Still not verified:** Apple-silicon macOS (R-M1, needs the job from R2-S3), Android
+and the install-over tests (Checkpoint C), and phases 5–9, which stay unreviewed.
+
+Left on this PC at the owner's request: the Dart 3.12.2 Linux SDK in WSL at
+`~/dart-3.12.2`.
