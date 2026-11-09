@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:test/test.dart';
@@ -141,6 +142,20 @@ void main() {
               (e) => e.message,
               'message',
               anyOf(contains('přerušilo'), contains('interrupted')))));
+    });
+
+    test('connectTimeoutIsATimeoutNotUnreachable', () async {
+      // Python: httpx.ConnectTimeout is a TimeoutException.
+      for (final cause in [
+        TimeoutException('connect'),
+        SocketException('HTTP connection timed out after 0:00:20.000000'),
+      ]) {
+        final bak = session(_ThrowingTransport(ConnectFailure(cause)));
+        await expectLater(
+            bak.login(),
+            throwsA(isA<UserError>().having(
+                (e) => e.message, 'message', timeoutUserMessage())));
+      }
     });
 
     test('cancelStopsBeforeAnyRequest', () async {

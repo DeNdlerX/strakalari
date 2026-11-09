@@ -284,8 +284,14 @@ class StravaClientBase {
       log('Strava request timed out after ${timeoutS.toStringAsFixed(0)} s: $path');
       throw UserError(timeoutUserMessage());
     } on IOException catch (e) {
+      if (e is ConnectFailure && e.isTimeout) {
+        // `httpx.ConnectTimeout` is a `TimeoutException` in Python.
+        log('Strava request timed out after ${timeoutS.toStringAsFixed(0)} s: $path');
+        throw UserError(timeoutUserMessage());
+      }
       log('Strava request failed: $path: ${e.runtimeType}: $e');
-      if (e is ConnectFailure || e is SocketException) {
+      // Only a failed connect is "unreachable" (`httpx.ConnectError`).
+      if (e is ConnectFailure) {
         throw UserError(t('strava_unreachable'));
       }
       throw UserError(t('strava_connection_lost'));

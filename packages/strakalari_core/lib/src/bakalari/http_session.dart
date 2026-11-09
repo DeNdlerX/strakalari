@@ -482,6 +482,17 @@ final class ConnectFailure implements IOException {
 
   ConnectFailure(this.cause);
 
+  /// The connect timed out (Python `httpx.ConnectTimeout`, a
+  /// `TimeoutException`): our own connect timer, or `dart:io`'s
+  /// `connectionTimeout` ("HTTP connection timed out after …"). Callers
+  /// then show the timeout message, not "unreachable".
+  bool get isTimeout {
+    final c = cause;
+    if (c is TimeoutException) return true;
+    return c is SocketException &&
+        c.message.contains('HTTP connection timed out');
+  }
+
   @override
   String toString() => 'ConnectFailure: $cause';
 }
@@ -673,6 +684,12 @@ class BakalariSession {
             '${timeoutS.toStringAsFixed(0)} s: $currentMethod $path');
         throw UserError(timeoutUserMessage(), e);
       } on IOException catch (e) {
+        if (e is ConnectFailure && e.isTimeout) {
+          // `httpx.ConnectTimeout` is a `TimeoutException` in Python.
+          log('Bakaláři request timed out after '
+              '${timeoutS.toStringAsFixed(0)} s: $currentMethod $path');
+          throw UserError(timeoutUserMessage(), e);
+        }
         log('Bakaláři request failed: $currentMethod $path: '
             '${e.runtimeType}: $e');
         if (e is ConnectFailure) {

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:test/test.dart';
@@ -6,6 +7,7 @@ import 'package:test/test.dart';
 import 'package:html_unescape/html_unescape.dart';
 
 import 'package:strakalari_core/src/error_report.dart';
+import 'package:strakalari_core/src/i18n.dart' show t;
 import 'package:strakalari_core/src/strava/client.dart';
 import 'package:strakalari_core/src/strava/extractors.dart';
 import 'package:strakalari_core/src/strava/ordering.dart';
@@ -358,6 +360,29 @@ void main() {
           transport: _ThrowingTransport(
               SocketException('down')));
       await expectLater(client.login(), throwsA(isA<UserError>()));
+    });
+
+    test('connectFailureMessagesFollowThePhase', () async {
+      // Python: ConnectTimeout is a timeout, ConnectError is "unreachable",
+      // any other transport error after connecting is "connection lost".
+      Future<String> messageFor(Object error) async {
+        final client = StravaClient(Map.of(testConfig),
+            transport: _ThrowingTransport(error));
+        try {
+          await client.login();
+        } on UserError catch (e) {
+          return e.message;
+        }
+        return '';
+      }
+
+      expect(await messageFor(ConnectFailure(TimeoutException('connect'))),
+          timeoutUserMessage());
+      expect(
+          await messageFor(ConnectFailure(SocketException('refused'))),
+          t('strava_unreachable'));
+      expect(await messageFor(SocketException('reset after connect')),
+          t('strava_connection_lost'));
     });
   });
 
