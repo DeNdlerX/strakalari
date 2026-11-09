@@ -724,7 +724,7 @@ Future<void> _autoLunch(
     }
     try {
       fresh[handledKey] = updateHandledDaysHook(
-          handled, app.orderedDict, placed);
+          handled, app.orderedDict.isNotEmpty ? app.orderedDict : orderedBefore, placed);
     } on Object {
       // The handled list is a hint; never fail a refresh on it.
     }

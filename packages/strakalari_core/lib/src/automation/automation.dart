@@ -1042,9 +1042,15 @@ class Strakalari implements RefreshApp {
     try {
       final raw = configData['sent_excuses_limit'];
       if (limit == null && raw != null) {
-        capped = raw is int
-            ? raw
-            : int.tryParse('$raw'.trim()) ?? 100;
+        if (raw is int) {
+          capped = raw;
+        } else if (raw is double && raw.isFinite) {
+          capped = raw.truncate();
+        } else if (raw is bool) {
+          capped = raw ? 1 : 0;
+        } else {
+          capped = int.tryParse('$raw'.trim()) ?? 100;
+        }
       }
     } on Object {
       capped = 100;

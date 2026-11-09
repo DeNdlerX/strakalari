@@ -520,8 +520,9 @@ _Libc? _loadLibc() {
       return ptr.cast<ffi.Uint8>();
     }
     return _libcCache = _Libc(flock, open, close, malloc, free);
-  } catch (_) {
+  } catch (e) {
     _libcFailed = true;
+    print('Warning: could not load libc for flock ($e); falling back to lockSync.');
     return null;
   }
 }
