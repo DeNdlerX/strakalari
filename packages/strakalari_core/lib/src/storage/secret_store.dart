@@ -214,13 +214,8 @@ void _writeFile(String path, Uint8List key) {
   final tmpPath = '$path.tmp-$pid';
   try {
     File(tmpPath).writeAsBytesSync(key, flush: true);
-    try {
-      File(tmpPath).renameSync(path);
-    } on FileSystemException {
-      // Windows: rename does not replace an existing target.
-      File(path).deleteSync();
-      File(tmpPath).renameSync(path);
-    }
+    // `os.replace`: never deletes the target first.
+    File(tmpPath).renameSync(path);
   } finally {
     try {
       if (File(tmpPath).existsSync()) File(tmpPath).deleteSync();

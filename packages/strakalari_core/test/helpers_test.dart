@@ -258,6 +258,24 @@ void main() {
       expect(text.replaceAll('\r\n', '\n'), '{\n  "a": [\n    1\n  ]\n}');
     });
 
+    test('replacesAnExistingFile', () {
+      final p = '${tmp!.path}/again.json';
+      atomicWriteJson(p, {'v': 1});
+      atomicWriteJson(p, {'v': 2});
+      expect(jsonDecode(File(p).readAsStringSync()), {'v': 2});
+    });
+
+    test('failedReplaceNeverDeletesTheTarget', () {
+      // `os.replace` onto something it cannot replace raises and leaves the
+      // target alone (a folder here; no delete-then-rename fallback).
+      final target = '${tmp!.path}/blocked.json';
+      Directory(target).createSync();
+      File('$target/keep.txt').writeAsStringSync('keep');
+      expect(() => atomicWriteJson(target, {'v': 1}),
+          throwsA(isA<FileSystemException>()));
+      expect(File('$target/keep.txt').existsSync(), isTrue);
+    });
+
     test('toPlatformNewlines', () {
       expect(toPlatformNewlines('a\nb\n\n', windows: true),
           'a\r\nb\r\n\r\n');

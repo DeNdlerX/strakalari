@@ -793,14 +793,10 @@ void atomicWriteJson(String path, Object? data,
   }
 }
 
+/// `os.replace`: renames over an existing target (also on Windows) and never
+/// deletes the target first; a failure propagates.
 void _replaceFile(String tmpPath, String path) {
-  try {
-    File(tmpPath).renameSync(path);
-  } on FileSystemException {
-    // Windows: rename does not replace an existing target.
-    File(path).deleteSync();
-    File(tmpPath).renameSync(path);
-  }
+  File(tmpPath).renameSync(path);
 }
 
 /// Encrypts text using Fernet. [key] is ignored and kept for backward
