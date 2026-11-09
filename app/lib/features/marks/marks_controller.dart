@@ -60,6 +60,9 @@ class MarksController extends ChangeNotifier {
   /// Unsaved field text surviving re-renders (`drafts`).
   final Map<String, String> drafts = {};
 
+  /// Optional live-state callback when drafts change.
+  void Function()? onDraftsChanged;
+
   // -- persisted preferences ----------------------------------------------------------
 
   String marksScale() {
@@ -206,6 +209,7 @@ class MarksController extends ChangeNotifier {
 
   void setDraft(String key, String value) {
     drafts[key] = value;
+    onDraftsChanged?.call();
   }
 
   void clearDrafts([String prefix = '']) {
@@ -214,6 +218,7 @@ class MarksController extends ChangeNotifier {
     } else {
       drafts.removeWhere((k, _) => k.startsWith(prefix));
     }
+    onDraftsChanged?.call();
   }
 
   // -- predictor ---------------------------------------------------------------------------------------

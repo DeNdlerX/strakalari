@@ -134,7 +134,11 @@ class MarksView extends StatelessWidget {
                     crossAxisAlignment:
                         CrossAxisAlignment.stretch,
                     children: [
-                      Row(
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Text(
                               s.tr('marks_subjects_n',
@@ -143,7 +147,6 @@ class MarksView extends StatelessWidget {
                                   color: t.text,
                                   fontSize: t.fsSmall,
                                   fontWeight: FontWeight.bold)),
-                          const Spacer(),
                           _sortToggle(),
                         ],
                       ),
@@ -889,11 +892,13 @@ class MarksView extends StatelessWidget {
                 child: Icon(icon,
                     size: 16, color: t.faint),
               ),
-            Text(title,
-                style: TextStyle(
-                    color: t.text,
-                    fontSize: t.fsSection,
-                    fontWeight: FontWeight.bold)),
+            Expanded(
+              child: Text(title,
+                  style: TextStyle(
+                      color: t.text,
+                      fontSize: t.fsSection,
+                      fontWeight: FontWeight.bold)),
+            ),
           ],
         ),
         const SizedBox(height: 8),

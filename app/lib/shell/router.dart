@@ -11,8 +11,7 @@ import '../features/absences/absences_live.dart';
 import '../features/activity/activity_live.dart';
 import '../features/common/app_tokens.dart' as ft;
 import '../features/lunches/lunches_live.dart';
-import '../features/marks/marks_controller.dart';
-import '../features/marks/marks_view.dart';
+import '../features/marks/marks_live.dart';
 import '../features/more.dart';
 import '../features/planner/planner_controller.dart';
 import '../features/planner/planner_view.dart';
@@ -114,8 +113,7 @@ GoRoute _route(String name) => GoRoute(
           case 'absences':
             return LiveAbsencesView(tokens: tokens, narrow: narrow);
           case 'marks':
-            return MarksView(
-                controller: MarksController(), tokens: tokens, narrow: narrow);
+            return LiveMarksView(tokens: tokens, narrow: narrow);
           case 'planner':
             return PlannerView(
                 controller: PlannerController(<String, dynamic>{}), narrow: narrow);
