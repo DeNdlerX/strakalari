@@ -44,6 +44,9 @@ extension LunchLogic on AppState {
   /// True while the previous-business-day cutoff has not passed.
   /// Fail-closed: an unparseable day can never be staged as orderable.
   bool isLunchOrderOpen(String day, [DateTime? now]) {
+    if (isLunchOrderOpenOverride != null) {
+      return isLunchOrderOpenOverride!(day, now);
+    }
     try {
       final parsed = parseCzDate(day);
       if (parsed == null) return false;
@@ -363,7 +366,7 @@ extension LunchLogic on AppState {
   /// Returns false when a run is already in flight. Port of
   /// `start_ai_recommend()`.
   bool startAiRecommend() {
-    if (!claimFlight('ai_running')) return false;
+    if (aiRunning || !claimFlight('ai_running')) return false;
     aiRunning = true;
     logLine(Strings.get('ai_started'));
     _emit();
@@ -508,6 +511,7 @@ extension LunchLogic on AppState {
   }
 
   String _blacklistPath() {
+    if (blacklistPathOverride != null) return blacklistPathOverride!();
     var path = '${get('strava_blacklist', './strava_blacklist.json')}';
     try {
       path = resolvePath(path);

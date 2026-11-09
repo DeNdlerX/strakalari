@@ -165,7 +165,7 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
    - `TestGemini.test_parse_json_block` → `gemini_test.dart`: `parse json block`
    - `TestGemini.test_local_fallback_picks_non_banned` → `gemini_test.dart`: `local fallback picks high-protein meal`
    - `test_validate_recommendation_drops_hallucinations` → `gemini_test.dart`: `validate drops hallucinations`
-   - `test_worker_reports_closed_days_separately`, `test_worker_says_closed_when_everything_is_past_cutoff`, `test_recommend_respects_skip_and_marks_pending`, `test_recommend_busy_guard_snacks_instead_of_rerunning` → **Deferred (phase 5 — `flet_ui.state_lunches` AI recommend worker)**
+   - `test_worker_reports_closed_days_separately`, `test_worker_says_closed_when_everything_is_past_cutoff`, `test_recommend_respects_skip_and_marks_pending`, `test_recommend_busy_guard_snacks_instead_of_rerunning` → `app/test/app_state_lunches_test.dart` (workerReportsClosedDaysSeparately, workerSaysClosedWhenEverythingIsPastCutoff, recommendRespectsSkipAndMarksPending, recommendBusyGuardSnacksInsteadOfRerunning)
 3. `tests/test_automation_safety.py` (16):
    - `test_audit_roundtrip_newest_first` → `audit_test.dart`: `roundtripNewestFirst`
    - `test_audit_skips_corrupt_lines` → `audit_test.dart`: `skipsCorruptLines`
@@ -313,7 +313,7 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
     - `TestAutoFillsGapsOnly.test_planned_day_off_without_order_gets_nothing` → `lunch_auto_test.dart`: `planned day off without order gets nothing`
     - `TestAutoFillsGapsOnly.test_handled_days_remember_orders_but_not_failures` → `lunch_auto_test.dart`: `handled days remember orders but not failures`
     - `TestPlannedSkipLunchChoice.test_keep_lunch_choice_is_stored_and_honored` → `planned_skips_test.dart`: `keepLunchChoiceIsStoredAndHonored`
-    - `test_restart_does_not_resurrect_meal_on_planned_day`, `test_send_only_transmits_pending_picks` → **Deferred (phase 5 — `flet_ui.state.AppState` lunch staging)**
+    - `test_restart_does_not_resurrect_meal_on_planned_day`, `test_send_only_transmits_pending_picks` → `app/test/app_state_lunches_test.dart` (restartDoesNotResurrectMealOnPlannedDay, sendOnlyTransmitsPendingPicks)
 36. `tests/test_lunch_cutoff.py` (11):
     - `test_gekom_preset_cutoff_defaults_to_noon`, `test_resolve_lunch_cutoff_user_wins_then_preset` → `school_presets_test.dart`: `closes` / `userWinsThenPreset` + `parity_lunch_cutoff_test.dart`
     - `test_parse_and_validate_cutoff` → `lunch_cutoff_test.dart`: `parseCutoffTime`, `normalizeCutoffTime`, `isValidCutoffTime`
@@ -324,8 +324,8 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
     - `test_monday_deadline_is_friday_noon` → `lunch_cutoff_test.dart`: `monday deadline is friday noon`
     - `TestCutoffSpelling.test_dot_spelling_valid` → `lunch_cutoff_test.dart`: `dot spelling valid`
     - `TestCutoffSpelling.test_garbage_still_invalid` → `lunch_cutoff_test.dart`: `garbage still invalid`
-    - `test_state_rejects_closed_day_and_filters_submit` → `app/test/lunches_view_test.dart`: `closed day is read-only` / `order past cutoff stages nothing` (in progress, unreviewed; `AppState` submit filter **Deferred phase 5**)
-37. `tests/test_lunch_day_keys.py` (3) → **Deferred (phase 5 — `flet_ui.state_lunches` `cached_orders` / `_record_web_orders` / `_store_ordered`; pure `canonicalLunchDayKey` covered by `parity_lunch_cutoff_test.dart`)**
+    - `test_state_rejects_closed_day_and_filters_submit` → `app/test/lunches_view_test.dart` (`closed day is read-only` / `order past cutoff stages nothing`) + `app/test/app_state_lunches_test.dart` (`stateRejectsClosedDayAndFiltersSubmit`)
+37. `tests/test_lunch_day_keys.py` (3) → `app/test/app_state_lunches_test.dart` (`cachedOrdersUseCanonicalDayKeys`, `recordWebOrdersDropsOtherSpellings`); pure `canonicalLunchDayKey` and `_store_ordered` covered by `parity_lunch_cutoff_test.dart` and `automation_test.dart`
 38. `tests/test_lunch_deadline_calendar.py` (1) → `parity_lunch_cutoff_test.dart` (`effectiveCalendar(clipToClose: false)`); `AppState.lunch_deadline_calendar` **Deferred (phase 5)**
 39. `tests/test_lunch_filter.py` (12) → `app/test/lunches_filter_test.dart` (12 1:1 cases, in progress, unreviewed): `negation clause yields keyword`, `likes clause ignored`, `mixed text keeps only dislikes`, `bez form`, `conjunction like segment ignored`, `english no form`, `empty`, `prefs hide and stage`, `good pick not clobbered`, `hidden pick replaced`, `cancelled day skipped`, `closed day hides but stages nothing`
 40. `tests/test_lunch_same_pick.py` (5) → **Deferred (phase 5 — `flet_ui.state.AppState` / `LunchView` pending pick vs web order comparison)**: `test_repicking_the_ordered_meal_is_no_change`, `test_a_different_meal_is_a_change_until_picked_back`, `test_no_lunch_compares_with_the_web_too`, `test_submit_sends_only_picks_that_differ`, `test_refresh_unstages_a_pick_the_web_now_reports`
@@ -401,12 +401,12 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
 73. `tests/test_store_package.py` (18) → **Deferred (phase 7 — Windows Store / MSIX packaging & data dir migration)**
 74. `tests/test_strava_blacklist_edits.py` (5):
     - `test_default_blacklist_template_is_empty` → `config_test.dart`: `blacklistFiltersTemplatePlaceholders` / `repoExampleFilesAreValid`
-    - 4 `TestBlacklistEdits` (`AppState` add/remove blacklist word) → **Deferred (phase 5 — `AppState` blacklist editor)**
+    - 4 `TestBlacklistEdits` (`AppState` add/remove blacklist word) → `app/test/app_state_lunches_test.dart` (addRefusesOnCorruptFile, removeRefusesOnNonList, addAndRemoveKeepExistingWords, addToMissingFileCreatesIt)
 75. `tests/test_strava_client.py` (19) → `strava_test.dart` (19 1:1 camelCase cases)
 76. `tests/test_strava_low_balance.py` (5):
     - `test_ordering_stops_at_low_balance`, `test_cancellations_go_first_and_still_work_when_broke` → `automation_test.dart`: `orderingStopsAtLowBalance`, `cancellationsGoFirstAndStillWorkWhenBroke`
     - `test_refresh_reports_low_balance_as_its_own_case`, `test_low_balance_notice_is_claimed_once_a_day` → `refresh_test.dart`: `refreshReportsLowBalanceAsItsOwnCase`, `lowBalanceNoticeIsClaimedOnceADay`
-    - `test_ui_low_balance_is_a_warning_not_an_error` → **Deferred (phase 5 — `AppState._warn_low_balance`)**
+    - `test_ui_low_balance_is_a_warning_not_an_error` → `app/test/app_state_lunches_test.dart` (uiLowBalanceIsAWarningNotAnError)
 77. `tests/test_strava_ordering.py` (15) → `automation_test.dart` (15 1:1 camelCase cases): `failedDayWithoutClicksIsNotSuccess`, `failedRunReportsDaysSavedByImmediateFrontend`, `failedRunOnSaveButtonFrontendReportsNothingClicked`, `allFailedAfterClicksRestoresOriginals`, `lostSelectionFailsAndRestores`, `mealNotOnMenuIsReportedButOthersPlaced`, `fullSuccessSubmitsAndRecords`, `menuMissReturnsFalse`, `menuHitReturnsTrue`, `orderingSkippedWithoutCutoff`, `partialOrderIsNotSuccess`, `dryRunSelectsWithoutSubmitting`, `successSubmits`, `failedDayAbortsSubmit`, `closedDayIsSkipped`
 78. `tests/test_substitution_feed_days.py` (1) → `schedule_test.dart`: `feedDoesNotCreateDays`
 79. `tests/test_timetable_cache_merge.py` (9):

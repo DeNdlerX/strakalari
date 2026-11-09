@@ -9,6 +9,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../controllers/app_state.dart';
+import '../../l10n/strings.dart';
 import 'lunches_controller.dart';
 import 'lunches_view.dart';
 
@@ -84,7 +85,9 @@ class LiveLunchesView extends ConsumerWidget {
       updatedLabel: s.updatedLabel,
       onOpenSettings: () => s.go('settings'),
       onRecommend: () async {
-        s.startAiRecommend();
+        if (!s.startAiRecommend()) {
+          s.lastSnackMessage = Strings.get('ai_already_running');
+        }
       },
       onSubmit: (_) async => s.submitOrders(),
     );

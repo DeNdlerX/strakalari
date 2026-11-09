@@ -351,6 +351,22 @@ class LunchesView extends StatelessWidget {
         children: _sideChildren(context),
       );
 
+  /// Runs the AI recommendation flow (or snacks why it cannot run).
+  /// Port of `LunchView.recommend`.
+  Future<void> recommend([BuildContext? context]) async {
+    final c = controller;
+    final hasKey = (c.get('gemini_api_key') ?? '').toString().isNotEmpty;
+    if (!hasKey) {
+      if (context != null) appSnack(context, Str.t('recommend_no_key'));
+      return;
+    }
+    if (c.aiRunning) {
+      if (context != null) appSnack(context, Str.t('ai_already_running'));
+      return;
+    }
+    await onRecommend?.call();
+  }
+
   Widget _aiCard(BuildContext context) {
     final c = controller;
     final hasKey = (c.get('gemini_api_key') ?? '').toString().isNotEmpty;
@@ -388,7 +404,7 @@ class LunchesView extends StatelessWidget {
                   onPressed: !hasKey || c.aiRunning
                       ? null
                       : () async {
-                          await onRecommend?.call();
+                          await recommend(context);
                         },
                   child: Text(Str.t('recommend')),
                 ),

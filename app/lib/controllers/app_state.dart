@@ -253,6 +253,12 @@ class AppState {
     String language,
   }) recommendLunchesFn = recommendLunches;
 
+  /// Optional test seam for `isLunchOrderOpen`.
+  bool Function(String day, [DateTime? now])? isLunchOrderOpenOverride;
+
+  /// Optional test seam for `_blacklistPath`.
+  String Function()? blacklistPathOverride;
+
   /// Last snackbar-equivalent message from a background worker
   /// (excuse send, order submit, AI recommend).
   String lastSnackMessage = '';
