@@ -352,7 +352,7 @@ extension PlannerLogic on AppState {
       plannerTargetDays(),
       '${get('subject_limits', {})}',
       '${get('absence_critical_pct', 25.0)}',
-      dates.map(fmtDay).toList()..sort(),
+      (dates.map(fmtDay).toList()..sort()).join(','),
       semClose('sem1'),
       semClose('sem2'),
     );

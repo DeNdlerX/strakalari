@@ -46,7 +46,20 @@ extension ExcuseTasksLogic on AppState {
   static final Expando<List<Map<String, Object?>> Function()>
       _excuseTasksOverrides = Expando();
 
+  /// Test hook: overrides `_allExcuseTasks` (mirrors
+  /// `monkeypatch.setattr(state, "_all_excuse_tasks", ...)` in Python).
+  List<Map<String, Object?>> Function()? get allExcuseTasksOverride =>
+      _allExcuseTasksOverrides[this];
+  set allExcuseTasksOverride(List<Map<String, Object?>> Function()? fn) {
+    _allExcuseTasksOverrides[this] = fn;
+  }
+
+  static final Expando<List<Map<String, Object?>> Function()>
+      _allExcuseTasksOverrides = Expando();
+
   List<Map<String, Object?>> _allExcuseTasks() {
+    final override = allExcuseTasksOverride;
+    if (override != null) return override();
     if (demoMode) return [];
     return [
       for (final t
@@ -195,8 +208,8 @@ extension ExcuseTasksLogic on AppState {
 
   bool unignoreKeys(List<String> keys) => changeIgnored(remove: keys);
 
-  void markExcused(Map<String, Object?> task, String template,
-      {bool sent = false, bool emit = true}) {
+  void markExcused(Map<String, Object?> task,
+      [String template = '', bool sent = false, bool emit = true]) {
     excuseLog.add({
       'key': '${task['key']}',
       'label': '${task['label']}',
@@ -241,7 +254,7 @@ extension ExcuseTasksLogic on AppState {
     final label = '${task['label'] ?? key}';
 
     void onSent() {
-      markExcused(task, template, sent: true);
+      markExcused(task, template, true);
     }
 
     spawn(
@@ -422,7 +435,7 @@ extension ExcuseTasksLogic on AppState {
 
     void onSent() {
       for (final task in dayTasks) {
-        markExcused(task, template, sent: true, emit: false);
+        markExcused(task, template, true, false);
       }
     }
 

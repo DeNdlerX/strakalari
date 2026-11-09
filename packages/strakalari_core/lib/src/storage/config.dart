@@ -514,6 +514,9 @@ class ConfigManager {
   Set<String> _touched = {};
   bool _unreadable = false;
 
+  /// Optional test seam (simulates disk / lock failures in unit tests).
+  void Function()? saveOverride;
+
   factory ConfigManager([String configPath = './config.json',
       Encoding encoding = utf8]) {
     final manager = ConfigManager._(resolvePath(configPath), encoding);
@@ -594,6 +597,10 @@ class ConfigManager {
   /// Refuses when the file existed but could not be read at load time —
   /// writing then would replace the user's settings with defaults.
   void save() {
+    if (saveOverride != null) {
+      saveOverride!();
+      return;
+    }
     if (_unreadable && File(configPath).existsSync()) {
       throw StateError("Config '$configPath' could not be read at startup; "
           'not overwriting it. Restart the app.');

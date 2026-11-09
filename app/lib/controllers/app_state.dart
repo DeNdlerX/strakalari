@@ -310,7 +310,9 @@ class AppState {
       return false;
     }
     try {
-      core.setLanguage('${config.get('language', 'cs')}');
+      final lang = '${config.get('language', 'cs')}';
+      core.setLanguage(lang);
+      Strings.lang = lang;
     } catch (_) {}
     for (final cb in List.of(configListeners)) {
       try {
