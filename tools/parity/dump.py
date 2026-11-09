@@ -2328,7 +2328,10 @@ def dst_cases() -> list[dict]:
     fetch asks for, the history weeks a refresh still misses, and the
     substitution feed range. ``today`` is pinned by patching the module's
     ``datetime`` / ``date``; the Dart tests drive the real Dart code under
-    ``withClock`` and must produce the same dates.
+    ``withClock`` and must produce the same dates. ``today`` is the Monday
+    a week before each switch (forward steps cross it: the next timetable
+    week and the 14-day substitution range) and the Monday after it
+    (backward steps cross it: past timetable and history weeks).
     """
     from datetime import date, datetime, timedelta
 
@@ -2394,7 +2397,8 @@ def dst_cases() -> list[dict]:
         return _F
 
     cases = []
-    for today in (date(2026, 3, 30), date(2026, 10, 26)):
+    for today in (date(2026, 3, 23), date(2026, 3, 30),
+                  date(2026, 10, 19), date(2026, 10, 26)):
         for back, forward, history in (
                 (4, 1, []),
                 (2, 1, [today - timedelta(days=today.weekday() + 7 * n)
