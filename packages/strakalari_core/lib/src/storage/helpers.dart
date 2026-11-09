@@ -587,7 +587,7 @@ void _flockRelease(int fd) {
 
 /// The line breaks Python's `str.splitlines()` splits on.
 final RegExp _pyLineBreak =
-    RegExp(r'\r\n|[\n\r\x0B\x0C\x1C\x1D\x1E\x85  ]');
+    RegExp(r'\r\n|[\n\r\x0B\x0C\x1C\x1D\x1E\x85\u2028\u2029]');
 
 /// One log line for an exception a scraper deliberately carries on after.
 String describeSwallowed(String what, Object exc) {

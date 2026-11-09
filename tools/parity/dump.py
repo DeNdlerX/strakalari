@@ -149,7 +149,7 @@ def helpers_cases() -> list[dict]:
                  "only\rcarriage", "x" * 200 + "\nmore",
                  "   padded line  \n\n", "", "one line",
                  "Příliš žluťoučký 😀" * 12 + "\nnext",
-                 "form\x0cfeed", "line separator"]:
+                 "form\x0cfeed", "line\u2028separator"]:
         cases.append(_case(
             "describeSwallowed",
             h.describe_swallowed("waiting for the grid", ProbeError(text)),
