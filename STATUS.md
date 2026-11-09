@@ -687,6 +687,7 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
 
 ### Phase 5 wiring finding (2026-11-09)
 The 10 screen views are driven by feature-local controllers (features/*), parallel to the AppState ports in controllers/*; router.dart builds them with empty config, so no screen shows real data yet. Plan: adapt each feature controller to read/write AppState (one screen per commit). Done: AppState refresh/test-connection/update-check workers (port of _refresh_work/_test_work/_update_work) + app/test/app_state_refresh_test.dart (3 tests). Still stubs: excuse send worker, order submit and AI workers.
+Activity screen is live (features/activity/activity_live.dart, snapshot controller + LiveActivityView; 2 tests). Bug fixed on the way: AppStateController mutated the shared AppState in place and Riverpod skipped the notification, so no screen would ever have repainted; it now overrides updateShouldNotify. Remaining screens to bridge the same way: today, timetable, absences, marks, planner, lunches, settings, wizard.
 
 ## Checkpoint notes
 

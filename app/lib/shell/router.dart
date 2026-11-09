@@ -9,8 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../features/absences/absences_controller.dart';
 import '../features/absences/absences_view.dart';
-import '../features/activity/activity_controller.dart';
-import '../features/activity/activity_view.dart';
+import '../features/activity/activity_live.dart';
 import '../features/common/app_tokens.dart' as ft;
 import '../features/lunches/lunches_controller.dart';
 import '../features/lunches/lunches_view.dart';
@@ -131,8 +130,7 @@ GoRoute _route(String name) => GoRoute(
             return LunchesView(
                 controller: LunchController(<String, dynamic>{}), narrow: narrow);
           case 'activity':
-            return ActivityView(
-                controller: ActivityController(<String, dynamic>{}), narrow: narrow);
+            return LiveActivityView(narrow: narrow);
           case 'settings':
             return SettingsView(
                 controller: SettingsController(<String, dynamic>{}),

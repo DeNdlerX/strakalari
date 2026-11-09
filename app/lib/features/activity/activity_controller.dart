@@ -32,6 +32,11 @@ class ActivityController {
 
   bool Function(String scope)? startRefreshHook;
 
+  /// Live wiring: the actions below delegate to the shared AppState.
+  void Function()? cancelRefreshHook;
+  void Function()? clearLogHook;
+  void Function()? dismissUpdateHook;
+
   /// Last normalized scope (tests assert 'bogus' → 'all').
   String lastScope = 'all';
 
@@ -77,6 +82,7 @@ class ActivityController {
   }
 
   void clearLog() {
+    if (clearLogHook != null) return clearLogHook!();
     logLines = [];
     _emit();
   }
@@ -162,6 +168,7 @@ class ActivityController {
   }
 
   void cancelRefresh() {
+    if (cancelRefreshHook != null) return cancelRefreshHook!();
     if (!refreshRunning) return;
     cancelRequested = true;
     workerLog('cancel_refresh_log');
@@ -177,6 +184,7 @@ class ActivityController {
   }
 
   void dismissUpdate() {
+    if (dismissUpdateHook != null) return dismissUpdateHook!();
     if (updateInfo != null) {
       updateDismissed = '${updateInfo!['version'] ?? ''}';
     }

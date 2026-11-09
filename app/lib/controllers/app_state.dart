@@ -742,6 +742,11 @@ class AppStateController extends Notifier<AppState> {
     return state;
   }
 
+  /// The shared [AppState] is mutated in place, so the same instance must
+  /// still notify listeners (Riverpod skips equal values by default).
+  @override
+  bool updateShouldNotify(AppState previous, AppState next) => true;
+
   /// Re-emits after mutations made through a mixin facade.
   void emit() {
     // ignore: avoid_self_assignment
