@@ -602,6 +602,74 @@
       "expected": "{\n  \"floats\": [\n    0.0,\n    -0.0,\n    15.0,\n    1e-07,\n    1e-05,\n    0.0001,\n    1000000000000000.0,\n    1e+16,\n    1.5e+16,\n    -2.5e-07,\n    1e+21\n  ]\n}"
     },
     {
+      "fn": "pyRepr",
+      "args": [
+        {
+          "type": "days and hours",
+          "starting_day": "05.10.2099",
+          "starting_lesson": 3,
+          "ending_lesson": null,
+          "ok": true
+        }
+      ],
+      "expected": "{'type': 'days and hours', 'starting_day': '05.10.2099', 'starting_lesson': 3, 'ending_lesson': None, 'ok': True}"
+    },
+    {
+      "fn": "pyRepr",
+      "args": [
+        {
+          "a": [
+            1,
+            2.5,
+            "x'y",
+            "q\"r",
+            "it's \"both\""
+          ],
+          "b": {},
+          "c": []
+        }
+      ],
+      "expected": "{'a': [1, 2.5, \"x'y\", 'q\"r', 'it\\'s \"both\"'], 'b': {}, 'c': []}"
+    },
+    {
+      "fn": "pyRepr",
+      "args": [
+        "tab\there\nnew\\slash 'single'"
+      ],
+      "expected": "\"tab\\there\\nnew\\\\slash 'single'\""
+    },
+    {
+      "fn": "pyRepr",
+      "args": [
+        "Příliš žluťoučký kůň  nbsp­"
+      ],
+      "expected": "'Příliš žluťoučký kůň \\xa0nbsp\\xad'"
+    },
+    {
+      "fn": "pyRepr",
+      "args": [
+        [
+          1e-07,
+          1e+16,
+          15.0,
+          -0.0,
+          12345678.9,
+          false,
+          null
+        ]
+      ],
+      "expected": "[1e-07, 1e+16, 15.0, -0.0, 12345678.9, False, None]"
+    },
+    {
+      "fn": "pyRepr",
+      "args": [
+        {
+          "05.10.2099": "a&1&0"
+        }
+      ],
+      "expected": "{'05.10.2099': 'a&1&0'}"
+    },
+    {
       "fn": "entryName",
       "args": [
         "C:\\Users\\Student\\AppData\\Local\\Strakalari",

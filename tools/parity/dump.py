@@ -126,6 +126,18 @@ def helpers_cases() -> list[dict]:
         cases.append(_case("jsonIndent2",
                            json.dumps(sample, indent=2, ensure_ascii=False),
                            sample))
+    # repr() of JSON-shaped values, as log lines print dicts and lists.
+    repr_samples = [
+        {"type": "days and hours", "starting_day": "05.10.2099",
+         "starting_lesson": 3, "ending_lesson": None, "ok": True},
+        {"a": [1, 2.5, "x'y", "q\"r", "it's \"both\""], "b": {}, "c": []},
+        "tab\there\nnew\\slash 'single'",
+        "Příliš žluťoučký kůň \u00a0nbsp\u00ad",
+        [1e-7, 1e16, 15.0, -0.0, 12345678.9, False, None],
+        {"05.10.2099": "a&1&0"},
+    ]
+    for sample in repr_samples:
+        cases.append(_case("pyRepr", repr(sample), sample))
     # Key store entry name normalization (A-M5): normcase(abspath(data_dir)).
     import hashlib
     import ntpath

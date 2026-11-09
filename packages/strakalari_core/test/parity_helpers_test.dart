@@ -119,6 +119,8 @@ void main() {
           result = addDays(args[0] as DateTime, args[1] as int);
         case 'pyJsonDumps':
           result = pyJsonDumps(args[0]);
+        case 'pyRepr':
+          result = pyRepr(args[0]);
         case 'jsonIndent2':
           result = jsonIndent2(args[0]);
         case 'entryName':

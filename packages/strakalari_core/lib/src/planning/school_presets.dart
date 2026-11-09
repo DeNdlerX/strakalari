@@ -89,21 +89,6 @@ const String defaultLunchCutoff = '12:00';
 
 // -- validation ------------------------------------------------------------------
 
-/// Python `repr()` rendering for validation messages: strings are
-/// single-quoted (like `{entry!r}` in `validate_preset`), so a bad entry
-/// reads `['bad', 'label']` instead of Dart's `[bad, label]`.
-String _pyRepr(Object? value) {
-  if (value is String) {
-    return "'${value.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'";
-  }
-  if (value is bool) return value ? 'True' : 'False';
-  if (value is List) return '[${value.map(_pyRepr).join(', ')}]';
-  if (value is Map) {
-    return '{${value.entries.map((e) => '${_pyRepr(e.key)}: ${_pyRepr(e.value)}').join(', ')}}';
-  }
-  return '$value';
-}
-
 /// Problems of a preset map (empty = usable).
 List<String> validatePreset(Object? data) {
   final problems = <String>[];
@@ -142,7 +127,7 @@ List<String> validatePreset(Object? data) {
       if (entry is! List ||
           entry.length != 2 ||
           parseCzDate(entry[0]) == null) {
-        problems.add('bad \'days\' entry ${_pyRepr(entry)} '
+        problems.add('bad \'days\' entry ${pyRepr(entry)} '
             '(want ["DD.MM.YYYY", "label"])');
         break;
       }
@@ -155,7 +140,7 @@ List<String> validatePreset(Object? data) {
           entry.length != 3 ||
           parseCzDate(entry[0]) == null ||
           parseCzDate(entry[1]) == null) {
-        problems.add('bad \'ranges\' entry ${_pyRepr(entry)} '
+        problems.add('bad \'ranges\' entry ${pyRepr(entry)} '
             '(want ["DD.MM.YYYY", "DD.MM.YYYY", "label"])');
         break;
       }

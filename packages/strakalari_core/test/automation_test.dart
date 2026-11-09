@@ -1717,5 +1717,26 @@ void main() {
       expect(File(logPath).readAsStringSync(),
           contains('after failed rotation'));
     });
+
+    test('excuseLogLinesUsePythonMapRepr', () async {
+      final logPath = '${tmp.path}/log.txt';
+      final client = FakeBak();
+      final app = realApp(tmp, {
+        'log_file': logPath,
+        'dry_run': true,
+      })
+        ..bakalariClient = client;
+      await app.sendExcuse({
+        'type': 'days and hours',
+        'starting_day': '05.10.2099',
+        'starting_lesson': 3,
+      }, 'x');
+      final logText = File(logPath).readAsStringSync();
+      expect(
+        logText,
+        contains(
+            "{'type': 'days and hours', 'starting_day': '05.10.2099', 'starting_lesson': 3}"),
+      );
+    });
   });
 }

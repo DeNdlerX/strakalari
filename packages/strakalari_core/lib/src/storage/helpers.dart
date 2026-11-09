@@ -718,6 +718,61 @@ String pyJsonDumps(Object? value) {
   return out.toString();
 }
 
+/// Python `repr()` of JSON-shaped values, for log lines that interpolate a
+/// dict or list (`{excuse}` in an f-string): `{'type': 'days and hours'}`,
+/// `None`, `True`, `[1, 2]`.
+///
+/// Strings follow `str.__repr__`: single quotes unless the text holds a
+/// `'` and no `"`; backslash, the quote, `\n \r \t` and control characters
+/// are escaped. Printable non-ASCII stays as is; the few invisible
+/// characters that Python escapes too (no-break space, soft hyphen, zero
+/// width and line/paragraph separators, BOM) are escaped here as well.
+String pyRepr(Object? value) {
+  if (value == null) return 'None';
+  if (value is bool) return value ? 'True' : 'False';
+  if (value is int) return '$value';
+  if (value is double) {
+    if (value.isNaN) return 'nan';
+    if (value.isInfinite) return value.isNegative ? '-inf' : 'inf';
+    return _pyFloatRepr(value);
+  }
+  if (value is String) return _pyStrRepr(value);
+  if (value is Map) {
+    return '{${value.entries.map((e) => '${pyRepr(e.key)}: ${pyRepr(e.value)}').join(', ')}}';
+  }
+  if (value is Set) return value.isEmpty ? 'set()' : '{${value.map(pyRepr).join(', ')}}';
+  if (value is Iterable) return '[${value.map(pyRepr).join(', ')}]';
+  return '$value';
+}
+
+String _pyStrRepr(String text) {
+  final quote = text.contains("'") && !text.contains('"') ? '"' : "'";
+  final out = StringBuffer(quote);
+  for (final rune in text.runes) {
+    if (rune == 0x5c) {
+      out.write(r'\\');
+    } else if (String.fromCharCode(rune) == quote) {
+      out.write('\\$quote');
+    } else if (rune == 0x0a) {
+      out.write(r'\n');
+    } else if (rune == 0x0d) {
+      out.write(r'\r');
+    } else if (rune == 0x09) {
+      out.write(r'\t');
+    } else if (rune < 0x20 || (rune >= 0x7f && rune <= 0xa0) || rune == 0xad) {
+      out.write('\\x${rune.toRadixString(16).padLeft(2, '0')}');
+    } else if ((rune >= 0x200b && rune <= 0x200f) ||
+        (rune >= 0x2028 && rune <= 0x202f) ||
+        rune == 0xfeff) {
+      out.write('\\u${rune.toRadixString(16).padLeft(4, '0')}');
+    } else {
+      out.writeCharCode(rune);
+    }
+  }
+  out.write(quote);
+  return out.toString();
+}
+
 /// `json.dumps(value, indent=2, ensure_ascii=False)`.
 String jsonIndent2(Object? value) {
   final out = StringBuffer();

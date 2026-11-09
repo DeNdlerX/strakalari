@@ -708,7 +708,7 @@ class Strakalari implements RefreshApp {
     await client.login();
     await client.fetchData();
     if (isDry) {
-      writeLog('[Dry-Run] Proposed orders (nothing is sent): $orders');
+      writeLog('[Dry-Run] Proposed orders (nothing is sent): ${pyRepr(orders)}');
       var ok = true;
       for (final entry in orders.entries) {
         if (_isCancelled()) {
@@ -1129,11 +1129,11 @@ class Strakalari implements RefreshApp {
       saveUnconfirmed(alreadyExcusedFile, stillOpen, utf8);
       for (final entry in confirmed) {
         writeLog('Unconfirmed excuse found in the Komens outbox — it was sent: '
-            '${baseExcuse(entry)}');
+            '${pyRepr(baseExcuse(entry))}');
       }
       for (final entry in notSent) {
         writeLog('Unconfirmed excuse is not in the Komens outbox — it was NOT sent '
-            'and may be sent again: ${baseExcuse(entry)}');
+            'and may be sent again: ${pyRepr(baseExcuse(entry))}');
       }
     } on Object catch (e) {
       writeLog(
@@ -1236,7 +1236,7 @@ class Strakalari implements RefreshApp {
       return 'failed';
     }
     if (excuseMode == 'dry_run') {
-      writeLog('[Dry-Run] Preparing the excuse (not sending): $excuse');
+      writeLog('[Dry-Run] Preparing the excuse (not sending): ${pyRepr(excuse)}');
       late final bool filled;
       try {
         filled = await _submit(excuse, customText, fillOnly: true);
@@ -1271,7 +1271,7 @@ class Strakalari implements RefreshApp {
           return 'failed';
         }
         if (excuseCovered(excuse, history)) {
-          writeLog('Already excused, not sending again: $excuse');
+          writeLog('Already excused, not sending again: ${pyRepr(excuse)}');
           return 'covered';
         }
         late final List<Map<String, Object?>> unconfirmed;
@@ -1285,10 +1285,10 @@ class Strakalari implements RefreshApp {
         if (unconfirmedBlocks(excuse, unconfirmed)) {
           writeLog('Not sending: an earlier submit of this absence was never confirmed '
               'and may have gone out. The next refresh checks the Komens outbox '
-              'and releases it if nothing arrived: $excuse');
+              'and releases it if nothing arrived: ${pyRepr(excuse)}');
           return 'skipped';
         }
-        writeLog('Attempting to excuse: $excuse');
+        writeLog('Attempting to excuse: ${pyRepr(excuse)}');
         client.lastSubmitUncertain = false;
         late final bool success;
         try {
@@ -1300,7 +1300,7 @@ class Strakalari implements RefreshApp {
           }
           rethrow;
         } on Object catch (e, st) {
-          writeLog('Exception while excusing $excuse: '
+          writeLog('Exception while excusing ${pyRepr(excuse)}: '
               '${e.runtimeType}: $e\n$st');
           success = false;
         }
@@ -1310,7 +1310,7 @@ class Strakalari implements RefreshApp {
                 historyFilepath, unconfirmed, excuse);
           }
           writeLog(
-              'Warning: excuse NOT sent (the form did not confirm): $excuse');
+              'Warning: excuse NOT sent (the form did not confirm): ${pyRepr(excuse)}');
           return 'failed';
         }
         for (final e in historyEntries(excuse)) {
@@ -1342,7 +1342,7 @@ class Strakalari implements RefreshApp {
   String _recordUnconfirmed(String historyFilepath,
       List<Map<String, Object?>> unconfirmed, Map<String, Object?> excuse) {
     writeLog('Warning: the excuse submit was NOT confirmed — it may or may not have been '
-        'sent. It will not be sent again until the Komens outbox shows: $excuse');
+        'sent. It will not be sent again until the Komens outbox shows: ${pyRepr(excuse)}');
     try {
       saveUnconfirmed(historyFilepath,
           [...unconfirmed, unconfirmedEntry(excuse)], utf8);
