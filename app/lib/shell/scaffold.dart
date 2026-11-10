@@ -147,7 +147,12 @@ class AppScaffold extends ConsumerWidget {
       });
     }
 
-    if (route == 'more' && !narrow) route = 'today';
+    if (route == 'more' && !narrow) {
+      route = 'today';
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) context.go('/today');
+      });
+    }
 
     final lunchCount = appState.pendingLunchCount;
     final lunchLabel = Strings.get('nav_lunches') +
@@ -181,10 +186,17 @@ class AppScaffold extends ConsumerWidget {
       narrow: narrow,
     );
 
+    final paddedContent = Padding(
+      padding: narrow
+          ? const EdgeInsets.symmetric(horizontal: 12, vertical: 4)
+          : EdgeInsets.all(tok.pad + 8),
+      child: child,
+    );
+
     final right = Column(
       children: [
         topBar,
-        Expanded(child: child),
+        Expanded(child: paddedContent),
       ],
     );
 
@@ -238,14 +250,21 @@ class AppScaffold extends ConsumerWidget {
                   right: false,
                   bottom: false,
                   child: NavigationRail(
+                    backgroundColor: tok.surface,
                     selectedIndex: sideIndex,
-                    labelType: NavigationRailLabelType.selected,
+                    labelType: NavigationRailLabelType.all,
+                    groupAlignment: 0.0,
                     onDestinationSelected: (i) =>
                         context.go(routeLocation(tabs[i])),
                     destinations: [
                       for (final tab in tabs)
                         NavigationRailDestination(
-                          icon: Icon(_railIcons[tab]!),
+                          icon: tab == 'lunches' && lunchCount > 0
+                              ? Badge(
+                                  label: Text('$lunchCount'),
+                                  child: Icon(_railIcons[tab]!),
+                                )
+                              : Icon(_railIcons[tab]!),
                           label: Text(tab == 'lunches'
                               ? Strings.get('nav_lunches')
                               : _titleFor(tab)),
@@ -254,7 +273,7 @@ class AppScaffold extends ConsumerWidget {
                   ),
                 ),
               ),
-              VerticalDivider(width: 1, color: tok.border),
+              VerticalDivider(width: 1, thickness: 1, color: tok.border),
               Expanded(
                 child: SafeArea(
                   left: false,
@@ -272,9 +291,10 @@ class AppScaffold extends ConsumerWidget {
           body: Row(
             children: [
               NavigationRail(
-                extended: true,
-                minExtendedWidth: tok.railWidth,
+                backgroundColor: tok.surface,
+                minWidth: 90,
                 selectedIndex: railIndex,
+                labelType: NavigationRailLabelType.all,
                 onDestinationSelected: (i) =>
                     context.go(routeLocation(shellRoutes[i])),
                 destinations: [
@@ -286,7 +306,7 @@ class AppScaffold extends ConsumerWidget {
                     ),
                 ],
               ),
-              VerticalDivider(width: 1, color: tok.border),
+              VerticalDivider(width: 1, thickness: 1, color: tok.border),
               Expanded(child: right),
             ],
           ),

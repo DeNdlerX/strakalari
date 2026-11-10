@@ -131,8 +131,8 @@ GoRoute _route(String name) => GoRoute(
 
 /// The app router. The Shell wraps every route (persistent scaffold);
 /// `/` redirects to `/today`.
-GoRouter buildRouter() => GoRouter(
-      initialLocation: '/today',
+GoRouter buildRouter({String initialLocation = '/today'}) => GoRouter(
+      initialLocation: initialLocation,
       routes: [
         GoRoute(
           path: '/',
