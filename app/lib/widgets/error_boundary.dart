@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../controllers/app_state.dart';
 import '../l10n/strings.dart';
-import '../shell/theme.dart';
 
 /// Inherited scope providing the active route name to child widgets.
 class ViewRouteScope extends InheritedWidget {
@@ -82,7 +81,7 @@ class _ViewErrorCardState extends ConsumerState<ViewErrorCard> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(appStateProvider);
-    final tok = tokensFor('${state.get('theme', 'dark')}');
+    final tok = state.tok;
     return Center(
       child: Card(
         key: const ValueKey('view_error_card'),

@@ -24,6 +24,19 @@ class AppTokens {
   final Color orange;
   final Color purple;
 
+  // Type scale + geometry (theme.py: fs_title/section/body/small/tiny,
+  // pad, gap, radius_sm/md/lg).
+  final double fsTitle;
+  final double fsSection;
+  final double fsBody;
+  final double fsSmall;
+  final double fsTiny;
+  final double pad;
+  final double gap;
+  final double radiusSm;
+  final double radiusMd;
+  final double radiusLg;
+
   const AppTokens({
     required this.brightness,
     required this.bg,
@@ -41,20 +54,75 @@ class AppTokens {
     required this.red,
     required this.orange,
     required this.purple,
+    this.fsTitle = 20,
+    this.fsSection = 15,
+    this.fsBody = 13,
+    this.fsSmall = 12,
+    this.fsTiny = 11,
+    this.pad = 16,
+    this.gap = 12,
+    this.radiusSm = 8,
+    this.radiusMd = 12,
+    this.radiusLg = 16,
   });
 
-  // Type scale + geometry (theme.py: fs_title/section/body/small/tiny,
-  // pad, gap, radius_sm/md/lg).
-  double get fsTitle => 20;
-  double get fsSection => 15;
-  double get fsBody => 13;
-  double get fsSmall => 12;
-  double get fsTiny => 11;
-  double get pad => 16;
-  double get gap => 12;
-  double get radiusSm => 8;
-  double get radiusMd => 12;
-  double get radiusLg => 16;
+  /// Returns a copy of this token set with the given fields replaced.
+  AppTokens copyWith({
+    Brightness? brightness,
+    Color? bg,
+    Color? surface,
+    Color? card,
+    Color? overlay,
+    Color? border,
+    Color? text,
+    Color? muted,
+    Color? faint,
+    Color? accent,
+    Color? accentText,
+    Color? green,
+    Color? yellow,
+    Color? red,
+    Color? orange,
+    Color? purple,
+    double? fsTitle,
+    double? fsSection,
+    double? fsBody,
+    double? fsSmall,
+    double? fsTiny,
+    double? pad,
+    double? gap,
+    double? radiusSm,
+    double? radiusMd,
+    double? radiusLg,
+  }) =>
+      AppTokens(
+        brightness: brightness ?? this.brightness,
+        bg: bg ?? this.bg,
+        surface: surface ?? this.surface,
+        card: card ?? this.card,
+        overlay: overlay ?? this.overlay,
+        border: border ?? this.border,
+        text: text ?? this.text,
+        muted: muted ?? this.muted,
+        faint: faint ?? this.faint,
+        accent: accent ?? this.accent,
+        accentText: accentText ?? this.accentText,
+        green: green ?? this.green,
+        yellow: yellow ?? this.yellow,
+        red: red ?? this.red,
+        orange: orange ?? this.orange,
+        purple: purple ?? this.purple,
+        fsTitle: fsTitle ?? this.fsTitle,
+        fsSection: fsSection ?? this.fsSection,
+        fsBody: fsBody ?? this.fsBody,
+        fsSmall: fsSmall ?? this.fsSmall,
+        fsTiny: fsTiny ?? this.fsTiny,
+        pad: pad ?? this.pad,
+        gap: gap ?? this.gap,
+        radiusSm: radiusSm ?? this.radiusSm,
+        radiusMd: radiusMd ?? this.radiusMd,
+        radiusLg: radiusLg ?? this.radiusLg,
+      );
 
   bool get isDark => brightness == Brightness.dark;
 

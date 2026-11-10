@@ -5,11 +5,12 @@
 // their builders here by replacing [PlaceholderScreen]; the route names
 // and paths never change.
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../controllers/app_state.dart';
 import '../features/absences/absences_live.dart';
 import '../features/activity/activity_live.dart';
-import '../features/common/app_tokens.dart' as ft;
 import '../features/lunches/lunches_live.dart';
 import '../features/marks/marks_live.dart';
 import '../features/more.dart';
@@ -97,34 +98,37 @@ class PlaceholderScreen extends StatelessWidget {
 GoRoute _route(String name) => GoRoute(
       path: '/$name',
       name: name,
-      builder: (context, state) {
-        final size = MediaQuery.sizeOf(context);
-        final narrow =
-            (size.width > 0 && size.width < 720) || (size.height > 0 && size.height < 520);
-        final tokens = ft.AppTokens.of(Theme.of(context).brightness);
-        switch (name) {
-          case 'today':
-            return LiveTodayView(tokens: tokens, narrow: narrow);
-          case 'timetable':
-            return LiveTimetableView(tokens: tokens, narrow: narrow);
-          case 'absences':
-            return LiveAbsencesView(tokens: tokens, narrow: narrow);
-          case 'marks':
-            return LiveMarksView(tokens: tokens, narrow: narrow);
-          case 'planner':
-            return LivePlannerView(narrow: narrow);
-          case 'lunches':
-            return LiveLunchesView(narrow: narrow);
-          case 'activity':
-            return LiveActivityView(narrow: narrow);
-          case 'settings':
-            return LiveSettingsView(narrow: narrow);
-          case 'more':
-            return MorePage(onOpen: (r) => context.go('/$r'));
-          default:
-            return PlaceholderScreen(route: name);
-        }
-      },
+      builder: (context, state) => Consumer(
+        builder: (context, ref, _) {
+          final appState = ref.watch(appStateProvider);
+          final size = MediaQuery.sizeOf(context);
+          final narrow =
+              (size.width > 0 && size.width < 720) || (size.height > 0 && size.height < 520);
+          final tokens = appState.appTokens;
+          switch (name) {
+            case 'today':
+              return LiveTodayView(tokens: tokens, narrow: narrow);
+            case 'timetable':
+              return LiveTimetableView(tokens: tokens, narrow: narrow);
+            case 'absences':
+              return LiveAbsencesView(tokens: tokens, narrow: narrow);
+            case 'marks':
+              return LiveMarksView(tokens: tokens, narrow: narrow);
+            case 'planner':
+              return LivePlannerView(narrow: narrow);
+            case 'lunches':
+              return LiveLunchesView(narrow: narrow);
+            case 'activity':
+              return LiveActivityView(narrow: narrow);
+            case 'settings':
+              return LiveSettingsView(narrow: narrow);
+            case 'more':
+              return MorePage(onOpen: (r) => context.go('/$r'));
+            default:
+              return PlaceholderScreen(route: name);
+          }
+        },
+      ),
     );
 
 /// The app router. The Shell wraps every route (persistent scaffold);
@@ -139,17 +143,20 @@ GoRouter buildRouter({String initialLocation = '/today'}) => GoRouter(
         GoRoute(
           path: '/wizard',
           name: 'wizard',
-          builder: (context, state) {
-            final size = MediaQuery.sizeOf(context);
-            final narrow = (size.width > 0 && size.width < 720) ||
-                (size.height > 0 && size.height < 520);
-            final tokens = ft.AppTokens.of(Theme.of(context).brightness);
-            return Scaffold(
-              body: SafeArea(
-                child: LiveWizardView(tokens: tokens, narrow: narrow),
-              ),
-            );
-          },
+          builder: (context, state) => Consumer(
+            builder: (context, ref, _) {
+              final appState = ref.watch(appStateProvider);
+              final size = MediaQuery.sizeOf(context);
+              final narrow = (size.width > 0 && size.width < 720) ||
+                  (size.height > 0 && size.height < 520);
+              final tokens = appState.appTokens;
+              return Scaffold(
+                body: SafeArea(
+                  child: LiveWizardView(tokens: tokens, narrow: narrow),
+                ),
+              );
+            },
+          ),
         ),
         ShellRoute(
           builder: (context, state, child) => AppScaffold(

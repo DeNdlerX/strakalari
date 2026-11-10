@@ -105,25 +105,26 @@ MarksController marksControllerFor(AppState s, {DateTime? todayOverride}) {
 
 /// Live Riverpod-backed Marks screen.
 class LiveMarksView extends ConsumerWidget {
-  final AppTokens tokens;
+  final AppTokens? tokens;
   final bool narrow;
 
   const LiveMarksView({
     super.key,
-    required this.tokens,
+    this.tokens,
     this.narrow = false,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStateProvider);
+    final tok = tokens ?? s.appTokens;
     final controller = marksControllerFor(s);
     if (controller.grades.isNotEmpty) {
       s.tutorialOffer('marks');
     }
     return MarksView(
       controller: controller,
-      tokens: tokens,
+      tokens: tok,
       narrow: narrow,
     );
   }

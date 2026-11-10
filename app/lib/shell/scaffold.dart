@@ -110,7 +110,7 @@ class AppScaffold extends ConsumerWidget {
     // The settings screen owns the language; everything else follows.
     final lang = '${appState.get('language', 'cs')}';
     Strings.lang = (lang == 'en') ? 'en' : 'cs';
-    final tok = tokensFor('${appState.get('theme', 'dark')}');
+    final tok = appState.tok;
 
     var route = routeForLocation(location);
     final size = MediaQuery.sizeOf(context);

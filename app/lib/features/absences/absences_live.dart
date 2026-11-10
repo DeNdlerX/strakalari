@@ -49,22 +49,23 @@ AbsencesController absencesControllerFor(AppState s) {
 
 /// The Absences route: rebuilds whenever the shared state emits.
 class LiveAbsencesView extends ConsumerWidget {
-  final AppTokens tokens;
+  final AppTokens? tokens;
   final bool narrow;
 
   const LiveAbsencesView({
     super.key,
-    required this.tokens,
-    required this.narrow,
+    this.tokens,
+    this.narrow = false,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStateProvider);
+    final tok = tokens ?? s.appTokens;
     s.tutorialOffer('absences');
     return AbsencesView(
       controller: absencesControllerFor(s),
-      tokens: tokens,
+      tokens: tok,
       narrow: narrow,
     );
   }

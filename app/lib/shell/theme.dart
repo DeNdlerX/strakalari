@@ -74,6 +74,67 @@ class Tokens {
     this.fsTiny = 11,
   });
 
+  /// Returns a copy of this token set with the given fields replaced.
+  /// Port of Python's `dataclasses.replace(tok, ...)`.
+  Tokens copyWith({
+    String? mode,
+    Color? bg,
+    Color? surface,
+    Color? card,
+    Color? overlay,
+    Color? border,
+    Color? text,
+    Color? muted,
+    Color? faint,
+    Color? accent,
+    Color? accentText,
+    Color? green,
+    Color? yellow,
+    Color? red,
+    Color? orange,
+    Color? purple,
+    double? radiusSm,
+    double? radiusMd,
+    double? radiusLg,
+    double? pad,
+    double? gap,
+    double? railWidth,
+    double? fsTitle,
+    double? fsSection,
+    double? fsBody,
+    double? fsSmall,
+    double? fsTiny,
+  }) =>
+      Tokens(
+        mode: mode ?? this.mode,
+        bg: bg ?? this.bg,
+        surface: surface ?? this.surface,
+        card: card ?? this.card,
+        overlay: overlay ?? this.overlay,
+        border: border ?? this.border,
+        text: text ?? this.text,
+        muted: muted ?? this.muted,
+        faint: faint ?? this.faint,
+        accent: accent ?? this.accent,
+        accentText: accentText ?? this.accentText,
+        green: green ?? this.green,
+        yellow: yellow ?? this.yellow,
+        red: red ?? this.red,
+        orange: orange ?? this.orange,
+        purple: purple ?? this.purple,
+        radiusSm: radiusSm ?? this.radiusSm,
+        radiusMd: radiusMd ?? this.radiusMd,
+        radiusLg: radiusLg ?? this.radiusLg,
+        pad: pad ?? this.pad,
+        gap: gap ?? this.gap,
+        railWidth: railWidth ?? this.railWidth,
+        fsTitle: fsTitle ?? this.fsTitle,
+        fsSection: fsSection ?? this.fsSection,
+        fsBody: fsBody ?? this.fsBody,
+        fsSmall: fsSmall ?? this.fsSmall,
+        fsTiny: fsTiny ?? this.fsTiny,
+      );
+
   /// Builds the Material [ThemeData] for this token set.
   ThemeData toThemeData() {
     final scheme = ColorScheme(

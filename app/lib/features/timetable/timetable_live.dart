@@ -33,13 +33,13 @@ TimetableController timetableControllerFor(AppState s) {
 
 /// Live Riverpod-backed Timetable screen.
 class LiveTimetableView extends ConsumerWidget {
-  final AppTokens tokens;
+  final AppTokens? tokens;
   final bool narrow;
   final DateTime? now;
 
   const LiveTimetableView({
     super.key,
-    required this.tokens,
+    this.tokens,
     this.narrow = false,
     this.now,
   });
@@ -47,13 +47,14 @@ class LiveTimetableView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStateProvider);
+    final tok = tokens ?? s.appTokens;
     final controller = timetableControllerFor(s);
     if (controller.weeks().isNotEmpty) {
       s.tutorialOffer('timetable');
     }
     return TimetableView(
       controller: controller,
-      tokens: tokens,
+      tokens: tok,
       narrow: narrow,
       now: now,
     );

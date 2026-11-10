@@ -14,7 +14,6 @@ import 'l10n/strings.dart';
 import 'platform/android/background.dart' as android_bg;
 import 'platform/notifications.dart';
 import 'shell/router.dart';
-import 'shell/theme.dart';
 import 'widgets/error_boundary.dart';
 
 /// Headless Android entry point (PLAN 3.4): `WakeReceiver`/`RefreshReceiver`
@@ -43,13 +42,11 @@ class MyApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final appState = ref.watch(appStateProvider);
-    final lang = '${appState.get('language', 'cs')}';
-    Strings.lang = (lang == 'en') ? 'en' : 'cs';
-    final light = normalizeMode('${appState.get('theme', 'dark')}') == 'light';
+    final light = appState.tok.mode == 'light';
     return MaterialApp.router(
       title: Strings.get('app_title'),
-      theme: lightTokens.toThemeData(),
-      darkTheme: darkTokens.toThemeData(),
+      theme: appState.tok.toThemeData(),
+      darkTheme: appState.tok.toThemeData(),
       themeMode: light ? ThemeMode.light : ThemeMode.dark,
       locale: Locale(Strings.lang),
       supportedLocales: const [Locale('cs'), Locale('en')],

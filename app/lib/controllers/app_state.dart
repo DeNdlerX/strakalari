@@ -22,6 +22,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:strakalari_core/strakalari_core.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
+import '../features/common/app_tokens.dart' show AppTokens;
 import '../l10n/strings.dart';
 import '../shell/theme.dart';
 import '../tutorial/tours.dart';
@@ -139,6 +140,7 @@ class AppState {
     } catch (_) {
       // Missing or unreadable update cache is non-fatal.
     }
+    refreshTokens();
   }
 
   final ConfigManager config = ConfigManager();
@@ -285,6 +287,45 @@ class AppState {
 
   void _emitProgress() => onProgress();
 
+  /// Active design tokens. Port of `self.tok: Tokens`.
+  late Tokens tok;
+
+  /// Active feature tokens for views.
+  late AppTokens appTokens;
+
+  /// Test seam for environment variable lookup.
+  Map<String, String>? envOverride;
+
+  String _env(String name) => (envOverride ?? Platform.environment)[name] ?? '';
+
+  /// Refreshes active tokens and language from config and environment.
+  /// Port of `_refresh_tokens()`.
+  void refreshTokens() {
+    final forced = _env('STRAKALARI_THEME');
+    final rawMode = (forced == 'dark' || forced == 'light')
+        ? forced
+        : '${config.get('theme', 'dark')}';
+    final mode = normalizeMode(rawMode);
+    var t = tokensFor(mode);
+    final compact = config.get('compact_density', false) == true;
+    if (compact) {
+      t = t.copyWith(pad: 10, gap: 8);
+    }
+    tok = t;
+
+    var at = mode == 'light' ? AppTokens.light() : AppTokens.dark();
+    if (compact) {
+      at = at.copyWith(pad: 10, gap: 8);
+    }
+    appTokens = at;
+
+    try {
+      final lang = '${config.get('language', 'cs')}';
+      core.setLanguage(lang);
+      Strings.lang = (lang == 'en') ? 'en' : 'cs';
+    } catch (_) {}
+  }
+
   // -- config ----------------------------------------------------------------------
   Object? get(String key, [Object? defaultValue]) {
     try {
@@ -315,11 +356,7 @@ class AppState {
       print('Warning: could not save config: $exc');
       return false;
     }
-    try {
-      final lang = '${config.get('language', 'cs')}';
-      core.setLanguage(lang);
-      Strings.lang = lang;
-    } catch (_) {}
+    refreshTokens();
     for (final cb in List.of(configListeners)) {
       try {
         cb();

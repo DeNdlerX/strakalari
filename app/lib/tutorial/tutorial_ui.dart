@@ -394,7 +394,7 @@ Widget tutorialAnchor(
   }
   state.tutorialAnchored = true;
   final (tour, index, step) = current;
-  final effectiveTok = tok ?? tokensFor('${state.get('theme', 'dark')}');
+  final effectiveTok = tok ?? state.tok;
   final place = tutorialPlace(step, narrow, state.navSide);
 
   final ring = Container(
@@ -459,7 +459,7 @@ class TutorialAnchor extends StatelessWidget {
   Widget build(BuildContext context) {
     if (state != null) {
       final appState = state!;
-      final tok = tokensFor('${appState.get('theme', 'dark')}');
+      final tok = appState.tok;
       return tutorialAnchor(appState, anchorKey, child,
           tok: tok, narrow: appState.narrow);
     }
@@ -475,7 +475,7 @@ class TutorialAnchor extends StatelessWidget {
     return Consumer(
       builder: (context, ref, _) {
         final appState = ref.watch(appStateProvider);
-        final tok = tokensFor('${appState.get('theme', 'dark')}');
+        final tok = appState.tok;
         return tutorialAnchor(appState, anchorKey, child,
             tok: tok, narrow: appState.narrow);
       },

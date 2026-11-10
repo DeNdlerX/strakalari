@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 6 · Next step: Fix finding B-M9 (settings and app preferences: compact_density, STRAKALARI_THEME, core.setLanguage at startup) in `reviews/checkpoint-B.md`, then proceed through must-fix findings B-M10 to B-M14.
+Current phase: 6 · Next step: Fix finding B-M10 (More page and Android Back handling) in `reviews/checkpoint-B.md`, then proceed through must-fix findings B-M11 to B-M14.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -762,6 +762,7 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
     - Fixed view and controller logic for parity: normalized marks bands in `MarksLogic.setMarksBands`, used canonical `core.entriesForSelection` in planner custom dialog, exposed `expandedDays` reactive state in `LunchesController`, added `PopScope` hierarchy in `Scaffold`, and made wizard nav buttons responsive via `LayoutBuilder`.
     - Documented dropped Flet-specific framework tests: Flet container reuse (`test_scrollable_reuses_container_across_rebuilds`, `test_scrollable_row_and_type_mismatch`, `test_timetable_build_reuses_body_across_renders`), Flet RPC monkeypatching (`test_stale_method_reply_does_not_raise`), Flet scroll offset restoration (`test_restore_scroll_only_touches_scrollers_of_current_render`), and AST reflection tests (`test_open_url_ast_inspection`, `test_open_url_controls_are_safe`).
   - **B-M8**: print Python-equivalent warning messages in `AppState.save` on failure ("Warning: could not save config: {exc}"), invalid update ("Warning: ignoring invalid config update {key!r}: {err}" formatted with `core.pyRepr`), and listener failure ("Warning: config listener failed: {exc}"), verified with `app/test/app_state_save_warnings_test.dart`.
+  - **B-M9**: settings and app preferences parity: implemented `refreshTokens()` in `AppState` (invoked at end of constructor and in `save()`), reading forced theme `STRAKALARI_THEME` (`'light'` / `'dark'`), updating `tok` (`Tokens`) and `appTokens` (`AppTokens`), applying `compact_density` (`pad: 10, gap: 8`), and initializing `core.setLanguage` and `Strings.lang` at startup without requiring a save. Added `copyWith` on `Tokens` and `AppTokens`, updated `main.dart`, `scaffold.dart`, `router.dart`, `tutorial_ui.dart`, and `error_boundary.dart` to use active `appState.tok` / `appTokens`, verified with `app/test/app_state_theme_and_prefs_test.dart` (10/10 passed).
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 
@@ -835,12 +836,12 @@ What was done:
 
 How to verify:
 - `cd packages/strakalari_core && dart analyze && dart test` (764 passed, 2 skipped).
-- `cd app && flutter analyze && flutter test` (242 passed, 1 skipped).
+- `cd app && flutter analyze && flutter test` (419 passed, 1 skipped).
 - Inspect side-by-side screenshots in `build/parity-screens/flet/` vs `build/parity-screens/flutter/`.
 - Test app startup on demo data dir: `python tools/demo_data.py generate build/parity-screens/demo-cs` and run debug executable.
 
 Unsure / needs a second pair of eyes:
-- String tables unified onto canonical Strings in B-B4; token table unification queued for B-M9.
+- String tables unified onto canonical Strings in B-B4; token handling unified onto AppState.tok / appTokens in B-M9.
 - Planner cache key holiday comparison: stringified sorted dates used for pure value comparison across Dart records.
 - `wakeupAvailable` remains stubbed to false pending Android Phase 8 implementation.
 

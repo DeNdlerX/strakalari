@@ -129,12 +129,12 @@ WizardController wizardControllerFor(AppState s) {
 
 /// Live first-run setup wizard wired to [appStateProvider].
 class LiveWizardView extends ConsumerStatefulWidget {
-  final AppTokens tokens;
+  final AppTokens? tokens;
   final bool narrow;
 
   const LiveWizardView({
     super.key,
-    required this.tokens,
+    this.tokens,
     this.narrow = false,
   });
 
@@ -158,19 +158,20 @@ class _LiveWizardViewState extends ConsumerState<LiveWizardView> {
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(appStateProvider);
+    final tok = widget.tokens ?? s.appTokens;
     if (s.wizardDismissed) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (context.mounted) context.go('/today');
       });
       return Scaffold(
-        backgroundColor: widget.tokens.bg,
+        backgroundColor: tok.bg,
         body: const SizedBox.shrink(),
       );
     }
     final controller = wizardControllerFor(s);
     return WizardView(
       controller: controller,
-      tokens: widget.tokens,
+      tokens: tok,
       narrow: widget.narrow,
     );
   }

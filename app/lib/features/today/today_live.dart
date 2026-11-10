@@ -160,13 +160,13 @@ TodayController todayControllerFor(AppState s, {DateTime? now}) {
 
 /// Live Riverpod-backed Today screen.
 class LiveTodayView extends ConsumerWidget {
-  final AppTokens tokens;
+  final AppTokens? tokens;
   final bool narrow;
   final DateTime? now;
 
   const LiveTodayView({
     super.key,
-    required this.tokens,
+    this.tokens,
     this.narrow = false,
     this.now,
   });
@@ -174,13 +174,14 @@ class LiveTodayView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStateProvider);
+    final tok = tokens ?? s.appTokens;
     final controller = todayControllerFor(s, now: now);
     if (controller.excuseTasks(today: now).isNotEmpty) {
       s.tutorialOffer('excuse');
     }
     return TodayView(
       controller: controller,
-      tokens: tokens,
+      tokens: tok,
       narrow: narrow,
       now: now,
     );
