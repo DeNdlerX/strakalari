@@ -1,3 +1,5 @@
+import 'dart:async';
+
 /// Settings state. Port of the settings-related AppState surface used by
 /// views/settings/*: navigation, drafts, quiet saves, calendar ops,
 /// automation rules, autostart handling and credential gating.
@@ -28,7 +30,7 @@ class SettingsController {
 
   /// Confirm switching a mode to auto. Return 'confirm' | 'dry_run' |
   /// 'cancel' (mirrors safety.confirm_auto_mode callbacks).
-  final String Function(String key)? confirmAutoMode;
+  final FutureOr<String> Function(String key)? confirmAutoMode;
 
   /// OS autostart hooks: (isEnabled, setAutostart). Null = unavailable.
   final bool Function()? autostartEnabled;
@@ -244,14 +246,14 @@ class SettingsController {
   /// Mode picker commit. Switching to `auto` needs explicit confirmation;
   /// other modes save without asking (port of `_commit_guarded`).
   /// Returns 'saved' | 'unchanged' | 'cancelled'.
-  String commitMode(String key, String value, String fallback) {
+  Future<String> commitMode(String key, String value, String fallback) async {
     value = value.isEmpty ? fallback : value;
     final previous = '${get(key, fallback) ?? fallback}';
     if (value != 'auto' || previous == 'auto') {
       saveQuiet({key: value});
       return 'saved';
     }
-    final answer = confirmAutoMode?.call(key) ?? 'cancel';
+    final answer = await (confirmAutoMode?.call(key) ?? 'cancel');
     if (answer == 'confirm') {
       saveQuiet({key: 'auto'});
       return 'saved';

@@ -897,38 +897,40 @@ class SettingsView extends StatelessWidget {
                 },
               ),
               Text(Strings.get('automation_pause_hint')),
-              DropdownButtonFormField<String>(
-                key: const Key('rule:excuse_mode'),
-                decoration: InputDecoration(
-                    labelText: Strings.get('excuse_mode_label')),
-                initialValue: '${c.get('excuse_mode', 'confirm')}',
-                items: [
-                  for (final m in modes)
-                    DropdownMenuItem(value: m, child: Text(modeLabel(m))),
-                ],
-                onChanged: (v) {
-                  final r = c.commitMode(
-                      'excuse_mode', v ?? 'confirm', 'confirm');
-                  if (r == 'cancelled') {
-                    appSnack(context, Strings.get('saved'));
-                  }
-                  onChanged?.call();
-                },
+              KeyedSubtree(
+                key: ValueKey('tree:rule:excuse_mode:${c.get('excuse_mode', 'confirm')}'),
+                child: DropdownButtonFormField<String>(
+                  key: const Key('rule:excuse_mode'),
+                  decoration: InputDecoration(
+                      labelText: Strings.get('excuse_mode_label')),
+                  initialValue: '${c.get('excuse_mode', 'confirm')}',
+                  items: [
+                    for (final m in modes)
+                      DropdownMenuItem(value: m, child: Text(modeLabel(m))),
+                  ],
+                  onChanged: (v) async {
+                    await c.commitMode('excuse_mode', v ?? 'confirm', 'confirm');
+                    onChanged?.call();
+                  },
+                ),
               ),
-              DropdownButtonFormField<String>(
-                key: const Key('rule:order_mode'),
-                decoration: InputDecoration(
-                    labelText: Strings.get('order_mode_label')),
-                initialValue: '${c.get('strava_order_mode', 'confirm')}',
-                items: [
-                  for (final m in modes)
-                    DropdownMenuItem(value: m, child: Text(modeLabel(m))),
-                ],
-                onChanged: (v) {
-                  c.commitMode(
-                      'strava_order_mode', v ?? 'confirm', 'confirm');
-                  onChanged?.call();
-                },
+              KeyedSubtree(
+                key: ValueKey('tree:rule:order_mode:${c.get('strava_order_mode', 'confirm')}'),
+                child: DropdownButtonFormField<String>(
+                  key: const Key('rule:order_mode'),
+                  decoration: InputDecoration(
+                      labelText: Strings.get('order_mode_label')),
+                  initialValue: '${c.get('strava_order_mode', 'confirm')}',
+                  items: [
+                    for (final m in modes)
+                      DropdownMenuItem(value: m, child: Text(modeLabel(m))),
+                  ],
+                  onChanged: (v) async {
+                    await c.commitMode(
+                        'strava_order_mode', v ?? 'confirm', 'confirm');
+                    onChanged?.call();
+                  },
+                ),
               ),
               Text(Strings.get('automation_modes_hint')),
               AutosaveField(

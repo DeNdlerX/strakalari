@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../controllers/app_state.dart';
+import '../../widgets/safety_dialog.dart';
 import 'settings_controller.dart';
 import 'settings_view.dart';
 
@@ -14,7 +16,10 @@ bool Function(bool wanted)? liveSetAutostart;
 
 /// Bridges the shared [AppState] into a [SettingsController] for
 /// [SettingsView].
-SettingsController settingsControllerFor(AppState s) {
+SettingsController settingsControllerFor(
+  AppState s, {
+  FutureOr<String> Function(String key)? confirmAutoMode,
+}) {
   final cfg = Map<String, dynamic>.of(s.config.data);
   final abs = s.absence();
   final allowed = s.limitSubjects();
@@ -31,6 +36,7 @@ SettingsController settingsControllerFor(AppState s) {
 
   final c = SettingsController(
     cfg,
+    confirmAutoMode: confirmAutoMode,
     persist: (updates) => s.save(Map<String, Object?>.of(updates)),
     persistQuiet: (updates) => s.saveQuiet(Map<String, Object?>.of(updates)),
     onDraftChanged: (key, value) => s.setDraft(key, value),
@@ -89,7 +95,23 @@ class _LiveSettingsViewState extends ConsumerState<LiveSettingsView> {
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(appStateProvider);
-    final controller = settingsControllerFor(s);
+    final controller = settingsControllerFor(
+      s,
+      confirmAutoMode: (key) {
+        final completer = Completer<String>();
+        final unsigned =
+            (s.config.data['your_signature'] as String? ?? '').trim().isEmpty;
+        confirmAutoMode(
+          context,
+          key,
+          unsigned: unsigned,
+          onConfirm: () => completer.complete('confirm'),
+          onDryRun: () => completer.complete('dry_run'),
+          onCancel: () => completer.complete('cancel'),
+        );
+        return completer.future;
+      },
+    );
     final platform = Platform.isAndroid
         ? 'android'
         : (Platform.isIOS ? 'ios' : '');

@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 6 · Next step: Fix finding B-B5 (auto mode confirmation dialog) in `reviews/checkpoint-B.md`, then proceed with must-fix findings B-M1 to B-M14.
+Current phase: 6 · Next step: Fix finding B-M1 (rebuild top bar to match Python shell) in `reviews/checkpoint-B.md`, then proceed through must-fix findings B-M2 to B-M14.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -740,7 +740,8 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
   - **B-B1** (`5ae03cc`): build tracked subjects from directory keys instead of values in `app/lib/controllers/app_state.dart`.
   - **B-B2** (`954a2e4`): route Today excuse tasks and day plan directly through AppState, delete redundant `excuse_logic.dart`, and enforce send path guard.
   - **B-B3** (`c7e06d7`): remove screenshot script from app tests and establish standalone parity capture tools (`tools/parity/capture_screens.dart` and `tools/parity/capture_flet.py`).
-  - **B-B4** (this commit): delete duplicate string tables (`common/app_strings.dart`, `class Str` in `overlays.dart`), unify all UI views and tests to canonical `Strings.get()` / `Strings.format()`, add `hasKey` and `allKeys` in `Strings`, fix hardcoded strings in settings/wizard/planner, and add `app/test/strings_table_parity_test.dart`.
+  - **B-B4** (`aa28710`): delete duplicate string tables (`common/app_strings.dart`, `class Str` in `overlays.dart`), unify all UI views and tests to canonical `Strings.get()` / `Strings.format()`, add `hasKey` and `allKeys` in `Strings`, fix hardcoded strings in settings/wizard/planner, and add `app/test/strings_table_parity_test.dart`.
+  - **B-B5** (this commit): port automatic mode confirmation dialog (`AutoConfirmDialog`, `confirmAutoMode`) in `app/lib/widgets/safety_dialog.dart` matching `strakalari/flet_ui/safety.py`, wire `confirmAutoMode` callback in `settings_live.dart` and `settings_view.dart`, remove false "Saved" snack on cancellation, and port the 3 deferred tests in `app/test/safety_dialog_test.dart`.
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 
@@ -801,7 +802,7 @@ What was done:
   - `app/test/app_state_excuses_and_planner_test.dart` (30 tests covering `test_excuse_ignore_list.py`, `test_planned_skips.py`, `test_error_report.py`, `test_cancel_responsive.py`, `test_news.py`, `test_ui_state.py`, `test_update.py`, `test_automation_safety.py`, `test_settings_refresh_interactive.py`).
   - `app/test/phase6_features_test.dart` (15 tests covering `test_early_leave.py`, `test_timetable_week_nav.py`, `test_marks_view.py`, `test_wizard_setup.py`, `test_year_planner.py`).
   - `app/test/screenshot_parity_test.dart` (10 tests capturing parity screenshots).
-  - Total app tests: 241 passed, 1 skipped. Core tests: 764 passed, 2 skipped.
+  - Total app tests: 242 passed, 1 skipped. Core tests: 764 passed, 2 skipped.
   - `dart analyze` and `flutter analyze`: zero issues found across both packages.
 - Parity screenshots:
   - Standalone capture tools established under `tools/parity/`:
@@ -814,7 +815,7 @@ What was done:
 
 How to verify:
 - `cd packages/strakalari_core && dart analyze && dart test` (764 passed, 2 skipped).
-- `cd app && flutter analyze && flutter test` (241 passed, 1 skipped).
+- `cd app && flutter analyze && flutter test` (242 passed, 1 skipped).
 - Inspect side-by-side screenshots in `build/parity-screens/flet/` vs `build/parity-screens/flutter/`.
 - Test app startup on demo data dir: `python tools/demo_data.py generate build/parity-screens/demo-cs` and run debug executable.
 

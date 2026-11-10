@@ -194,11 +194,11 @@ void main() {
           {'excuse_mode': 'confirm'},
           confirmAutoMode: (_) => 'confirm',
         );
-        expect(c2.commitMode('excuse_mode', 'auto', 'confirm'), 'saved');
+        expect(await c2.commitMode('excuse_mode', 'auto', 'confirm'), 'saved');
         expect(c2.get('excuse_mode'), 'auto');
       });
 
-      test('other modes save without asking', () {
+      test('other modes save without asking', () async {
         var asked = false;
         final c = SettingsController(
           {'strava_order_mode': 'confirm'},
@@ -208,7 +208,7 @@ void main() {
           },
         );
         expect(
-            c.commitMode('strava_order_mode', 'dry_run', 'confirm'),
+            await c.commitMode('strava_order_mode', 'dry_run', 'confirm'),
             'saved');
         expect(asked, isFalse);
         expect(c.get('strava_order_mode'), 'dry_run');
