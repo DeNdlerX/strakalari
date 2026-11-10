@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 6 · Next step: ⛔ Checkpoint B reached: please have a reviewer model check it before I continue.
+Current phase: 6 · Next step: Fix every finding in `reviews/checkpoint-B.md` (blockers first), one commit per finding, then stop for re-review.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -735,6 +735,7 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
   - **R2-S2** (`212dac2`, `a8545b1` writes the U+2028/U+2029 regex and oracle characters as escapes): `describeSwallowed` in `storage/helpers.dart` takes the first line like Python `splitlines()[0][:160]` (all Python line breaks, 160 code points); 10 `describeSwallowed` parity cases in `dump.py` / `parity_helpers_test.dart` (the old code fails them).
   - **R2-S3** (`730f61a`): new `dart-macos-locks` job in `.github/workflows/dart.yml` (Apple silicon, manual run or release tag) runs `session_lock_test.dart` + `helpers_test.dart` with `TZ=Europe/Prague`; the three STATUS lines name it.
 - 2026-11-09 · Checkpoint A re-review 3: **PASS** (all R2-* findings fixed; 0 blockers, 0 must-fix, 0 should-fix; notes R3-N1..R3-N4 for later checkpoints) — [docs/flutter-migration/reviews/checkpoint-A.md](docs/flutter-migration/reviews/checkpoint-A.md#re-review-3-2026-11-09)
+- 2026-11-10 · Checkpoint B review: **FAIL** (5 blockers, 14 must-fix, 6 should-fix) — [docs/flutter-migration/reviews/checkpoint-B.md](docs/flutter-migration/reviews/checkpoint-B.md)
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 
