@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 6 · Next step: Fix finding B-M11 (screen visual parity from side-by-side screenshots) in `reviews/checkpoint-B.md`, then proceed through must-fix findings B-M12 to B-M14.
+Current phase: 6 · Next step: Fix every finding in `reviews/checkpoint-B.md` (blockers first), one commit per finding, then stop for re-review. Open now: the new BR-* findings in its "Re-review (2026-11-10)" section (start with BR-M1, BR-M2, BR-M6, BR-M8) and the original B-M11 … B-M14, B-S1, B-S2, B-S3, B-S5, B-S6.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -764,6 +764,7 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
   - **B-M8**: print Python-equivalent warning messages in `AppState.save` on failure ("Warning: could not save config: {exc}"), invalid update ("Warning: ignoring invalid config update {key!r}: {err}" formatted with `core.pyRepr`), and listener failure ("Warning: config listener failed: {exc}"), verified with `app/test/app_state_save_warnings_test.dart`.
   - **B-M9**: settings and app preferences parity: implemented `refreshTokens()` in `AppState` (invoked at end of constructor and in `save()`), reading forced theme `STRAKALARI_THEME` (`'light'` / `'dark'`), updating `tok` (`Tokens`) and `appTokens` (`AppTokens`), applying `compact_density` (`pad: 10, gap: 8`), and initializing `core.setLanguage` and `Strings.lang` at startup without requiring a save. Added `copyWith` on `Tokens` and `AppTokens`, updated `main.dart`, `scaffold.dart`, `router.dart`, `tutorial_ui.dart`, and `error_boundary.dart` to use active `appState.tok` / `appTokens`, verified with `app/test/app_state_theme_and_prefs_test.dart` (10/10 passed).
   - **B-M10**: More page and Android Back navigation parity: implemented `openMoreRoute` (routing `alarm` to Settings with `settingsSection = 'alarm'` and `settingsOpen = true`, and `settings` with `settingsOpen = false`), wired `isAndroid: mobilePlatform() == 'android'` into `MorePage`, restyled `MorePage` (bold `fsTitle` heading, `tok.card` tiles with accent leading icons, `fsSection` titles, faint trailing chevrons, and `tok.gap / 2 + 2` spacing), implemented phone Back hierarchy via `subpageOpen`, `closeSubpage`, and `wrapPop` with `PopScope` on phone layouts only (closing open settings sections, selected marks subjects, and open lunch tools before stepping up from More screens to More, and any screen to Today), and verified with `app/test/more_page_test.dart` and `app/test/mobile_narrow_shell_test.dart` (425 app tests passing).
+- 2026-11-10 · Checkpoint B re-review: **FAIL** (all 5 blockers fixed; open: 4 original must-fix B-M11 … B-M14 + 8 new must-fix BR-M1 … BR-M8, 11 should-fix) — [docs/flutter-migration/reviews/checkpoint-B.md](docs/flutter-migration/reviews/checkpoint-B.md#re-review-2026-11-10)
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 

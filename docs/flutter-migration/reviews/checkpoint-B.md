@@ -530,3 +530,301 @@ demo server on 127.0.0.1).
 
 **Not verified at this checkpoint:** the desktop and Android platform code (phases 7–8,
 Checkpoint C), macOS/Linux, and the release work (Checkpoint D).
+
+---
+
+## Re-review (2026-11-10)
+
+Reviewed at `4f095ec`, commits `5ae03cc..4f095ec` (15 commits since the review commit
+`645eb97`: B-B1 … B-B5 and B-M1 … B-M10). STATUS.md's Next step still names B-M11 … B-M14,
+so the rework was stopped half-way; B-M11 … B-M14 and every should-fix item were not
+attempted.
+
+### Verdict: **FAIL**
+
+All five blockers are fixed in the code, and so are most of the must-fix items that were
+attempted. The two main screens that were empty (Absences, Planner) now show the same data
+as the Python app, the Today screen can no longer send a task the state did not offer, and
+there is one string table. But four original must-fix items are untouched (B-M11 … B-M14),
+two are only partly done (B-B3 capture, B-M7 test ports), and the rework added new defects
+on the screens it touched: the Today screen says "Excuse sent" before anything was sent,
+cancelling *Automaticky* leaves the dropdown showing *Automaticky*, the Planner shows a raw
+`{reserve:g}` placeholder and a stub "how many days" dropdown, and the app tests write into
+the Flutter SDK folder because they have no isolated data folder.
+
+Open: 0 blockers, 4 original must-fix (B-M11 … B-M14) + 8 new must-fix (BR-M1 … BR-M8),
+5 original should-fix (B-S1, B-S2, B-S3, B-S5, B-S6) + 6 new should-fix (BR-S1 … BR-S6),
+4 notes.
+
+Fix order: BR-M1, BR-M2, BR-M6, BR-M8 (send-path and safety tests first), then BR-M3,
+BR-M4, BR-M5, BR-M7, then B-M11 … B-M14, then the should-fix items. One commit per finding,
+named `Checkpoint B <ID>: …`.
+
+### Status of the original findings
+
+| ID | State | Checked how |
+|---|---|---|
+| B-B1 | **fixed** | `app_state.dart:468-472` uses `directory.keys` like `state.py:443-455`; tests `trackedSubjectsUsesDirectoryKeysNotValues`, `subjectStatesWithRealisticDirectoryDropsUntrackedSubjects`; my screenshots of Absences and Planner on the demo folder now match Flet (8 subjects, full plan) |
+| B-B2 | **fixed** | `excuse_logic.dart` deleted; Today lists `s.excuseTasks()` / `s.dayExcusePlan()` (`today_live.dart:59-67`); an unknown key logs `excuse_failed` and sends nothing (`today_live.dart:40-50`); tests `absentKeyFromExcuseTasksIsNeverSent`, `dayCardSwitchSendsLessonsSeparately`. New defect on the same screen: BR-M1 |
+| B-B3 | **partly** | `screenshot_parity_test.dart` removed; `tools/parity/capture_screens.dart` + `capture_flet.py` exist and run. The Flutter capture does not render the real app and the Flet side has no wizard: BR-M7 |
+| B-B4 | **fixed** (tables) | `Str` and `AppStrings` deleted. Scripted compare (Python `STRINGS` / `MOBILE_STRINGS` against the maps in `l10n/strings.dart` and both ARB files): 794 keys + 7 mobile keys, cs and en, all identical; 13 `notif_*` extras as before. Leftovers: BR-M3 (format specs), BR-M5 (hardcoded "Šablona N") |
+| B-B5 | **fixed** (dialog) | `widgets/safety_dialog.dart` matches `safety.py:22-78` (texts, conditions, three buttons, width 440); wired in `settings_live.dart:100-113`; the 3 Python tests ported in `safety_dialog_test.dart`; the false "Uloženo" snack is gone. Leftovers: BR-M2, BR-S4 |
+| B-M1 | **fixed** | `scaffold.dart:401-629` against `app.py:328-462`: status text, dot, tooltip, update button, primary/icon refresh, spinner + cancel, sending label, both snacks, no `AppBar` |
+| B-M2 | **fixed** | `scaffold.dart:232-397`: 90 px rail with labels under icons, side rail `labelType.all` + `groupAlignment 0` + badge, padding `pad+8` / `12,4`, `tok.border` divider |
+| B-M3 | **fixed** | `/wizard` is a top-level route outside `ShellRoute` (`router.dart:152-169`); my capture shows no rail, bar or top bar; `wizard_chrome_isolation_test.dart` covers the mid-wizard save. Leftover: BR-S6 |
+| B-M4 | **fixed** | `widgets/error_boundary.dart` reports `view (<route>)` once and shows the `status_error` card; `error_boundary_test.dart` |
+| B-M5 | **fixed** | all 18 anchors placed on the same controls as Python (grep both sides); `tutorialBegin` and the floating layer in `scaffold.dart:198, 242`; one tutorial implementation; tutorial test names all present |
+| B-M6 | **mostly fixed** | `grades_logic.dart`, `schedule_logic.dart`, `lesson_model.dart`, `lunch_filter.dart` deleted; `lunches_filter_test.dart` re-pointed to `core.prefsBanKeywords` / `core.isFoodBanned` / `AppState`. Leftovers: BR-S2, BR-S3 |
+| B-M7 | **partly** | 425 app tests now; most files ported 1:1 (name match script, below). Missing or changed cases: BR-M8 |
+| B-M8 | **fixed** | `app_state.dart:340-374` prints the three Python warnings (`pyRepr` for the key) |
+| B-M9 | **fixed** | `refreshTokens()` (`app_state.dart:303-327`) from the constructor and `save()`: `STRAKALARI_THEME`, `compact_density` (pad 10 / gap 8), `core.setLanguage` + `Strings.lang` at start |
+| B-M10 | **fixed** | `openMoreRoute` = `more.py:_open`; Budík entry on Android; `backTarget` / `subpageOpen` / `closeSubpage` + `PopScope` on phone layouts (`scaffold.dart:50-94, 259-285`). Small leftover in BR-S5 |
+| B-M11 | **open** | not started. My screenshots confirm the list still stands (details under BR-M7 / B-M11 below) |
+| B-M12 | **open** | `DateTime.now()` still in `activity_controller.dart:70, 106, 145, 212`, `activity_view.dart:229`, `lunches_view.dart:58, 293`, `timetable_controller.dart:133`, `timetable_view.dart:44`, `today_view.dart:38, 184`, `planner_view.dart:1021, 1240-1242`, `wizard_controller.dart:582` (the last five are new since the first review) |
+| B-M13 | **open** | see the additions below |
+| B-M14 | **open** | `error_dialog.dart:80, 112` still `(width - 128).clamp(280, 560)`; `app_widgets.dart:108` still clamps at 280 |
+| B-S1, B-S2, B-S3, B-S5, B-S6 | **open** | unchanged in the code (`dialogWidth` is used only by the tutorial bubble; `saveOverride` still public in `config.dart:518, 600`; no `l10n.yaml`; `share_plus` still in `error_dialog.dart:12`; `_isoWeek` unchanged) |
+| B-S4 | **fixed** | `tours.dart:115` `Icons.calendar_view_month_outlined` |
+
+**B-M11, still to do** (from my side-by-side captures of the real app theme, cs dark and en
+light, 1280 and 390 px; everything in the original table that is not listed here now
+matches): Today excuse card (filled dropdown, buttons below it, *Ignorovat* as a text link,
+"Absence" badge at the right instead of "Krátká absence" next to the date); section headers
+(bold normal case instead of small upper-case muted); the date line beside the heading
+instead of under it; Planner (small boxed stat tiles instead of the four stat cards, the
+semester grid without day/month labels and legend, plan rows without "hodin", the badge
+"Most · 5 dní volna" and the subject list); Lunches (day header "16.11.2026", full-width send
+button, AI card without the model badge, prompt field, *Získat klíč zdarma*, *Doporučit (AI)*
+enabled state and the hint lines, blacklist without "Blacklist je prázdný."); Activity
+(no update card, no scope switch, stat cards show "—" where Python shows the next run
+"23:45", **no *Pozastavit automatizaci* switch and no automation card**, no history filter);
+Settings (underline fields, no section icons, password without "Nevyplněno" and the eye
+toggle); phone layouts carry a second inner gutter on most screens (Today, More).
+
+### New findings: must-fix
+
+#### BR-M1 Today says "Omluvenka odeslána" the moment a send starts
+
+- Dart: `app/lib/features/today/today_view.dart:216-220` (day card), `:333-338` (lesson
+  card), `:614-618` (after the signature dialog)
+- Python: `strakalari/flet_ui/views/today.py:214-231` and `:295-311` (`_send_day` / `_send`
+  snack only on failure: `already_running` or `excuse_failed`); the outcome message comes
+  from the worker, `strakalari/flet_ui/state_excuses.py:470-497`
+
+`c.send()` returns `s.submitExcuse()` / `s.submitDayExcuse()`, which return `true` as soon
+as the background worker is **started** (`controllers/excuses.dart:273-284`). The view then
+snacks `excuse_sent` right away, before Bakaláři answered: in dry run, for an unconfirmed
+post, a blocked re-send or a failure the user first reads "Omluvenka odeslána" and only
+later (if at all) the real result from the worker. On the one path that cannot be undone,
+the app must never claim a send it does not know about.
+
+Correct: on `ok == true` show nothing (the worker's `lastSnackMessage` reports the outcome,
+as in Python); on `false` show `already_running` when the key is in `sendingExcuses`,
+otherwise `c.lastMessageOr(excuse_failed)`, like `today.py`. Same for the signature-dialog
+path (`save_failed` only when the save failed). Add a widget test: with a worker that never
+completes, tapping *Omluvit* shows no `excuse_sent`; with a dry-run worker the only message is
+`excuse_dry_run`.
+
+#### BR-M2 Cancelling *Automaticky* leaves the dropdown showing *Automaticky*
+
+- Dart: `app/lib/features/settings/settings_view.dart:900-933` (`KeyedSubtree` keyed on the
+  saved value), `settings_controller.dart:249-266`
+- Python: `strakalari/flet_ui/views/settings/automation.py:51-79` (`_set(previous)` writes
+  `control.value = value` back)
+
+I checked it with a throwaway widget test: config `excuse_mode: confirm`, pick
+*Automaticky*, answer *Zrušit* → the config stays `confirm` (correct) but the dropdown keeps
+showing *Automaticky*. The `KeyedSubtree` key does not change on cancel, so the
+`DropdownButtonFormField` keeps the user's pick. The user is shown a mode that is not saved.
+
+Correct: on `'cancelled'` reset the field to the previous value (for example key the field
+on a counter bumped by every commit, or use a controlled `DropdownButton` whose `value` is
+the saved config). Add the test: after cancel the dropdown shows `mode_confirm`; after
+*Nejdříve nanečisto* it shows `mode_dry_run`.
+
+#### BR-M3 Python format specs are printed raw
+
+- Dart: `app/lib/l10n/strings.dart:1677-1683` (`Strings.format` only replaces `{name}`);
+  callers `features/planner/planner_view.dart:248` (`plan_buffer_note`), `:612`
+  (`budget_final`)
+- Python: `strakalari/flet_ui/strings.py:748-749` (`{reserve:g}`), `:819` (`{limit:g}`);
+  `views/planner.py:1621`, `:1522`
+
+The Planner intro reads "držím stranou {reserve:g} % zbývajících hodin" (en "I keep
+{reserve:g}%") instead of "10 %", and every budget line "(limit {limit:g} %)". Visible in my
+captures, both languages.
+
+Correct: `Strings.format` handles `{name:g}` with the existing `gFormat` (and fails loudly,
+in a test, on any other spec), so all keys are filled exactly like Python `str.format`. Add a
+test that formats every key in the table with dummy values and asserts no `{` remains.
+
+#### BR-M4 Planner "Kolik dní volna chcete" dropdown is a stub
+
+- Dart: `app/lib/features/planner/planner_view.dart:572-590` (`final already = 0; final
+  maximum = already + 0;`)
+- Python: `strakalari/flet_ui/views/planner.py:1336-1350` (`already = len(term.planned_dates &
+  set(term.remaining_days))`, `maximum = already + term.capacity`)
+
+Flutter offers "Co nejvíc (0)" plus, at most, the current target; Python offers "Co nejvíc
+(7)" and 1 … `min(max(maximum, current, 1), 60)` days on the demo data. The user cannot pick
+a target. Correct: compute `already` and `maximum` from the term exactly as Python does and
+add a widget test on the demo-like plan (label shows the capacity, the options reach it).
+
+#### BR-M5 Planner dialogs still show a hardcoded "Šablona N"
+
+- Dart: `app/lib/features/planner/planner_view.dart:934` (plan-all dialog), `:1117` (custom
+  range dialog)
+- Python: `strakalari/flet_ui/views/planner.py:907`, `:1377` (`_template_labels(named)`)
+
+The user's template names are not shown and English users see Czech. The first dialog
+(`:793`) already uses `templateLabels(named)`. Correct: use `templateLabels(named)` in both;
+extend the strings test so no `'Šablona` literal exists under `app/lib`.
+
+#### BR-M6 The app tests have no isolated data folder
+
+- Dart: no `app/test/flutter_test_config.dart`; e.g. `app/test/safety_dialog_test.dart:39-53`
+  deletes `core.historyPath()` and `:82` writes to it, many tests build `AppState()`
+- Python: `tests/conftest.py:5-16` (autouse fixture: `STRAKALARI_DATA_DIR` = a tmp folder,
+  `STRAKALARI_NO_KEYRING=1`)
+
+Without an override, `getUserDataDir()` resolves next to `Platform.resolvedExecutable`
+(`helpers.dart:20, 66-80`), which under `flutter test` is the Flutter SDK's
+`bin/cache/artifacts/engine/windows-x64/` folder. The suite left `config.json` (test values,
+e.g. `novak`), `config.json.lock` and `secret.key.lock` there; my own run of the suite wrote
+to it too. No real data was touched on this PC, but on a machine where that folder is not
+writable the code falls back to `%LOCALAPPDATA%\Strakalari`, the installed app's real data
+folder, and these tests would overwrite its `config.json` and delete its automation history.
+
+Correct: add `app/test/flutter_test_config.dart` whose `testExecutable` gives every test a
+fresh temp folder via `setEnvironmentOverride({'STRAKALARI_DATA_DIR': …,
+'STRAKALARI_NO_KEYRING': '1'})` (and clears it afterwards), like `conftest.py`; add a test
+that fails if `getUserDataDir()` is not under the system temp folder during tests; delete
+the three stray files from `~/flutter/3.44.8/bin/cache/artifacts/engine/windows-x64/`.
+
+#### BR-M7 The screenshot tools do not show the real app (rest of B-B3)
+
+- Dart: `tools/parity/capture_screens.dart:24-26` (hardcoded `C:/Users/matou/...`),
+  `:103-127` (`ThemeData.dark/light(useMaterial3: true)`, `config.set('theme' | 'language')`
+  **after** `AppState()` so `refreshTokens()` never sees it, no `debugShowCheckedModeBanner:
+  false`, no localization delegates)
+- `tools/parity/capture_flet.py:22-27, 90-93` (no wizard capture)
+- Plan: PLAN §4 phase 6 "Done when"
+
+Result: every Flutter "light" image shows dark cards and white text on a light page and
+unreadable rail labels, the accent is Material's purple instead of `tok.accent`, a DEBUG
+ribbon covers the refresh button, and `build/parity-screens/flet/` has no `wizard-*` images.
+When I rendered the same screens through `tok.toThemeData()` (as `main.dart` does) with a
+demo folder generated per language and theme, light mode looked right, so the defect is in
+the tool, not in the app.
+
+Correct: build exactly what `MyApp` builds (theme, dark theme, mode, locale, delegates, no
+banner) around `buildRouter()`; generate the demo folder per language **and theme**
+(`demo_data.py generate DIR --lang L --theme T`) before constructing `AppState`; take the
+font folder from the environment (`FLUTTER_ROOT` or `~`); capture the Flet wizard (a fresh
+folder without credentials); then list every remaining difference in STATUS.md (B-M11).
+
+#### BR-M8 Test ports still missing or changed (rest of B-M7)
+
+Matched by script (every pytest case name against every Dart test name), then read:
+
+| Python | Dart now | Needed |
+|---|---|---|
+| `tests/test_timetable_cache_merge.py:83, 91` `TestDryRunNeverMarksExcused` (send path) | none; STATUS item 79 still "Deferred (phase 5)" | port both: a dry-run worker leaves `excuseLog` empty for `submitExcuse` and `submitDayExcuse` |
+| `tests/test_excuse_history.py:158-185` `TestHistoryCoverage` (3, the UI coverage wrapper) | none; item 19 "Deferred (phase 5)" | port against `taskCoveredByHistory` / `AppState` |
+| `tests/test_planned_skips.py:20, 40, 59` (custom skip persist failure, unplan stale, custom-skip rollback) | none | port against `AppState` |
+| `tests/test_wizard_setup.py:420` `test_ai_connection_test_path` | none (`wizard_setup_full_test.dart` says "36/36") | port against `AppState.testConnection('ai', …)` with a fake |
+| `tests/test_wizard_setup.py:260` `test_scheduler_skips_refresh_while_setup_pending` | none; the window scheduler (`app.py:_register_jobs`) is not ported yet | list as **Deferred (phase 7)** with that reason; Checkpoint C checks it |
+| `tests/test_mobile.py:415` `test_phone_timetable_grid_scrolls_sideways` | none | port (PLAN names this behaviour) |
+| `tests/test_mobile.py:437-443` `test_every_screen_builds` (9 routes, page 390×844, asserts no `report_error`) | `everyScreenBuilds` runs at **1280×800** (so `/more` redirects and no phone layout is built) and only checks `takeException` | run at 390×844 and also assert `state.lastError == null` |
+| `tests/test_mobile.py:353` `test_refresh_ticks_repaint_only_the_topbar` | none | Dropped (Flet repaint counting) is acceptable, but list it under *Dropped* |
+| `tests/test_wakeup_and_widget.py:476, 504, 525, 583, 603, 622, 638, 660` (8 `TestWakeupUI` cases) | none (`wakeup_ui_test.dart` says "12/12"; Python has 22 cases in the three classes) | port the UI ones (minutes texts, settings card day, restore buttons, today card evening before / on its day, planner changes reach the phone); `open_clock_reports_a_failure` and `a_later_alarm_goes_to_the_clock_on_its_weekday` may be **Deferred (phase 8)** if they need the real bridge, with the reason |
+| `tests/test_i18n.py:28-59` `TestI18nKeys` + `test_dead_keys_removed_and_live_keys_kept` (2) | none; item 30 "Deferred (phase 5)" | port as a key audit on `Strings` (the B-B4 table test covers part of it) |
+| `tests/test_open_url.py:32-36` `test_open_url_falls_back_to_webbrowser` | `openUrlFallsBack` asserts the **opposite** (no fallback, `false`) | port the fallback (`components.py:80-102`: if the first launch fails, open with the platform default) and test that it is used; `catch (_) { return false; }` in `open_url.dart` stays only for the second attempt |
+| `tests/test_open_url.py:45-66` `test_click_handlers_are_coroutine_functions`, `test_helper_itself_is_coroutine` | none | Dropped is acceptable (Dart futures run without `await`), but list them under *Dropped* with these real names; STATUS invents `test_open_url_ast_inspection` / `test_open_url_controls_are_safe` |
+| `tests/test_ui_views.py:131, 147, 162, 288, 319` (Flet container reuse, stale method reply, scroll restore) | none | Dropped is acceptable; list them under *Dropped*, and add one widget test that a scrolled screen keeps its offset across an `AppState` emit (the behaviour those tests protect) |
+
+### New findings: should-fix
+
+- **BR-S1** `app/lib/features/wizard/wizard_view.dart:107-129` (commit `10238fc`): the nav
+  row switches to the stacked phone layout below 620 px of card width; the card is at most
+  640 px including padding (`:140`), so desktop always gets the phone layout (full-width
+  *Pokračovat*). Python (`views/wizard.py:848-859`) uses the stacked layout only when
+  `narrow`, and a ~600 px responsive card (`:874-880`). Unlisted deviation: revert to
+  `if (narrow)` and fix the overflow that motivated it by matching Python's card width.
+- **BR-S2** `app/lib/features/common/format.dart`: `parseCzDate`, `shortTime`,
+  `teacherSurname`, `clampWakeupMinutes`, `roundHalfEven` duplicate core functions
+  (`models.dart:19`, `storage/helpers.dart:1027, 1035`, `wakeup.dart:139`) with small
+  differences (e.g. `D.M.YY` handling, `null` → `''`); `weekMonday` (`:90`) steps with
+  `Duration`. Use the core functions (`addDays` for `weekMonday`).
+- **BR-S3** Two token tables remain: `features/common/app_tokens.dart` (`AppTokens`) and
+  `shell/theme.dart` (`Tokens`), both now carried by `AppState` (`tok` / `appTokens`). Values
+  are identical today; the Checkpoint B sign-off asked for one.
+- **BR-S4** `app/lib/widgets/safety_dialog.dart:132` `barrierDismissible: true`; Python's
+  dialog is `modal=True` (`safety.py:67`). Same result (cancel) but a stray tap outside
+  dismisses the safety warning. Use `false`.
+- **BR-S5** `app/lib/features/more.dart:50` adds `EdgeInsets.all(t.pad)` inside the shell's
+  own padding; Python's More list has none (`views/more.py:52`). Double gutter on the phone.
+- **BR-S6** The wizard route outside the shell (`router.dart:152-169`) no longer pops the
+  queued error dialog or `lastSnackMessage`; Python's wizard branch calls
+  `_maybe_show_error()` (`app.py:586`). Low practical impact (automation waits for setup),
+  but move the popup/snack handling into a widget both the shell and the wizard use.
+
+### Notes
+
+- **BR-N1** `submitDayExcuseOverride` (`controllers/excuses.dart:60-71, 414-415`) is a new
+  test seam in production code, like the existing `excuseTasksOverride`; list it under
+  Deviations with B-S2's `saveOverride`.
+- **BR-N2** The window's periodic refresh (`app.py:_register_jobs`, with the
+  `setup_pending` / `refresh_running` / demo gates) has no Flutter counterpart yet; only the
+  tray loop exists (`platform/desktop/tray.dart:264-360`). Phase 7 work; Checkpoint C must
+  verify the setup-pending gate and port `test_scheduler.py` / `test_scheduler_retry.py`
+  window cases.
+- **BR-N3** `today_live.dart:28-34` passes the template only when the plan has an absence
+  excuse, so `excuseLog` records `''` for days with only late/early lessons (Python records
+  the picked text). In-memory only; fix together with BR-M1 by passing the picked template.
+- **BR-N4** `controllers/excuses.dart:1-7` header still says the sends are "stubs …
+  unimplemented until phase 7"; the worker is ported.
+
+### B-M13 additions (STATUS.md claims that are not true)
+
+- "B-M6 (`faa1a77`)": the commit is `bea1935`.
+- B-M7 bullets: `wakeup_ui_test.dart` "12/12", `mobile_narrow_shell_test.dart` "full port …
+  10/10", `wizard_setup_full_test.dart` "full port … 36/36", `open_url_test.dart` "3/3"
+  with invented dropped names (BR-M8); "total 405" (the suite has 425).
+- *Dropped* still lists only the four Checkpoint A items although B-M7 drops 8 tests.
+- The header (lines 18-29) and the Checkpoint B section still say phases 5–6 are complete
+  and "fully implemented", "10 Flet vs Flutter parity screenshots captured",
+  "`app_state_lunches_test.dart` (25 tests covering `test_lunches.py`,
+  `test_lunch_matching.py`)", "242 passed".
+- The test map still says "Deferred (phase 5/6)" in items 17, 19, 21, 30, 40, 50, 51, 53,
+  56, 67, 79, 81 and 87, most of which are now ported (or are BR-M8).
+
+### What I verified in this re-review, and how
+
+Flutter 3.44.8 / Dart 3.12.2, Windows 11 (Europe/Prague), `STRAKALARI_NO_KEYRING=1` for every
+run, demo folders only. Two throwaway widget tests (the BR-M2 probe and a real-theme capture)
+were written to `app/test/`, run once and deleted; `git status` was clean before this commit.
+`build/parity-screens/{demo-cs,demo-en,flet,flutter}` (untracked) were regenerated with the
+branch's own tools.
+
+| Check | Result |
+|---|---|
+| `dart analyze` / `dart test` (core) | clean / 764 passed, 2 skipped (Linux-only `flock` probe, POSIX permission bits) |
+| `flutter analyze` / `flutter test` (app) | clean / 425 passed, 1 skipped (APK scan needs `STRAKALARI_APK`) |
+| Python suite | 1643 passed |
+| `tools/parity/dump.py` + `git diff --exit-code` on `test/parity/` | clean |
+| Each original finding | read the fixing commit and the code it changed against the Python lines named in the finding (table above) |
+| Strings | scripted compare of `STRINGS` / `MOBILE_STRINGS` with the Dart maps and both ARB files (B-B4 row); grep for Czech literals under `app/lib` (BR-M5) |
+| Tutorials | anchor keys grepped on both sides: same 18, same controls |
+| Test parity | `pytest --collect-only` per file; a script matched every Python case name to the Dart tests; misses read one by one (BR-M8); the 3 safety-dialog tests read side by side with `test_automation_safety.py:160-198` |
+| Test integrity | `git diff 645eb97..HEAD -- app/test packages/strakalari_core/test`: the 90 removed `expect` lines are the `Str.t` → `Strings.get` rename and the lunch-filter cases moved to core functions (re-added); no `skip:` added; new `isNotNull` only on presence checks; `try`/`catch` only in tear-downs; one inverted test (`openUrlFallsBack`, BR-M8) |
+| Scope | no new or renamed config keys in the changed code (script against `config.example.json` and the Python sources); one unlisted layout change (BR-S1) |
+| §3.5 | changed code: regexes in `lunches_format.dart` match `views/lunches.py:27, 84-85`; `~/` only on non-negative seconds; weekday indexing correct; no `DateTime.parse`, no `jsonEncode`; `DateTime.now()` sites in B-M12 |
+| Fail loudly | the three new `catch (_)` blocks (`refreshTokens`, `openUrl`, error boundary report) mirror Python `except Exception: pass`; `save()` now warns (B-M8) |
+| Architecture | no `package:flutter` in `packages/strakalari_core`; no build_runner / `*.g.dart`; no dependency or lockfile change since the review; Flutter 3.44.8 + `--enforce-lockfile` in `dart.yml` |
+| Hygiene | no `config.json`, `data_cache.json`, `log.txt`, `htmls/`, `*.key`, `*.jks` in the 15 commits; test hosts are config values only (`skola.bakalari.cz`, `example.com`, `b.example.cz`, 127.0.0.1); no upstream for `flutter-migration`; all commits by DeNdlerX, none with `Co-Authored-By` / `Claude-Session`; the capture tool hardcodes the owner's home path (BR-M7) |
+| `main` ported | `main` = `0ffdcff`, an ancestor of `HEAD`; `strakalari/`, `tests/`, `config.example.json` unchanged against `main` |
+| Screenshots | Hermes's tools: 80 Flutter + 68 Flet images (no Flet wizard). Because the tool's light images are wrong (BR-M7), I also rendered all 10 screens through the app's real theme (cs dark, en light, 1280 and 390 px; 40 images) and compared them with the Flet set as side-by-side sheets: Today, Timetable, Absences, Planner, Lunches, Activity, Settings, More and the wizard. Rail labels in the test renderer show as bars (a font the test engine lacks), not an app defect |
+| BR-M2 | throwaway widget test: config stays `confirm`, the field still shows *Automaticky* after cancel |
+
+**Not verified in this re-review:** the phase 7–9 code (Checkpoints C and D).
