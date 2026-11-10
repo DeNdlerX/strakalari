@@ -19,6 +19,7 @@ import 'package:go_router/go_router.dart';
 import '../controllers/app_state.dart';
 import '../l10n/strings.dart';
 import '../widgets/error_dialog.dart';
+import '../widgets/overlays.dart' show appSnack;
 import 'router.dart';
 import 'theme.dart';
 
@@ -172,44 +173,18 @@ class AppScaffold extends ConsumerWidget {
       });
     }
 
-    final working =
-        appState.refreshRunning || appState.sendingLabel.isNotEmpty;
-    final statusText = working
-        ? (appState.sendingLabel.isEmpty
-            ? Strings.get('refreshing')
-            : appState.sendingLabel)
-        : appState.updatedLabel;
+    final topBar = _buildTopBar(
+      context: context,
+      ref: ref,
+      appState: appState,
+      tok: tok,
+      narrow: narrow,
+    );
 
-    final topBar = AppBar(
-      title: Text(_titleFor(route)),
-      actions: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Center(
-            child: Text(statusText,
-                style:
-                    TextStyle(color: tok.muted, fontSize: tok.fsSmall)),
-          ),
-        ),
-        working
-            ? const Padding(
-                padding: EdgeInsets.all(12),
-                child: SizedBox(
-                    width: 20,
-                    height: 20,
-                    child:
-                        CircularProgressIndicator(strokeWidth: 2)),
-              )
-            : IconButton(
-                key: const ValueKey('refresh'),
-                tooltip: Strings.get('refresh_data'),
-                icon: const Icon(Icons.refresh),
-                onPressed: working
-                    ? null
-                    : () => ref
-                        .read(activityControllerProvider)
-                        .startRefresh(),
-              ),
+    final right = Column(
+      children: [
+        topBar,
+        Expanded(child: child),
       ],
     );
 
@@ -226,8 +201,10 @@ class AppScaffold extends ConsumerWidget {
           }
         }
         return Scaffold(
-          appBar: topBar,
-          body: child,
+          body: SafeArea(
+            bottom: false,
+            child: right,
+          ),
           bottomNavigationBar: NavigationBar(
             selectedIndex: index,
             onDestinationSelected: (i) =>
@@ -253,26 +230,38 @@ class AppScaffold extends ConsumerWidget {
         var sideIndex = tabs.indexOf(route);
         if (sideIndex < 0) sideIndex = tabs.indexOf('more');
         return Scaffold(
-          appBar: topBar,
           body: Row(
             children: [
-              NavigationRail(
-                selectedIndex: sideIndex,
-                labelType: NavigationRailLabelType.selected,
-                onDestinationSelected: (i) =>
-                    context.go(routeLocation(tabs[i])),
-                destinations: [
-                  for (final tab in tabs)
-                    NavigationRailDestination(
-                      icon: Icon(_railIcons[tab]!),
-                      label: Text(tab == 'lunches'
-                          ? Strings.get('nav_lunches')
-                          : _titleFor(tab)),
-                    ),
-                ],
+              Container(
+                color: tok.surface,
+                child: SafeArea(
+                  right: false,
+                  bottom: false,
+                  child: NavigationRail(
+                    selectedIndex: sideIndex,
+                    labelType: NavigationRailLabelType.selected,
+                    onDestinationSelected: (i) =>
+                        context.go(routeLocation(tabs[i])),
+                    destinations: [
+                      for (final tab in tabs)
+                        NavigationRailDestination(
+                          icon: Icon(_railIcons[tab]!),
+                          label: Text(tab == 'lunches'
+                              ? Strings.get('nav_lunches')
+                              : _titleFor(tab)),
+                        ),
+                    ],
+                  ),
+                ),
               ),
-              const VerticalDivider(width: 1),
-              Expanded(child: child),
+              VerticalDivider(width: 1, color: tok.border),
+              Expanded(
+                child: SafeArea(
+                  left: false,
+                  bottom: false,
+                  child: right,
+                ),
+              ),
             ],
           ),
         );
@@ -280,7 +269,6 @@ class AppScaffold extends ConsumerWidget {
         var railIndex = shellRoutes.indexOf(route);
         if (railIndex < 0) railIndex = 0;
         return Scaffold(
-          appBar: topBar,
           body: Row(
             children: [
               NavigationRail(
@@ -298,11 +286,232 @@ class AppScaffold extends ConsumerWidget {
                     ),
                 ],
               ),
-              const VerticalDivider(width: 1),
-              Expanded(child: child),
+              VerticalDivider(width: 1, color: tok.border),
+              Expanded(child: right),
             ],
           ),
         );
     }
+  }
+
+  static String _statusText(AppState state) {
+    if (state.refreshRunning) {
+      return state.currentStep.isNotEmpty
+          ? state.currentStep
+          : Strings.get('refreshing');
+    }
+    final sending = state.sendingLabel;
+    if (sending.isNotEmpty) {
+      return state.currentStep.isNotEmpty ? state.currentStep : sending;
+    }
+    if (state.status == 'error' && state.runs.isNotEmpty) {
+      return "${Strings.get('status_error')}: ${state.runs.last['detail'] ?? ''}";
+    }
+    if (state.runs.isNotEmpty && state.runs.last['ok'] == true) {
+      return "${Strings.get('status_ok')} · ${Strings.get('last_run')}: ${state.lastRunLabel}";
+    }
+    return Strings.get('status_idle');
+  }
+
+  static Widget _buildTopBar({
+    required BuildContext context,
+    required WidgetRef ref,
+    required AppState appState,
+    required Tokens tok,
+    required bool narrow,
+  }) {
+    final statusKind = appState.statusKind();
+    final Color dotColor = switch (statusKind) {
+      'working' => tok.yellow,
+      'ok' => tok.green,
+      'error' => tok.red,
+      _ => tok.faint,
+    };
+
+    final statusText = _statusText(appState);
+    final tooltipText =
+        '$statusText\n${Strings.get('last_updated')}: ${appState.updatedLabel}   ·   ${Strings.get('next_run')}: ${appState.nextRunLabel}';
+
+    void refreshClicked() {
+      if (appState.refreshRunning) {
+        appState.cancelRefresh();
+        return;
+      }
+      if (!ref.read(activityControllerProvider).startRefresh('all')) {
+        appSnack(context, Strings.get('already_running'));
+        return;
+      }
+      appSnack(context, Strings.get('refresh_started'));
+    }
+
+    final statusPill = Tooltip(
+      message: tooltipText,
+      child: InkWell(
+        key: const ValueKey('topbar_status_pill'),
+        onTap: () => context.go(routeLocation('activity')),
+        borderRadius: BorderRadius.circular(tok.radiusSm),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Row(
+            children: [
+              Container(
+                key: const ValueKey('topbar_status_dot'),
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: dotColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  statusText,
+                  style: TextStyle(
+                    color: tok.muted,
+                    fontSize: tok.fsSmall,
+                  ),
+                  maxLines: narrow ? 1 : 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    Widget? updateControl;
+    final banner = appState.updateBanner;
+    if (banner != null) {
+      final latest = '${banner['version'] ?? '?'}';
+      final updateText = Strings.format('update_available', {'v': latest});
+      if (narrow) {
+        updateControl = IconButton(
+          key: const ValueKey('topbar_update_btn'),
+          icon: Icon(Icons.new_releases_outlined, color: tok.accent),
+          tooltip: updateText,
+          onPressed: () => context.go(routeLocation('activity')),
+        );
+      } else {
+        updateControl = TextButton.icon(
+          key: const ValueKey('topbar_update_btn'),
+          icon: Icon(Icons.new_releases_outlined, color: tok.accent),
+          label: Text(updateText, style: TextStyle(color: tok.accent)),
+          onPressed: () => context.go(routeLocation('activity')),
+        );
+      }
+    }
+
+    Widget actionControl;
+    if (appState.refreshRunning) {
+      if (narrow) {
+        actionControl = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: tok.accent,
+              ),
+            ),
+            IconButton(
+              key: const ValueKey('cancel_refresh'),
+              icon: const Icon(Icons.close),
+              tooltip: Strings.get('cancel_refresh'),
+              onPressed: refreshClicked,
+            ),
+          ],
+        );
+      } else {
+        actionControl = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: tok.accent,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              Strings.get('refreshing'),
+              style: TextStyle(color: tok.muted, fontSize: tok.fsSmall),
+            ),
+            IconButton(
+              key: const ValueKey('cancel_refresh'),
+              icon: const Icon(Icons.close, size: 18),
+              tooltip: Strings.get('cancel_refresh'),
+              onPressed: refreshClicked,
+            ),
+          ],
+        );
+      }
+    } else if (appState.sendingLabel.isNotEmpty) {
+      if (narrow) {
+        actionControl = SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: tok.accent,
+          ),
+        );
+      } else {
+        actionControl = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: tok.accent,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              appState.sendingLabel,
+              style: TextStyle(color: tok.muted, fontSize: tok.fsSmall),
+            ),
+          ],
+        );
+      }
+    } else {
+      if (narrow) {
+        actionControl = IconButton(
+          key: const ValueKey('refresh'),
+          icon: Icon(Icons.refresh, color: tok.accent),
+          tooltip: Strings.get('refresh_data'),
+          onPressed: refreshClicked,
+        );
+      } else {
+        actionControl = FilledButton.icon(
+          key: const ValueKey('refresh'),
+          icon: const Icon(Icons.refresh),
+          label: Text(Strings.get('refresh_data')),
+          onPressed: refreshClicked,
+        );
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Row(
+        children: [
+          Expanded(child: statusPill),
+          if (updateControl != null) ...[
+            const SizedBox(width: 8),
+            updateControl,
+          ],
+          const SizedBox(width: 8),
+          actionControl,
+        ],
+      ),
+    );
   }
 }
