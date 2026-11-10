@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../controllers/app_state.dart';
@@ -145,13 +146,25 @@ class _LiveWizardViewState extends ConsumerState<LiveWizardView> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      ref.read(appStateProvider).wizardShown = true;
+      final s = ref.read(appStateProvider);
+      if (!s.wizardDismissed) {
+        s.wizardShown = true;
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(appStateProvider);
+    if (s.wizardDismissed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) context.go('/today');
+      });
+      return Scaffold(
+        backgroundColor: widget.tokens.bg,
+        body: const SizedBox.shrink(),
+      );
+    }
     final controller = wizardControllerFor(s);
     return WizardView(
       controller: controller,

@@ -121,8 +121,6 @@ GoRoute _route(String name) => GoRoute(
             return LiveSettingsView(narrow: narrow);
           case 'more':
             return MorePage(onOpen: (r) => context.go('/$r'));
-          case 'wizard':
-            return LiveWizardView(tokens: tokens, narrow: narrow);
           default:
             return PlaceholderScreen(route: name);
         }
@@ -138,6 +136,21 @@ GoRouter buildRouter({String initialLocation = '/today'}) => GoRouter(
           path: '/',
           redirect: (context, state) => '/today',
         ),
+        GoRoute(
+          path: '/wizard',
+          name: 'wizard',
+          builder: (context, state) {
+            final size = MediaQuery.sizeOf(context);
+            final narrow = (size.width > 0 && size.width < 720) ||
+                (size.height > 0 && size.height < 520);
+            final tokens = ft.AppTokens.of(Theme.of(context).brightness);
+            return Scaffold(
+              body: SafeArea(
+                child: LiveWizardView(tokens: tokens, narrow: narrow),
+              ),
+            );
+          },
+        ),
         ShellRoute(
           builder: (context, state, child) => AppScaffold(
             location: state.uri.path,
@@ -146,7 +159,6 @@ GoRouter buildRouter({String initialLocation = '/today'}) => GoRouter(
           routes: [
             for (final name in shellRoutes) _route(name),
             _route('more'),
-            _route('wizard'),
           ],
         ),
       ],

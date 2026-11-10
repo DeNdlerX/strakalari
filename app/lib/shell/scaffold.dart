@@ -119,21 +119,14 @@ class AppScaffold extends ConsumerWidget {
 
     // First-run wizard owns the screen until finished or dismissed
     // (gates automation, like `setup_pending` in app.py).
-    if (appState.setupPending && route != 'wizard') {
+    if (appState.setupPending) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (context.mounted) context.go('/wizard');
       });
-    } else if (route == 'wizard' &&
-        appState.wizardShown &&
-        appState.wizardDismissed) {
-      appState.wizardShown = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) context.go('/today');
-      });
-    }
-
-    if (route == 'wizard' && !appState.wizardShown && !appState.wizardDismissed) {
-      appState.wizardShown = true;
+      return Scaffold(
+        backgroundColor: tok.bg,
+        body: const SizedBox.shrink(),
+      );
     }
 
     if (appState.lastSnackMessage.isNotEmpty) {

@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 6 · Next step: Fix finding B-M3 (render wizard outside app chrome) in `reviews/checkpoint-B.md`, then proceed through must-fix findings B-M4 to B-M14.
+Current phase: 6 · Next step: Fix finding B-M4 (catch view rendering errors in error boundary) in `reviews/checkpoint-B.md`, then proceed through must-fix findings B-M5 to B-M14.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -743,7 +743,8 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
   - **B-B4** (`aa28710`): delete duplicate string tables (`common/app_strings.dart`, `class Str` in `overlays.dart`), unify all UI views and tests to canonical `Strings.get()` / `Strings.format()`, add `hasKey` and `allKeys` in `Strings`, fix hardcoded strings in settings/wizard/planner, and add `app/test/strings_table_parity_test.dart`.
   - **B-B5** (`8632ff4`): port automatic mode confirmation dialog (`AutoConfirmDialog`, `confirmAutoMode`) in `app/lib/widgets/safety_dialog.dart` matching `strakalari/flet_ui/safety.py`, wire `confirmAutoMode` callback in `settings_live.dart` and `settings_view.dart`, remove false "Saved" snack on cancellation, and port the 3 deferred tests in `app/test/safety_dialog_test.dart`.
   - **B-M1** (`aa9a48d`): rebuild shell top bar in `app/lib/shell/scaffold.dart` matching Python `_build_topbar` / `_build_narrow_topbar` (status pill with colored dot, status text calculation, tooltip, tap to /activity; update button; primary refresh button in wide / icon in narrow; cancel refresh button during active refresh; already_running / refresh_started snacks; removed AppBar and duplicate titles; right content column positioning) and add comprehensive test suite in `app/test/topbar_test.dart`.
-  - **B-M2** (this commit): align navigation rail width (standard unextended 90px rail with `labelType: all`), side rail (centered `groupAlignment: 0.0`, all labels, lunch badge), shell content padding (`EdgeInsets.all(tok.pad + 8)` wide, `symmetric(12, 4)` narrow), divider styling (`color: tok.border`, thickness 1), wide-mode leaving More to Today, and add `app/test/rail_and_scaffold_test.dart`.
+  - **B-M2** (`cbed3c8`): align navigation rail width (standard unextended 90px rail with `labelType: all`), side rail (centered `groupAlignment: 0.0`, all labels, lunch badge), shell content padding (`EdgeInsets.all(tok.pad + 8)` wide, `symmetric(12, 4)` narrow), divider styling (`color: tok.border`, thickness 1), wide-mode leaving More to Today, and add `app/test/rail_and_scaffold_test.dart`.
+  - **B-M3** (this commit): render first-run setup wizard outside app chrome (standalone top-level `/wizard` route with no rail, bottom bar or top bar refresh controls), enforce setupPending isolation in `AppScaffold`, keep wizard active across mid-wizard credential saves, and add `app/test/wizard_chrome_isolation_test.dart`.
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 
