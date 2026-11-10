@@ -18,6 +18,7 @@ import 'package:go_router/go_router.dart';
 
 import '../controllers/app_state.dart';
 import '../l10n/strings.dart';
+import '../widgets/error_boundary.dart';
 import '../widgets/error_dialog.dart';
 import '../widgets/overlays.dart' show appSnack;
 import 'router.dart';
@@ -183,7 +184,10 @@ class AppScaffold extends ConsumerWidget {
       padding: narrow
           ? const EdgeInsets.symmetric(horizontal: 12, vertical: 4)
           : EdgeInsets.all(tok.pad + 8),
-      child: child,
+      child: ViewErrorBoundary(
+        route: route,
+        child: child,
+      ),
     );
 
     final right = Column(

@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 6 · Next step: Fix finding B-M4 (catch view rendering errors in error boundary) in `reviews/checkpoint-B.md`, then proceed through must-fix findings B-M5 to B-M14.
+Current phase: 6 · Next step: Fix finding B-M5 (wire tutorial begin, 18 anchors, floating layer, and port deferred tutorial tests) in `reviews/checkpoint-B.md`, then proceed through must-fix findings B-M6 to B-M14.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.

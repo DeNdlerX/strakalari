@@ -15,6 +15,7 @@ import 'platform/android/background.dart' as android_bg;
 import 'platform/notifications.dart';
 import 'shell/router.dart';
 import 'shell/theme.dart';
+import 'widgets/error_boundary.dart';
 
 /// Headless Android entry point (PLAN 3.4): `WakeReceiver`/`RefreshReceiver`
 /// starts a headless FlutterEngine running this instead of the UI.
@@ -29,6 +30,7 @@ final _router = buildRouter();
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   ensureNotifierBackend();
+  installErrorWidgetBuilder();
   runApp(const ProviderScope(child: MyApp()));
 }
 
