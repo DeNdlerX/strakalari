@@ -302,12 +302,17 @@ class AppState {
       try {
         config.set(e.key, e.value);
       } catch (err) {
+        // ignore: avoid_print
+        print(
+            'Warning: ignoring invalid config update ${core.pyRepr(e.key)}: $err');
         ok = false;
       }
     }
     try {
       config.save();
-    } catch (_) {
+    } catch (exc) {
+      // ignore: avoid_print
+      print('Warning: could not save config: $exc');
       return false;
     }
     try {
@@ -318,7 +323,9 @@ class AppState {
     for (final cb in List.of(configListeners)) {
       try {
         cb();
-      } catch (_) {
+      } catch (exc) {
+        // ignore: avoid_print
+        print('Warning: config listener failed: $exc');
         // A listener never breaks a save.
       }
     }

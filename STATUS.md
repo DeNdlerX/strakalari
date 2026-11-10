@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 6 · Next step: Fix finding B-M8 (AppState.save warning prints on invalid update / failed save / listener error) in `reviews/checkpoint-B.md`, then proceed through must-fix findings B-M9 to B-M14.
+Current phase: 6 · Next step: Fix finding B-M9 (settings and app preferences: compact_density, STRAKALARI_THEME, core.setLanguage at startup) in `reviews/checkpoint-B.md`, then proceed through must-fix findings B-M10 to B-M14.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -761,6 +761,7 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
     - `wizard_setup_full_test.dart`: full port of remaining `test_wizard_setup.py` cases (36/36)
     - Fixed view and controller logic for parity: normalized marks bands in `MarksLogic.setMarksBands`, used canonical `core.entriesForSelection` in planner custom dialog, exposed `expandedDays` reactive state in `LunchesController`, added `PopScope` hierarchy in `Scaffold`, and made wizard nav buttons responsive via `LayoutBuilder`.
     - Documented dropped Flet-specific framework tests: Flet container reuse (`test_scrollable_reuses_container_across_rebuilds`, `test_scrollable_row_and_type_mismatch`, `test_timetable_build_reuses_body_across_renders`), Flet RPC monkeypatching (`test_stale_method_reply_does_not_raise`), Flet scroll offset restoration (`test_restore_scroll_only_touches_scrollers_of_current_render`), and AST reflection tests (`test_open_url_ast_inspection`, `test_open_url_controls_are_safe`).
+  - **B-M8**: print Python-equivalent warning messages in `AppState.save` on failure ("Warning: could not save config: {exc}"), invalid update ("Warning: ignoring invalid config update {key!r}: {err}" formatted with `core.pyRepr`), and listener failure ("Warning: config listener failed: {exc}"), verified with `app/test/app_state_save_warnings_test.dart`.
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 
