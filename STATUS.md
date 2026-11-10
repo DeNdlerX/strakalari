@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 6 · Next step: Fix finding B-M5 (wire tutorial begin, 18 anchors, floating layer, and port deferred tutorial tests) in `reviews/checkpoint-B.md`, then proceed through must-fix findings B-M6 to B-M14.
+Current phase: 6 · Next step: Fix finding B-M6 (remove duplicated feature business logic in grades_logic.dart, schedule_logic.dart, lunch_filter.dart, lesson_model.dart, and re-point views and tests to strakalari_core and AppState) in `reviews/checkpoint-B.md`, then proceed through must-fix findings B-M7 to B-M14.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -125,11 +125,11 @@ State: todo = not started, tests = Dart tests written, in progress, unreviewed =
 | strakalari/flet_ui/state_lunches.py | app controllers/lunches + features/lunches | lunches_filter_test.dart (15) + lunches_view_test.dart (9) | in progress, unreviewed |
 | strakalari/flet_ui/state_marks.py | app controllers/marks + features/marks | widget_test.dart rail pass | in progress, unreviewed |
 | strakalari/flet_ui/state_planner.py | app controllers/planner + features/planner | planner_reserve_test.dart (12) + planner_view_test.dart (10) | in progress, unreviewed |
-| strakalari/flet_ui/state_tutorial.py | app controllers/tutorial + tutorial/tours | tutorial_test.dart (19) | in progress, unreviewed |
+| strakalari/flet_ui/state_tutorial.py | app controllers/tutorial + tutorial/tours | tutorial_test.dart (28) | done |
 | strakalari/flet_ui/strings.py | app l10n ARB (app_cs/en + strings.dart) | settings_sections_test.dart (15) | in progress, unreviewed |
 | strakalari/flet_ui/theme.py | app/lib/shell/theme.dart | widget_test.dart breakpoints | in progress, unreviewed |
 | strakalari/flet_ui/tray.py | app/lib/platform/desktop/tray.dart | — (Sandbox test pending) | in progress, unreviewed |
-| strakalari/flet_ui/tutorial.py | app/lib/tutorial/ + widgets/overlays (kTours) | tutorial_test.dart (19) | in progress, unreviewed |
+| strakalari/flet_ui/tutorial.py | app/lib/tutorial/ + widgets/overlays (kTours) | tutorial_test.dart (28) | done |
 | strakalari/flet_ui/views/__init__.py | app features barrel (router) | widget_test.dart rail pass | in progress, unreviewed |
 | strakalari/flet_ui/views/absences.py | app features/absences | widget_test.dart rail pass | in progress, unreviewed |
 | strakalari/flet_ui/views/activity.py | app features/activity | activity_view_test.dart (6) | in progress, unreviewed |
@@ -421,8 +421,7 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
 84. `tests/test_tray_ui_command.py` (4) → **Deferred (phase 7 — desktop tray UI command & refresh)**
 85. `tests/test_tutorial.py` (36 [28 functions]):
     - `test_config_validation_rejects_bad_progress` → `config_test.dart`: `validateCatchesBadModeAndThresholds`
-    - 19 gating/progress/rendering cases → `app/test/tutorial_test.dart` (in progress, unreviewed)
-    - Remaining 8 screen-specific anchor/walkthrough functions (`test_order_lunch_fires_its_event`, `test_missing_first_anchor_suspends`, `test_missing_later_anchor_floats`, `test_other_screen_suspends_the_tour`, `test_intro_floats_on_any_screen`, `test_today_view_anchors_first_excuse`, `test_shell_stacks_the_floating_bubble`, `TestMarksTour.*`) → **Deferred (phase 5/6 — screen tour anchor wiring)**
+    - All 28 functions ported in `app/test/tutorial_test.dart` (28 green, covering gating, progression, resets, anchors, inline/floating bubble rendering, and marks walkthrough)
 86. `tests/test_ui_state.py` (13):
     - 5 activity/status cases → `app/test/activity_state_test.dart` (in progress, unreviewed): `status kind transitions`, `manual sends show as working`, `last run label`, `next run label`, `log ring buffer caps`
     - 2 setup cases → `app/test/wizard_settings_test.dart` (in progress, unreviewed): `needs setup false with strava only`, `needs setup fresh`
@@ -744,7 +743,9 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
   - **B-B5** (`8632ff4`): port automatic mode confirmation dialog (`AutoConfirmDialog`, `confirmAutoMode`) in `app/lib/widgets/safety_dialog.dart` matching `strakalari/flet_ui/safety.py`, wire `confirmAutoMode` callback in `settings_live.dart` and `settings_view.dart`, remove false "Saved" snack on cancellation, and port the 3 deferred tests in `app/test/safety_dialog_test.dart`.
   - **B-M1** (`aa9a48d`): rebuild shell top bar in `app/lib/shell/scaffold.dart` matching Python `_build_topbar` / `_build_narrow_topbar` (status pill with colored dot, status text calculation, tooltip, tap to /activity; update button; primary refresh button in wide / icon in narrow; cancel refresh button during active refresh; already_running / refresh_started snacks; removed AppBar and duplicate titles; right content column positioning) and add comprehensive test suite in `app/test/topbar_test.dart`.
   - **B-M2** (`cbed3c8`): align navigation rail width (standard unextended 90px rail with `labelType: all`), side rail (centered `groupAlignment: 0.0`, all labels, lunch badge), shell content padding (`EdgeInsets.all(tok.pad + 8)` wide, `symmetric(12, 4)` narrow), divider styling (`color: tok.border`, thickness 1), wide-mode leaving More to Today, and add `app/test/rail_and_scaffold_test.dart`.
-  - **B-M3** (this commit): render first-run setup wizard outside app chrome (standalone top-level `/wizard` route with no rail, bottom bar or top bar refresh controls), enforce setupPending isolation in `AppScaffold`, keep wizard active across mid-wizard credential saves, and add `app/test/wizard_chrome_isolation_test.dart`.
+  - **B-M3** (`53dae96`): render first-run setup wizard outside app chrome (standalone top-level `/wizard` route with no rail, bottom bar or top bar refresh controls), enforce setupPending isolation in `AppScaffold`, keep wizard active across mid-wizard credential saves, and add `app/test/wizard_chrome_isolation_test.dart`.
+  - **B-M4** (`968a09a`): catch view rendering errors in `ViewErrorBoundary` wrapped around views in `AppScaffold`, report to `AppState.reportError` with route tag, render error card matching Python, and add `app/test/error_boundary_test.dart`.
+  - **B-M5** (this commit): wire tutorial `begin(route)` in scaffold, floating bubble layer (`tutorialLayer`), 18 UI anchors across all views, delete duplicate tutorial controller in `overlays.dart`, and port deferred tutorial tests in `app/test/tutorial_test.dart` (28 tests).
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 

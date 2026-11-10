@@ -53,6 +53,7 @@ void main() {
       addTearDown(container.dispose);
       final state = container.read(appStateProvider);
       state.wizardDismissed = true;
+      state.setTutorialsEnabled(false);
 
       await tester.pumpWidget(_buildTestApp(container: container));
       await tester.pumpAndSettle();
@@ -81,6 +82,7 @@ void main() {
       addTearDown(container.dispose);
       final state = container.read(appStateProvider);
       state.wizardDismissed = true;
+      state.setTutorialsEnabled(false);
       state.runs.add({'finished': '10:00:00', 'ok': true});
 
       await tester.pumpWidget(_buildTestApp(container: container));
@@ -104,6 +106,7 @@ void main() {
       addTearDown(container.dispose);
       final state = container.read(appStateProvider);
       state.wizardDismissed = true;
+      state.setTutorialsEnabled(false);
       state.status = 'error';
       state.runs.add({'finished': '10:00:00', 'ok': false, 'detail': 'Bakaláři nedostupní'});
 
@@ -128,6 +131,7 @@ void main() {
       addTearDown(container.dispose);
       final state = container.read(appStateProvider);
       state.wizardDismissed = true;
+      state.setTutorialsEnabled(false);
 
       await tester.pumpWidget(_buildTestApp(container: container));
       await tester.pumpAndSettle();
@@ -151,6 +155,7 @@ void main() {
       addTearDown(container.dispose);
       final state = container.read(appStateProvider);
       state.wizardDismissed = true;
+      state.setTutorialsEnabled(false);
       state.updateInfo = {
         'version': '9.9.9',
         'url': 'https://example.com/v9.9.9',
@@ -184,6 +189,7 @@ void main() {
       addTearDown(container.dispose);
       final state = container.read(appStateProvider);
       state.wizardDismissed = true;
+      state.setTutorialsEnabled(false);
       state.refreshRunning = true;
       state.currentStep = 'Stahuji rozvrh…';
 
@@ -210,6 +216,7 @@ void main() {
       addTearDown(container.dispose);
       final state = container.read(appStateProvider);
       state.wizardDismissed = true;
+      state.setTutorialsEnabled(false);
       var spawned = 0;
       state.spawn = (job, name) {
         spawned++;

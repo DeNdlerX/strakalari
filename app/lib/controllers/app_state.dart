@@ -198,6 +198,7 @@ class AppState {
   final Map<String, String> drafts = {};
   int wizardStep = 0;
   (String, int)? tutorial;
+  bool tutorialAnchored = false;
   bool wizardDismissed = false;
   bool wizardShown = false;
   final Map<String, String> wizardVerified = {};

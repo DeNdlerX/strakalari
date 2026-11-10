@@ -72,7 +72,10 @@ class LunchesView extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: Text(Strings.get('pick_hint')),
       ),
-      _sendRow(context),
+      TutorialAnchor(
+        anchorKey: 'lunch_send',
+        child: _sendRow(context),
+      ),
       if (past.isNotEmpty)
         TextButton(
           onPressed: () {
@@ -84,8 +87,16 @@ class LunchesView extends StatelessWidget {
               ? Strings.get('lunch_hide_past')
               : Strings.format('lunch_show_past', {'n': past.length})),
         ),
-      for (final day in [if (c.showPastLunches) ...past, ...upcoming])
-        _dayCard(context, day, c.food[day] ?? {}),
+      if (c.showPastLunches)
+        for (final day in past) _dayCard(context, day, c.food[day] ?? {}),
+      for (var i = 0; i < upcoming.length; i++)
+        if (i == 0)
+          TutorialAnchor(
+            anchorKey: 'lunch_day',
+            child: _dayCard(context, upcoming[i], c.food[upcoming[i]] ?? {}),
+          )
+        else
+          _dayCard(context, upcoming[i], c.food[upcoming[i]] ?? {}),
     ];
     if (c.food.isEmpty) {
       // Why the last refresh brought no menu (STRAVA_STATUS_KEY).
@@ -106,22 +117,25 @@ class LunchesView extends StatelessWidget {
     final header = ListTile(
       title: Text(Strings.get('lunch_title')),
       subtitle: Text(updatedLabel),
-      trailing: IconButton(
-        tooltip: sidebarOpen
-            ? Strings.get('hide_sidebar')
-            : Strings.get('show_sidebar'),
-        icon: const Icon(Icons.tune_outlined),
-        onPressed: () {
-          if (narrow) {
-            final next = !c.lunchToolsOpen;
-            c.lunchToolsOpen = next;
-            c.setLunchToolsHook?.call(next);
-          } else {
-            final next = !c.sidebarOpen;
-            c.sidebarOpen = next;
-            c.setSidebarHook?.call(next);
-          }
-        },
+      trailing: TutorialAnchor(
+        anchorKey: 'lunch_tools',
+        child: IconButton(
+          tooltip: sidebarOpen
+              ? Strings.get('hide_sidebar')
+              : Strings.get('show_sidebar'),
+          icon: const Icon(Icons.tune_outlined),
+          onPressed: () {
+            if (narrow) {
+              final next = !c.lunchToolsOpen;
+              c.lunchToolsOpen = next;
+              c.setLunchToolsHook?.call(next);
+            } else {
+              final next = !c.sidebarOpen;
+              c.sidebarOpen = next;
+              c.setSidebarHook?.call(next);
+            }
+          },
+        ),
       ),
     );
     if (narrow && !sidebarOpen) {

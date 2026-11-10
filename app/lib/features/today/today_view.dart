@@ -1,6 +1,7 @@
 import '../../l10n/strings.dart';
 import 'package:flutter/material.dart';
 
+import '../../tutorial/tutorial_ui.dart';
 import '../common/app_tokens.dart';
 import '../common/format.dart';
 import 'today_controller.dart';
@@ -223,74 +224,77 @@ final day = parseCzDate(dayIso);
         ? Strings.format('excuse_lessons', {'lessons': lessonsLabel})
         : (wholeDay ? Strings.get('excuse_day') : Strings.get('excuse_all'));
 
-    return _accentCard(Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.event_busy_outlined, size: 20, color: t.accent),
-            const SizedBox(width: 8),
-            Expanded(
-                child: Text(dayTitle,
-                    style: TextStyle(
-                        color: t.text,
-                        fontSize: t.fsBody,
-                        fontWeight: FontWeight.bold))),
-            _kindBadge(dayKind == 'day' ? 'long' : 'short'),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(summary,
-            style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
-        const SizedBox(height: 8),
-        _templatePicker(context, pickKey, options),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 4,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            ElevatedButton(
-                onPressed: sendDay, child: Text(sendLabel)),
-            TextButton(
-              onPressed: () {
-                final added = c.ignoreDay(dayIso);
-                if (context.mounted) {
-                  _snack(
-                      context,
-                      added.isNotEmpty
-                          ? Strings.get('ignored_msg')
-                          : c.lastMessageOr(Strings.get('save_failed')));
-                }
-              },
-              child: Text(Strings.get('ignore_day')),
-            ),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Switch(
-                  value: perLesson,
-                  activeThumbColor: t.accent,
-                  onChanged: (v) {
-                    if (!c.setExcuseDayPerLesson(v) && context.mounted) {
-                      _snack(context, Strings.get('save_failed'));
-                    }
-                  },
-                ),
-                Flexible(
-                  child: Text(Strings.get('excuse_each_lesson'),
+    return TutorialAnchor(
+      anchorKey: 'excuse_card',
+      child: _accentCard(Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.event_busy_outlined, size: 20, color: t.accent),
+              const SizedBox(width: 8),
+              Expanded(
+                  child: Text(dayTitle,
                       style: TextStyle(
-                          color: t.muted, fontSize: t.fsSmall)),
-                ),
-              ],
-            ),
-          ],
-        ),
-        Text(c.pickedOption(pickKey, options),
-            style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
-        _oneByOne(context, dayIso, dayTasks),
-      ],
-    ));
+                          color: t.text,
+                          fontSize: t.fsBody,
+                          fontWeight: FontWeight.bold))),
+              _kindBadge(dayKind == 'day' ? 'long' : 'short'),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(summary,
+              style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
+          const SizedBox(height: 8),
+          _templatePicker(context, pickKey, options),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              ElevatedButton(
+                  onPressed: sendDay, child: Text(sendLabel)),
+              TextButton(
+                onPressed: () {
+                  final added = c.ignoreDay(dayIso);
+                  if (context.mounted) {
+                    _snack(
+                        context,
+                        added.isNotEmpty
+                            ? Strings.get('ignored_msg')
+                            : c.lastMessageOr(Strings.get('save_failed')));
+                  }
+                },
+                child: Text(Strings.get('ignore_day')),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Switch(
+                    value: perLesson,
+                    activeThumbColor: t.accent,
+                    onChanged: (v) {
+                      if (!c.setExcuseDayPerLesson(v) && context.mounted) {
+                        _snack(context, Strings.get('save_failed'));
+                      }
+                    },
+                  ),
+                  Flexible(
+                    child: Text(Strings.get('excuse_each_lesson'),
+                        style: TextStyle(
+                            color: t.muted, fontSize: t.fsSmall)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          Text(c.pickedOption(pickKey, options),
+              style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
+          _oneByOne(context, dayIso, dayTasks),
+        ],
+      )),
+    );
   }
 
   Widget _oneByOne(
@@ -334,57 +338,60 @@ final options = c.templateOptions(task.kind);
       }
     }
 
-    return _card(Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            _kindBadge(task.kind),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(task.label,
-                      style: TextStyle(
-                          color: t.text,
-                          fontSize: t.fsBody,
-                          fontWeight: FontWeight.bold)),
-                  if (task.detail.isNotEmpty)
-                    Text(task.detail,
+    return TutorialAnchor(
+      anchorKey: 'excuse_card',
+      child: _card(Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              _kindBadge(task.kind),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(task.label,
                         style: TextStyle(
-                            color: t.muted, fontSize: t.fsSmall)),
-                ],
+                            color: t.text,
+                            fontSize: t.fsBody,
+                            fontWeight: FontWeight.bold)),
+                    if (task.detail.isNotEmpty)
+                      Text(task.detail,
+                          style: TextStyle(
+                              color: t.muted, fontSize: t.fsSmall)),
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        _templatePicker(context, key, options),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          children: [
-            ElevatedButton(onPressed: send, child: Text(Strings.get('excused_btn'))),
-            TextButton(
-              onPressed: () {
-                final hidden = c.ignoreExcuse(task.key);
-                if (context.mounted) {
-                  _snack(
-                      context,
-                      hidden.isNotEmpty
-                          ? Strings.get('ignored_msg')
-                          : c.lastMessageOr(Strings.get('save_failed')));
-                }
-              },
-              child: Text(Strings.get('ignore_btn')),
-            ),
-          ],
-        ),
-        Text(c.pickedOption(key, options),
-            style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
-      ],
-    ));
+            ],
+          ),
+          const SizedBox(height: 8),
+          _templatePicker(context, key, options),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              ElevatedButton(onPressed: send, child: Text(Strings.get('excused_btn'))),
+              TextButton(
+                onPressed: () {
+                  final hidden = c.ignoreExcuse(task.key);
+                  if (context.mounted) {
+                    _snack(
+                        context,
+                        hidden.isNotEmpty
+                            ? Strings.get('ignored_msg')
+                            : c.lastMessageOr(Strings.get('save_failed')));
+                  }
+                },
+                child: Text(Strings.get('ignore_btn')),
+              ),
+            ],
+          ),
+          Text(c.pickedOption(key, options),
+              style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
+        ],
+      )),
+    );
   }
 
   List<Widget> _ignoredBlocks(BuildContext context) {

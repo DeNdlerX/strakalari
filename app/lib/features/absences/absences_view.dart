@@ -1,6 +1,7 @@
 import '../../l10n/strings.dart';
 import 'package:flutter/material.dart';
 
+import '../../tutorial/tutorial_ui.dart';
 import '../common/app_tokens.dart';
 import 'absences_controller.dart';
 
@@ -63,21 +64,33 @@ final header = Row(
         ],
       );
     }
-    final stats = Row(
-      spacing: t.gap,
-      children: [
-        Expanded(
-            child: _statCard(Strings.get('avg_absence'),
-                '${c.average.toStringAsFixed(1)} %', 'ok')),
-        Expanded(
-            child: _statCard(Strings.get('warn_subjects'),
-                '${c.warnCount}', c.warnCount > 0 ? 'warning' : 'ok')),
-        Expanded(
-            child: _statCard(Strings.get('crit_subjects'),
-                '${c.critCount}', c.critCount > 0 ? 'critical' : 'ok')),
-      ],
+    final stats = TutorialAnchor(
+      anchorKey: 'abs_stats',
+      child: Row(
+        spacing: t.gap,
+        children: [
+          Expanded(
+              child: _statCard(Strings.get('avg_absence'),
+                  '${c.average.toStringAsFixed(1)} %', 'ok')),
+          Expanded(
+              child: _statCard(Strings.get('warn_subjects'),
+                  '${c.warnCount}', c.warnCount > 0 ? 'warning' : 'ok')),
+          Expanded(
+              child: _statCard(Strings.get('crit_subjects'),
+                  '${c.critCount}', c.critCount > 0 ? 'critical' : 'ok')),
+        ],
+      ),
     );
-    final rows = [for (final subject in c.subjects) _row(subject)];
+    final rows = [
+      for (var i = 0; i < c.subjects.length; i++)
+        if (i == 0)
+          TutorialAnchor(
+            anchorKey: 'abs_first',
+            child: _row(c.subjects[i]),
+          )
+        else
+          _row(c.subjects[i]),
+    ];
     if (narrow) {
       // Phone: header and stats scroll away with the list (landscape).
       return ListView(

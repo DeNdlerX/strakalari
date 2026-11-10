@@ -58,6 +58,7 @@ class LiveActivityView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStateProvider);
+    s.tutorialOffer('activity');
     final (audit, auditError) = loadAuditItems();
     String version;
     try {

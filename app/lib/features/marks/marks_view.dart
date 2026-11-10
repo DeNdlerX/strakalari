@@ -1,6 +1,7 @@
 import '../../l10n/strings.dart';
 import 'package:flutter/material.dart';
 
+import '../../tutorial/tutorial_ui.dart';
 import '../common/app_tokens.dart';
 import '../common/format.dart';
 import 'grades_logic.dart';
@@ -89,9 +90,16 @@ final hasGrades = c.grades.isNotEmpty;
             _sortToggle(),
           ],
         ));
+        final sortedItems = c.sorted(items, c.marksSort(), bands);
         final cards = [
-          for (final item in c.sorted(items, c.marksSort(), bands))
-            _subjectCard(context, item, bands),
+          for (var i = 0; i < sortedItems.length; i++)
+            if (i == 0)
+              TutorialAnchor(
+                anchorKey: 'marks_subject',
+                child: _subjectCard(context, sortedItems[i], bands),
+              )
+            else
+              _subjectCard(context, sortedItems[i], bands),
         ];
         blocks.addAll(cards);
         blocks.addAll(_overview(context, items, bands));
@@ -108,9 +116,16 @@ final hasGrades = c.grades.isNotEmpty;
         ],
       );
     }
+    final sortedItems = c.sorted(items, c.marksSort(), bands);
     final cards = [
-      for (final item in c.sorted(items, c.marksSort(), bands))
-        _subjectCard(context, item, bands),
+      for (var i = 0; i < sortedItems.length; i++)
+        if (i == 0)
+          TutorialAnchor(
+            anchorKey: 'marks_subject',
+            child: _subjectCard(context, sortedItems[i], bands),
+          )
+        else
+          _subjectCard(context, sortedItems[i], bands),
     ];
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -201,21 +216,24 @@ return Row(
 
   Widget _scaleToggle() {
     final c = controller;
-    return SegmentedButton<String>(
-      segments: [
-        ButtonSegment(
-            value: 'auto', label: Text(Strings.get('marks_scale_auto'))),
-        ButtonSegment(
-            value: 'grade',
-            label: Text(Strings.get('marks_scale_grade'))),
-        ButtonSegment(
-            value: 'percent',
-            label: Text(Strings.get('marks_scale_percent'))),
-      ],
-      selected: {c.marksScale()},
-      onSelectionChanged: (sel) =>
-          c.setMarksScale(sel.first),
-      showSelectedIcon: false,
+    return TutorialAnchor(
+      anchorKey: 'marks_scale',
+      child: SegmentedButton<String>(
+        segments: [
+          ButtonSegment(
+              value: 'auto', label: Text(Strings.get('marks_scale_auto'))),
+          ButtonSegment(
+              value: 'grade',
+              label: Text(Strings.get('marks_scale_grade'))),
+          ButtonSegment(
+              value: 'percent',
+              label: Text(Strings.get('marks_scale_percent'))),
+        ],
+        selected: {c.marksScale()},
+        onSelectionChanged: (sel) =>
+            c.setMarksScale(sel.first),
+        showSelectedIcon: false,
+      ),
     );
   }
 
@@ -250,19 +268,22 @@ final predicting = items.any((x) => x.predicting);
     final suffix = predicting
         ? ' · ${Strings.get('marks_predicted_short')}'
         : '';
-    return Wrap(
-      spacing: tokens.gap,
-      runSpacing: 8,
-      children: [
-        _statCard('${Strings.get('marks_average')}$suffix',
-            formatValue(avg, avgScale), kindFor(avg, avgScale, bands)),
-        _statCard('${Strings.get('marks_report')}$suffix',
-            report == null ? '—' : report.toStringAsFixed(2),
-            kindFor(report, 'grade', bands)),
-        _statCard(Strings.get('marks_total'), '$nMarks', 'info'),
-        _statCard(Strings.get('marks_new'), '$nNew',
-            nNew > 0 ? 'ok' : 'info'),
-      ],
+    return TutorialAnchor(
+      anchorKey: 'marks_stats',
+      child: Wrap(
+        spacing: tokens.gap,
+        runSpacing: 8,
+        children: [
+          _statCard('${Strings.get('marks_average')}$suffix',
+              formatValue(avg, avgScale), kindFor(avg, avgScale, bands)),
+          _statCard('${Strings.get('marks_report')}$suffix',
+              report == null ? '—' : report.toStringAsFixed(2),
+              kindFor(report, 'grade', bands)),
+          _statCard(Strings.get('marks_total'), '$nMarks', 'info'),
+          _statCard(Strings.get('marks_new'), '$nNew',
+              nNew > 0 ? 'ok' : 'info'),
+        ],
+      ),
     );
   }
 
@@ -944,7 +965,10 @@ final head = Row(
                 const SizedBox(height: 8),
             ],
           ])),
-      _neededCard(context, summary, bands),
+      TutorialAnchor(
+        anchorKey: 'marks_need',
+        child: _neededCard(context, summary, bands),
+      ),
     ];
 
     final rows = [
@@ -964,39 +988,42 @@ final head = Row(
           style: TextStyle(
               color: t.muted, fontSize: t.fsSmall)));
     }
-    out.add(_card(Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.science_outlined,
-                size: 16, color: t.faint),
-            const SizedBox(width: 6),
-            Expanded(
-                child: Text(Strings.get('marks_predictor'),
-                    style: TextStyle(
-                        color: t.text,
-                        fontSize: t.fsSection,
-                        fontWeight: FontWeight.bold))),
-            if (summary.predicting)
-              TextButton(
-                  onPressed: () =>
-                      c.predictReset(summary.name),
-                  child: Text(Strings.get('marks_reset'),
+    out.add(TutorialAnchor(
+      anchorKey: 'marks_predict',
+      child: _card(Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.science_outlined,
+                  size: 16, color: t.faint),
+              const SizedBox(width: 6),
+              Expanded(
+                  child: Text(Strings.get('marks_predictor'),
                       style: TextStyle(
-                          color: t.accent,
-                          fontSize: t.fsSmall))),
-          ],
-        ),
-        Text(Strings.get('marks_predictor_hint'),
-            style: TextStyle(
-                color: t.muted, fontSize: t.fsSmall)),
-        const SizedBox(height: 8),
-        _addForm(context, summary),
-        const Divider(height: 16),
-        ...markControls,
-      ],
-    )));
+                          color: t.text,
+                          fontSize: t.fsSection,
+                          fontWeight: FontWeight.bold))),
+              if (summary.predicting)
+                TextButton(
+                    onPressed: () =>
+                        c.predictReset(summary.name),
+                    child: Text(Strings.get('marks_reset'),
+                        style: TextStyle(
+                            color: t.accent,
+                            fontSize: t.fsSmall))),
+            ],
+          ),
+          Text(Strings.get('marks_predictor_hint'),
+              style: TextStyle(
+                  color: t.muted, fontSize: t.fsSmall)),
+          const SizedBox(height: 8),
+          _addForm(context, summary),
+          const Divider(height: 16),
+          ...markControls,
+        ],
+      )),
+    ));
     final planned = _detailPlanned(summary);
     if (planned.isNotEmpty) {
       out.add(_section(Strings.get('marks_planned'), planned,
@@ -1214,6 +1241,7 @@ final target = c.needTarget(summary, bands);
             children: [
               Expanded(
                 child: DropdownButtonFormField<String>(
+                  isExpanded: true,
                   initialValue: '$target',
                   decoration: InputDecoration(
                     labelText: Strings.get('marks_target'),

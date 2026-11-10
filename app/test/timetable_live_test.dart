@@ -54,6 +54,10 @@ void main() {
 
   testWidgets('LiveTimetableView renders lessons from appStateProvider',
       (tester) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final s = AppState(
       configData: {
         'tutorials_done': ['intro'],

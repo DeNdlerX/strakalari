@@ -1,6 +1,7 @@
 import '../../l10n/strings.dart';
 import 'package:flutter/material.dart';
 
+import '../../tutorial/tutorial_ui.dart';
 import '../common/app_tokens.dart';
 import '../common/format.dart';
 import '../common/lesson_model.dart';
@@ -89,8 +90,14 @@ final header = _headerRow();
           '${current.day.toString().padLeft(2, '0')}.${current.month.toString().padLeft(2, '0')}. – '
           '${fri.day.toString().padLeft(2, '0')}.${fri.month.toString().padLeft(2, '0')}.${fri.year}';
     }
-    final nav = _nav(context, navLabel, showStable);
-    final legend = _legend();
+    final nav = TutorialAnchor(
+      anchorKey: 'tt_nav',
+      child: _nav(context, navLabel, showStable),
+    );
+    final legend = TutorialAnchor(
+      anchorKey: 'tt_legend',
+      child: _legend(),
+    );
     final isTable = c.timetableView != 'list';
     if (narrow) {
       // Phone: one scrolling page; the body scrolls as a whole.

@@ -20,7 +20,7 @@ import '../controllers/app_state.dart';
 import '../l10n/strings.dart';
 import '../widgets/error_boundary.dart';
 import '../widgets/error_dialog.dart';
-import '../widgets/overlays.dart' show appSnack;
+import '../widgets/overlays.dart' show appSnack, tutorialLayer, TutorialAnchor;
 import 'router.dart';
 import 'theme.dart';
 
@@ -148,6 +148,9 @@ class AppScaffold extends ConsumerWidget {
       });
     }
 
+    // Tutorials: suspend a tour of another screen, offer the intro.
+    appState.tutorialBegin(route);
+
     final lunchCount = appState.pendingLunchCount;
     final lunchLabel = Strings.get('nav_lunches') +
         (lunchCount > 0 ? ' ($lunchCount)' : '');
@@ -190,10 +193,20 @@ class AppScaffold extends ConsumerWidget {
       ),
     );
 
+    final bubble = tutorialLayer(appState, context, tok, narrow);
+
+    final contentArea = Stack(
+      fit: StackFit.expand,
+      children: [
+        paddedContent,
+        ?bubble,
+      ],
+    );
+
     final right = Column(
       children: [
         topBar,
-        Expanded(child: paddedContent),
+        Expanded(child: contentArea),
       ],
     );
 
@@ -361,38 +374,41 @@ class AppScaffold extends ConsumerWidget {
       appSnack(context, Strings.get('refresh_started'));
     }
 
-    final statusPill = Tooltip(
-      message: tooltipText,
-      child: InkWell(
-        key: const ValueKey('topbar_status_pill'),
-        onTap: () => context.go(routeLocation('activity')),
-        borderRadius: BorderRadius.circular(tok.radiusSm),
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Row(
-            children: [
-              Container(
-                key: const ValueKey('topbar_status_dot'),
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: dotColor,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  statusText,
-                  style: TextStyle(
-                    color: tok.muted,
-                    fontSize: tok.fsSmall,
+    final statusPill = TutorialAnchor(
+      anchorKey: 'status',
+      child: Tooltip(
+        message: tooltipText,
+        child: InkWell(
+          key: const ValueKey('topbar_status_pill'),
+          onTap: () => context.go(routeLocation('activity')),
+          borderRadius: BorderRadius.circular(tok.radiusSm),
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Row(
+              children: [
+                Container(
+                  key: const ValueKey('topbar_status_dot'),
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: dotColor,
+                    shape: BoxShape.circle,
                   ),
-                  maxLines: narrow ? 1 : 2,
-                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ],
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    statusText,
+                    style: TextStyle(
+                      color: tok.muted,
+                      fontSize: tok.fsSmall,
+                    ),
+                    maxLines: narrow ? 1 : 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -500,18 +516,24 @@ class AppScaffold extends ConsumerWidget {
       }
     } else {
       if (narrow) {
-        actionControl = IconButton(
-          key: const ValueKey('refresh'),
-          icon: Icon(Icons.refresh, color: tok.accent),
-          tooltip: Strings.get('refresh_data'),
-          onPressed: refreshClicked,
+        actionControl = TutorialAnchor(
+          anchorKey: 'refresh',
+          child: IconButton(
+            key: const ValueKey('refresh'),
+            icon: Icon(Icons.refresh, color: tok.accent),
+            tooltip: Strings.get('refresh_data'),
+            onPressed: refreshClicked,
+          ),
         );
       } else {
-        actionControl = FilledButton.icon(
-          key: const ValueKey('refresh'),
-          icon: const Icon(Icons.refresh),
-          label: Text(Strings.get('refresh_data')),
-          onPressed: refreshClicked,
+        actionControl = TutorialAnchor(
+          anchorKey: 'refresh',
+          child: FilledButton.icon(
+            key: const ValueKey('refresh'),
+            icon: const Icon(Icons.refresh),
+            label: Text(Strings.get('refresh_data')),
+            onPressed: refreshClicked,
+          ),
         );
       }
     }

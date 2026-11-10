@@ -332,7 +332,10 @@ class PlannerView extends StatelessWidget {
             child: Text(Strings.get('section_overview'),
                 style: Theme.of(context).textTheme.titleMedium),
           ),
-          _calendarStrip(context, p, term),
+          TutorialAnchor(
+            anchorKey: 'plan_strip',
+            child: _calendarStrip(context, p, term),
+          ),
           _recommended(context, p, term),
           ..._budgets(context, term),
         ],
@@ -533,18 +536,34 @@ class PlannerView extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             child: Text(Strings.get('plan_budget_empty')),
           )),
-        for (final option in picks)
-          Card(
-            child: ListTile(
-              title: Text(
-                  '${_weekdayLong(option.day.weekday)} ${_cz(option.day)}'),
-              subtitle: Text(_costText(option)),
-              trailing: FilledButton(
-                onPressed: () => showPlanDayDialog(context, option.day),
-                child: Text(Strings.get('plan_skip')),
+        for (var i = 0; i < picks.length; i++)
+          if (i == 0)
+            TutorialAnchor(
+              anchorKey: 'plan_first',
+              child: Card(
+                child: ListTile(
+                  title: Text(
+                      '${_weekdayLong(picks[i].day.weekday)} ${_cz(picks[i].day)}'),
+                  subtitle: Text(_costText(picks[i])),
+                  trailing: FilledButton(
+                    onPressed: () => showPlanDayDialog(context, picks[i].day),
+                    child: Text(Strings.get('plan_skip')),
+                  ),
+                ),
+              ),
+            )
+          else
+            Card(
+              child: ListTile(
+                title: Text(
+                    '${_weekdayLong(picks[i].day.weekday)} ${_cz(picks[i].day)}'),
+                subtitle: Text(_costText(picks[i])),
+                trailing: FilledButton(
+                  onPressed: () => showPlanDayDialog(context, picks[i].day),
+                  child: Text(Strings.get('plan_skip')),
+                ),
               ),
             ),
-          ),
       ],
     );
   }
@@ -577,19 +596,22 @@ class PlannerView extends StatelessWidget {
         child: Text(Strings.get('section_budgets'),
             style: Theme.of(context).textTheme.titleMedium),
       ),
-      Card(
-        child: Column(
-          children: [
-            for (final b in term.budgets)
-              ListTile(
-                title: Text(b.name),
-                subtitle: LinearProgressIndicator(
-                  value: (b.projectedPct / 100).clamp(0.0, 1.0),
+      TutorialAnchor(
+        anchorKey: 'plan_budget',
+        child: Card(
+          child: Column(
+            children: [
+              for (final b in term.budgets)
+                ListTile(
+                  title: Text(b.name),
+                  subtitle: LinearProgressIndicator(
+                    value: (b.projectedPct / 100).clamp(0.0, 1.0),
+                  ),
+                  trailing: Text(Strings.format('budget_final',
+                      {'p': b.projectedPct.toStringAsFixed(1), 'limit': b.limitPct})),
                 ),
-                trailing: Text(Strings.format('budget_final',
-                    {'p': b.projectedPct.toStringAsFixed(1), 'limit': b.limitPct})),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     ];

@@ -25,6 +25,7 @@ enum TourPlace {
   topRight,
   headerRight,
   bottomRight,
+  bottom,
 }
 
 const double bubbleWidth = 360;
@@ -42,6 +43,7 @@ const String firstTourId = 'intro';
 @immutable
 class TourStep {
   final String stringsKey;
+  String get key => stringsKey;
   final String anchor;
   final TourPlace place;
   final String until;
@@ -72,7 +74,7 @@ const Map<String, Tour> tours = {
   'intro': Tour('intro', null, [
     TourStep('intro_welcome',
         place: TourPlace.center,
-        icon: Icons.school_outlined,
+        icon: Icons.waving_hand_outlined,
         welcome: true),
     TourStep('intro_nav',
         place: TourPlace.left, icon: Icons.menu_outlined),
@@ -85,7 +87,7 @@ const Map<String, Tour> tours = {
         place: TourPlace.topLeft,
         icon: Icons.monitor_heart_outlined),
     TourStep('intro_done',
-        place: TourPlace.bottomRight, icon: Icons.task_alt),
+        place: TourPlace.bottomRight, icon: Icons.school_outlined),
   ]),
   'excuse': Tour('excuse', 'today', [
     TourStep('excuse_pick',
@@ -110,7 +112,7 @@ const Map<String, Tour> tours = {
   ]),
   'planner': Tour('planner', 'planner', [
     TourStep('plan_strip',
-        anchor: 'plan_strip', icon: Icons.calendar_month_outlined),
+        anchor: 'plan_strip', icon: Icons.calendar_view_month_outlined),
     TourStep('plan_pick',
         anchor: 'plan_first',
         until: 'day_planned',

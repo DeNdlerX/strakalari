@@ -74,22 +74,32 @@ extension TutorialLogic on AppState {
   }
 
   // -- progress ------------------------------------------------------------
-  /// `(tour, index, step)` of the active tour, or null. The tour/step
-  /// records come from `tutorial/tours.dart` (resolved by the caller via
-  /// [lookupTutorialStep]); a stale id clears itself.
+  /// `(tour, index, step)` of the active tour, or null. A stale id clears itself.
   /// Port of `tutorial_current()`.
-  (String, int)? tutorialCurrent() {
+  (Tour, int, TourStep)? tutorialCurrent() {
     final active = tutorial;
     if (active == null) return null;
-    if (!tourExists(active.$1) || active.$2 < 0) {
+    final (tourId, index) = active;
+    final tour = tours[tourId];
+    if (tour == null || index < 0 || index >= tour.steps.length) {
       tutorial = null;
       return null;
     }
-    if (active.$2 >= tourStepCount(active.$1)) {
-      tutorial = null;
-      return null;
+    return (tour, index, tour.steps[index]);
+  }
+
+  /// Called by the Shell before building a screen.
+  ///
+  /// Suspends a tour that belongs to another screen (it restarts when its
+  /// moment comes again) and offers the first-run tour.
+  /// Port of `tutorial.begin()`.
+  void tutorialBegin(String route) {
+    tutorialAnchored = false;
+    final current = tutorialCurrent();
+    if (current != null && current.$1.route != null && current.$1.route != route) {
+      tutorialSuspend();
     }
-    return active;
+    tutorialOffer(firstTourId);
   }
 
   /// Starts [tourId] when nothing else runs and it was never done.
@@ -118,13 +128,14 @@ extension TutorialLogic on AppState {
   void tutorialGoto(int index, [bool quiet = false]) {
     final current = tutorialCurrent();
     if (current == null) return;
-    final (tourId, _) = current;
-    if (index >= tourStepCount(tourId)) {
+    final (tour, _, _) = current;
+    if (index >= tour.steps.length) {
       tutorial = null;
-      rememberTutorialDone(tourId, quiet);
+      rememberTutorialDone(tour.id, quiet);
+      if (!quiet) _emit();
       return;
     }
-    tutorial = (tourId, index < 0 ? 0 : index);
+    tutorial = (tour.id, index < 0 ? 0 : index);
     if (!quiet) _emit();
   }
 
@@ -143,7 +154,8 @@ extension TutorialLogic on AppState {
     final current = tutorialCurrent();
     if (current == null) return;
     tutorial = null;
-    rememberTutorialDone(current.$1, false);
+    rememberTutorialDone(current.$1.id, false);
+    _emit();
   }
 
   /// The user just did [name] (e.g. sent an excuse). Advances the active
@@ -151,16 +163,16 @@ extension TutorialLogic on AppState {
   /// the state action firing it repaints anyway. Port of
   /// `tutorial_event()`.
   void tutorialEvent(String name) {
-    (String, int)? current;
+    (Tour, int, TourStep)? current;
     try {
       current = tutorialCurrent();
     } catch (_) {
       return;
     }
     if (current == null) return;
-    final (tourId, index) = current;
-    for (var later = index; later < tourStepCount(tourId); later++) {
-      if (tourStepUntil(tourId, later) == name) {
+    final (tour, index, _) = current;
+    for (var later = index; later < tour.steps.length; later++) {
+      if (tour.steps[later].until == name) {
         tutorialGoto(later + 1, true);
         return;
       }
