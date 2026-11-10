@@ -1,9 +1,8 @@
 import 'package:flutter/foundation.dart';
+import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../l10n/strings.dart';
 import '../common/format.dart';
-import '../common/lesson_model.dart';
-import '../common/schedule_logic.dart';
 
 /// One pending excuse task (represented in AppState as a map from excuseTasks).
 class ExcuseTask {
@@ -185,7 +184,7 @@ class TodayController extends ChangeNotifier {
   DateTime? outboxFrom;
 
   /// Stable baseline for change detection (`stable_baseline()`).
-  Map<String, List<SlotBaseline>> stableBaseline = {};
+  Map<Object?, Object?> stableBaseline = {};
   bool stableComplete = false;
 
   /// Keys of tasks already sent this session (`excuse_log` keys).
@@ -660,7 +659,7 @@ class TodayController extends ChangeNotifier {
   NextLessonInfo nextLesson(DateTime now) {
     final today = DateTime(now.year, now.month, now.day);
     final todayKey = dayKey(today);
-    String headline(LessonRow l) {
+    String headline(core.Lesson l) {
       var h = l.subject.isEmpty ? '?' : l.subject;
       if (l.period != null) {
         h += ' · ${l.period}. ${Strings.get('period').toLowerCase()}';
@@ -668,15 +667,15 @@ class TodayController extends ChangeNotifier {
       return h;
     }
 
-    String meta(LessonRow l) {
-      final clock = lessonClock(
+    String meta(core.Lesson l) {
+      final clock = core.lessonClock(
           {'time': l.time}, todayKey);
       final String timeLabel;
       if (clock != null) {
-        final sh = clock.start ~/ 60;
-        final sm = clock.start % 60;
-        final eh = clock.end ~/ 60;
-        final em = clock.end % 60;
+        final sh = clock.$1 ~/ 60;
+        final sm = clock.$1 % 60;
+        final eh = clock.$2 ~/ 60;
+        final em = clock.$2 % 60;
         timeLabel =
             '$sh:${sm.toString().padLeft(2, '0')} – $eh:${em.toString().padLeft(2, '0')}';
       } else {
@@ -718,14 +717,18 @@ class TodayController extends ChangeNotifier {
       for (final item in (timetable[todayKey] ?? const []))
         if (item is Map) item.cast<String, Object?>(),
     ];
-    final resolved = resolveDayLessons(todays, now, todayKey);
-    if (resolved.phase == 'running' && resolved.current != null) {
-      final parsed = LessonRow.fromLegacy(resolved.current!, todayKey);
-      final clock = lessonClock(resolved.current!, todayKey);
+    final resolved = core.resolveDayLessons(todays, now, todayKey);
+    final phase = resolved['phase'] as String? ?? 'empty';
+    final current = resolved['current'] as Map<Object?, Object?>?;
+    final upcoming = resolved['upcoming'] as Map<Object?, Object?>?;
+    if (phase == 'running' && current != null) {
+      final currentMap = current.cast<String, Object?>();
+      final parsed = core.Lesson.fromLegacy(currentMap, todayKey);
+      final clock = core.lessonClock(currentMap, todayKey);
       final nowMin = now.hour * 60 + now.minute;
       final left = clock == null
           ? 1
-          : (clock.end - nowMin).clamp(1, 1 << 30);
+          : (clock.$2 - nowMin).clamp(1, 1 << 30);
       return NextLessonInfo(
         phase: 'running',
         headline: headline(parsed),
@@ -735,22 +738,23 @@ class TodayController extends ChangeNotifier {
         headingLabel: Strings.get('now_running'),
       );
     }
-    if ((resolved.phase == 'before' || resolved.phase == 'between') &&
-        resolved.upcoming != null) {
-      final parsed = LessonRow.fromLegacy(resolved.upcoming!, todayKey);
-      final clock = lessonClock(resolved.upcoming!, todayKey);
+    if ((phase == 'before' || phase == 'between') &&
+        upcoming != null) {
+      final upcomingMap = upcoming.cast<String, Object?>();
+      final parsed = core.Lesson.fromLegacy(upcomingMap, todayKey);
+      final clock = core.lessonClock(upcomingMap, todayKey);
       final nowMin = now.hour * 60 + now.minute;
       final wait = clock == null
           ? 1
-          : (clock.start - nowMin).clamp(1, 1 << 30);
+          : (clock.$1 - nowMin).clamp(1, 1 << 30);
       return NextLessonInfo(
-        phase: resolved.phase,
+        phase: phase,
         headline: headline(parsed),
         meta: meta(parsed),
         deltaText: Strings.format('starts_in', {'m': wait}),
         statusLabel: statusLabel(parsed.status),
         headingLabel: Strings.get(
-            resolved.phase == 'before' ? 'before_school' : 'up_next'),
+            phase == 'before' ? 'before_school' : 'up_next'),
         alarmBadge: alarmBadge(today),
       );
     }
@@ -762,14 +766,14 @@ class TodayController extends ChangeNotifier {
         for (final item in (timetable[key] ?? const []))
           if (item is Map) item.cast<String, Object?>(),
       ].where((r) =>
-          LessonRow.fromLegacy(r, key).status != 'cancelled').toList();
+          core.Lesson.fromLegacy(r, key).status != 'cancelled').toList();
       if (rows.isEmpty) continue;
       rows.sort((a, b) {
-        final ca = lessonClock(a, key);
-        final cb = lessonClock(b, key);
-        return (ca?.start ?? 9999).compareTo(cb?.start ?? 9999);
+        final ca = core.lessonClock(a, key);
+        final cb = core.lessonClock(b, key);
+        return (ca?.$1 ?? 9999).compareTo(cb?.$1 ?? 9999);
       });
-      final parsed = LessonRow.fromLegacy(rows.first, key);
+      final parsed = core.Lesson.fromLegacy(rows.first, key);
       return NextLessonInfo(
         phase: 'next-day',
         headline: headline(parsed),
@@ -791,13 +795,11 @@ class TodayController extends ChangeNotifier {
   /// week only, in timetable order — like `today._changes_block`.
   ({List<TodayChange> changes, List<TodayChange> notes}) weekChanges(
       DateTime now) {
-    List<ChangeItem> changes;
-    List<ChangeItem> notes;
+    List<Map<String, Object?>> changes;
+    List<Map<String, Object?>> notes;
     try {
-      changes = iterChanges(timetable,
-          baseline: stableBaseline, complete: stableComplete);
-      notes = iterNotes(timetable,
-          baseline: stableBaseline, complete: stableComplete);
+      changes = core.iterChanges(timetable, stableBaseline, stableComplete);
+      notes = core.iterNotes(timetable, stableBaseline, stableComplete);
     } catch (_) {
       return (changes: const [], notes: const []);
     }
@@ -805,37 +807,49 @@ class TodayController extends ChangeNotifier {
     final monday = today.subtract(Duration(days: today.weekday - 1));
     final sunday = monday.add(const Duration(days: 6));
 
-    int orderOf(ChangeItem item) {
+    int orderOf(Map<String, Object?> item) {
+      final rawLesson = item['lesson'] as Map<Object?, Object?>?;
+      final lessonMap = rawLesson?.cast<String, Object?>() ?? const {};
       final period =
-          LessonRow.fromLegacy(item.lesson, item.day).period;
+          core.Lesson.fromLegacy(lessonMap, item['day']).period;
       return period ?? 99;
     }
 
     final weekChanges = changes
-        .where((c) =>
-            c.day != null &&
-            !c.day!.isBefore(monday) &&
-            !c.day!.isAfter(sunday))
+        .where((c) {
+          final day = c['day'] as DateTime?;
+          return day != null &&
+              !day.isBefore(monday) &&
+              !day.isAfter(sunday);
+        })
         .toList()
       ..sort((a, b) {
-        final c = a.day!.compareTo(b.day!);
+        final da = a['day'] as DateTime;
+        final db = b['day'] as DateTime;
+        final c = da.compareTo(db);
         return c != 0 ? c : orderOf(a).compareTo(orderOf(b));
       });
     final weekNotes = notes
-        .where((n) =>
-            n.day != null &&
-            !n.day!.isBefore(monday) &&
-            !n.day!.isAfter(sunday))
+        .where((n) {
+          final day = n['day'] as DateTime?;
+          return day != null &&
+              !day.isBefore(monday) &&
+              !day.isAfter(sunday);
+        })
         .toList()
       ..sort((a, b) {
-        final c = a.day!.compareTo(b.day!);
+        final da = a['day'] as DateTime;
+        final db = b['day'] as DateTime;
+        final c = da.compareTo(db);
         return c != 0 ? c : orderOf(a).compareTo(orderOf(b));
       });
-    String titleOf(ChangeItem item) {
+    String titleOf(Map<String, Object?> item) {
+      final rawLesson = item['lesson'] as Map<Object?, Object?>?;
+      final lessonMap = rawLesson?.cast<String, Object?>() ?? const {};
       final parsed =
-          LessonRow.fromLegacy(item.lesson, item.day);
+          core.Lesson.fromLegacy(lessonMap, item['day']);
       var title = '${parsed.subject.isEmpty ? '?' : parsed.subject} — '
-          '${czDay(item.dayKey)}';
+          '${czDay(item['day_key'])}';
       if (parsed.period != null) title += ' · ${parsed.period}.';
       return title;
     }
@@ -843,15 +857,25 @@ class TodayController extends ChangeNotifier {
     return (
       changes: [
         for (final item in weekChanges.take(5))
-          TodayChange(title: titleOf(item), note: item.diff.note)
+          TodayChange(
+            title: titleOf(item),
+            note: (item['diff'] as core.LessonDiff?)?.note,
+          )
       ],
       notes: [
         for (final item in weekNotes.take(3))
           TodayChange(
-              title:
-                  '${LessonRow.fromLegacy(item.lesson, item.day).subject.isEmpty ? '?' : LessonRow.fromLegacy(item.lesson, item.day).subject} — ${czDay(item.dayKey)}: ${item.diff.note}',
-              note: item.diff.note,
-              isNote: true)
+            title: () {
+              final rawLesson = item['lesson'] as Map<Object?, Object?>?;
+              final lessonMap = rawLesson?.cast<String, Object?>() ?? const {};
+              final parsed = core.Lesson.fromLegacy(lessonMap, item['day']);
+              final note = (item['diff'] as core.LessonDiff?)?.note ?? '';
+              final subj = parsed.subject.isEmpty ? '?' : parsed.subject;
+              return '$subj — ${czDay(item['day_key'])}: $note';
+            }(),
+            note: (item['diff'] as core.LessonDiff?)?.note,
+            isNote: true,
+          )
       ],
     );
   }

@@ -1,11 +1,10 @@
-import '../../l10n/strings.dart';
 import 'package:flutter/material.dart';
+import 'package:strakalari_core/strakalari_core.dart' as core;
 
+import '../../l10n/strings.dart';
 import '../../tutorial/tutorial_ui.dart';
 import '../common/app_tokens.dart';
 import '../common/format.dart';
-import '../common/lesson_model.dart';
-import '../common/schedule_logic.dart';
 import 'timetable_controller.dart';
 
 /// Timetable (Rozvrh) screen — port of `views/timetable.py`.
@@ -77,7 +76,7 @@ final header = _headerRow();
     late String navLabel;
     if (showStable) {
       final today = DateTime(now.year, now.month, now.day);
-      weekDays = stableTemplateWeek(
+      weekDays = core.stableTemplateWeek(
           c.stableBaseline, weekMonday(today));
       current = weekMonday(today);
       navLabel = Strings.get('stable_timetable');
@@ -798,7 +797,7 @@ final today = DateTime(now.year, now.month, now.day);
         }
         for (final lesson in byPeriod[period]!) {
           final isFocus = period == focus.period &&
-              LessonRow.fromLegacy(lesson, day).status != 'cancelled';
+              core.Lesson.fromLegacy(lesson, day).status != 'cancelled';
           rows.add(_lessonRow(context, lesson, day,
               focus: isFocus ? focus.kind : ''));
         }
@@ -862,7 +861,7 @@ final today = DateTime(now.year, now.month, now.day);
     final c = controller;
     final t = tokens;
     final look = c.look(lesson, day);
-    final period = extractLessonNum(look.parsed.time) ??
+    final period = core.extractLessonNum(look.parsed.time) ??
         look.parsed.period;
     final trailing = <Widget>[];
     if (look.tag.isNotEmpty) {

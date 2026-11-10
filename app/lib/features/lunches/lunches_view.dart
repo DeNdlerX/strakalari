@@ -1,7 +1,7 @@
 import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
 
-import 'package:app/features/lunches/lunch_filter.dart';
+import 'package:app/features/lunches/lunches_format.dart';
 import 'package:app/features/lunches/lunches_controller.dart';
 import 'package:app/widgets/overlays.dart';
 

@@ -1,4 +1,4 @@
-import 'lunch_filter.dart';
+import 'package:strakalari_core/strakalari_core.dart' as core;
 
 /// Lunch state. Port of state_lunches.LunchMixin (UI-owned parts).
 ///
@@ -147,9 +147,9 @@ class LunchController {
   void applyFoodFilter(String prefs) {
     if (applyFoodFilterHook != null) return applyFoodFilterHook!(prefs);
     final blacklist = blacklistWords();
-    final prefWords = prefsBanKeywords(prefs);
+    final prefWords = core.prefsBanKeywords(prefs);
     final seen = {for (final w in blacklist) w.toLowerCase()};
-    final combined = List.of(blacklist);
+    final combined = List<String>.of(blacklist);
     for (final word in prefWords) {
       if (!seen.contains(word.toLowerCase())) {
         seen.add(word.toLowerCase());
@@ -161,7 +161,7 @@ class LunchController {
     for (final meals in food.values) {
       for (final e in meals.entries) {
         if (e.key.contains('&-1&')) continue;
-        final (banned, keyword) = isFoodBanned(e.value, combined);
+        final (banned, keyword) = core.isFoodBanned(e.value, combined);
         if (banned) {
           hidden.add(e.key);
           reasons[e.key] = keyword;
@@ -171,11 +171,14 @@ class LunchController {
     lunchHidden = hidden;
     lunchReasons = reasons;
     lunchPrefs = prefs;
-    final picks = filterPicks(
-      food: food,
+    final picks = core.filterPicks(
+      food,
       blacklist: combined,
       cancelledDays: cancelledLunches,
-      isOpen: isOrderOpen,
+      isOpen: isOrderOpen == null
+          ? null
+          : (dt) => isOrderOpen!(
+              '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}'),
     );
     for (final e in picks.entries) {
       final current = orders[e.key];

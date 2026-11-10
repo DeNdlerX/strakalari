@@ -1,12 +1,21 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:strakalari_core/strakalari_core.dart' as core;
 
-import 'package:app/features/lunches/lunch_filter.dart';
+import 'package:app/controllers/app_state.dart';
 import 'package:app/features/lunches/lunches_controller.dart';
+import 'package:app/features/lunches/lunches_format.dart';
 
-LunchController _controller() {
+AppState _appState() {
+  final s = AppState();
+  s.demoMode = false;
+  s.data = {'absence': {'x': 1}};
+  return s;
+}
+
+LunchController _controller({bool open = true}) {
   final c = LunchController(
     {},
-    isOrderOpen: (_) => true,
+    isOrderOpen: (_) => open,
     readBlacklist: () => [],
   );
   c.stravaOn = true;
@@ -29,79 +38,77 @@ String _future() {
 void main() {
   group('lunches_prefs_keywords', () {
     test('negation clause yields keyword', () {
-      expect(prefsBanKeywords('nemám rád vepřové'), ['vepřové']);
+      expect(core.prefsBanKeywords('nemám rád vepřové'), ['vepřové']);
     });
     test('likes clause ignored', () {
-      expect(prefsBanKeywords('mám rád kuřecí'), isEmpty);
-      expect(prefsBanKeywords('preferuji lehká jídla'), isEmpty);
+      expect(core.prefsBanKeywords('mám rád kuřecí'), isEmpty);
+      expect(core.prefsBanKeywords('preferuji lehká jídla'), isEmpty);
     });
     test('mixed text keeps only dislikes', () {
-      expect(prefsBanKeywords('nemám rád vepřové, preferuji lehká jídla'),
+      expect(core.prefsBanKeywords('nemám rád vepřové, preferuji lehká jídla'),
           ['vepřové']);
     });
     test('bez form', () {
-      expect(prefsBanKeywords('bez hub a česneku'), ['hub', 'česneku']);
+      expect(core.prefsBanKeywords('bez hub a česneku'), ['hub', 'česneku']);
     });
     test('conjunction like segment ignored', () {
-      expect(prefsBanKeywords('nemám rád vepřové a mám rád kuřecí'),
+      expect(core.prefsBanKeywords('nemám rád vepřové a mám rád kuřecí'),
           ['vepřové']);
-      expect(prefsBanKeywords('mám rád kuřecí a nemám rád vepřové'),
+      expect(core.prefsBanKeywords('mám rád kuřecí a nemám rád vepřové'),
           ['vepřové']);
     });
     test('english no form', () {
-      expect(prefsBanKeywords('no pork'), ['pork']);
+      expect(core.prefsBanKeywords('no pork'), ['pork']);
     });
     test('empty', () {
-      expect(prefsBanKeywords(''), isEmpty);
-      expect(prefsBanKeywords(null), isEmpty);
+      expect(core.prefsBanKeywords(''), isEmpty);
+      expect(core.prefsBanKeywords(null), isEmpty);
     });
   });
 
-  group('lunches_apply_food_filter', () {
+  group('lunches_apply_food_filter (AppState)', () {
     test('prefs hide and stage', () {
-      final c = _controller();
+      final s = _appState();
       final future = _future();
-      c.food = _food(future);
-      c.applyFoodFilter('nemám rád vepřové, preferuji lehká jídla');
-      expect(c.lunchHidden, {'jidlo&1&x'});
-      expect(c.orders[future], 'jidlo&2&x');
-      expect(c.pendingOrders, contains(future));
+      s.data = {'absence': {'x': 1}, 'food': _food(future)};
+      s.applyFoodFilter('nemám rád vepřové, preferuji lehká jídla');
+      expect(s.lunchHidden, {'jidlo&1&x'});
+      expect(s.orders[future], 'jidlo&2&x');
+      expect(s.pendingOrders, contains(future));
     });
 
     test('good pick not clobbered', () {
-      final c = _controller();
+      final s = _appState();
       final future = _future();
-      c.food = _food(future);
-      c.orders = {future: 'jidlo&2&x'};
-      c.applyFoodFilter('nemám rád vepřové');
-      expect(c.orders[future], 'jidlo&2&x');
+      s.data = {'absence': {'x': 1}, 'food': _food(future)};
+      s.orders.clear();
+      s.orders[future] = 'jidlo&2&x';
+      s.applyFoodFilter('nemám rád vepřové');
+      expect(s.orders[future], 'jidlo&2&x');
     });
 
     test('hidden pick replaced', () {
-      final c = _controller();
+      final s = _appState();
       final future = _future();
-      c.food = _food(future);
-      c.orders = {future: 'jidlo&1&x'};
-      c.applyFoodFilter('nemám rád vepřové');
-      expect(c.orders[future], 'jidlo&2&x');
+      s.data = {'absence': {'x': 1}, 'food': _food(future)};
+      s.orders.clear();
+      s.orders[future] = 'jidlo&1&x';
+      s.applyFoodFilter('nemám rád vepřové');
+      expect(s.orders[future], 'jidlo&2&x');
     });
 
     test('cancelled day skipped', () {
-      final c = _controller();
+      final s = _appState();
       final future = _future();
-      c.food = _food(future);
-      c.cancelledLunches.add(future);
-      c.applyFoodFilter('nemám rád vepřové');
-      expect(c.lunchHidden, {'jidlo&1&x'});
-      expect(c.orders.containsKey(future), isFalse);
+      s.data = {'absence': {'x': 1}, 'food': _food(future)};
+      s.cancelledLunches.add(future);
+      s.applyFoodFilter('nemám rád vepřové');
+      expect(s.lunchHidden, {'jidlo&1&x'});
+      expect(s.orders.containsKey(future), isFalse);
     });
 
-    test('closed day hides but stages nothing', () {
-      final c = LunchController(
-        {},
-        isOrderOpen: (_) => false,
-        readBlacklist: () => [],
-      )..stravaOn = true;
+    test('closed day hides but stages nothing on controller', () {
+      final c = _controller(open: false);
       final future = _future();
       c.food = _food(future);
       c.applyFoodFilter('nemám rád vepřové');
@@ -110,9 +117,9 @@ void main() {
     });
 
     test('isFoodBanned stems and multiword rules', () {
-      expect(isFoodBanned('Vepřového masa', ['vepřové']).$1, isTrue);
-      expect(isFoodBanned('Rybízový koláč', ['ryb']).$1, isFalse);
-      expect(isFoodBanned('Kuřecí maso', ['vepřové maso']).$1, isFalse);
+      expect(core.isFoodBanned('Vepřového masa', ['vepřové']).$1, isTrue);
+      expect(core.isFoodBanned('Rybízový koláč', ['ryb']).$1, isFalse);
+      expect(core.isFoodBanned('Kuřecí maso', ['vepřové maso']).$1, isFalse);
     });
   });
 

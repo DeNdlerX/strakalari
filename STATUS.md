@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 6 · Next step: Fix finding B-M6 (remove duplicated feature business logic in grades_logic.dart, schedule_logic.dart, lunch_filter.dart, lesson_model.dart, and re-point views and tests to strakalari_core and AppState) in `reviews/checkpoint-B.md`, then proceed through must-fix findings B-M7 to B-M14.
+Current phase: 6 · Next step: Fix finding B-M7 (port deferred Python UI tests into app/test) in `reviews/checkpoint-B.md`, then proceed through must-fix findings B-M8 to B-M14.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -664,9 +664,7 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
   `docs/flutter-migration/reviews/checkpoint-A.md`.)
 - Phases 5–8 are in progress, unreviewed (Checkpoint A signed off 2026-11-09).
   Open questions deferred to Checkpoints B / C / D:
-  1. Unify the three string/token tables + feature `schedule_logic`/
-     `grades_logic` onto the canonical core ports now, or keep the
-     duplication until the `AppState` live-data wiring lands?
+  1. (Resolved 2026-11-10 in Checkpoint B B-B4 & B-M6: unified onto Strings, Tokens, and strakalari_core; deleted duplicate string tables and common/schedule_logic.dart, common/lesson_model.dart, marks/grades_logic.dart, lunches/lunch_filter.dart).
   2. `flutter build` now requires `--flavor prod|phonetest` — confirm the
      flavor names (AGP rejects `test`) and the release-signing inputs
      (`~/.strakalari-signing/android-release.properties` or env).
@@ -745,7 +743,8 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
   - **B-M2** (`cbed3c8`): align navigation rail width (standard unextended 90px rail with `labelType: all`), side rail (centered `groupAlignment: 0.0`, all labels, lunch badge), shell content padding (`EdgeInsets.all(tok.pad + 8)` wide, `symmetric(12, 4)` narrow), divider styling (`color: tok.border`, thickness 1), wide-mode leaving More to Today, and add `app/test/rail_and_scaffold_test.dart`.
   - **B-M3** (`53dae96`): render first-run setup wizard outside app chrome (standalone top-level `/wizard` route with no rail, bottom bar or top bar refresh controls), enforce setupPending isolation in `AppScaffold`, keep wizard active across mid-wizard credential saves, and add `app/test/wizard_chrome_isolation_test.dart`.
   - **B-M4** (`968a09a`): catch view rendering errors in `ViewErrorBoundary` wrapped around views in `AppScaffold`, report to `AppState.reportError` with route tag, render error card matching Python, and add `app/test/error_boundary_test.dart`.
-  - **B-M5** (this commit): wire tutorial `begin(route)` in scaffold, floating bubble layer (`tutorialLayer`), 18 UI anchors across all views, delete duplicate tutorial controller in `overlays.dart`, and port deferred tutorial tests in `app/test/tutorial_test.dart` (28 tests).
+  - **B-M5** (`019ec5f`): wire tutorial `begin(route)` in scaffold, floating bubble layer (`tutorialLayer`), 18 UI anchors across all views, delete duplicate tutorial controller in `overlays.dart`, and port deferred tutorial tests in `app/test/tutorial_test.dart` (28 tests).
+  - **B-M6** (`faa1a77`): delete duplicated feature business logic in `app/lib/features/` (`common/schedule_logic.dart`, `common/lesson_model.dart`, `marks/grades_logic.dart`, `lunches/lunch_filter.dart`), re-point today, timetable, marks, and lunches controllers and views directly to `strakalari_core` and `AppState`, add `MarkRow.text` in `strakalari_core`, add `app/lib/features/lunches/lunches_format.dart` for Strava display parsing, remove obsolete `convertStableBaseline`, and update `lunches_filter_test.dart` to test canonical `core.prefsBanKeywords`, `core.isFoodBanned`, and `AppState.applyFoodFilter`.
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 

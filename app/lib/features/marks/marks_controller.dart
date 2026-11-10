@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../l10n/strings.dart';
 import '../common/format.dart';
-import 'grades_logic.dart';
+import 'package:strakalari_core/strakalari_core.dart';
 
 /// Marks screen state + logic — a `ChangeNotifier` port of
 /// `views/marks.py` helpers and the `MarksMixin` in `state_marks.py`.

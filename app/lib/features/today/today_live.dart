@@ -8,46 +8,8 @@ import '../../l10n/strings.dart';
 
 import '../common/app_tokens.dart';
 import '../common/format.dart';
-import '../common/schedule_logic.dart';
 import 'today_controller.dart';
 import 'today_view.dart';
-
-/// Converts [AppState.stableBaseline] (`Map<(int, int), Object>`) into the
-/// `Map<String, List<SlotBaseline>>` representation used by
-/// [TodayController] and `TimetableController`.
-Map<String, List<SlotBaseline>> convertStableBaseline(
-    Map<(int, int), Object> raw) {
-  final out = <String, List<SlotBaseline>>{};
-  raw.forEach((slot, value) {
-    final key = '${slot.$1}|${slot.$2}';
-    if (value is core.SlotBaseline) {
-      out[key] = [
-        SlotBaseline(
-          weekday: value.weekday,
-          period: value.period,
-          subject: value.subject,
-          teacher: value.teacher,
-          room: value.room,
-          startMin: value.startMin,
-        ),
-      ];
-    } else if (value is List) {
-      out[key] = [
-        for (final item in value)
-          if (item is core.SlotBaseline)
-            SlotBaseline(
-              weekday: item.weekday,
-              period: item.period,
-              subject: item.subject,
-              teacher: item.teacher,
-              room: item.room,
-              startMin: item.startMin,
-            ),
-      ];
-    }
-  });
-  return out;
-}
 
 /// Builds a [TodayController] populated from [s] and wired so actions
 /// mutate [s] directly.
@@ -118,7 +80,7 @@ TodayController todayControllerFor(AppState s, {DateTime? now}) {
     c.excuseHistory = [];
   }
   c.outboxFrom = parseCzDate('${s.data[core.sentExcusesFromKey] ?? ''}');
-  c.stableBaseline = convertStableBaseline(s.stableBaseline());
+  c.stableBaseline = s.stableBaseline();
   c.stableComplete = s.stableComplete();
   c.sentTaskKeys.addAll([
     for (final item in s.excuseLog)

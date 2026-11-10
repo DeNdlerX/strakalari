@@ -1,15 +1,14 @@
 import 'package:flutter/foundation.dart';
+import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../l10n/strings.dart';
 import '../common/format.dart';
-import '../common/lesson_model.dart';
-import '../common/schedule_logic.dart';
 
 /// How one lesson renders — identical rules for the grid and the list,
 /// like `timetable._Look`.
 class LessonLook {
-  final LessonRow parsed;
-  final LessonDiff diff;
+  final core.Lesson parsed;
+  final core.LessonDiff diff;
   final bool cancelled;
   final Set<String> changed;
 
@@ -83,7 +82,7 @@ TimetableController();
   Map<String, List<Object?>> timetable = {};
 
   /// Stable baseline for change detection (`stable_baseline()`).
-  Map<String, List<SlotBaseline>> stableBaseline = {};
+  Map<Object?, Object?> stableBaseline = {};
   bool stableComplete = false;
 
   bool demoMode = false;
@@ -206,8 +205,8 @@ TimetableController();
 
   /// Period order — like `timetable._period_of`.
   int? periodOf(Map<String, Object?> raw, Object? day) {
-    final parsed = LessonRow.fromLegacy(raw, day);
-    int? num = extractLessonNum(parsed.time);
+    final parsed = core.Lesson.fromLegacy(raw, day);
+    int? num = core.extractLessonNum(parsed.time);
     num ??= parsed.period;
     return num;
   }
@@ -221,7 +220,7 @@ TimetableController();
       for (final raw in lessons) {
         if (periodOf(raw, day) == period) {
           final label =
-              shortTime(LessonRow.fromLegacy(raw, day).time);
+              shortTime(core.Lesson.fromLegacy(raw, day).time);
           if (label.isNotEmpty) {
             seen[label] = (seen[label] ?? 0) + 1;
           }
@@ -239,7 +238,7 @@ TimetableController();
   List<Map<String, Object?>> taught(List<Map<String, Object?>> lessons) =>
       lessons
           .where((r) =>
-              LessonRow.fromLegacy(r).status != 'cancelled')
+              core.Lesson.fromLegacy(r).status != 'cancelled')
           .toList();
 
   /// Period order; cancelled rows carry a bare clock so the period
@@ -248,7 +247,7 @@ TimetableController();
   int listOrderKey(Map<String, Object?> raw, Object? day) {
     final period = periodOf(raw, day) ?? 99;
     final cancelled =
-        LessonRow.fromLegacy(raw, day).status == 'cancelled' ? 1 : 0;
+        core.Lesson.fromLegacy(raw, day).status == 'cancelled' ? 1 : 0;
     return period * 2 + cancelled;
   }
 
@@ -368,12 +367,12 @@ TimetableController();
     if (day != today) return (period: null, kind: '');
     final upcoming = <({int start, int period})>[];
     for (final raw in lessons) {
-      if (LessonRow.fromLegacy(raw, day).status == 'cancelled') {
+      if (core.Lesson.fromLegacy(raw, day).status == 'cancelled') {
         continue;
       }
       final period = periodOf(raw, day);
       final span = clockRange(
-          shortTime(LessonRow.fromLegacy(raw, day).time));
+          shortTime(core.Lesson.fromLegacy(raw, day).time));
       if (period == null || span == null) continue;
       final nowMin = now.hour * 60 + now.minute;
       if (span.startMin <= nowMin && nowMin < span.endMin) {
@@ -392,18 +391,17 @@ TimetableController();
 
   // -- look ----------------------------------------------------------------------------------
 
-  LessonDiff _diffOf(Map<String, Object?> lesson, DateTime day) {
+  core.LessonDiff _diffOf(Map<String, Object?> lesson, DateTime day) {
     try {
-      return classifyLesson(lesson,
-          day: day, baseline: stableBaseline, complete: stableComplete);
+      return core.classifyLesson(lesson, day, stableBaseline, stableComplete);
     } catch (_) {
-      return LessonDiff(note: '${lesson['change'] ?? ''}');
+      return core.LessonDiff(note: '${lesson['change'] ?? ''}');
     }
   }
 
   /// How one lesson renders — like `timetable._look`.
   LessonLook look(Map<String, Object?> raw, DateTime day) {
-    final parsed = LessonRow.fromLegacy(raw, day);
+    final parsed = core.Lesson.fromLegacy(raw, day);
     final diff = _diffOf(raw, day);
     final status = parsed.status.toLowerCase();
     final cancelled = status == 'cancelled';
@@ -498,7 +496,7 @@ TimetableController();
   }
 
   /// Like `timetable._diff_summary`.
-  String diffSummary(LessonDiff diff) {
+  String diffSummary(core.LessonDiff diff) {
     const labels = {
       'subject': 'field_subject',
       'teacher': 'field_teacher',
@@ -516,7 +514,7 @@ TimetableController();
   }
 
   /// Like `timetable._diff_tooltip`.
-  String diffTooltip(LessonDiff diff) {
+  String diffTooltip(core.LessonDiff diff) {
     var tip = diff.isChange ? diffSummary(diff) : Strings.get('note_label');
     if (diff.note.isNotEmpty) tip += ': ${diff.note}';
     return tip;
@@ -526,7 +524,7 @@ TimetableController();
 
   /// Lesson detail dialog content — like `timetable._detail_dialog`.
   LessonDetail detail(Map<String, Object?> lesson, DateTime day) {
-    final parsed = LessonRow.fromLegacy(lesson, day);
+    final parsed = core.Lesson.fromLegacy(lesson, day);
     final subject =
         parsed.subject.isEmpty ? '?' : parsed.subject;
     final dayName_ = dayName(day, Strings.lang, short: false);
@@ -560,11 +558,10 @@ TimetableController();
       // What changed vs the stable timetable (usual vs actual).
       Map<String, String> usual = const {};
       try {
-        final key =
-            slotKey(day.weekday - 1, parsed.period ?? -1);
+        final key = (day.weekday - 1, parsed.period ?? -1);
         final variants = stableBaseline[key];
         final closest =
-            closestVariant(variants, lesson, day);
+            core.closestVariant(variants, lesson, day);
         if (closest != null) {
           usual = {
             'subject': closest.subject,

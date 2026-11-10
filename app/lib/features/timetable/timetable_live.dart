@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../controllers/app_state.dart';
 
 import '../common/app_tokens.dart';
-import '../today/today_live.dart' show convertStableBaseline;
 import 'timetable_controller.dart';
 import 'timetable_view.dart';
 
@@ -17,7 +16,7 @@ TimetableController timetableControllerFor(AppState s) {
     for (final e in s.timetable().entries)
       e.key: List<Object?>.of(e.value),
   };
-  c.stableBaseline = convertStableBaseline(s.stableBaseline());
+  c.stableBaseline = s.stableBaseline();
   c.stableComplete = s.stableComplete();
   c.demoMode = s.demoMode;
   c.timetableMondayIso = s.timetableMondayIso;

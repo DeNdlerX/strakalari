@@ -468,6 +468,9 @@ class MarkRow {
 
   /// The average the UI leads with: predicted while predicting.
   bool get counts => state != 'removed' && value != null && weight > 0;
+
+  /// Mark text as shown (Grade field of mark map, or '?').
+  String get text => '${mark['Grade'] ?? '?'}';
 }
 
 /// Everything the marks view needs about one subject.

@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 
 import '../../tutorial/tutorial_ui.dart';
 import '../common/app_tokens.dart';
-import '../common/format.dart';
-import 'grades_logic.dart';
+import '../common/format.dart' hide parseCzDate;
+import 'package:strakalari_core/strakalari_core.dart';
 import 'marks_controller.dart';
 
 /// Marks (Známky) screen — port of `views/marks.py`.
@@ -642,7 +642,7 @@ final entries = <(DateTime, SubjectSummary, MarkRow)>[];
       final raw = parseRaw(
           source['Grade'], source['Points']);
       final hasPct = c.subjectHasPct(summary);
-      final value = resolveMark(
+      final value = resolve(
           raw, summary.scale, hasPct, bands);
       final caption = '${source['Caption'] ?? ''}'.trim();
       rows.add(InkWell(
