@@ -423,7 +423,7 @@ class AppState {
   Set<String>? trackedSubjects() {
     final directory = subjectDirectory();
     if (directory.isEmpty) return null;
-    return {for (final n in directory.values) canonSubject(n)};
+    return {for (final n in directory.keys) canonSubject(n)};
   }
 
   Map<String, Object?> grades() {

@@ -406,6 +406,55 @@ void main() {
       expect(days, isEmpty);
     });
 
+    test('trackedSubjectsUsesDirectoryKeysNotValues', () {
+      final state = AppState(data: {
+        'absence': {'Matematika': 10.0},
+        'subject_directory': {
+          'Matematika': 'Mgr. Karel Novák',
+          'Anglický jazyk': 'PhDr. Jana Malá',
+        },
+      });
+      final tracked = state.trackedSubjects();
+      expect(tracked, isNotNull);
+      expect(tracked, contains('matematika'));
+      expect(tracked, contains('anglický jazyk'));
+      expect(tracked, isNot(contains('mgr. karel novák')));
+      expect(tracked, isNot(contains('phdr. jana malá')));
+    });
+
+    test('subjectStatesWithRealisticDirectoryDropsUntrackedSubjects', () {
+      final state = AppState(data: {
+        'subject_directory': {
+          'Matematika': 'Mgr. Karel Novák',
+        },
+        'timetable': {
+          '07.09.2026': [
+            {
+              'subject': 'Matematika',
+              'teacher': 'Mgr. Karel Novák',
+              'room': '101',
+              'time': '1 (8:00 - 8:45)',
+            },
+            {
+              'subject': 'Třídnická hodina',
+              'teacher': 'Mgr. Karel Novák',
+              'room': '101',
+              'time': '2 (8:55 - 9:40)',
+            },
+          ],
+        },
+        'absence': {
+          'Matematika': 10.0,
+          'Třídnická hodina': 50.0,
+        },
+      });
+      final (states, _) = state.subjectStates();
+      expect(states, isNotEmpty);
+      final names = states.map((s) => s.name).toSet();
+      expect(names, contains('Matematika'));
+      expect(names, isNot(contains('Třídnická hodina')));
+    });
+
     test('needsSetupFalseWithStravaOnly', () {
       final state = AppState();
       state.config.set('strava_username', 'novak');
