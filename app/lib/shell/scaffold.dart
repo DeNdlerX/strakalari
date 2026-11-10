@@ -59,6 +59,40 @@ String? backTarget({
   return (moreRoutes.contains(route) && narrow) ? 'more' : 'today';
 }
 
+/// The phone screen's own sub-page Back closes first ("" = none).
+/// Port of `_subpage_open()` in strakalari/flet_ui/app.py.
+String subpageOpen({
+  required String route,
+  required bool narrow,
+  required AppState state,
+}) {
+  if (!narrow) return '';
+  if (route == 'settings' && state.settingsOpen) return 'settings';
+  if (route == 'marks' && state.marksSelected != null) return 'marks';
+  if (route == 'lunches' && state.lunchToolsOpen) return 'lunches';
+  return '';
+}
+
+/// Closes the currently open phone subpage (settings section, marks subject,
+/// or lunch tools). Port of `_close_subpage()` in strakalari/flet_ui/app.py.
+void closeSubpage({
+  required String route,
+  required bool narrow,
+  required AppState state,
+}) {
+  final which = subpageOpen(route: route, narrow: narrow, state: state);
+  if (which == 'settings') {
+    state.closeSettingsSection();
+  } else if (which == 'marks') {
+    final sub = state.marksSelected;
+    if (sub != null) {
+      state.selectMarksSubject(sub);
+    }
+  } else if (which == 'lunches') {
+    state.setLunchTools(false);
+  }
+}
+
 const Map<String, IconData> _railIcons = {
   'today': Icons.home_outlined,
   'timetable': Icons.calendar_month_outlined,
@@ -222,20 +256,26 @@ class AppScaffold extends ConsumerWidget {
       ],
     );
 
+    final subpage = subpageOpen(
+      route: route,
+      narrow: narrow,
+      state: appState,
+    );
     final target = backTarget(
       route: route,
       narrow: narrow,
       wizardShown: appState.wizardShown,
     );
-    final canPop = target == null && !(route == 'settings' && appState.settingsOpen);
+    final canPop = !narrow || (subpage.isEmpty && target == null);
 
     Widget wrapPop(Widget scaffold) {
+      if (!narrow) return scaffold;
       return PopScope(
         canPop: canPop,
         onPopInvokedWithResult: (didPop, _) {
           if (didPop) return;
-          if (route == 'settings' && appState.settingsOpen) {
-            appState.closeSettingsSection();
+          if (subpage.isNotEmpty) {
+            closeSubpage(route: route, narrow: narrow, state: appState);
           } else if (target != null) {
             context.go(routeLocation(target));
           }

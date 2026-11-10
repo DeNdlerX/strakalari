@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:strakalari_core/strakalari_core.dart';
 
 import '../controllers/app_state.dart';
 import '../features/absences/absences_live.dart';
@@ -123,7 +124,15 @@ GoRoute _route(String name) => GoRoute(
             case 'settings':
               return LiveSettingsView(narrow: narrow);
             case 'more':
-              return MorePage(onOpen: (r) => context.go('/$r'));
+              return MorePage(
+                tokens: tokens,
+                isAndroid: mobilePlatform() == 'android',
+                onOpen: (r) => openMoreRoute(
+                  appState,
+                  r,
+                  (target) => context.go(routeLocation(target)),
+                ),
+              );
             default:
               return PlaceholderScreen(route: name);
           }

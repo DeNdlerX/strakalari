@@ -205,15 +205,45 @@ void main() {
         backTarget(route: 'planner', narrow: false, wizardShown: false),
         'today',
       );
+      expect(
+        backTarget(route: 'planner', narrow: true, wizardShown: true),
+        isNull,
+      );
     });
 
     test('backClosesOpenSettingsSectionFirst', () {
       final state = AppState();
       state.setSettingsSection('accounts');
       expect(state.settingsOpen, isTrue);
+      expect(
+        subpageOpen(route: 'settings', narrow: true, state: state),
+        'settings',
+      );
 
-      state.closeSettingsSection();
+      closeSubpage(route: 'settings', narrow: true, state: state);
       expect(state.settingsOpen, isFalse);
+      expect(
+        subpageOpen(route: 'settings', narrow: true, state: state),
+        isEmpty,
+      );
+
+      // Marks subpage
+      state.marksSelected = 'Matematika';
+      expect(
+        subpageOpen(route: 'marks', narrow: true, state: state),
+        'marks',
+      );
+      closeSubpage(route: 'marks', narrow: true, state: state);
+      expect(state.marksSelected, isNull);
+
+      // Lunches subpage
+      state.lunchToolsOpen = true;
+      expect(
+        subpageOpen(route: 'lunches', narrow: true, state: state),
+        'lunches',
+      );
+      closeSubpage(route: 'lunches', narrow: true, state: state);
+      expect(state.lunchToolsOpen, isFalse);
     });
   });
 }

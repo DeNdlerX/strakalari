@@ -107,6 +107,7 @@ void main() {
     test('englishLanguageInitializedAtStartupWithoutSave', () {
       // Simulate startup with English in config
       final state = AppState(configData: {'language': 'en'});
+      expect(state.densityCompact, isFalse);
 
       expect(core.getLanguage(), 'en');
       expect(Strings.lang, 'en');
@@ -120,6 +121,7 @@ void main() {
 
     test('czechLanguageInitializedAtStartupByDefault', () {
       final state = AppState();
+      expect(state.densityCompact, isFalse);
 
       expect(core.getLanguage(), 'cs');
       expect(Strings.lang, 'cs');
