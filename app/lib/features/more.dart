@@ -1,6 +1,6 @@
+import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
 
-import 'package:app/widgets/overlays.dart';
 
 /// Phone menu: the screens that don't fit the bottom bar.
 /// Port of views/more.py.
@@ -35,12 +35,12 @@ class MorePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView(
       children: [
-        ListTile(title: Text(Str.t('nav_more'))),
+        ListTile(title: Text(Strings.get('nav_more'))),
         for (final (route, icon, label) in visibleEntries())
           Card(
             child: ListTile(
               leading: Icon(icon),
-              title: Text(Str.t(label)),
+              title: Text(Strings.get(label)),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => onOpen(route),
             ),

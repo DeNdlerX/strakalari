@@ -1,3 +1,4 @@
+import '../../l10n/strings.dart';
 import 'package:flutter/material.dart';
 
 import '../common/app_tokens.dart';
@@ -34,8 +35,7 @@ class WizardView extends StatelessWidget {
   Widget _body(BuildContext context) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final step = c.step.clamp(0, WizardController.stepDone);
+final step = c.step.clamp(0, WizardController.stepDone);
 
     // The subjects are loading: stay here (Skip still leaves).
     if (step == WizardController.stepLimits && c.limitsNeedsRefresh) {
@@ -62,7 +62,7 @@ class WizardView extends StatelessWidget {
             c.refreshRunning)) {
       nav.add(TextButton(
           onPressed: c.pressBack,
-          child: Text(s.get('wiz_back'))));
+          child: Text(Strings.get('wiz_back'))));
     }
     nav.add(const Spacer());
     if (step < WizardController.stepDone) {
@@ -70,7 +70,7 @@ class WizardView extends StatelessWidget {
           step != WizardController.stepDisclaimer) {
         nav.add(TextButton(
             onPressed: c.pressSkip,
-            child: Text(s.get('wiz_skip'))));
+            child: Text(Strings.get('wiz_skip'))));
       }
       nav.add(ElevatedButton(
         onPressed: c.nextEnabled ? () => _next(context) : null,
@@ -79,7 +79,7 @@ class WizardView extends StatelessWidget {
     } else {
       nav.add(ElevatedButton(
         onPressed: () => _next(context),
-        child: Text(s.get('wiz_finish')),
+        child: Text(Strings.get('wiz_finish')),
       ));
     }
 
@@ -93,7 +93,7 @@ class WizardView extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-                s.tr('wiz_step_of', {
+                Strings.format('wiz_step_of', {
                   'i': shown.where((x) => x <= step).length,
                   'n': shown.length,
                 }),
@@ -179,13 +179,12 @@ class WizardView extends StatelessWidget {
   List<Widget> _stepContent(BuildContext context, int step) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    switch (step) {
+switch (step) {
       case WizardController.stepWelcome:
         final lang = '${c.config['language'] ?? 'cs'}';
         return [
-          _h(s.get('wiz_welcome_h'), 22),
-          _p(s.get('wiz_welcome_p')),
+          _h(Strings.get('wiz_welcome_h'), 22),
+          _p(Strings.get('wiz_welcome_p')),
           Wrap(
             spacing: 8,
             children: [
@@ -210,36 +209,36 @@ class WizardView extends StatelessWidget {
         ];
       case WizardController.stepDisclaimer:
         return [
-          _h(s.get('wiz_disclaimer_h'), 19),
-          _p(s.get('wiz_disclaimer_p')),
-          _p(s.get('wiz_disclaimer_rules')),
+          _h(Strings.get('wiz_disclaimer_h'), 19),
+          _p(Strings.get('wiz_disclaimer_p')),
+          _p(Strings.get('wiz_disclaimer_rules')),
           CheckboxListTile(
             value: c.disclaimerOk,
             activeColor: t.accent,
             contentPadding: EdgeInsets.zero,
             controlAffinity:
                 ListTileControlAffinity.leading,
-            title: Text(s.get('wiz_disclaimer_ack')),
+            title: Text(Strings.get('wiz_disclaimer_ack')),
             onChanged: (v) =>
                 c.setDisclaimer(v ?? false),
           ),
         ];
       case WizardController.stepBakalari:
         return [
-          _h(s.get('wiz_bakalari_h'), 19),
-          _p(s.get('wiz_bakalari_p')),
-          _field(s.get('bakalari_url'), 'wiz:bakalari_url',
+          _h(Strings.get('wiz_bakalari_h'), 19),
+          _p(Strings.get('wiz_bakalari_p')),
+          _field(Strings.get('bakalari_url'), 'wiz:bakalari_url',
               '${c.config['bakalari_url'] ?? ''}',
-              hint: s.get('bakalari_url_hint')),
-          _field(s.get('username'), 'wiz:bakalari_username',
+              hint: Strings.get('bakalari_url_hint')),
+          _field(Strings.get('username'), 'wiz:bakalari_username',
               '${c.config['bakalari_username'] ?? ''}'),
           _field(
-              s.get('password'), 'wiz:bakalari_password', '',
+              Strings.get('password'), 'wiz:bakalari_password', '',
               password: true,
               hint: '${c.config['bakalari_password'] ?? ''}'
                       .isNotEmpty
-                  ? s.get('new_password')
-                  : s.get('secret_empty')),
+                  ? Strings.get('new_password')
+                  : Strings.get('secret_empty')),
           ..._testRows('bakalari'),
         ];
       case WizardController.stepLimits:
@@ -247,66 +246,66 @@ class WizardView extends StatelessWidget {
       case WizardController.stepStrava:
         final enabled = c.stravaEnabled;
         return [
-          _h(s.get('wiz_strava_h'), 19),
-          _p(s.get('wiz_strava_p')),
+          _h(Strings.get('wiz_strava_h'), 19),
+          _p(Strings.get('wiz_strava_p')),
           SwitchListTile(
             value: enabled,
             activeThumbColor: t.accent,
             contentPadding: EdgeInsets.zero,
-            title: Text(s.get('use_strava')),
+            title: Text(Strings.get('use_strava')),
             onChanged: c.setStravaEnabled,
           ),
           if (enabled) ...[
-            _field(s.get('username'), 'wiz:strava_username',
+            _field(Strings.get('username'), 'wiz:strava_username',
                 '${c.config['strava_username'] ?? ''}'),
-            _field(s.get('password'),
+            _field(Strings.get('password'),
                 'wiz:strava_password', '',
                 password: true,
                 hint:
                     '${c.config['strava_password'] ?? ''}'
                             .isNotEmpty
-                        ? s.get('new_password')
-                        : s.get('secret_empty')),
+                        ? Strings.get('new_password')
+                        : Strings.get('secret_empty')),
             _field(
-                s.get('canteen_id'), 'wiz:strava_canteen_id',
+                Strings.get('canteen_id'), 'wiz:strava_canteen_id',
                 '${c.config['strava_canteen_id'] ?? ''}',
-                hint: s.get('canteen_id_hint')),
+                hint: Strings.get('canteen_id_hint')),
             ..._testRows('strava'),
           ],
         ];
       case WizardController.stepAi:
         final enabled = c.aiEnabled;
         return [
-          _h(s.get('wiz_ai_h'), 19),
-          _p(s.get('wiz_ai_p')),
+          _h(Strings.get('wiz_ai_h'), 19),
+          _p(Strings.get('wiz_ai_p')),
           SwitchListTile(
             value: enabled,
             activeThumbColor: t.accent,
             contentPadding: EdgeInsets.zero,
-            title: Text(s.get('wiz_use_ai')),
+            title: Text(Strings.get('wiz_use_ai')),
             onChanged: c.setAiEnabled,
           ),
           if (enabled) ...[
-            _field(s.get('gemini_key'), 'wiz:ai_key', '',
+            _field(Strings.get('gemini_key'), 'wiz:ai_key', '',
                 password: true,
                 hint: '${c.config['gemini_api_key'] ?? ''}'
                         .isNotEmpty
-                    ? s.get('new_password')
-                    : s.get('secret_empty')),
+                    ? Strings.get('new_password')
+                    : Strings.get('secret_empty')),
             Align(
               alignment: Alignment.centerLeft,
               child: OutlinedButton.icon(
                 onPressed: c.onOpenUrl,
                 icon: const Icon(
                     Icons.open_in_new, size: 16),
-                label: Text(s.get('ai_key_link')),
+                label: Text(Strings.get('ai_key_link')),
               ),
             ),
-            _hint(s.get('ai_key_steps')),
+            _hint(Strings.get('ai_key_steps')),
             _field(
-                s.get('gemini_model'), 'wiz:ai_model',
+                Strings.get('gemini_model'), 'wiz:ai_model',
                 '${c.config['gemini_model'] ?? 'gemini-3.8-flash'}'),
-            _hint(s.get('ai_model_hint')),
+            _hint(Strings.get('ai_model_hint')),
             ..._testRows('ai'),
           ],
         ];
@@ -316,19 +315,19 @@ class WizardView extends StatelessWidget {
         return _alarmContent();
       case WizardController.stepExcuses:
         return [
-          _h(s.get('wiz_excuses_h'), 19),
-          _p(s.get('wiz_excuses_p')),
-          _field(s.get('signature'), 'wiz:signature',
+          _h(Strings.get('wiz_excuses_h'), 19),
+          _p(Strings.get('wiz_excuses_p')),
+          _field(Strings.get('signature'), 'wiz:signature',
               '${c.config['your_signature'] ?? ''}',
-              hint: s.get('signature_hint')),
-          _hint(s.get('wiz_excuses_tpl')),
+              hint: Strings.get('signature_hint')),
+          _hint(Strings.get('wiz_excuses_tpl')),
           ..._templateEditors(context),
         ];
       default:
         return [
-          _h(s.get('wiz_done_h'), 19),
-          _p(s.get('wiz_done_p')),
-          _hint(s.get('wiz_done_next')),
+          _h(Strings.get('wiz_done_h'), 19),
+          _p(Strings.get('wiz_done_p')),
+          _hint(Strings.get('wiz_done_next')),
         ];
     }
   }
@@ -336,8 +335,7 @@ class WizardView extends StatelessWidget {
   List<Widget> _testRows(String service) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    if (c.testing == service) {
+if (c.testing == service) {
       return [
         Row(
           mainAxisSize: MainAxisSize.min,
@@ -349,7 +347,7 @@ class WizardView extends StatelessWidget {
                     strokeWidth: 2,
                     color: t.accent)),
             const SizedBox(width: 8),
-            Text(s.get('testing'),
+            Text(Strings.get('testing'),
                 style: TextStyle(
                     color: t.muted,
                     fontSize: t.fsSmall)),
@@ -361,7 +359,7 @@ class WizardView extends StatelessWidget {
     if (last['service'] == service && last['at'] != null) {
       final ok = last['ok'] == true;
       final prefix =
-          ok ? s.get('connection_ok') : s.get('connection_failed');
+          ok ? Strings.get('connection_ok') : Strings.get('connection_failed');
       return [
         Text('$prefix (${last['at']}): ${last['message'] ?? ''}',
             style: TextStyle(
@@ -375,10 +373,9 @@ class WizardView extends StatelessWidget {
   List<Widget> _limitsContent(BuildContext context) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final rows = <Widget>[
-      _h(s.get('wiz_limits_h'), 19),
-      _p(s.get('wiz_limits_p')),
+final rows = <Widget>[
+      _h(Strings.get('wiz_limits_h'), 19),
+      _p(Strings.get('wiz_limits_p')),
     ];
     if (c.refreshRunning) {
       // No inputs while loading: every progress tick rebuilds.
@@ -391,7 +388,7 @@ class WizardView extends StatelessWidget {
               child: CircularProgressIndicator(
                   strokeWidth: 2, color: t.accent)),
           const SizedBox(width: 8),
-          Text(s.get('wiz_limits_loading'),
+          Text(Strings.get('wiz_limits_loading'),
               style:
                   TextStyle(color: t.muted, fontSize: t.fsSmall)),
         ],
@@ -405,7 +402,7 @@ class WizardView extends StatelessWidget {
     }
     final subjects = c.limitSubjects();
     if (subjects.isEmpty) {
-      rows.add(_hint(s.get('wiz_limits_none')));
+      rows.add(_hint(Strings.get('wiz_limits_none')));
       rows.add(Align(
         alignment: Alignment.centerLeft,
         child: OutlinedButton.icon(
@@ -416,20 +413,20 @@ class WizardView extends StatelessWidget {
               ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                       content:
-                          Text(s.get('already_running'))));
+                          Text(Strings.get('already_running'))));
             }
           },
           icon: const Icon(Icons.refresh, size: 18),
-          label: Text(s.get('wiz_limits_retry')),
+          label: Text(Strings.get('wiz_limits_retry')),
         ),
       ));
       return rows;
     }
     final limits =
         (c.config['subject_limits'] as Map?) ?? const {};
-    rows.add(_field(s.get('default_limit'), 'wiz:limit_default',
+    rows.add(_field(Strings.get('default_limit'), 'wiz:limit_default',
         '${c.config['absence_critical_pct'] ?? 25.0}'));
-    rows.add(_hint(s.get('limit_subject_hint')));
+    rows.add(_hint(Strings.get('limit_subject_hint')));
     for (final subject in subjects) {
       rows.add(_field(subject, 'wiz:limit:$subject',
           '${limits[subject] ?? ''}'));
@@ -440,8 +437,7 @@ class WizardView extends StatelessWidget {
   List<Widget> _calendarContent() {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final preset = c.calPreset();
+final preset = c.calPreset();
     Widget card(CalendarPreset p) {
       final selected = preset == p.id;
       return InkWell(
@@ -482,22 +478,22 @@ class WizardView extends StatelessWidget {
               const SizedBox(height: 4),
               if (!p.custom) ...[
                 Text(
-                    s.tr('cal_closes', {
+                    Strings.format('cal_closes', {
                       'a': p.closesA.isEmpty
-                          ? s.get('cal_auto')
+                          ? Strings.get('cal_auto')
                           : p.closesA,
                       'b': p.closesB.isEmpty
-                          ? s.get('cal_auto')
+                          ? Strings.get('cal_auto')
                           : p.closesB,
                     }),
                     style: TextStyle(
                         color: t.muted,
                         fontSize: t.fsSmall)),
                 Text(
-                    s.tr('wiz_cal_days', {
+                    Strings.format('wiz_cal_days', {
                       'n': p.totalDays,
                       'end': p.endText.isEmpty
-                          ? s.get('cal_auto')
+                          ? Strings.get('cal_auto')
                           : p.endText,
                     }),
                     style: TextStyle(
@@ -512,12 +508,12 @@ class WizardView extends StatelessWidget {
                     style: TextStyle(
                         color: t.muted,
                         fontSize: t.fsSmall)),
-                Text(s.get('wiz_cal_only_school'),
+                Text(Strings.get('wiz_cal_only_school'),
                     style: TextStyle(
                         color: t.faint,
                         fontSize: t.fsSmall)),
               ] else
-                Text(s.get('wiz_cal_custom_p'),
+                Text(Strings.get('wiz_cal_custom_p'),
                     style: TextStyle(
                         color: t.muted,
                         fontSize: t.fsSmall)),
@@ -529,8 +525,8 @@ class WizardView extends StatelessWidget {
 
     final cards = [for (final p in c.calendarOptions) card(p)];
     return [
-      _h(s.get('wiz_cal_h'), 19),
-      _p(s.get('wiz_cal_p')),
+      _h(Strings.get('wiz_cal_h'), 19),
+      _p(Strings.get('wiz_cal_p')),
       narrow
           ? Column(
               crossAxisAlignment:
@@ -544,33 +540,32 @@ class WizardView extends StatelessWidget {
               ],
             )
           : Wrap(spacing: 8, runSpacing: 8, children: cards),
-      if (preset.isEmpty) _hint(s.get('wiz_cal_pick')),
+      if (preset.isEmpty) _hint(Strings.get('wiz_cal_pick')),
     ];
   }
 
   List<Widget> _alarmContent() {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final enabled = c.alarmEnabled;
+final enabled = c.alarmEnabled;
     final rows = <Widget>[
-      _h(s.get('wiz_alarm_h'), 19),
-      _p(s.get('wiz_alarm_p')),
+      _h(Strings.get('wiz_alarm_h'), 19),
+      _p(Strings.get('wiz_alarm_p')),
       SwitchListTile(
         value: enabled,
         activeThumbColor: t.accent,
         contentPadding: EdgeInsets.zero,
-        title: Text(s.get('wakeup_enable')),
+        title: Text(Strings.get('wakeup_enable')),
         onChanged: c.setAlarmEnabled,
       ),
     ];
     if (enabled) {
       final minutes = c.alarmMinutes() ?? 60;
-      rows.add(_field(s.get('wakeup_minutes'),
+      rows.add(_field(Strings.get('wakeup_minutes'),
           'wiz:wakeup_minutes', '$minutes'));
-      rows.add(_hint(s.tr('wakeup_hint', {'n': minutes})));
+      rows.add(_hint(Strings.format('wakeup_hint', {'n': minutes})));
       if (c.alarmExactOff) {
-        rows.add(Text(s.get('wakeup_exact_off'),
+        rows.add(Text(Strings.get('wakeup_exact_off'),
             style: TextStyle(
                 color: t.yellow,
                 fontSize: t.fsSmall)));
@@ -580,12 +575,12 @@ class WizardView extends StatelessWidget {
             onPressed: c.onAlarmPermission,
             icon:
                 const Icon(Icons.alarm_on, size: 18),
-            label: Text(s.get('wakeup_exact_allow')),
+            label: Text(Strings.get('wakeup_exact_allow')),
           ),
         ));
       }
     }
-    rows.add(_hint(s.get('wiz_alarm_later')));
+    rows.add(_hint(Strings.get('wiz_alarm_later')));
     return rows;
   }
 

@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 6 · Next step: Fix every finding in `reviews/checkpoint-B.md` (blockers first), one commit per finding, then stop for re-review.
+Current phase: 6 · Next step: Fix finding B-B5 (auto mode confirmation dialog) in `reviews/checkpoint-B.md`, then proceed with must-fix findings B-M1 to B-M14.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -736,6 +736,11 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
   - **R2-S3** (`730f61a`): new `dart-macos-locks` job in `.github/workflows/dart.yml` (Apple silicon, manual run or release tag) runs `session_lock_test.dart` + `helpers_test.dart` with `TZ=Europe/Prague`; the three STATUS lines name it.
 - 2026-11-09 · Checkpoint A re-review 3: **PASS** (all R2-* findings fixed; 0 blockers, 0 must-fix, 0 should-fix; notes R3-N1..R3-N4 for later checkpoints) — [docs/flutter-migration/reviews/checkpoint-A.md](docs/flutter-migration/reviews/checkpoint-A.md#re-review-3-2026-11-09)
 - 2026-11-10 · Checkpoint B review: **FAIL** (5 blockers, 14 must-fix, 6 should-fix) — [docs/flutter-migration/reviews/checkpoint-B.md](docs/flutter-migration/reviews/checkpoint-B.md)
+- 2026-11-10 · Checkpoint B rework (in progress):
+  - **B-B1** (`5ae03cc`): build tracked subjects from directory keys instead of values in `app/lib/controllers/app_state.dart`.
+  - **B-B2** (`954a2e4`): route Today excuse tasks and day plan directly through AppState, delete redundant `excuse_logic.dart`, and enforce send path guard.
+  - **B-B3** (`c7e06d7`): remove screenshot script from app tests and establish standalone parity capture tools (`tools/parity/capture_screens.dart` and `tools/parity/capture_flet.py`).
+  - **B-B4** (this commit): delete duplicate string tables (`common/app_strings.dart`, `class Str` in `overlays.dart`), unify all UI views and tests to canonical `Strings.get()` / `Strings.format()`, add `hasKey` and `allKeys` in `Strings`, fix hardcoded strings in settings/wizard/planner, and add `app/test/strings_table_parity_test.dart`.
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 
@@ -814,7 +819,7 @@ How to verify:
 - Test app startup on demo data dir: `python tools/demo_data.py generate build/parity-screens/demo-cs` and run debug executable.
 
 Unsure / needs a second pair of eyes:
-- Three duplicate string/token tables between `common/` and feature-local folders: kept separate to maintain per-feature decoupling, as noted in Deviations.
+- String tables unified onto canonical Strings in B-B4; token table unification queued for B-M9.
 - Planner cache key holiday comparison: stringified sorted dates used for pure value comparison across Dart records.
 - `wakeupAvailable` remains stubbed to false pending Android Phase 8 implementation.
 

@@ -1,3 +1,4 @@
+import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
 
 import 'package:app/features/lunches/lunch_filter.dart';
@@ -33,7 +34,7 @@ class LunchesView extends StatelessWidget {
       return ListView(
         children: [
           ListTile(
-              title: Text(Str.t('lunch_title')),
+              title: Text(Strings.get('lunch_title')),
               subtitle: Text(updatedLabel)),
           Card(
             child: Padding(
@@ -41,11 +42,11 @@ class LunchesView extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(Str.t('strava_disabled_title')),
-                  Text(Str.t('strava_disabled_msg')),
+                  Text(Strings.get('strava_disabled_title')),
+                  Text(Strings.get('strava_disabled_msg')),
                   TextButton(
                       onPressed: onOpenSettings,
-                      child: Text(Str.t('go_to_settings'))),
+                      child: Text(Strings.get('go_to_settings'))),
                 ],
               ),
             ),
@@ -69,7 +70,7 @@ class LunchesView extends StatelessWidget {
     final menu = <Widget>[
       Padding(
         padding: const EdgeInsets.all(12),
-        child: Text(Str.t('pick_hint')),
+        child: Text(Strings.get('pick_hint')),
       ),
       _sendRow(context),
       if (past.isNotEmpty)
@@ -80,8 +81,8 @@ class LunchesView extends StatelessWidget {
             c.setShowPastLunchesHook?.call(next);
           },
           child: Text(c.showPastLunches
-              ? Str.t('lunch_hide_past')
-              : Str.t('lunch_show_past', {'n': past.length})),
+              ? Strings.get('lunch_hide_past')
+              : Strings.format('lunch_show_past', {'n': past.length})),
         ),
       for (final day in [if (c.showPastLunches) ...past, ...upcoming])
         _dayCard(context, day, c.food[day] ?? {}),
@@ -95,20 +96,20 @@ class LunchesView extends StatelessWidget {
           'need_credentials';
       menu.add(Padding(
         padding: const EdgeInsets.all(12),
-        child: Text(Str.t('no_data')),
+        child: Text(Strings.get('no_data')),
       ));
       menu.add(Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Text(Str.t(reason)),
+        child: Text(Strings.get(reason)),
       ));
     }
     final header = ListTile(
-      title: Text(Str.t('lunch_title')),
+      title: Text(Strings.get('lunch_title')),
       subtitle: Text(updatedLabel),
       trailing: IconButton(
         tooltip: sidebarOpen
-            ? Str.t('hide_sidebar')
-            : Str.t('show_sidebar'),
+            ? Strings.get('hide_sidebar')
+            : Strings.get('show_sidebar'),
         icon: const Icon(Icons.tune_outlined),
         onPressed: () {
           if (narrow) {
@@ -179,13 +180,13 @@ class LunchesView extends StatelessWidget {
             final ok = await onSubmit!(payload);
             if (!context.mounted) return;
             appSnack(context,
-                ok ? Str.t('orders_sent') : Str.t('orders_failed'));
+                ok ? Strings.get('orders_sent') : Strings.get('orders_failed'));
           } else if (payload.isEmpty) {
-            appSnack(context, Str.t('no_changes'));
+            appSnack(context, Strings.get('no_changes'));
           }
         },
         icon: const Icon(Icons.send_outlined),
-        label: Text('${Str.t('send_orders')}'
+        label: Text('${Strings.get('send_orders')}'
             '${pending > 0 ? ' ($pending)' : ''}'),
       ),
     );
@@ -196,11 +197,11 @@ class LunchesView extends StatelessWidget {
   String? dayStatus(String day) {
     final c = controller;
     final ordered = c.orders[day] ?? c.webOrders[day];
-    if (c.cancelledLunches.contains(day)) return Str.t('no_lunch');
+    if (c.cancelledLunches.contains(day)) return Strings.get('no_lunch');
     if (ordered == null || ordered.isEmpty) return null;
     if (!c.lunchIsChange(day)) {
       if ((c.webOrders[day] ?? '').isNotEmpty) {
-        return Str.t('web_ordered');
+        return Strings.get('web_ordered');
       }
       return null;
     }
@@ -209,7 +210,7 @@ class LunchesView extends StatelessWidget {
         if (!c.isOrderOpen!(day)) return null;
       } catch (_) {}
     }
-    return Str.t('to_send');
+    return Strings.get('to_send');
   }
 
   Widget _dayCard(
@@ -234,10 +235,10 @@ class LunchesView extends StatelessWidget {
     var hidden = 0;
     final rows = <Widget>[];
     if (!orderOpen) {
-      rows.add(Text(Str.t('lunch_order_closed')));
+      rows.add(Text(Strings.get('lunch_order_closed')));
     }
     if (soup.isNotEmpty) {
-      rows.add(Text('${Str.t('lunch_soup')}: $soup'));
+      rows.add(Text('${Strings.get('lunch_soup')}: $soup'));
     }
     for (final e in meals.entries) {
       if (e.key.contains('&-1&')) continue;
@@ -255,15 +256,15 @@ class LunchesView extends StatelessWidget {
       context,
       selected: noLunchSelected,
       disabled: !orderOpen,
-      label: Str.t('no_order_option'),
+      label: Strings.get('no_order_option'),
       onTap: () {
         if (!orderOpen) {
-          appSnack(context, Str.t('lunch_order_closed'));
+          appSnack(context, Strings.get('lunch_order_closed'));
           return;
         }
         if (deorderId != null) {
           if (!c.orderLunch(day, deorderId)) {
-            appSnack(context, Str.t('lunch_order_closed'));
+            appSnack(context, Strings.get('lunch_order_closed'));
           }
         } else {
           c.cancelLunchOrder(day);
@@ -271,7 +272,7 @@ class LunchesView extends StatelessWidget {
       },
     ));
     if (hidden > 0) {
-      rows.add(Text(Str.t('hidden_meals', {'n': hidden})));
+      rows.add(Text(Strings.format('hidden_meals', {'n': hidden})));
     }
     return Card(
       child: ExpansionTile(
@@ -279,7 +280,7 @@ class LunchesView extends StatelessWidget {
           children: [
             Expanded(child: Text(day)),
             if (status != null) Chip(label: Text(status)),
-            if (!orderOpen) Chip(label: Text(Str.t('lunch_closed_badge'))),
+            if (!orderOpen) Chip(label: Text(Strings.get('lunch_closed_badge'))),
           ],
         ),
         initiallyExpanded: true,
@@ -310,13 +311,13 @@ class LunchesView extends StatelessWidget {
         title: Text(label.isEmpty ? displayMealName(name) : label),
         subtitle: allergens.isEmpty
             ? null
-            : Text('${Str.t('allergens')}: $allergens'),
+            : Text('${Strings.get('allergens')}: $allergens'),
         selected: selected,
         onTap: disabled
             ? null
             : () {
                 if (!controller.orderLunch(day, mid)) {
-                  appSnack(context, Str.t('lunch_order_closed'));
+                  appSnack(context, Strings.get('lunch_order_closed'));
                 }
               },
       ),
@@ -342,7 +343,7 @@ class LunchesView extends StatelessWidget {
   }
 
   List<Widget> _sideChildren(BuildContext context) => [
-        ListTile(title: Text(Str.t('ai_tools'))),
+        ListTile(title: Text(Strings.get('ai_tools'))),
         _aiCard(context),
         _blacklistCard(context),
       ];
@@ -357,11 +358,11 @@ class LunchesView extends StatelessWidget {
     final c = controller;
     final hasKey = (c.get('gemini_api_key') ?? '').toString().isNotEmpty;
     if (!hasKey) {
-      if (context != null) appSnack(context, Str.t('recommend_no_key'));
+      if (context != null) appSnack(context, Strings.get('recommend_no_key'));
       return;
     }
     if (c.aiRunning) {
-      if (context != null) appSnack(context, Str.t('ai_already_running'));
+      if (context != null) appSnack(context, Strings.get('ai_already_running'));
       return;
     }
     await onRecommend?.call();
@@ -376,11 +377,11 @@ class LunchesView extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(Str.t('ai_section')),
+            Text(Strings.get('ai_section')),
             TextField(
               decoration: InputDecoration(
-                  labelText: Str.t('ai_prefs'),
-                  hintText: Str.t('ai_prefs_hint')),
+                  labelText: Strings.get('ai_prefs'),
+                  hintText: Strings.get('ai_prefs_hint')),
               controller: TextEditingController(text: c.lunchPrefs),
               maxLines: 2,
               onChanged: (v) {
@@ -388,13 +389,13 @@ class LunchesView extends StatelessWidget {
                 c.setLunchPrefsHook?.call(v);
               },
             ),
-            if (!hasKey) Text(Str.t('ai_no_key')),
+            if (!hasKey) Text(Strings.get('ai_no_key')),
             if (!hasKey)
               Row(
                 children: [
                   TextButton(
                       onPressed: onOpenSettings,
-                      child: Text(Str.t('go_to_settings'))),
+                      child: Text(Strings.get('go_to_settings'))),
                 ],
               ),
             Wrap(
@@ -406,18 +407,18 @@ class LunchesView extends StatelessWidget {
                       : () async {
                           await recommend(context);
                         },
-                  child: Text(Str.t('recommend')),
+                  child: Text(Strings.get('recommend')),
                 ),
                 OutlinedButton(
                   onPressed: () => c.applyFoodFilter(c.lunchPrefs),
-                  child: Text(Str.t('apply_filter_long')),
+                  child: Text(Strings.get('apply_filter_long')),
                 ),
               ],
             ),
-            Text(Str.t('filter_hint')),
+            Text(Strings.get('filter_hint')),
             if (c.aiRunning) const LinearProgressIndicator(),
             if (c.lunchHidden.isNotEmpty)
-              Text(Str.t('hidden_meals', {'n': c.lunchHidden.length})),
+              Text(Strings.format('hidden_meals', {'n': c.lunchHidden.length})),
           ],
         ),
       ),
@@ -436,17 +437,17 @@ class LunchesView extends StatelessWidget {
           children: [
             Row(
               children: [
-                Expanded(child: Text(Str.t('blacklist_section'))),
+                Expanded(child: Text(Strings.get('blacklist_section'))),
                 Chip(label: Text('${words.length}')),
               ],
             ),
-            Text(Str.t('blacklist_hint')),
-            if (words.isEmpty) Text(Str.t('no_blacklist')),
+            Text(Strings.get('blacklist_hint')),
+            if (words.isEmpty) Text(Strings.get('no_blacklist')),
             for (final w in words)
               ListTile(
                 title: Text(w),
                 trailing: IconButton(
-                  tooltip: Str.t('delete'),
+                  tooltip: Strings.get('delete'),
                   icon: const Icon(Icons.delete_outline),
                   onPressed: () => c.removeBlacklistWord(w),
                 ),
@@ -457,7 +458,7 @@ class LunchesView extends StatelessWidget {
                     child: TextField(
                         controller: draft,
                         decoration: InputDecoration(
-                            labelText: Str.t('add_word')))),
+                            labelText: Strings.get('add_word')))),
                 FilledButton(
                   onPressed: () {
                     if (!c.addBlacklistWord(draft.text)) {
@@ -465,12 +466,12 @@ class LunchesView extends StatelessWidget {
                           context,
                           c.blacklistEditError.isNotEmpty
                               ? c.blacklistEditError
-                              : Str.t('save_failed'));
+                              : Strings.get('save_failed'));
                     } else {
                       draft.clear();
                     }
                   },
-                  child: Text(Str.t('add')),
+                  child: Text(Strings.get('add')),
                 ),
               ],
             ),

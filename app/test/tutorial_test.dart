@@ -1,3 +1,4 @@
+import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -156,7 +157,7 @@ void main() {
         // Ring + inline bubble.
         expect(find.byType(Card), findsOneWidget);
         expect(
-            find.text(Str.t('tut_excuse_pick_title')), findsOneWidget);
+            find.text(Strings.get('tut_excuse_pick_title')), findsOneWidget);
       });
 
       testWidgets('every step bubble builds', (t) async {
@@ -195,10 +196,10 @@ void main() {
             if (step.until.isNotEmpty) 'tut_${step.key}_try',
           ]) {
             for (final lang in ['cs', 'en']) {
-              final table = Str.tables[lang]!;
-              expect(table[key], isNotNull, reason: '$lang/$key');
-              expect(table[key]!.isNotEmpty, isTrue,
-                  reason: '$lang/$key');
+              Strings.lang = lang;
+              final val = Strings.get(key);
+              expect(val != key, isTrue, reason: '$lang/$key');
+              expect(val.isNotEmpty, isTrue, reason: '$lang/$key');
             }
           }
         }

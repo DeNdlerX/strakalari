@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import '../common/app_strings.dart';
+import '../../l10n/strings.dart';
 import '../common/format.dart';
 import '../common/lesson_model.dart';
 import '../common/schedule_logic.dart';
@@ -75,9 +75,7 @@ class LessonDetail {
 /// all live here. Rendering sizes come from the view via [cellChars]
 /// / [phoneCellWidth].
 class TimetableController extends ChangeNotifier {
-  final AppStrings s;
-
-  TimetableController({this.s = const AppStrings()});
+TimetableController();
 
   // -- inputs -------------------------------------------------------------------
 
@@ -439,7 +437,7 @@ class TimetableController extends ChangeNotifier {
     String tag;
     String tagColor;
     if (cancelled) {
-      tag = s.get('status_lesson_cancelled');
+      tag = Strings.get('status_lesson_cancelled');
       tagColor = 'muted';
     } else if (status.isNotEmpty) {
       tag = statusLabel(status);
@@ -477,13 +475,13 @@ class TimetableController extends ChangeNotifier {
 
   /// Like `timetable._change_tag`.
   String changeTag(Set<String> changed) {
-    if (changed.contains('added')) return s.get('tag_added');
-    if (changed.contains('teacher')) return s.get('tag_substitution');
+    if (changed.contains('added')) return Strings.get('tag_added');
+    if (changed.contains('teacher')) return Strings.get('tag_substitution');
     if (changed.contains('room') &&
         changed.difference({'room', 'notice'}).isEmpty) {
-      return s.get('tag_room_change');
+      return Strings.get('tag_room_change');
     }
-    return s.get('real_change');
+    return Strings.get('real_change');
   }
 
   String statusLabel(String status) {
@@ -496,7 +494,7 @@ class TimetableController extends ChangeNotifier {
       'excused': 'status_excused',
     };
     final key = keys[status.toLowerCase()];
-    return key == null ? status : s.get(key);
+    return key == null ? status : Strings.get(key);
   }
 
   /// Like `timetable._diff_summary`.
@@ -511,15 +509,15 @@ class TimetableController extends ChangeNotifier {
     };
     final fields = [
       for (final f in diff.changed)
-        if (labels.containsKey(f)) s.get(labels[f]!)
+        if (labels.containsKey(f)) Strings.get(labels[f]!)
     ];
-    final joined = fields.isEmpty ? s.get('real_change') : fields.join(', ');
-    return s.tr('changed_to', {'fields': joined});
+    final joined = fields.isEmpty ? Strings.get('real_change') : fields.join(', ');
+    return Strings.format('changed_to', {'fields': joined});
   }
 
   /// Like `timetable._diff_tooltip`.
   String diffTooltip(LessonDiff diff) {
-    var tip = diff.isChange ? diffSummary(diff) : s.get('note_label');
+    var tip = diff.isChange ? diffSummary(diff) : Strings.get('note_label');
     if (diff.note.isNotEmpty) tip += ': ${diff.note}';
     return tip;
   }
@@ -531,12 +529,12 @@ class TimetableController extends ChangeNotifier {
     final parsed = LessonRow.fromLegacy(lesson, day);
     final subject =
         parsed.subject.isEmpty ? '?' : parsed.subject;
-    final dayName_ = dayName(day, s.lang, short: false);
+    final dayName_ = dayName(day, Strings.lang, short: false);
     final clock = shortTime(parsed.time);
     String subtitle;
     if (parsed.period != null) {
       subtitle = '$dayName_ ${czDayYear(day)} · ${parsed.period}. '
-          '${s.get('period').toLowerCase()}'
+          '${Strings.get('period').toLowerCase()}'
           '${clock.isNotEmpty ? ' · $clock' : ''}';
     } else {
       subtitle = '$dayName_ ${czDayYear(day)}'
@@ -550,7 +548,7 @@ class TimetableController extends ChangeNotifier {
     if (diff.isChange) badges.add(diffTooltip(diff));
     final fields = <DetailRow>[];
     void add(String key, String value) {
-      if (value.isNotEmpty) fields.add(DetailRow(s.get(key), value));
+      if (value.isNotEmpty) fields.add(DetailRow(Strings.get(key), value));
     }
 
     add('room', parsed.room);
@@ -601,10 +599,10 @@ class TimetableController extends ChangeNotifier {
               actual[field]!.isEmpty ? '—' : actual[field]!;
           if (old != current) {
             fields.add(DetailRow(
-                '${s.get('stable_value')} · ${s.get(names[field]!)}',
+                '${Strings.get('stable_value')} · ${Strings.get(names[field]!)}',
                 old));
             fields.add(DetailRow(
-                '${s.get('current_value')} · ${s.get(names[field]!)}',
+                '${Strings.get('current_value')} · ${Strings.get(names[field]!)}',
                 current,
                 accent: true));
           }
@@ -633,7 +631,7 @@ class TimetableController extends ChangeNotifier {
       final tag = look(raw, day).tag;
       if (tag.isNotEmpty) counts[tag] = (counts[tag] ?? 0) + 1;
     }
-    final parts = [lessonsText(taught(lessons).length, s)];
+    final parts = [lessonsText(taught(lessons).length)];
     counts.forEach((tag, n) => parts.add('$n× $tag'));
     return parts.join(' · ');
   }

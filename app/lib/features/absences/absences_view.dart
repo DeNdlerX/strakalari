@@ -1,3 +1,4 @@
+import '../../l10n/strings.dart';
 import 'package:flutter/material.dart';
 
 import '../common/app_tokens.dart';
@@ -33,11 +34,10 @@ class AbsencesView extends StatelessWidget {
   Widget _body() {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final header = Row(
+final header = Row(
       children: [
         Expanded(
-            child: Text(s.get('absence_title'),
+            child: Text(Strings.get('absence_title'),
                 style: TextStyle(
                     color: t.text,
                     fontSize: 20,
@@ -50,13 +50,13 @@ class AbsencesView extends StatelessWidget {
         children: [
           header,
           SizedBox(height: t.gap),
-          _card(Text(s.get('no_data'),
+          _card(Text(Strings.get('no_data'),
               style:
                   TextStyle(color: t.faint, fontSize: t.fsBody))),
           if (c.demoMode)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text(s.get('need_credentials'),
+              child: Text(Strings.get('need_credentials'),
                   style: TextStyle(
                       color: t.faint, fontSize: t.fsSmall)),
             ),
@@ -67,13 +67,13 @@ class AbsencesView extends StatelessWidget {
       spacing: t.gap,
       children: [
         Expanded(
-            child: _statCard(s.get('avg_absence'),
+            child: _statCard(Strings.get('avg_absence'),
                 '${c.average.toStringAsFixed(1)} %', 'ok')),
         Expanded(
-            child: _statCard(s.get('warn_subjects'),
+            child: _statCard(Strings.get('warn_subjects'),
                 '${c.warnCount}', c.warnCount > 0 ? 'warning' : 'ok')),
         Expanded(
-            child: _statCard(s.get('crit_subjects'),
+            child: _statCard(Strings.get('crit_subjects'),
                 '${c.critCount}', c.critCount > 0 ? 'critical' : 'ok')),
       ],
     );
@@ -144,8 +144,7 @@ class AbsencesView extends StatelessWidget {
   Widget _row(SubjectAbsence subject) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    const badgeLabels = {
+const badgeLabels = {
       'ok': 'state_ok',
       'warning': 'state_warning',
       'critical': 'state_critical',
@@ -175,7 +174,7 @@ class AbsencesView extends StatelessWidget {
           child: Align(
             alignment: Alignment.centerRight,
             child: _badge(
-                s.get(badgeLabels[subject.status] ?? 'state_ok'),
+                Strings.get(badgeLabels[subject.status] ?? 'state_ok'),
                 subject.status),
           ),
         ),

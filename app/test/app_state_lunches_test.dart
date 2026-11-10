@@ -151,7 +151,7 @@ void main() {
         controller: lunchControllerFor(state),
         onRecommend: () async {
           if (!state.startAiRecommend()) {
-            state.lastSnackMessage = Str.t('ai_already_running');
+            state.lastSnackMessage = Strings.get('ai_already_running');
           }
         },
       );

@@ -1,3 +1,4 @@
+import '../../l10n/strings.dart';
 import 'package:flutter/material.dart';
 
 import '../common/app_tokens.dart';
@@ -47,8 +48,7 @@ class TimetableView extends StatelessWidget {
   Widget _body(BuildContext context, DateTime now) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final header = _headerRow();
+final header = _headerRow();
     final weeks = c.weeks();
     if (weeks.isEmpty) {
       return ListView(
@@ -56,13 +56,13 @@ class TimetableView extends StatelessWidget {
         children: [
           header,
           SizedBox(height: t.gap),
-          _card(Text(s.get('no_data'),
+          _card(Text(Strings.get('no_data'),
               style:
                   TextStyle(color: t.faint, fontSize: t.fsBody))),
           if (c.demoMode)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text(s.get('need_credentials'),
+              child: Text(Strings.get('need_credentials'),
                   style: TextStyle(
                       color: t.faint, fontSize: t.fsSmall)),
             ),
@@ -79,13 +79,13 @@ class TimetableView extends StatelessWidget {
       weekDays = stableTemplateWeek(
           c.stableBaseline, weekMonday(today));
       current = weekMonday(today);
-      navLabel = s.get('stable_timetable');
+      navLabel = Strings.get('stable_timetable');
     } else {
       current = c.resolveCurrent(weeks, today: now);
       weekDays = weeks[current] ?? {};
       final fri = current.add(const Duration(days: 4));
       final weekNo = _isoWeek(current);
-      navLabel = '${s.get('week')} $weekNo · '
+      navLabel = '${Strings.get('week')} $weekNo · '
           '${current.day.toString().padLeft(2, '0')}.${current.month.toString().padLeft(2, '0')}. – '
           '${fri.day.toString().padLeft(2, '0')}.${fri.month.toString().padLeft(2, '0')}.${fri.year}';
     }
@@ -152,12 +152,11 @@ class TimetableView extends StatelessWidget {
   }
 
   Widget _headerRow() {
-    final c = controller;
     final t = tokens;
     return Row(
       children: [
         Expanded(
-            child: Text(c.s.get('timetable_title'),
+            child: Text(Strings.get('timetable_title'),
                 style: TextStyle(
                     color: t.text,
                     fontSize: 20,
@@ -169,14 +168,13 @@ class TimetableView extends StatelessWidget {
   Widget _nav(BuildContext context, String label, bool showStable) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final prev = IconButton(
-      tooltip: showStable ? null : s.get('prev_week'),
+final prev = IconButton(
+      tooltip: showStable ? null : Strings.get('prev_week'),
       icon: const Icon(Icons.chevron_left),
       onPressed: showStable ? null : () => c.stepWeek(-1),
     );
     final next = IconButton(
-      tooltip: showStable ? null : s.get('next_week'),
+      tooltip: showStable ? null : Strings.get('next_week'),
       icon: const Icon(Icons.chevron_right),
       onPressed: showStable ? null : () => c.stepWeek(1),
     );
@@ -190,19 +188,19 @@ class TimetableView extends StatelessWidget {
     final stableBtn = showStable
         ? ElevatedButton(
             onPressed: () => c.setShowStable(false),
-            child: Text(s.get('stable_view')))
+            child: Text(Strings.get('stable_view')))
         : OutlinedButton(
             onPressed: () => c.setShowStable(true),
-            child: Text(s.get('stable_view')));
+            child: Text(Strings.get('stable_view')));
     final toggle = SegmentedButton<String>(
       segments: [
         ButtonSegment(
             value: 'table',
-            label: Text(s.get('view_table')),
+            label: Text(Strings.get('view_table')),
             icon: const Icon(Icons.grid_view_outlined, size: 16)),
         ButtonSegment(
             value: 'list',
-            label: Text(s.get('view_list')),
+            label: Text(Strings.get('view_list')),
             icon: const Icon(Icons.view_agenda_outlined, size: 16)),
       ],
       selected: {
@@ -223,7 +221,7 @@ class TimetableView extends StatelessWidget {
             children: [
               TextButton(
                   onPressed: () => c.goTimetableWeek(null),
-                  child: Text(s.get('this_week'))),
+                  child: Text(Strings.get('this_week'))),
               stableBtn,
               toggle,
             ],
@@ -239,7 +237,7 @@ class TimetableView extends StatelessWidget {
         const SizedBox(width: 8),
         TextButton(
             onPressed: () => c.goTimetableWeek(null),
-            child: Text(s.get('this_week'))),
+            child: Text(Strings.get('this_week'))),
         stableBtn,
         const Spacer(),
         toggle,
@@ -249,8 +247,7 @@ class TimetableView extends StatelessWidget {
 
   Widget _legend() {
     final t = tokens;
-    final s = controller.s;
-    Widget swatch(Widget box, String label) => Row(
+Widget swatch(Widget box, String label) => Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             box,
@@ -274,17 +271,17 @@ class TimetableView extends StatelessWidget {
       children: [
         swatch(
             Container(width: 3, height: 14, color: t.red),
-            s.get('status_absent')),
+            Strings.get('status_absent')),
         swatch(
             Container(width: 3, height: 14, color: t.orange),
-            s.get('legend_late_early')),
+            Strings.get('legend_late_early')),
         swatch(
             Container(width: 3, height: 14, color: t.green),
-            s.get('status_excused')),
+            Strings.get('status_excused')),
         swatch(
             box(tintColor(t.accent, 0.22),
                 Border.all(color: t.accent)),
-            s.get('legend_change')),
+            Strings.get('legend_change')),
         swatch(
             Text('Aa',
                 style: TextStyle(
@@ -293,16 +290,16 @@ class TimetableView extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                     decoration: TextDecoration.lineThrough,
                     decorationColor: t.faint)),
-            s.get('status_lesson_cancelled')),
+            Strings.get('status_lesson_cancelled')),
         swatch(
             Container(
                 width: 6,
                 height: 6,
                 decoration: BoxDecoration(
                     color: t.accent, shape: BoxShape.circle)),
-            s.get('note_label')),
+            Strings.get('note_label')),
         swatch(box(null, Border.all(color: t.accent, width: 2)),
-            s.get('legend_now')),
+            Strings.get('legend_now')),
       ],
     );
   }
@@ -331,7 +328,7 @@ class TimetableView extends StatelessWidget {
       for (final perDay in byDayPeriod.values) ...perDay.keys
     };
     if (rawPeriods.isEmpty) {
-      return _card(Text(controller.s.get('no_lessons_today'),
+      return _card(Text(Strings.get('no_lessons_today'),
           style: TextStyle(
               color: tokens.faint, fontSize: tokens.fsBody)));
     }
@@ -534,8 +531,7 @@ class TimetableView extends StatelessWidget {
   Widget _dayGutter(
       DateTime day, int count, bool isToday, double width) {
     final t = tokens;
-    final s = controller.s;
-    return Container(
+return Container(
       width: width,
       height: rowH,
       decoration: BoxDecoration(
@@ -545,7 +541,7 @@ class TimetableView extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(dayName(day, s.lang, short: true),
+          Text(dayName(day, Strings.lang, short: true),
               style: TextStyle(
                   color: isToday ? t.accentText : t.text,
                   fontSize: t.fsSection,
@@ -763,8 +759,7 @@ class TimetableView extends StatelessWidget {
       Map<DateTime, List<Map<String, Object?>>> weekDays, DateTime now) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final today = DateTime(now.year, now.month, now.day);
+final today = DateTime(now.year, now.month, now.day);
     final days = weekDays.keys.toList()..sort();
     final cards = <Widget>[];
     for (final day in days) {
@@ -772,12 +767,12 @@ class TimetableView extends StatelessWidget {
         ..sort((a, b) =>
             c.listOrderKey(a, day).compareTo(c.listOrderKey(b, day)));
       final isToday = day == today;
-      final title = '${dayName(day, s.lang)} ${czDayYear(day)}';
+      final title = '${dayName(day, Strings.lang)} ${czDayYear(day)}';
       final focus = c.focusPeriod(
           weekDays[day] ?? const [], day, now);
       final rows = <Widget>[];
       if (lessons.isEmpty) {
-        rows.add(Text(s.get('no_lessons_today'),
+        rows.add(Text(Strings.get('no_lessons_today'),
             style: TextStyle(
                 color: t.faint, fontSize: t.fsSmall)));
       }
@@ -830,7 +825,7 @@ class TimetableView extends StatelessWidget {
                             fontWeight: FontWeight.bold)),
                     const SizedBox(width: 8),
                     Chip(
-                        label: Text(s.get('today_badge'),
+                        label: Text(Strings.get('today_badge'),
                             style:
                                 TextStyle(fontSize: t.fsSmall)),
                         visualDensity: VisualDensity.compact),
@@ -872,7 +867,7 @@ class TimetableView extends StatelessWidget {
     }
     if (look.diff.note.isNotEmpty && !look.diff.isChange) {
       trailing.add(Tooltip(
-          message: '${c.s.get('note_label')}: ${look.diff.note}',
+          message: '${Strings.get('note_label')}: ${look.diff.note}',
           child: Container(
               width: 8,
               height: 8,
@@ -1011,8 +1006,7 @@ class TimetableView extends StatelessWidget {
       BuildContext context, Map<String, Object?> lesson, DateTime day) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final detail = c.detail(lesson, day);
+final detail = c.detail(lesson, day);
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1077,7 +1071,7 @@ class TimetableView extends StatelessWidget {
                         const SizedBox(width: 8),
                         Expanded(
                             child: Text(
-                                '${s.get('note_label')}: ${detail.note!}',
+                                '${Strings.get('note_label')}: ${detail.note!}',
                                 style: TextStyle(
                                     color: t.text,
                                     fontSize: t.fsSmall))),
@@ -1092,7 +1086,7 @@ class TimetableView extends StatelessWidget {
         actions: [
           TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text(s.get('close'))),
+              child: Text(Strings.get('close'))),
         ],
       ),
     );

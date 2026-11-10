@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../controllers/app_state.dart';
-import '../common/app_strings.dart';
+
 import '../common/app_tokens.dart';
 import '../today/today_live.dart' show convertStableBaseline;
 import 'timetable_controller.dart';
@@ -12,10 +12,7 @@ import 'timetable_view.dart';
 /// Builds a [TimetableController] populated from [s] and wired so
 /// week navigation, view toggles and expanded day cards mutate [s].
 TimetableController timetableControllerFor(AppState s) {
-  final lang = '${s.get('language', 'cs')}';
-  final c = TimetableController(
-    s: AppStrings(lang == 'en' ? 'en' : 'cs'),
-  );
+  final c = TimetableController();
   c.timetable = {
     for (final e in s.timetable().entries)
       e.key: List<Object?>.of(e.value),

@@ -1,3 +1,4 @@
+import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
 
 import 'package:app/features/planner/plan_reserve.dart';
@@ -243,24 +244,24 @@ class PlannerView extends StatelessWidget {
   Widget build(BuildContext context) {
     final reserve = controller.planReserve();
     final intro =
-        '${Str.t('planner_desc')} ${Str.t('plan_buffer_note', {'reserve': reserve})}';
+        '${Strings.get('planner_desc')} ${Strings.format('plan_buffer_note', {'reserve': reserve})}';
     if (plan == null || !hasData) {
       return ListView(
         children: [
-          ListTile(title: Text(Str.t('planner_title')), subtitle: Text(updatedLabel)),
+          ListTile(title: Text(Strings.get('planner_title')), subtitle: Text(updatedLabel)),
           Padding(
             padding: const EdgeInsets.all(12),
             child: Text(intro),
           ),
           Padding(
             padding: const EdgeInsets.all(12),
-            child: Text(Str.t('no_data')),
+            child: Text(Strings.get('no_data')),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Text(!hasTimetable
-                ? Str.t('planner_need_refresh')
-                : Str.t('need_credentials')),
+                ? Strings.get('planner_need_refresh')
+                : Strings.get('need_credentials')),
           ),
         ],
       );
@@ -269,18 +270,36 @@ class PlannerView extends StatelessWidget {
     final term = p.term(controller.plannerTerm) ?? p.defaultTerm;
     return ListView(
       children: [
-        ListTile(
-          title: Text(Str.t('planner_title')),
-          subtitle: Text(updatedLabel),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 8,
             children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    Strings.get('planner_title'),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  if (updatedLabel.isNotEmpty)
+                    Text(
+                      updatedLabel,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                ],
+              ),
               TextButton(
                   onPressed: onOpenAbsences,
-                  child: Text(Str.t('see_absences'))),
+                  child: Text(Strings.get('see_absences'))),
               FilledButton(
                 onPressed: () => showCustomPlanDialog(context),
-                child: Text(Str.t('plan_custom')),
+                child: Text(Strings.get('plan_custom')),
               ),
             ],
           ),
@@ -294,7 +313,7 @@ class PlannerView extends StatelessWidget {
                 for (final other in p.terms)
                   ChoiceChip(
                     label: Text(
-                        '${other.key == 'sem1' ? Str.t('term_sem1') : Str.t('term_sem2')} · ${Str.t('term_until', {'d': _cz(other.close)})}'),
+                        '${other.key == 'sem1' ? Strings.get('term_sem1') : Strings.get('term_sem2')} · ${Strings.format('term_until', {'d': _cz(other.close)})}'),
                     selected: other.key == term.key,
                     onSelected: (_) =>
                         controller.selectPlannerTerm(other.key),
@@ -304,13 +323,13 @@ class PlannerView extends StatelessWidget {
           if (!term.hasData)
             Padding(
               padding: const EdgeInsets.all(12),
-              child: Text(Str.t('term_fresh')),
+              child: Text(Strings.get('term_fresh')),
             ),
           _statsRow(term),
           ..._warnings(term),
           Padding(
             padding: const EdgeInsets.all(12),
-            child: Text(Str.t('section_overview'),
+            child: Text(Strings.get('section_overview'),
                 style: Theme.of(context).textTheme.titleMedium),
           ),
           _calendarStrip(context, p, term),
@@ -321,7 +340,7 @@ class PlannerView extends StatelessWidget {
         Padding(padding: const EdgeInsets.all(12), child: Text(calendarSummary)),
         TextButton(
             onPressed: onOpenCalendar,
-            child: Text(Str.t('cal_open_calendar'))),
+            child: Text(Strings.get('cal_open_calendar'))),
       ],
     );
   }
@@ -335,13 +354,13 @@ class PlannerView extends StatelessWidget {
       spacing: 8,
       runSpacing: 8,
       children: [
-        _stat(Str.t('stat_can_afford'), daysText(term.capacity)),
-        _stat(Str.t('stat_planned'),
+        _stat(Strings.get('stat_can_afford'), daysText(term.capacity)),
+        _stat(Strings.get('stat_planned'),
             '${daysText(plannedDays)} · $plannedHours h'),
         _stat(
-            '${Str.t('stat_tightest')} · ${Str.t('hours_free', {'n': hoursText(term.tightest?.free ?? 0)})}',
+            '${Strings.get('stat_tightest')} · ${Strings.format('hours_free', {'n': hoursText(term.tightest?.free ?? 0)})}',
             term.tightest?.name ?? '—'),
-        _stat(Str.t('planner_horizon'), '${term.remainingDays.length}'),
+        _stat(Strings.get('planner_horizon'), '${term.remainingDays.length}'),
       ],
     );
   }
@@ -367,17 +386,17 @@ class PlannerView extends StatelessWidget {
         .map((r) => entryLabel(r.entry))
         .toSet();
     if (over.isNotEmpty) {
-      out.add(Text(Str.t('warn_over', {'subjects': over.join(', ')}),
+      out.add(Text(Strings.format('warn_over', {'subjects': over.join(', ')}),
           style: const TextStyle(color: Colors.red)));
     }
     if (reserveW.isNotEmpty) {
       out.add(Text(
-          Str.t('warn_reserve', {'subjects': reserveW.join(', ')}),
+          Strings.format('warn_reserve', {'subjects': reserveW.join(', ')}),
           style: const TextStyle(color: Colors.orange)));
     }
     if (term.fastPace.isNotEmpty) {
       out.add(Text(
-          Str.t('warn_pace', {'subjects': term.fastPace.join(', ')}),
+          Strings.format('warn_pace', {'subjects': term.fastPace.join(', ')}),
           style: const TextStyle(color: Colors.orange)));
     }
     return out;
@@ -493,7 +512,7 @@ class PlannerView extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                  '${Str.t('section_plan')} (${picks.length})',
+                  '${Strings.get('section_plan')} (${picks.length})',
                   style: Theme.of(context).textTheme.titleMedium),
             ),
             _targetDropdown(),
@@ -501,18 +520,18 @@ class PlannerView extends StatelessWidget {
               FilledButton(
                 onPressed: () => showPlanAllDialog(
                     context, [for (final o in picks) o.day]),
-                child: Text('${Str.t('plan_all')} (${picks.length})'),
+                child: Text('${Strings.get('plan_all')} (${picks.length})'),
               ),
           ],
         ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Text(Str.t('plan_explain')),
+          child: Text(Strings.get('plan_explain')),
         ),
         if (picks.isEmpty)
           Card(child: Padding(
             padding: const EdgeInsets.all(12),
-            child: Text(Str.t('plan_budget_empty')),
+            child: Text(Strings.get('plan_budget_empty')),
           )),
         for (final option in picks)
           Card(
@@ -522,7 +541,7 @@ class PlannerView extends StatelessWidget {
               subtitle: Text(_costText(option)),
               trailing: FilledButton(
                 onPressed: () => showPlanDayDialog(context, option.day),
-                child: Text(Str.t('plan_skip')),
+                child: Text(Strings.get('plan_skip')),
               ),
             ),
           ),
@@ -540,7 +559,7 @@ class PlannerView extends StatelessWidget {
       items: [
         DropdownMenuItem(
             value: 0,
-            child: Text(Str.t('target_auto', {'n': maximum}))),
+            child: Text(Strings.format('target_auto', {'n': maximum}))),
         for (var i = 1; i <= (top > 60 ? 60 : top); i++)
           DropdownMenuItem(value: i, child: Text(daysText(i))),
       ],
@@ -555,7 +574,7 @@ class PlannerView extends StatelessWidget {
     return [
       Padding(
         padding: const EdgeInsets.all(12),
-        child: Text(Str.t('section_budgets'),
+        child: Text(Strings.get('section_budgets'),
             style: Theme.of(context).textTheme.titleMedium),
       ),
       Card(
@@ -567,7 +586,7 @@ class PlannerView extends StatelessWidget {
                 subtitle: LinearProgressIndicator(
                   value: (b.projectedPct / 100).clamp(0.0, 1.0),
                 ),
-                trailing: Text(Str.t('budget_final',
+                trailing: Text(Strings.format('budget_final',
                     {'p': b.projectedPct.toStringAsFixed(1), 'limit': b.limitPct})),
               ),
           ],
@@ -581,14 +600,14 @@ class PlannerView extends StatelessWidget {
     return [
       Padding(
         padding: const EdgeInsets.all(12),
-        child: Text('${Str.t('planned_title')} (${planned.length})',
+        child: Text('${Strings.get('planned_title')} (${planned.length})',
             style: Theme.of(context).textTheme.titleMedium),
       ),
       if (planned.isEmpty)
         Card(
             child: Padding(
           padding: const EdgeInsets.all(12),
-          child: Text(Str.t('no_planned')),
+          child: Text(Strings.get('no_planned')),
         )),
       for (final entry in planned)
         Card(
@@ -597,12 +616,12 @@ class PlannerView extends StatelessWidget {
             trailing: TextButton(
               onPressed: () {
                 if (controller.unplanEntry(entry)) {
-                  appSnack(context, Str.t('plan_removed'));
+                  appSnack(context, Strings.get('plan_removed'));
                 } else {
-                  appSnack(context, Str.t('save_failed'));
+                  appSnack(context, Strings.get('save_failed'));
                 }
               },
-              child: Text(Str.t('unplan')),
+              child: Text(Strings.get('unplan')),
             ),
             onTap: () => showPlannedDialog(context, entry),
           ),
@@ -612,9 +631,9 @@ class PlannerView extends StatelessWidget {
 
   String _costText(DayOptionData option) {
     if (option.cost == 0) {
-      return '${option.lessonsCount} · ${Str.t('day_cost_free')}';
+      return '${option.lessonsCount} · ${Strings.get('day_cost_free')}';
     }
-    return '${option.lessonsCount} · ${Str.t('day_cost', {'n': option.budgetHours})}';
+    return '${option.lessonsCount} · ${Strings.format('day_cost', {'n': option.budgetHours})}';
   }
 
   // -- dialogs ---------------------------------------------------------------
@@ -651,15 +670,15 @@ class PlannerView extends StatelessWidget {
         actions: [
           TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: Text(Str.t('cancel'))),
+              child: Text(Strings.get('cancel'))),
           TextButton(
             onPressed: () {
               final ok = controller.unplanEntry(entry);
               Navigator.of(ctx).pop();
               appSnack(context,
-                  ok ? Str.t('plan_removed') : Str.t('save_failed'));
+                  ok ? Strings.get('plan_removed') : Strings.get('save_failed'));
             },
-            child: Text(Str.t('unplan')),
+            child: Text(Strings.get('unplan')),
           ),
         ],
       ),
@@ -688,7 +707,7 @@ class PlannerView extends StatelessWidget {
   static String _weekdayShort(int weekday) {
     const cs = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'];
     const en = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    return (Str.language == 'en' ? en : cs)[weekday - 1];
+    return (Strings.lang == 'en' ? en : cs)[weekday - 1];
   }
 
   static String _weekdayLong(int weekday) {
@@ -710,7 +729,7 @@ class PlannerView extends StatelessWidget {
       'Saturday',
       'Sunday'
     ];
-    return (Str.language == 'en' ? en : cs)[weekday - 1];
+    return (Strings.lang == 'en' ? en : cs)[weekday - 1];
   }
 }
 
@@ -765,13 +784,13 @@ class _PlanDayDialogState extends State<_PlanDayDialog> {
         const [];
     return AlertDialog(
       title: Text(
-          "${Str.t('plan_skip')}: ${PlannerView._weekdayLong(widget.day.weekday)} ${PlannerView._cz(widget.day)}"),
+          "${Strings.get('plan_skip')}: ${PlannerView._weekdayLong(widget.day.weekday)} ${PlannerView._cz(widget.day)}"),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(Str.t('choose_template')),
+            Text(Strings.get('choose_template')),
             DropdownButton<int>(
               value: picked.clamp(0, options.length - 1),
               items: [
@@ -785,13 +804,13 @@ class _PlanDayDialogState extends State<_PlanDayDialog> {
             Text(options[picked.clamp(0, options.length - 1)]),
             if (widget.stravaOn && orderOpen)
               CheckboxListTile(
-                title: Text(Str.t('plan_cancel_lunch')),
+                title: Text(Strings.get('plan_cancel_lunch')),
                 value: cancelLunch,
                 onChanged: (v) =>
                     setState(() => cancelLunch = v ?? true),
               ),
             if (widget.stravaOn && !orderOpen)
-              Text(Str.t('lunch_cannot_cancel', {'deadline': '—'})),
+              Text(Strings.format('lunch_cannot_cancel', {'deadline': '—'})),
             ...impactWidgets(impacts),
           ],
         ),
@@ -799,7 +818,7 @@ class _PlanDayDialogState extends State<_PlanDayDialog> {
       actions: [
         TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: Text(Str.t('cancel'))),
+            child: Text(Strings.get('cancel'))),
         FilledButton(
           onPressed: () {
             final ok = widget.controller.planSkip(
@@ -807,9 +826,9 @@ class _PlanDayDialogState extends State<_PlanDayDialog> {
                 cancelLunch: cancelLunch);
             Navigator.of(context).pop();
             appSnack(context,
-                ok ? Str.t('skip_planned') : Str.t('skip_not_planned'));
+                ok ? Strings.get('skip_planned') : Strings.get('skip_not_planned'));
           },
-          child: Text(Str.t('confirm')),
+          child: Text(Strings.get('confirm')),
         ),
       ],
     );
@@ -817,7 +836,7 @@ class _PlanDayDialogState extends State<_PlanDayDialog> {
 
   List<Widget> impactWidgets(List<ImpactTerm> impacts) {
     if (impacts.isEmpty) return [];
-    final out = <Widget>[Text(Str.t('impact_title'))];
+    final out = <Widget>[Text(Strings.get('impact_title'))];
     var worst = 'ok';
     var anyRows = false;
     for (final term in impacts) {
@@ -828,7 +847,7 @@ class _PlanDayDialogState extends State<_PlanDayDialog> {
             (row.level == 'reserve' && worst == 'ok')) {
           worst = row.level;
         }
-        out.add(Text(Str.t('impact_row', {
+        out.add(Text(Strings.format('impact_row', {
           'name': row.name,
           'cost': row.cost,
           'left': hoursText(row.freeAfter),
@@ -837,11 +856,10 @@ class _PlanDayDialogState extends State<_PlanDayDialog> {
       }
     }
     if (!anyRows) {
-      out.add(Text(Str.t('impact_none')));
+      out.add(Text(Strings.get('impact_none')));
       return out;
     }
-    out.add(Text(Str.t(
-        worst == 'over'
+    out.add(Text(Strings.get(worst == 'over'
             ? 'impact_over'
             : worst == 'reserve'
                 ? 'impact_reserve'
@@ -877,12 +895,12 @@ class _PlanAllDialogState extends State<_PlanAllDialog> {
         .map((d) => PlannerView._cz(d))
         .join(', ');
     return AlertDialog(
-      title: Text(Str.t('plan_all_title')),
+      title: Text(Strings.get('plan_all_title')),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(Str.t('plan_all_body', {'days': listing})),
+            Text(Strings.format('plan_all_body', {'days': listing})),
             DropdownButton<int>(
               value: picked.clamp(0, options.length - 1),
               items: [
@@ -895,7 +913,7 @@ class _PlanAllDialogState extends State<_PlanAllDialog> {
             Text(options[picked.clamp(0, options.length - 1)]),
             if (widget.stravaOn)
               CheckboxListTile(
-                title: Text(Str.t('plan_cancel_lunch')),
+                title: Text(Strings.get('plan_cancel_lunch')),
                 value: cancelLunch,
                 onChanged: (v) =>
                     setState(() => cancelLunch = v ?? true),
@@ -906,7 +924,7 @@ class _PlanAllDialogState extends State<_PlanAllDialog> {
       actions: [
         TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: Text(Str.t('cancel'))),
+            child: Text(Strings.get('cancel'))),
         FilledButton(
           onPressed: () {
             final n = widget.controller.planDays(
@@ -921,10 +939,10 @@ class _PlanAllDialogState extends State<_PlanAllDialog> {
             appSnack(
                 context,
                 n > 0
-                    ? Str.t('plan_all_done', {'n': n})
-                    : Str.t('skip_not_planned'));
+                    ? Strings.format('plan_all_done', {'n': n})
+                    : Strings.get('skip_not_planned'));
           },
-          child: Text(Str.t('confirm')),
+          child: Text(Strings.get('confirm')),
         ),
       ],
     );
@@ -1032,7 +1050,7 @@ class _CustomPlanDialogState extends State<_CustomPlanDialog> {
     final impacts = widget.impactOfEntries?.call(entries) ?? const [];
     final chosen = picked.keys.toList()..sort();
     return AlertDialog(
-      title: Text(Str.t('plan_custom')),
+      title: Text(Strings.get('plan_custom')),
       content: SizedBox(
         width: 520,
         child: SingleChildScrollView(
@@ -1040,13 +1058,13 @@ class _CustomPlanDialogState extends State<_CustomPlanDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(Str.t('pick_how')),
+              Text(Strings.get('pick_how')),
               _calendarHeader(),
               _calendarGrid(),
               for (final day in chosen) _dayBlock(day),
               Text(entries.isEmpty
-                  ? Str.t('pick_empty')
-                  : Str.t('pick_total', {
+                  ? Strings.get('pick_empty')
+                  : Strings.format('pick_total', {
                       'days': daysText(chosen
                           .where((d) => (picked[d] ?? {}).isNotEmpty)
                           .length),
@@ -1065,7 +1083,7 @@ class _CustomPlanDialogState extends State<_CustomPlanDialog> {
               ),
               if (widget.stravaOn)
                 CheckboxListTile(
-                  title: Text(Str.t('plan_cancel_lunch')),
+                  title: Text(Strings.get('plan_cancel_lunch')),
                   value: cancelLunch,
                   onChanged: (v) =>
                       setState(() => cancelLunch = v ?? true),
@@ -1078,7 +1096,7 @@ class _CustomPlanDialogState extends State<_CustomPlanDialog> {
       actions: [
         TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: Text(Str.t('cancel'))),
+            child: Text(Strings.get('cancel'))),
         FilledButton(
           onPressed: entries.isEmpty
               ? null
@@ -1089,11 +1107,11 @@ class _CustomPlanDialogState extends State<_CustomPlanDialog> {
                       context,
                       n > 0
                           ? (cancelLunch && widget.stravaOn
-                              ? Str.t('skip_planned')
-                              : Str.t('skip_planned_keep_lunch'))
-                          : Str.t('skip_not_planned'));
+                              ? Strings.get('skip_planned')
+                              : Strings.get('skip_planned_keep_lunch'))
+                          : Strings.get('skip_not_planned'));
                 },
-          child: Text(Str.t('confirm')),
+          child: Text(Strings.get('confirm')),
         ),
       ],
     );
@@ -1104,14 +1122,14 @@ class _CustomPlanDialogState extends State<_CustomPlanDialog> {
       children: [
         IconButton(
           icon: const Icon(Icons.chevron_left),
-          tooltip: Str.t('pick_prev_month'),
+          tooltip: Strings.get('pick_prev_month'),
           onPressed: () =>
               setState(() => month = monthAdd(month, -1)),
         ),
         Expanded(child: Center(child: Text('${month.month}/${month.year}'))),
         IconButton(
           icon: const Icon(Icons.chevron_right),
-          tooltip: Str.t('pick_next_month'),
+          tooltip: Strings.get('pick_next_month'),
           onPressed: () =>
               setState(() => month = monthAdd(month, 1)),
         ),
@@ -1191,7 +1209,7 @@ class _CustomPlanDialogState extends State<_CustomPlanDialog> {
           ListTile(
             title: Text(PlannerView._cz(day)),
             subtitle: Text(sel.isEmpty
-                ? Str.t('pick_nothing')
+                ? Strings.get('pick_nothing')
                 : runsLabel(
                     [for (final s in _slots(day)) if (s.period != null) s.period!],
                     sel)),
@@ -1240,10 +1258,10 @@ class _PlanDayDialogStaticImpact extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(Str.t('impact_title')),
+        Text(Strings.get('impact_title')),
         for (final term in impacts)
           for (final row in term.rows)
-            Text(Str.t('impact_row', {
+            Text(Strings.format('impact_row', {
               'name': row.name,
               'cost': row.cost,
               'left': hoursText(row.freeAfter),
@@ -1284,11 +1302,11 @@ class _ReserveDialogState extends State<ReserveDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(Str.t('reserve_title')),
+      title: Text(Strings.get('reserve_limit')),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(Str.t('reserve_body')),
+          Text(Strings.get('reserve_hint')),
           TextField(
               controller: text,
               keyboardType:
@@ -1298,18 +1316,18 @@ class _ReserveDialogState extends State<ReserveDialog> {
       actions: [
         TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: Text(Str.t('cancel'))),
+            child: Text(Strings.get('cancel'))),
         FilledButton(
           onPressed: () {
             final v = double.tryParse(text.text.replaceAll(',', '.'));
             if (v == null || v < 0 || v > 99.9) {
-              appSnack(context, Str.t('save_failed'));
+              appSnack(context, Strings.get('save_failed'));
               return;
             }
             widget.onSave(v);
             Navigator.of(context).pop();
           },
-          child: Text(Str.t('confirm')),
+          child: Text(Strings.get('confirm')),
         ),
       ],
     );

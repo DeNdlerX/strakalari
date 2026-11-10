@@ -1,6 +1,6 @@
+import 'package:app/l10n/strings.dart';
 import 'dart:math' as math;
 
-import 'package:app/widgets/overlays.dart';
 
 /// Pure planning-reserve math. Port of the reserve parts of
 /// `core/forecast.py` + `state_planner.plan_reserve` used by the planner.
@@ -85,12 +85,12 @@ List<PlanSubject> applyReserve(
 
 /// '1 den' / '3 dny' / '5 dní' (Czech plural rules; English 1/other).
 String daysText(int n) {
-  if (Str.language == 'en') {
-    return Str.t('days_many', {'n': n});
+  if (Strings.lang == 'en') {
+    return Strings.format('days_many', {'n': n});
   }
-  if (n == 1) return Str.t('days_one', {'n': n});
-  if (n >= 2 && n <= 4) return Str.t('days_few', {'n': n});
-  return Str.t('days_many', {'n': n});
+  if (n == 1) return Strings.format('days_one', {'n': n});
+  if (n >= 2 && n <= 4) return Strings.format('days_few', {'n': n});
+  return Strings.format('days_many', {'n': n});
 }
 
 /// Budget hours for display: floored, never negative ('3', '0').
@@ -210,7 +210,7 @@ List<MapEntry<String, String>> templateOptions(
     ];
   }
   if (found.isEmpty) {
-    return [MapEntry('', Str.t('default_excuse_template'))];
+    return [MapEntry('', Strings.get('default_excuse_template'))];
   }
   return found;
 }
@@ -223,7 +223,7 @@ List<MapEntry<String, String>> templateLabels(
       MapEntry('$i',
           options[i].key.isNotEmpty
               ? options[i].key
-              : Str.t('template_n', {'n': i + 1})),
+              : '${Strings.get('template_n')} ${i + 1}'),
   ];
 }
 
@@ -321,13 +321,13 @@ String entryLabel(Map<String, dynamic> entry) {
 }
 
 String _periodLabel(int? start, int? end) {
-  if (start == null && end == null) return Str.t('whole_day');
+  if (start == null && end == null) return Strings.get('whole_day');
   if (start != null && end != null) {
     if (start == end) return '$start.';
     return '$start.–$end.';
   }
-  if (start != null) return '${Str.t('custom_from_lesson')} $start.';
-  return '${Str.t('custom_to_lesson')} $end.';
+  if (start != null) return '${Strings.get('custom_from_lesson')} $start.';
+  return '${Strings.get('custom_to_lesson')} $end.';
 }
 
 String _czDay(DateTime d) =>
@@ -336,5 +336,5 @@ String _czDay(DateTime d) =>
 String _weekdayShort(int weekday) {
   const cs = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'];
   const en = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  return (Str.language == 'en' ? en : cs)[weekday - 1];
+  return (Strings.lang == 'en' ? en : cs)[weekday - 1];
 }

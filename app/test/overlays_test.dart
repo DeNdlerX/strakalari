@@ -1,3 +1,4 @@
+import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -23,8 +24,8 @@ void main() {
       ))));
       expect(_sel('boom'), findsOneWidget);
       expect(_sel('traceback lines'), findsOneWidget);
-      expect(find.text(Str.t('error_copy_logs')), findsOneWidget);
-      await t.tap(find.text(Str.t('error_close')));
+      expect(find.text(Strings.get('error_copy_logs')), findsOneWidget);
+      await t.tap(find.text(Strings.get('error_close')));
       await t.pump();
       expect(closed, isTrue);
     });
@@ -41,7 +42,7 @@ void main() {
       ))));
       expect(_sel('Zkus to znovu.'), findsOneWidget);
       expect(_sel('traceback lines'), findsNothing);
-      expect(find.textContaining('Není to tvoje chyba'),
+      expect(find.text(Strings.get('error_not_yours')),
           findsOneWidget);
     });
 
@@ -55,7 +56,7 @@ void main() {
         summary: 'boom',
         reportText: 'some report',
       ))));
-      await t.tap(find.text(Str.t('error_copy_logs')));
+      await t.tap(find.text(Strings.get('error_copy_logs')));
       // The clipboard round-trip is real async work: let it land with
       // the real clock before asserting.
       await t.runAsync(
@@ -64,7 +65,7 @@ void main() {
       // Clipboard may fail headless; either confirmation or failure
       // toast is recorded, never a crash.
       expect(SnackLog.last,
-          anyOf([Str.t('error_copied'), Str.t('error_copy_failed')]));
+          anyOf([Strings.get('error_copied'), Strings.get('error_copy_failed')]));
     });
 
     testWidgets('showErrorDialog never throws', (t) async {
@@ -86,7 +87,7 @@ void main() {
     });
 
     test('unknown string falls back to key', () {
-      expect(Str.t('no_such_key_xyz'), 'no_such_key_xyz');
+      expect(Strings.get('no_such_key_xyz'), 'no_such_key_xyz');
     });
   });
 
@@ -98,12 +99,12 @@ void main() {
           home: Scaffold(
               body: MorePage(onOpen: opened.add))));
       for (final (route, _, label) in MorePage.entries) {
-        await t.tap(find.text(Str.t(label)));
+        await t.tap(find.text(Strings.get(label)));
         await t.pump();
         expect(opened, contains(route));
       }
       // Alarm entry only on Android.
-      expect(find.text(Str.t('sec_alarm')), findsNothing);
+      expect(find.text(Strings.get('sec_alarm')), findsNothing);
     });
 
     testWidgets('android inserts the alarm shortcut', (t) async {
@@ -112,8 +113,8 @@ void main() {
           home: Scaffold(
               body: MorePage(
                   onOpen: opened.add, isAndroid: true))));
-      expect(find.text(Str.t('sec_alarm')), findsOneWidget);
-      await t.tap(find.text(Str.t('sec_alarm')));
+      expect(find.text(Strings.get('sec_alarm')), findsOneWidget);
+      await t.tap(find.text(Strings.get('sec_alarm')));
       await t.pump();
       expect(opened, contains('alarm'));
     });

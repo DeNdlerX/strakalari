@@ -1,3 +1,4 @@
+import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -66,13 +67,13 @@ void main() {
           current: 10.0, onSave: (v) => saved = v)));
       // Invalid: nothing saved, error toast.
       await t.enterText(find.byType(TextField), 'lots');
-      await t.tap(find.text(Str.t('confirm')));
+      await t.tap(find.text(Strings.get('confirm')));
       await t.pump();
       expect(saved, -1.0);
-      expect(SnackLog.last, Str.t('save_failed'));
+      expect(SnackLog.last, Strings.get('save_failed'));
       // Valid: saved and closed.
       await t.enterText(find.byType(TextField), '7,5');
-      await t.tap(find.text(Str.t('confirm')));
+      await t.tap(find.text(Strings.get('confirm')));
       await t.pump();
       expect(saved, 7.5);
     });
@@ -85,8 +86,8 @@ void main() {
         hasTimetable: false,
         updatedLabel: 'never',
       )));
-      expect(find.text(Str.t('no_data')), findsOneWidget);
-      expect(find.text(Str.t('planner_need_refresh')), findsOneWidget);
+      expect(find.text(Strings.get('no_data')), findsOneWidget);
+      expect(find.text(Strings.get('planner_need_refresh')), findsOneWidget);
     });
 
     testWidgets('empty state asks for credentials when timetable exists',
@@ -97,7 +98,7 @@ void main() {
         plan: null,
         hasTimetable: true,
       )));
-      expect(find.text(Str.t('need_credentials')), findsOneWidget);
+      expect(find.text(Strings.get('need_credentials')), findsOneWidget);
     });
 
     testWidgets('year plan renders stats, calendar, budgets, planned',
@@ -110,20 +111,21 @@ void main() {
         hasData: true,
         updatedLabel: 'now',
       )));
-      expect(find.text(Str.t('planner_title')), findsWidgets);
-      expect(find.text(Str.t('section_overview')), findsOneWidget);
+      expect(find.text(Strings.get('planner_title')), findsWidgets);
+      expect(find.text(Strings.get('section_overview')), findsOneWidget);
       // Below the fold: ListView builds lazily, so scroll first.
       await t.scrollUntilVisible(
-          find.text(Str.t('section_budgets')), 300);
-      expect(find.text(Str.t('section_budgets')), findsOneWidget);
+          find.text(Strings.get('section_budgets')), 300);
+      expect(find.text(Strings.get('section_budgets')), findsOneWidget);
       await t.scrollUntilVisible(
-          find.textContaining(Str.t('section_plan')), 300);
-      expect(find.textContaining(Str.t('section_plan')), findsOneWidget);
+          find.textContaining(Strings.get('section_plan')), 300);
+      expect(find.textContaining(Strings.get('section_plan')), findsOneWidget);
       // Intro carries the reserve note.
       expect(find.textContaining('10'), findsWidgets);
     });
 
     testWidgets('plan dialog confirm plans the day', (t) async {
+      _setViewport(t);
       final c = _controller();
       await t.pumpWidget(_app(PlannerView(
         controller: c,
@@ -132,16 +134,18 @@ void main() {
         hasData: true,
       )));
       // Open the recommend-row plan button.
-      await t.tap(find.text(Str.t('plan_skip')).first);
+      await t.scrollUntilVisible(find.text(Strings.get('plan_skip')).first, 300);
+      await t.tap(find.text(Strings.get('plan_skip')).first);
       await t.pumpAndSettle();
-      expect(find.text(Str.t('choose_template')), findsOneWidget);
-      await t.tap(find.text(Str.t('confirm')));
+      expect(find.text(Strings.get('choose_template')), findsOneWidget);
+      await t.tap(find.text(Strings.get('confirm')));
       await t.pumpAndSettle();
       expect(c.plannedSkips, hasLength(1));
-      expect(SnackLog.last, Str.t('skip_planned'));
+      expect(SnackLog.last, Strings.get('skip_planned'));
     });
 
     testWidgets('plan dialog cancel closes without planning', (t) async {
+      _setViewport(t);
       final c = _controller();
       await t.pumpWidget(_app(PlannerView(
         controller: c,
@@ -149,14 +153,16 @@ void main() {
         hasTimetable: true,
         hasData: true,
       )));
-      await t.tap(find.text(Str.t('plan_skip')).first);
+      await t.scrollUntilVisible(find.text(Strings.get('plan_skip')).first, 300);
+      await t.tap(find.text(Strings.get('plan_skip')).first);
       await t.pumpAndSettle();
-      await t.tap(find.text(Str.t('cancel')));
+      await t.tap(find.text(Strings.get('cancel')));
       await t.pumpAndSettle();
       expect(c.plannedSkips, isEmpty);
     });
 
     testWidgets('plan-all dialog plans recommended days', (t) async {
+      _setViewport(t);
       final c = _controller();
       await t.pumpWidget(_app(PlannerView(
         controller: c,
@@ -164,9 +170,10 @@ void main() {
         hasTimetable: true,
         hasData: true,
       )));
-      await t.tap(find.textContaining(Str.t('plan_all')).first);
+      await t.scrollUntilVisible(find.textContaining(Strings.get('plan_all')).first, 300);
+      await t.tap(find.textContaining(Strings.get('plan_all')).first);
       await t.pumpAndSettle();
-      await t.tap(find.text(Str.t('confirm')));
+      await t.tap(find.text(Strings.get('confirm')));
       await t.pumpAndSettle();
       expect(c.plannedSkips, hasLength(1));
     });
@@ -182,12 +189,12 @@ void main() {
       )));
       expect(
           find.textContaining('05.10.2026'), findsWidgets);
-      final unplan = find.text(Str.t('unplan'));
+      final unplan = find.text(Strings.get('unplan'));
       await t.scrollUntilVisible(unplan, 300);
       await t.tap(unplan.first);
       await t.pump();
       expect(c.plannedSkips, isEmpty);
-      expect(SnackLog.last, Str.t('plan_removed'));
+      expect(SnackLog.last, Strings.get('plan_removed'));
     });
 
     testWidgets('custom picker taps a day whole and confirms', (t) async {
@@ -208,9 +215,9 @@ void main() {
       view.showCustomPlanDialog(ctx);
       await t.pumpAndSettle();
       // The dialog title shadows the view button: take the dialog one.
-      expect(find.text(Str.t('plan_custom')), findsWidgets);
+      expect(find.text(Strings.get('plan_custom')), findsWidgets);
       // Confirm is disabled with nothing picked.
-      final confirm = find.widgetWithText(FilledButton, Str.t('confirm'));
+      final confirm = find.widgetWithText(FilledButton, Strings.get('confirm'));
       expect(t.widget<FilledButton>(confirm).onPressed, isNull);
       // Tap the first visible weekday cell (day numbers vary by month;
       // weekends are not shown, so scan for an existing one).
@@ -229,7 +236,7 @@ void main() {
       await t.tap(confirm);
       await t.pumpAndSettle();
       expect(c.plannedSkips, hasLength(1));
-      expect(SnackLog.last, Str.t('skip_planned_keep_lunch'));
+      expect(SnackLog.last, Strings.get('skip_planned_keep_lunch'));
     });
 
     test('controller plan/unplan with failing persist rolls back', () {
@@ -249,6 +256,13 @@ void main() {
 }
 
 Widget _w(Widget child) => MaterialApp(home: Scaffold(body: child));
+
+void _setViewport(WidgetTester t) {
+  t.view.physicalSize = const Size(1280, 1024);
+  t.view.devicePixelRatio = 1.0;
+  addTearDown(t.view.resetPhysicalSize);
+  addTearDown(t.view.resetDevicePixelRatio);
+}
 
 Widget _app(Widget child) {
   SnackLog.clear();

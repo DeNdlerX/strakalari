@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import '../common/app_strings.dart';
+import '../../l10n/strings.dart';
 import '../common/format.dart';
 import '../common/lesson_model.dart';
 import '../common/schedule_logic.dart';
@@ -131,9 +131,7 @@ class AlarmInfo {
 /// ignore list, template picks, day plans, the clock-aware next lesson,
 /// week changes, lunch text and the planner tip — lives here.
 class TodayController extends ChangeNotifier {
-  final AppStrings s;
-
-  /// Reads config values (same keys as Python: `your_signature`,
+/// Reads config values (same keys as Python: `your_signature`,
   /// `excuse_day_per_lesson`, `ignored_excuses`, template lists …).
   final Map<String, Object?> config;
 
@@ -153,7 +151,6 @@ class TodayController extends ChangeNotifier {
   Future<bool> Function(ExcuseSendRequest request) onSend;
 
   TodayController({
-    this.s = const AppStrings(),
     Map<String, Object?>? config,
     bool Function(Map<String, Object?> updates)? onSave,
     bool Function()? onRefreshRequest,
@@ -315,7 +312,7 @@ class TodayController extends ChangeNotifier {
       ignoredKeys
         ..clear()
         ..addAll(previous);
-      lastIgnoreError = s.get('ignore_save_failed');
+      lastIgnoreError = Strings.get('ignore_save_failed');
       return false;
     }
   }
@@ -342,14 +339,14 @@ class TodayController extends ChangeNotifier {
   String ignoreExcuse(String key) {
     if (ignoreExcuseHook != null) {
       final res = ignoreExcuseHook!(key);
-      if (res.isNotEmpty) lastMessage = s.get('ignored_msg');
+      if (res.isNotEmpty) lastMessage = Strings.get('ignored_msg');
       notifyListeners();
       return res;
     }
     lastIgnoreError = '';
     if (key.isEmpty) return '';
     if (!_changeIgnored(add: [key])) return '';
-    lastMessage = s.get('ignored_msg');
+    lastMessage = Strings.get('ignored_msg');
     notifyListeners();
     return key;
   }
@@ -359,7 +356,7 @@ class TodayController extends ChangeNotifier {
   List<String> ignoreDay(String dayIso, {DateTime? today}) {
     if (ignoreDayHook != null) {
       final added = ignoreDayHook!(dayIso);
-      if (added.isNotEmpty) lastMessage = s.get('ignored_msg');
+      if (added.isNotEmpty) lastMessage = Strings.get('ignored_msg');
       notifyListeners();
       return added;
     }
@@ -374,7 +371,7 @@ class TodayController extends ChangeNotifier {
         .map((t) => t.key)
         .toList();
     if (added.isEmpty || !_changeIgnored(add: added)) return [];
-    lastMessage = s.get('ignored_msg');
+    lastMessage = Strings.get('ignored_msg');
     notifyListeners();
     return added;
   }
@@ -456,7 +453,7 @@ class TodayController extends ChangeNotifier {
       ];
     }
     if (found.isEmpty) {
-      found = [TemplateOption('', s.get('default_excuse_template'))];
+      found = [TemplateOption('', Strings.get('default_excuse_template'))];
     }
     return found;
   }
@@ -467,7 +464,7 @@ class TodayController extends ChangeNotifier {
         for (var i = 0; i < options.length; i++)
           options[i].name.isNotEmpty
               ? options[i].name
-              : '${s.get('template_n')} ${i + 1}',
+              : '${Strings.get('template_n')} ${i + 1}',
       ];
 
   /// Clamps a template pick into range — like `today._choose`.
@@ -506,7 +503,7 @@ class TodayController extends ChangeNotifier {
       if (ok) {
         config['excuse_day_per_lesson'] = on;
       } else {
-        lastMessage = s.get('save_failed');
+        lastMessage = Strings.get('save_failed');
       }
       notifyListeners();
       return ok;
@@ -518,7 +515,7 @@ class TodayController extends ChangeNotifier {
       return true;
     }
     config['excuse_day_per_lesson'] = previous;
-    lastMessage = s.get('save_failed');
+    lastMessage = Strings.get('save_failed');
     notifyListeners();
     return false;
   }
@@ -591,12 +588,12 @@ class TodayController extends ChangeNotifier {
   /// like `today._when_signed`.
   Future<bool> send(ExcuseSendRequest request) async {
     if (sendingKeys.contains(request.key)) {
-      lastMessage = s.get('already_running');
+      lastMessage = Strings.get('already_running');
       notifyListeners();
       return false;
     }
     if (demoMode && !hasCredentials) {
-      lastMessage = s.get('need_credentials');
+      lastMessage = Strings.get('need_credentials');
       notifyListeners();
       return false;
     }
@@ -606,7 +603,7 @@ class TodayController extends ChangeNotifier {
       return false;
     }
     sendingKeys.add(request.key);
-    lastMessage = s.get('excuse_sending');
+    lastMessage = Strings.get('excuse_sending');
     notifyListeners();
     try {
       final ok = await onSend(request);
@@ -614,7 +611,7 @@ class TodayController extends ChangeNotifier {
         // Already settled by a concurrent markSent.
       }
       if (!ok) {
-        lastMessage = s.get('excuse_failed');
+        lastMessage = Strings.get('excuse_failed');
       }
       return ok;
     } finally {
@@ -628,12 +625,12 @@ class TodayController extends ChangeNotifier {
   Future<bool> saveSignatureAndSend(String name) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) {
-      lastMessage = s.get('wiz_need_signature');
+      lastMessage = Strings.get('wiz_need_signature');
       notifyListeners();
       return false;
     }
     if (!onSave({'your_signature': trimmed})) {
-      lastMessage = s.get('save_failed');
+      lastMessage = Strings.get('save_failed');
       notifyListeners();
       return false;
     }
@@ -666,7 +663,7 @@ class TodayController extends ChangeNotifier {
     String headline(LessonRow l) {
       var h = l.subject.isEmpty ? '?' : l.subject;
       if (l.period != null) {
-        h += ' · ${l.period}. ${s.get('period').toLowerCase()}';
+        h += ' · ${l.period}. ${Strings.get('period').toLowerCase()}';
       }
       return h;
     }
@@ -695,10 +692,10 @@ class TodayController extends ChangeNotifier {
       if (alarm == null) return null;
       if (alarm.day != day) return null;
       if (alarm.ringDay == day) {
-        return s.tr('wakeup_badge', {'time': alarm.timeLabel});
+        return Strings.format('wakeup_badge', {'time': alarm.timeLabel});
       }
-      return s.tr('wakeup_badge_eve', {
-        'day': dayName(alarm.ringDay, s.lang, short: true),
+      return Strings.format('wakeup_badge_eve', {
+        'day': dayName(alarm.ringDay, Strings.lang, short: true),
         'time': alarm.timeLabel,
       });
     }
@@ -714,7 +711,7 @@ class TodayController extends ChangeNotifier {
       };
       final key = keys[status.toLowerCase()];
       if (key == null && status.isEmpty) return null;
-      return key == null ? status : s.get(key);
+      return key == null ? status : Strings.get(key);
     }
 
     final todays = [
@@ -733,9 +730,9 @@ class TodayController extends ChangeNotifier {
         phase: 'running',
         headline: headline(parsed),
         meta: meta(parsed),
-        deltaText: s.tr('ends_in', {'m': left}),
+        deltaText: Strings.format('ends_in', {'m': left}),
         statusLabel: statusLabel(parsed.status),
-        headingLabel: s.get('now_running'),
+        headingLabel: Strings.get('now_running'),
       );
     }
     if ((resolved.phase == 'before' || resolved.phase == 'between') &&
@@ -750,9 +747,9 @@ class TodayController extends ChangeNotifier {
         phase: resolved.phase,
         headline: headline(parsed),
         meta: meta(parsed),
-        deltaText: s.tr('starts_in', {'m': wait}),
+        deltaText: Strings.format('starts_in', {'m': wait}),
         statusLabel: statusLabel(parsed.status),
-        headingLabel: s.get(
+        headingLabel: Strings.get(
             resolved.phase == 'before' ? 'before_school' : 'up_next'),
         alarmBadge: alarmBadge(today),
       );
@@ -778,13 +775,13 @@ class TodayController extends ChangeNotifier {
         headline: headline(parsed),
         meta: meta(parsed),
         headingLabel:
-            '${s.get('next_school_day')}: ${dayName(day, s.lang)} ${czDay(day)}',
+            '${Strings.get('next_school_day')}: ${dayName(day, Strings.lang)} ${czDay(day)}',
         alarmBadge: alarmBadge(day),
       );
     }
     return NextLessonInfo(
         phase: 'empty',
-        headline: demoMode ? s.get('no_data') : s.get('no_lessons_today'),
+        headline: demoMode ? Strings.get('no_data') : Strings.get('no_lessons_today'),
         meta: '');
   }
 
@@ -866,15 +863,15 @@ class TodayController extends ChangeNotifier {
     final order = orders[key] ?? webOrders[key];
     if (cancelledLunches.contains(key) ||
         (order != null && order.contains('&-1&'))) {
-      return s.get('no_lunch');
+      return Strings.get('no_lunch');
     }
     if (order != null && order.isNotEmpty) {
-      return '${s.get('ordered')}: ${menu[order] ?? order}';
+      return '${Strings.get('ordered')}: ${menu[order] ?? order}';
     }
     if (menu.isNotEmpty) {
       return menu.values.take(3).join(', ');
     }
-    return demoMode ? s.get('no_data') : s.get('no_lunch');
+    return demoMode ? Strings.get('no_data') : Strings.get('no_lunch');
   }
 
   /// Planner tip: next recommended day off within two weeks —
@@ -889,7 +886,7 @@ class TodayController extends ChangeNotifier {
       ..sort();
     if (upcoming.isEmpty) return null;
     final day = upcoming.first;
-    return s.tr('planner_next',
-        {'day': '${dayName(day, s.lang)} ${czDay(day)}'});
+    return Strings.format('planner_next',
+        {'day': '${dayName(day, Strings.lang)} ${czDay(day)}'});
   }
 }

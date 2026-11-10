@@ -1,3 +1,4 @@
+import '../../l10n/strings.dart';
 import 'package:flutter/material.dart';
 
 import '../common/app_tokens.dart';
@@ -40,19 +41,18 @@ class TodayView extends StatelessWidget {
   Widget _body(BuildContext context, DateTime now) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final blocks = <Widget>[
-      _headerRow(s.get('today_title'), c.updatedLabel),
+final blocks = <Widget>[
+      _headerRow(Strings.get('today_title'), c.updatedLabel),
     ];
     if (c.demoMode) {
       blocks.add(_demoCard(context));
     }
     blocks.addAll(_excuseCards(context, now));
-    blocks.add(_sectionHeader(s.get('next_lesson')));
+    blocks.add(_sectionHeader(Strings.get('next_lesson')));
     blocks.add(_nextLessonCard(now));
     final changes = c.weekChanges(now);
     blocks.add(_sectionHeader(
-        '${s.get('week_changes')} (${changes.changes.length})'));
+        '${Strings.get('week_changes')} (${changes.changes.length})'));
     if (changes.changes.isEmpty) {
       blocks.add(_card(Text(
           demoModeText(),
@@ -63,17 +63,17 @@ class TodayView extends StatelessWidget {
     }
     if (changes.notes.isNotEmpty) {
       blocks.add(_sectionHeader(
-          '${s.get('notes_title')} (${changes.notes.length})'));
+          '${Strings.get('notes_title')} (${changes.notes.length})'));
       for (final item in changes.notes) {
         blocks.add(_noteCard(item.title));
       }
     }
-    blocks.add(_sectionHeader(s.get('lunch_today')));
+    blocks.add(_sectionHeader(Strings.get('lunch_today')));
     blocks.add(_card(Text(c.lunchText(now),
         style: TextStyle(color: t.text, fontSize: t.fsBody))));
     final tip = c.plannerTip(now);
     if (tip != null) {
-      blocks.add(_sectionHeader(s.get('planner_suggestion')));
+      blocks.add(_sectionHeader(Strings.get('planner_suggestion')));
       blocks.add(_card(Row(
         children: [
           Icon(Icons.beach_access_outlined, color: t.green, size: 20),
@@ -86,7 +86,7 @@ class TodayView extends StatelessWidget {
                       fontWeight: FontWeight.bold))),
           TextButton(
             onPressed: () => c.onGo('planner'),
-            child: Text(s.get('nav_planner')),
+            child: Text(Strings.get('nav_planner')),
           ),
         ],
       )));
@@ -105,17 +105,16 @@ class TodayView extends StatelessWidget {
 
   String demoModeText() {
     final c = controller;
-    return c.demoMode ? c.s.get('no_data') : c.s.get('no_changes');
+    return c.demoMode ? Strings.get('no_data') : Strings.get('no_changes');
   }
 
   Widget _demoCard(BuildContext context) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    return _card(Column(
+return _card(Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(s.get('setup_needed'),
+        Text(Strings.get('setup_needed'),
             style: TextStyle(color: t.muted, fontSize: t.fsBody)),
         const SizedBox(height: 8),
         Wrap(
@@ -124,15 +123,15 @@ class TodayView extends StatelessWidget {
             ElevatedButton.icon(
               onPressed: () {
                 if (!c.onRefreshRequest()) {
-                  _snack(context, s.get('already_running'));
+                  _snack(context, Strings.get('already_running'));
                 }
               },
               icon: const Icon(Icons.refresh, size: 18),
-              label: Text(s.get('refresh_data')),
+              label: Text(Strings.get('refresh_data')),
             ),
             TextButton(
               onPressed: () => c.onGo('settings'),
-              child: Text(s.get('go_to_settings')),
+              child: Text(Strings.get('go_to_settings')),
             ),
           ],
         ),
@@ -143,22 +142,21 @@ class TodayView extends StatelessWidget {
   List<Widget> _excuseCards(BuildContext context, DateTime now) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final grouped = c.groupedTasks(today: now);
+final grouped = c.groupedTasks(today: now);
     final out = <Widget>[
       _sectionHeader(
-          '${s.get('pending_excuses')} (${c.excuseTasks(today: now).length})'),
+          '${Strings.get('pending_excuses')} (${c.excuseTasks(today: now).length})'),
     ];
     if (grouped.byDay.isEmpty && grouped.overflow == 0) {
       out.add(_card(Text(
-          c.demoMode ? s.get('no_data') : s.get('no_changes'),
+          c.demoMode ? Strings.get('no_data') : Strings.get('no_changes'),
           style: TextStyle(color: t.faint, fontSize: t.fsBody))));
       out.addAll(_ignoredBlocks(context));
       return out;
     }
     if (grouped.overflow > 0) {
       out.add(_faint(
-          '+ ${grouped.overflow} ${s.get('more_tasks')}'));
+          '+ ${grouped.overflow} ${Strings.get('more_tasks')}'));
     }
     final sortedDays = grouped.byDay.keys.toList()..sort();
     for (final dayIso in sortedDays) {
@@ -177,11 +175,10 @@ class TodayView extends StatelessWidget {
       BuildContext context, String dayIso, List<ExcuseTask> dayTasks) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final day = parseCzDate(dayIso);
+final day = parseCzDate(dayIso);
     final dayTitle = day == null
         ? dayIso
-        : '${dayName(day, s.lang)} ${czDayYear(day)}';
+        : '${dayName(day, Strings.lang)} ${czDayYear(day)}';
     final wholeDay = c.dayFullyAbsent(dayIso,
         today: DateTime.now());
     final perLesson = c.excuseDayPerLesson;
@@ -197,18 +194,18 @@ class TodayView extends StatelessWidget {
         .where((p) => p.isNotEmpty)
         .toSet()
         .toList();
-    final lessonsLabel = lessonsText(dayTasks.length, s);
+    final lessonsLabel = lessonsText(dayTasks.length);
     final summary = perLesson
-        ? s.tr('day_group_each',
+        ? Strings.format('day_group_each',
             {'lessons': lessonsLabel, 'subjects': subjects.join(', ')})
-        : s.tr('day_group_covers',
+        : Strings.format('day_group_covers',
             {'lessons': lessonsLabel, 'subjects': subjects.join(', ')});
 
     Future<void> sendDay() async {
       final request = c.dayRequest(dayIso, c.pickedOption(pickKey, options),
           perLesson: perLesson);
       if (request == null) {
-        _snack(context, s.get('excuse_failed'));
+        _snack(context, Strings.get('excuse_failed'));
         return;
       }
       if (c.signature.isEmpty) {
@@ -218,13 +215,13 @@ class TodayView extends StatelessWidget {
       final ok = await c.send(request);
       if (context.mounted) {
         _snack(context,
-            ok ? s.get('excuse_sent') : c.lastMessageOr(s.get('excuse_failed')));
+            ok ? Strings.get('excuse_sent') : c.lastMessageOr(Strings.get('excuse_failed')));
       }
     }
 
     final sendLabel = perLesson
-        ? s.tr('excuse_lessons', {'lessons': lessonsLabel})
-        : (wholeDay ? s.get('excuse_day') : s.get('excuse_all'));
+        ? Strings.format('excuse_lessons', {'lessons': lessonsLabel})
+        : (wholeDay ? Strings.get('excuse_day') : Strings.get('excuse_all'));
 
     return _accentCard(Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -262,11 +259,11 @@ class TodayView extends StatelessWidget {
                   _snack(
                       context,
                       added.isNotEmpty
-                          ? s.get('ignored_msg')
-                          : c.lastMessageOr(s.get('save_failed')));
+                          ? Strings.get('ignored_msg')
+                          : c.lastMessageOr(Strings.get('save_failed')));
                 }
               },
-              child: Text(s.get('ignore_day')),
+              child: Text(Strings.get('ignore_day')),
             ),
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -276,12 +273,12 @@ class TodayView extends StatelessWidget {
                   activeThumbColor: t.accent,
                   onChanged: (v) {
                     if (!c.setExcuseDayPerLesson(v) && context.mounted) {
-                      _snack(context, s.get('save_failed'));
+                      _snack(context, Strings.get('save_failed'));
                     }
                   },
                 ),
                 Flexible(
-                  child: Text(s.get('excuse_each_lesson'),
+                  child: Text(Strings.get('excuse_each_lesson'),
                       style: TextStyle(
                           color: t.muted, fontSize: t.fsSmall)),
                 ),
@@ -300,12 +297,11 @@ class TodayView extends StatelessWidget {
       BuildContext context, String dayIso, List<ExcuseTask> dayTasks) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final expKey = 'excuse:$dayIso';
+final expKey = 'excuse:$dayIso';
     return ExpansionTile(
       title: Text(
-          s.tr('or_one_by_one',
-              {'n': lessonsText(dayTasks.length, s)}),
+          Strings.format('or_one_by_one',
+              {'n': lessonsText(dayTasks.length)}),
           style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
       initiallyExpanded: c.isDayExpanded(expKey),
       onExpansionChanged: (v) => c.setDayExpanded(expKey, v),
@@ -317,15 +313,14 @@ class TodayView extends StatelessWidget {
   Widget _lessonCard(BuildContext context, ExcuseTask task) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final options = c.templateOptions(task.kind);
+final options = c.templateOptions(task.kind);
     final key = task.key;
 
     Future<void> send() async {
       final request =
           c.singleRequest(task, c.pickedOption(key, options));
       if (request == null) {
-        _snack(context, s.get('excuse_failed'));
+        _snack(context, Strings.get('excuse_failed'));
         return;
       }
       if (c.signature.isEmpty) {
@@ -335,7 +330,7 @@ class TodayView extends StatelessWidget {
       final ok = await c.send(request);
       if (context.mounted) {
         _snack(context,
-            ok ? s.get('excuse_sent') : c.lastMessageOr(s.get('excuse_failed')));
+            ok ? Strings.get('excuse_sent') : c.lastMessageOr(Strings.get('excuse_failed')));
       }
     }
 
@@ -370,7 +365,7 @@ class TodayView extends StatelessWidget {
         Wrap(
           spacing: 8,
           children: [
-            ElevatedButton(onPressed: send, child: Text(s.get('excused_btn'))),
+            ElevatedButton(onPressed: send, child: Text(Strings.get('excused_btn'))),
             TextButton(
               onPressed: () {
                 final hidden = c.ignoreExcuse(task.key);
@@ -378,11 +373,11 @@ class TodayView extends StatelessWidget {
                   _snack(
                       context,
                       hidden.isNotEmpty
-                          ? s.get('ignored_msg')
-                          : c.lastMessageOr(s.get('save_failed')));
+                          ? Strings.get('ignored_msg')
+                          : c.lastMessageOr(Strings.get('save_failed')));
                 }
               },
-              child: Text(s.get('ignore_btn')),
+              child: Text(Strings.get('ignore_btn')),
             ),
           ],
         ),
@@ -395,12 +390,11 @@ class TodayView extends StatelessWidget {
   List<Widget> _ignoredBlocks(BuildContext context) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final ignored = c.ignoredTasks().take(12).toList();
+final ignored = c.ignoredTasks().take(12).toList();
     final total = c.ignoredTasks().length;
     if (total == 0) return const [];
     return [
-      _sectionHeader('${s.get('ignored_title')} ($total)'),
+      _sectionHeader('${Strings.get('ignored_title')} ($total)'),
       for (final item in ignored)
         _card(Row(
           children: [
@@ -412,15 +406,15 @@ class TodayView extends StatelessWidget {
               onPressed: () {
                 if (!c.unignoreKeys([item.key]) && context.mounted) {
                   _snack(context,
-                      c.lastMessageOr(s.get('save_failed')));
+                      c.lastMessageOr(Strings.get('save_failed')));
                 }
               },
-              child: Text(s.get('restore')),
+              child: Text(Strings.get('restore')),
             ),
           ],
         )),
       if (total > 12)
-        _faint('+ ${total - 12} ${s.get('more_tasks')}'),
+        _faint('+ ${total - 12} ${Strings.get('more_tasks')}'),
     ];
   }
 
@@ -464,7 +458,7 @@ class TodayView extends StatelessWidget {
     }
     if (info.upcomingHeadline != null) {
       bits.add(Text(
-          '${c.s.get('up_next')}: ${info.upcomingHeadline!}',
+          '${Strings.get('up_next')}: ${info.upcomingHeadline!}',
           style: TextStyle(color: t.muted, fontSize: t.fsSmall)));
     }
     if (info.statusLabel != null && info.statusLabel!.isNotEmpty) {
@@ -535,14 +529,13 @@ class TodayView extends StatelessWidget {
       List<TemplateOption> options) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final labels = c.templateLabels(options);
+final labels = c.templateLabels(options);
     final current =
         (c.pickedTemplates[key] ?? 0).clamp(0, options.length - 1);
     return DropdownButtonFormField<int>(
       initialValue: options.isEmpty ? null : current,
       decoration: InputDecoration(
-        labelText: s.get('choose_template'),
+        labelText: Strings.get('choose_template'),
         isDense: true,
         filled: true,
         fillColor: t.surface,
@@ -558,28 +551,26 @@ class TodayView extends StatelessWidget {
 
   void _signatureDialog(
       BuildContext context, ExcuseSendRequest request) {
-    final c = controller;
     final t = tokens;
-    final s = c.s;
-    final field = TextEditingController();
+final field = TextEditingController();
     String? error;
     showDialog<void>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: Text(s.get('signature_ask_title')),
+          title: Text(Strings.get('signature_ask_title')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(s.get('signature_ask_p')),
+              Text(Strings.get('signature_ask_p')),
               const SizedBox(height: 12),
               TextField(
                 controller: field,
                 autofocus: true,
                 decoration: InputDecoration(
-                  labelText: s.get('signature'),
-                  hintText: s.get('signature_hint'),
+                  labelText: Strings.get('signature'),
+                  hintText: Strings.get('signature_hint'),
                   errorText: error,
                   filled: true,
                   fillColor: t.surface,
@@ -592,11 +583,11 @@ class TodayView extends StatelessWidget {
           actions: [
             TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: Text(s.get('cancel'))),
+                child: Text(Strings.get('cancel'))),
             ElevatedButton(
                 onPressed: () => _submitSignature(
                     context, setState, field, (e) => error = e),
-                child: Text(s.get('signature_save_send'))),
+                child: Text(Strings.get('signature_save_send'))),
           ],
         ),
       ),
@@ -609,23 +600,21 @@ class TodayView extends StatelessWidget {
       TextEditingController field,
       void Function(String? e) setError) async {
     final c = controller;
-    final s = c.s;
-    if (field.text.trim().isEmpty) {
-      setState(() => setError(s.get('wiz_need_signature')));
+if (field.text.trim().isEmpty) {
+      setState(() => setError(Strings.get('wiz_need_signature')));
       return;
     }
     final ok = await c.saveSignatureAndSend(field.text);
     if (context.mounted) {
       Navigator.of(context).pop();
       _snack(context,
-          ok ? s.get('excuse_sent') : c.lastMessageOr(s.get('save_failed')));
+          ok ? Strings.get('excuse_sent') : c.lastMessageOr(Strings.get('save_failed')));
     }
   }
 
   Widget _kindBadge(String kind) {
     final t = tokens;
-    final s = controller.s;
-    const labels = {
+const labels = {
       'late': 'status_late',
       'soon': 'status_soon',
       'early': 'status_early',
@@ -633,7 +622,7 @@ class TodayView extends StatelessWidget {
       'long': 'status_absent',
       'day': 'status_absent',
     };
-    final label = s.get(labels[kind.toLowerCase()] ?? 'status_absent');
+    final label = Strings.get(labels[kind.toLowerCase()] ?? 'status_absent');
     Color color;
     switch (kind.toLowerCase()) {
       case 'late':

@@ -1,3 +1,4 @@
+import '../../l10n/strings.dart';
 import 'package:flutter/material.dart';
 
 import '../common/app_tokens.dart';
@@ -41,21 +42,20 @@ class MarksView extends StatelessWidget {
   Widget _body(BuildContext context) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final hasGrades = c.grades.isNotEmpty;
+final hasGrades = c.grades.isNotEmpty;
     if (!hasGrades) {
       return ListView(
         padding: const EdgeInsets.all(16),
         children: [
           _headerRow(context, false),
           SizedBox(height: t.gap),
-          _card(Text(s.get('no_data'),
+          _card(Text(Strings.get('no_data'),
               style:
                   TextStyle(color: t.faint, fontSize: t.fsBody))),
           if (c.demoMode)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text(s.get('need_credentials'),
+              child: Text(Strings.get('need_credentials'),
                   style: TextStyle(
                       color: t.faint, fontSize: t.fsSmall)),
             ),
@@ -81,7 +81,7 @@ class MarksView extends StatelessWidget {
           runSpacing: 6,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Text(s.tr('marks_subjects_n', {'n': items.length}),
+            Text(Strings.format('marks_subjects_n', {'n': items.length}),
                 style: TextStyle(
                     color: t.text,
                     fontSize: t.fsSmall,
@@ -141,7 +141,7 @@ class MarksView extends StatelessWidget {
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Text(
-                              s.tr('marks_subjects_n',
+                              Strings.format('marks_subjects_n',
                                   {'n': items.length}),
                               style: TextStyle(
                                   color: t.text,
@@ -186,11 +186,10 @@ class MarksView extends StatelessWidget {
 
   Widget _headerRow(BuildContext context, bool hasGrades) {
     final t = tokens;
-    final s = controller.s;
-    return Row(
+return Row(
       children: [
         Expanded(
-            child: Text(s.get('marks_title'),
+            child: Text(Strings.get('marks_title'),
                 style: TextStyle(
                     color: t.text,
                     fontSize: 20,
@@ -205,13 +204,13 @@ class MarksView extends StatelessWidget {
     return SegmentedButton<String>(
       segments: [
         ButtonSegment(
-            value: 'auto', label: Text(c.s.get('marks_scale_auto'))),
+            value: 'auto', label: Text(Strings.get('marks_scale_auto'))),
         ButtonSegment(
             value: 'grade',
-            label: Text(c.s.get('marks_scale_grade'))),
+            label: Text(Strings.get('marks_scale_grade'))),
         ButtonSegment(
             value: 'percent',
-            label: Text(c.s.get('marks_scale_percent'))),
+            label: Text(Strings.get('marks_scale_percent'))),
       ],
       selected: {c.marksScale()},
       onSelectionChanged: (sel) =>
@@ -222,17 +221,16 @@ class MarksView extends StatelessWidget {
 
   Widget _sortToggle() {
     final c = controller;
-    final s = c.s;
-    return SegmentedButton<String>(
+return SegmentedButton<String>(
       segments: [
         ButtonSegment(
-            value: 'name', label: Text(s.get('marks_sort_name'))),
+            value: 'name', label: Text(Strings.get('marks_sort_name'))),
         ButtonSegment(
             value: 'average',
-            label: Text(s.get('marks_sort_average'))),
+            label: Text(Strings.get('marks_sort_average'))),
         ButtonSegment(
             value: 'recent',
-            label: Text(s.get('marks_sort_recent'))),
+            label: Text(Strings.get('marks_sort_recent'))),
       ],
       selected: {c.marksSort()},
       onSelectionChanged: (sel) =>
@@ -243,27 +241,26 @@ class MarksView extends StatelessWidget {
 
   Widget _stats(List<SubjectSummary> items, List<double> bands) {
     final c = controller;
-    final s = c.s;
-    final predicting = items.any((x) => x.predicting);
+final predicting = items.any((x) => x.predicting);
     final (avg, avgScale) = c.overall(items, bands);
     final report = c.reportEstimate(items, bands);
     final nMarks =
         items.map((x) => x.realCount).fold(0, (a, b) => a + b);
     final nNew = items.map((x) => x.newCount).fold(0, (a, b) => a + b);
     final suffix = predicting
-        ? ' · ${s.get('marks_predicted_short')}'
+        ? ' · ${Strings.get('marks_predicted_short')}'
         : '';
     return Wrap(
       spacing: tokens.gap,
       runSpacing: 8,
       children: [
-        _statCard('${s.get('marks_average')}$suffix',
+        _statCard('${Strings.get('marks_average')}$suffix',
             formatValue(avg, avgScale), kindFor(avg, avgScale, bands)),
-        _statCard('${s.get('marks_report')}$suffix',
+        _statCard('${Strings.get('marks_report')}$suffix',
             report == null ? '—' : report.toStringAsFixed(2),
             kindFor(report, 'grade', bands)),
-        _statCard(s.get('marks_total'), '$nMarks', 'info'),
-        _statCard(s.get('marks_new'), '$nNew',
+        _statCard(Strings.get('marks_total'), '$nMarks', 'info'),
+        _statCard(Strings.get('marks_new'), '$nNew',
             nNew > 0 ? 'ok' : 'info'),
       ],
     );
@@ -306,8 +303,7 @@ class MarksView extends StatelessWidget {
   Widget? _predictionBanner(BuildContext context) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final changed = [
+final changed = [
       for (final x in c.summaries())
         if (x.predicting) x
     ];
@@ -331,12 +327,12 @@ class MarksView extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                      s.tr('marks_prediction_on',
+                      Strings.format('marks_prediction_on',
                           {'n': changed.length}),
                       style: TextStyle(
                           color: t.text,
                           fontWeight: FontWeight.bold)),
-                  Text(s.get('marks_prediction_hint'),
+                  Text(Strings.get('marks_prediction_hint'),
                       style: TextStyle(
                           color: t.muted,
                           fontSize: t.fsSmall)),
@@ -346,7 +342,7 @@ class MarksView extends StatelessWidget {
             TextButton.icon(
               onPressed: () => c.predictReset(),
               icon: const Icon(Icons.restart_alt, size: 18),
-              label: Text(s.get('marks_reset_all')),
+              label: Text(Strings.get('marks_reset_all')),
             ),
           ],
         ),
@@ -360,20 +356,19 @@ class MarksView extends StatelessWidget {
       List<double> bands) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final selected = c.selectedSubject == summary.name;
+final selected = c.selectedSubject == summary.name;
     final avgKind = kindFor(summary.current, summary.scale, bands);
 
     final subParts = [
-      s.tr('marks_count', {'n': summary.realCount})
+      Strings.format('marks_count', {'n': summary.realCount})
     ];
     if (summary.lastDate != null) {
-      subParts.add(s.tr(
+      subParts.add(Strings.format(
           'marks_last', {'day': czDay(summary.lastDate)}));
     }
     if (summary.forced) {
       subParts.add(summary.scale == 'grade'
-          ? s.get('marks_scale_grade')
+          ? Strings.get('marks_scale_grade')
           : '%');
     }
     final quarterly = _quarterlyBadge(summary);
@@ -390,7 +385,7 @@ class MarksView extends StatelessWidget {
         ?quarterly,
         if (summary.newCount > 0)
           _badge(
-              s.tr('marks_new_badge', {'n': summary.newCount}),
+              Strings.format('marks_new_badge', {'n': summary.newCount}),
               'ok'),
       ],
     );
@@ -472,7 +467,7 @@ class MarksView extends StatelessWidget {
           Icon(Icons.event_outlined, size: 13, color: t.accent),
           const SizedBox(width: 3),
           Text(
-              s.tr('marks_planned_count',
+              Strings.format('marks_planned_count',
                   {'n': summary.planned.length}),
               style:
                   TextStyle(color: t.accent, fontSize: t.fsTiny)),
@@ -514,8 +509,7 @@ class MarksView extends StatelessWidget {
 
   Widget? _quarterlyBadge(SubjectSummary summary) {
     final c = controller;
-    final s = c.s;
-    final entry = c.quarterlyMarks[summary.name];
+final entry = c.quarterlyMarks[summary.name];
     if (entry == null) return null;
     final grade = '${entry['Grade'] ?? ''}'.trim();
     if (grade.isEmpty) return null;
@@ -526,19 +520,17 @@ class MarksView extends StatelessWidget {
     final note = '${entry['Note'] ?? ''}'.trim();
     return Tooltip(
       message:
-          '${s.get('marks_quarterly_tooltip')}${note.isNotEmpty ? '\n$note' : ''}',
+          '${Strings.get('marks_quarterly_tooltip')}${note.isNotEmpty ? '\n$note' : ''}',
       child: _badge(
-          s.tr('marks_quarterly', {'mark': grade}), kind),
+          Strings.format('marks_quarterly', {'mark': grade}), kind),
     );
   }
 
   String _markTooltip(MarkRow row) {
-    final c = controller;
-    final s = c.s;
-    final mark = row.mark;
+final mark = row.mark;
     final parts = [
       '${mark['Caption'] ?? ''}'.trim(),
-      '${s.get('marks_weight')} ${formatWeight(row.weight)}',
+      '${Strings.get('marks_weight')} ${formatWeight(row.weight)}',
       if ('${mark['Date'] ?? ''}'.isNotEmpty)
         czDayYear(mark['Date']),
     ];
@@ -583,15 +575,14 @@ class MarksView extends StatelessWidget {
 
   List<Widget> _overview(BuildContext context,
       List<SubjectSummary> items, List<double> bands) {
-    final s = controller.s;
-    final out = <Widget>[
+final out = <Widget>[
       Row(
         children: [
           Icon(Icons.touch_app_outlined,
               size: 18, color: tokens.faint),
           const SizedBox(width: 8),
           Expanded(
-              child: Text(s.get('marks_pick_hint'),
+              child: Text(Strings.get('marks_pick_hint'),
                   style: TextStyle(
                       color: tokens.muted,
                       fontSize: tokens.fsSmall))),
@@ -609,8 +600,7 @@ class MarksView extends StatelessWidget {
       List<SubjectSummary> items, List<double> bands) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final entries = <(DateTime, SubjectSummary, MarkRow)>[];
+final entries = <(DateTime, SubjectSummary, MarkRow)>[];
     for (final summary in items) {
       for (final r in summary.rows) {
         if ((r.state == 'real' ||
@@ -662,7 +652,7 @@ class MarksView extends StatelessWidget {
                         [
                           caption,
                           czDay(day),
-                          '${s.get('marks_weight')} ${formatWeight(r.weight)}'
+                          '${Strings.get('marks_weight')} ${formatWeight(r.weight)}'
                         ].where((p) => p.isNotEmpty).join(' · '),
                         style: TextStyle(
                             color: t.faint,
@@ -676,11 +666,11 @@ class MarksView extends StatelessWidget {
       ));
     }
     if (rows.isEmpty) {
-      rows.add(Text(s.get('marks_no_recent'),
+      rows.add(Text(Strings.get('marks_no_recent'),
           style: TextStyle(
               color: t.muted, fontSize: t.fsSmall)));
     }
-    return _section(s.get('marks_recent'), rows,
+    return _section(Strings.get('marks_recent'), rows,
         icon: Icons.history);
   }
 
@@ -688,8 +678,7 @@ class MarksView extends StatelessWidget {
       BuildContext context, List<SubjectSummary> items) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final entries = <(DateTime?, SubjectSummary, Map<String, Object?>)>[];
+final entries = <(DateTime?, SubjectSummary, Map<String, Object?>)>[];
     for (final summary in items) {
       for (final m in summary.planned) {
         entries.add((_plannedDate(m), summary, m));
@@ -702,7 +691,7 @@ class MarksView extends StatelessWidget {
       return da.compareTo(db);
     });
     return _section(
-        s.get('marks_planned'),
+        Strings.get('marks_planned'),
         [
           for (final (day, summary, m) in entries)
             InkWell(
@@ -733,7 +722,7 @@ class MarksView extends StatelessWidget {
                                   fontSize: t.fsSmall,
                                   fontWeight: FontWeight.bold)),
                           Text(
-                              '${'${m['Caption'] ?? ''}'.trim().isEmpty ? s.get('marks_planned_test') : '${m['Caption'] ?? ''}'.trim()} · ${s.get('marks_weight')} ${formatWeight(parseWeight(m['Weight']))}',
+                              '${'${m['Caption'] ?? ''}'.trim().isEmpty ? Strings.get('marks_planned_test') : '${m['Caption'] ?? ''}'.trim()} · ${Strings.get('marks_weight')} ${formatWeight(parseWeight(m['Weight']))}',
                               style: TextStyle(
                                   color: t.faint,
                                   fontSize: t.fsTiny)),
@@ -745,7 +734,7 @@ class MarksView extends StatelessWidget {
                           summary.name,
                           formatWeight(
                               parseWeight(m['Weight']))),
-                      child: Text(s.get('marks_use_weight'),
+                      child: Text(Strings.get('marks_use_weight'),
                           style: TextStyle(
                               color: t.accent,
                               fontSize: t.fsSmall)),
@@ -764,8 +753,7 @@ class MarksView extends StatelessWidget {
   Widget _bandsCard(BuildContext context) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final (bands, source) = c.marksBandsSource();
+final (bands, source) = c.marksBandsSource();
     final fields = <TextEditingController>[];
     final cells = <Widget>[];
     for (var i = 0; i < 4; i++) {
@@ -779,7 +767,7 @@ class MarksView extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(s.tr('marks_band_label', {'grade': i + 2}),
+            Text(Strings.format('marks_band_label', {'grade': i + 2}),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -817,9 +805,9 @@ class MarksView extends StatelessWidget {
         for (var i = 0; i < 4; i++) {
           fields[i].text = gFormat(c.marksBands()[i]);
         }
-        _snack(context, s.get('marks_bands_saved'));
+        _snack(context, Strings.get('marks_bands_saved'));
       } else {
-        _snack(context, s.get('marks_bands_invalid'));
+        _snack(context, Strings.get('marks_bands_invalid'));
       }
     }
 
@@ -832,19 +820,19 @@ class MarksView extends StatelessWidget {
       TextButton.icon(
           onPressed: save,
           icon: const Icon(Icons.check, size: 18),
-          label: Text(s.get('marks_save'))),
+          label: Text(Strings.get('marks_save'))),
     ];
     if (source == 'user') {
       buttons.add(TextButton(
           onPressed: reset,
           child: Text(
               c.presetBands != null
-                  ? s.get('marks_bands_use_school')
-                  : s.get('marks_bands_default'),
+                  ? Strings.get('marks_bands_use_school')
+                  : Strings.get('marks_bands_default'),
               style: TextStyle(color: t.muted))));
     }
     return _section(
-        s.get('marks_bands'),
+        Strings.get('marks_bands'),
         [
           Row(
             children: [
@@ -865,7 +853,7 @@ class MarksView extends StatelessWidget {
           Text(MarksController.bandsRanges(bands),
               style:
                   TextStyle(color: t.muted, fontSize: t.fsSmall)),
-          Text(s.get('marks_bands_hint'),
+          Text(Strings.get('marks_bands_hint'),
               style:
                   TextStyle(color: t.muted, fontSize: t.fsSmall)),
           Padding(
@@ -913,8 +901,7 @@ class MarksView extends StatelessWidget {
       List<double> bands) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final head = Row(
+final head = Row(
       children: [
         Expanded(
           child: Column(
@@ -926,7 +913,7 @@ class MarksView extends StatelessWidget {
                       fontSize: t.fsSection,
                       fontWeight: FontWeight.bold)),
               Text(
-                  s.tr('marks_count',
+                  Strings.format('marks_count',
                       {'n': summary.realCount}),
                   style: TextStyle(
                       color: t.faint, fontSize: t.fsSmall)),
@@ -935,7 +922,7 @@ class MarksView extends StatelessWidget {
         ),
         IconButton(
           icon: const Icon(Icons.close, size: 18),
-          tooltip: s.get('close'),
+          tooltip: Strings.get('close'),
           onPressed: () => c.selectSubject(null),
         ),
       ],
@@ -973,7 +960,7 @@ class MarksView extends StatelessWidget {
         _markRow(context, summary, r, bands),
     ];
     if (markControls.isEmpty) {
-      markControls.add(Text(s.get('marks_none_yet'),
+      markControls.add(Text(Strings.get('marks_none_yet'),
           style: TextStyle(
               color: t.muted, fontSize: t.fsSmall)));
     }
@@ -986,7 +973,7 @@ class MarksView extends StatelessWidget {
                 size: 16, color: t.faint),
             const SizedBox(width: 6),
             Expanded(
-                child: Text(s.get('marks_predictor'),
+                child: Text(Strings.get('marks_predictor'),
                     style: TextStyle(
                         color: t.text,
                         fontSize: t.fsSection,
@@ -995,13 +982,13 @@ class MarksView extends StatelessWidget {
               TextButton(
                   onPressed: () =>
                       c.predictReset(summary.name),
-                  child: Text(s.get('marks_reset'),
+                  child: Text(Strings.get('marks_reset'),
                       style: TextStyle(
                           color: t.accent,
                           fontSize: t.fsSmall))),
           ],
         ),
-        Text(s.get('marks_predictor_hint'),
+        Text(Strings.get('marks_predictor_hint'),
             style: TextStyle(
                 color: t.muted, fontSize: t.fsSmall)),
         const SizedBox(height: 8),
@@ -1012,7 +999,7 @@ class MarksView extends StatelessWidget {
     )));
     final planned = _detailPlanned(summary);
     if (planned.isNotEmpty) {
-      out.add(_section(s.get('marks_planned'), planned,
+      out.add(_section(Strings.get('marks_planned'), planned,
           icon: Icons.event_outlined));
     }
     return out;
@@ -1021,18 +1008,17 @@ class MarksView extends StatelessWidget {
   Widget _scalePicker(SubjectSummary summary) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final current =
+final current =
         c.marksSubjectScales()[summary.name] ?? 'auto';
     String name(String scale) => scale == 'grade'
-        ? s.get('marks_scale_grade')
-        : s.get('marks_scale_percent');
+        ? Strings.get('marks_scale_grade')
+        : Strings.get('marks_scale_percent');
     final String hint;
     if (current == 'auto' && summary.forced) {
-      hint = s.tr('marks_scale_global',
+      hint = Strings.format('marks_scale_global',
           {'scale': name(summary.scale)});
     } else {
-      hint = s.tr('marks_detected',
+      hint = Strings.format('marks_detected',
           {'scale': name(summary.detected)});
     }
     return Column(
@@ -1042,13 +1028,13 @@ class MarksView extends StatelessWidget {
           segments: [
             ButtonSegment(
                 value: 'auto',
-                label: Text(s.get('marks_scale_auto'))),
+                label: Text(Strings.get('marks_scale_auto'))),
             ButtonSegment(
                 value: 'grade',
-                label: Text(s.get('marks_scale_grade'))),
+                label: Text(Strings.get('marks_scale_grade'))),
             ButtonSegment(
                 value: 'percent',
-                label: Text(s.get('marks_scale_percent'))),
+                label: Text(Strings.get('marks_scale_percent'))),
           ],
           selected: {current},
           onSelectionChanged: (sel) =>
@@ -1064,8 +1050,7 @@ class MarksView extends StatelessWidget {
 
   Widget _detailStats(SubjectSummary summary, List<double> bands) {
     final t = tokens;
-    final s = controller.s;
-    Widget tile(String label, String value, String kind) {
+Widget tile(String label, String value, String kind) {
       final color =
           kind == 'info' ? t.text : statusColor(kind, t);
       return Expanded(
@@ -1097,17 +1082,17 @@ class MarksView extends StatelessWidget {
       spacing: 6,
       children: [
         tile(
-            s.get('marks_average'),
+            Strings.get('marks_average'),
             formatValue(summary.average, summary.scale),
             kindFor(summary.average, summary.scale, bands)),
         if (summary.predicting)
           tile(
-              s.get('marks_predicted'),
+              Strings.get('marks_predicted'),
               formatValue(
                   summary.predicted, summary.scale),
               kindFor(summary.predicted, summary.scale, bands)),
         tile(
-            s.get('marks_final'),
+            Strings.get('marks_final'),
             controller.finalText(summary, bands),
             kindFor(summary.current, summary.scale, bands)),
       ],
@@ -1155,7 +1140,7 @@ class MarksView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(controller.s.get('marks_trend'),
+        Text(Strings.get('marks_trend'),
             style: TextStyle(
                 color: t.muted, fontSize: t.fsSmall)),
         const SizedBox(height: 4),
@@ -1178,8 +1163,7 @@ class MarksView extends StatelessWidget {
       List<double> bands) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final target = c.needTarget(summary, bands);
+final target = c.needTarget(summary, bands);
     final fallbackWeight = defaultWeight(summary);
     final weightText =
         c.marksCalc(summary.name)['weight'] ??
@@ -1193,7 +1177,7 @@ class MarksView extends StatelessWidget {
     final String msg;
     String kind;
     if (need.status == 'any') {
-      msg = s.tr('marks_need_any', {'grade': target});
+      msg = Strings.format('marks_need_any', {'grade': target});
       kind = 'ok';
     } else if (need.status == 'need') {
       final mark = summary.scale == 'percent'
@@ -1202,7 +1186,7 @@ class MarksView extends StatelessWidget {
       final key = summary.scale == 'percent'
           ? 'marks_need_pct'
           : 'marks_need_grade';
-      msg = s.tr(key, {'mark': mark, 'grade': target});
+      msg = Strings.format(key, {'mark': mark, 'grade': target});
       kind = 'warning';
       if ((summary.scale == 'grade' && need.value! >= 3) ||
           (summary.scale == 'percent' && need.value! <= bands[2])) {
@@ -1211,7 +1195,7 @@ class MarksView extends StatelessWidget {
     } else if (need.count > 0) {
       final best =
           summary.scale == 'percent' ? '100 %' : '1';
-      msg = s.tr('marks_need_many', {
+      msg = Strings.format('marks_need_many', {
         'n': need.count,
         'mark': best,
         'weight': formatWeight(w),
@@ -1219,11 +1203,11 @@ class MarksView extends StatelessWidget {
       });
       kind = 'critical';
     } else {
-      msg = s.tr('marks_need_impossible', {'grade': target});
+      msg = Strings.format('marks_need_impossible', {'grade': target});
       kind = 'critical';
     }
     return _section(
-        s.get('marks_need_title'),
+        Strings.get('marks_need_title'),
         [
           Row(
             spacing: 8,
@@ -1232,7 +1216,7 @@ class MarksView extends StatelessWidget {
                 child: DropdownButtonFormField<String>(
                   initialValue: '$target',
                   decoration: InputDecoration(
-                    labelText: s.get('marks_target'),
+                    labelText: Strings.get('marks_target'),
                     isDense: true,
                     filled: true,
                     fillColor: t.surface,
@@ -1241,7 +1225,7 @@ class MarksView extends StatelessWidget {
                     for (final g in [1, 2, 3, 4])
                       DropdownMenuItem(
                           value: '$g',
-                          child: Text(s.tr(
+                          child: Text(Strings.format(
                               'marks_target_option',
                               {'grade': g}))),
                   ],
@@ -1257,7 +1241,7 @@ class MarksView extends StatelessWidget {
                       'need-weight:${summary.name}:$weightText'),
                   initialValue: weightText,
                   decoration: InputDecoration(
-                    labelText: s.get('marks_weight'),
+                    labelText: Strings.get('marks_weight'),
                     isDense: true,
                     filled: true,
                     fillColor: t.surface,
@@ -1292,8 +1276,7 @@ class MarksView extends StatelessWidget {
       MarkRow row, List<double> bands) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    if (c.editingKey == row.key) {
+if (c.editingKey == row.key) {
       return _editRow(context, summary, row);
     }
     final mark = row.mark;
@@ -1304,18 +1287,18 @@ class MarksView extends StatelessWidget {
     final title = caption.isNotEmpty
         ? caption
         : (row.state == 'added'
-            ? s.get('marks_hypothetical')
-            : s.get('marks_no_topic'));
+            ? Strings.get('marks_hypothetical')
+            : Strings.get('marks_no_topic'));
     final details = <String>[];
     if (row.state != 'added') {
       details.add(czDayYear(mark['Date']));
       if ('${mark['TestDate'] ?? ''}'.isNotEmpty) {
-        details.add(s.tr('marks_written',
+        details.add(Strings.format('marks_written',
             {'day': czDayYear(mark['TestDate'])}));
       }
     }
     details.add(
-        '${s.get('marks_weight')} ${formatWeight(row.weight)}');
+        '${Strings.get('marks_weight')} ${formatWeight(row.weight)}');
     if (row.raw != null && row.value != null) {
       final native = (row.raw!.kind == 'percent' ||
               (row.raw!.kind == 'small' &&
@@ -1327,11 +1310,11 @@ class MarksView extends StatelessWidget {
         details.add('≈ ${formatValue(row.value, summary.scale)}');
       }
     } else if (row.state != 'removed') {
-      details.add(s.get('marks_not_counted'));
+      details.add(Strings.get('marks_not_counted'));
     }
     if (row.state == 'edited' && row.original != null) {
       final orig = row.original!;
-      details.add(s.tr('marks_was', {
+      details.add(Strings.format('marks_was', {
         'mark': c.markLabel(
             orig,
             parseRaw(orig['Grade'], orig['Points']),
@@ -1345,20 +1328,20 @@ class MarksView extends StatelessWidget {
     if (row.state == 'removed') {
       actions.add(IconButton(
           icon: const Icon(Icons.restore, size: 18),
-          tooltip: s.get('restore'),
+          tooltip: Strings.get('restore'),
           onPressed: () =>
               c.predictRestore(summary.name, row.key)));
     } else {
       if (row.state == 'edited') {
         actions.add(IconButton(
             icon: const Icon(Icons.restore, size: 18),
-            tooltip: s.get('marks_restore_real'),
+            tooltip: Strings.get('marks_restore_real'),
             onPressed: () =>
                 c.predictRestore(summary.name, row.key)));
       }
       actions.add(IconButton(
           icon: const Icon(Icons.edit_outlined, size: 18),
-          tooltip: s.get('marks_edit'),
+          tooltip: Strings.get('marks_edit'),
           onPressed: () {
             c.clearDrafts('marks:edit:');
             c.setEditing(row.key);
@@ -1366,8 +1349,8 @@ class MarksView extends StatelessWidget {
       actions.add(IconButton(
           icon: const Icon(Icons.delete_outline, size: 18),
           tooltip: row.state == 'added'
-              ? s.get('marks_delete')
-              : s.get('marks_leave_out'),
+              ? Strings.get('marks_delete')
+              : Strings.get('marks_leave_out'),
           onPressed: () =>
               c.predictRemove(summary.name, row.key)));
     }
@@ -1429,8 +1412,7 @@ class MarksView extends StatelessWidget {
       MarkRow row) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    const gKey = 'marks:edit:grade';
+const gKey = 'marks:edit:grade';
     const wKey = 'marks:edit:weight';
     final gradeCtrl = TextEditingController(
         text: c.draft(gKey, row.text));
@@ -1444,7 +1426,7 @@ class MarksView extends StatelessWidget {
           summary.name, row.key, typed.$1, typed.$2)) {
         c.setDraft(gKey, typed.$1);
         c.setDraft(wKey, typed.$2);
-        _snack(context, s.get('marks_invalid'));
+        _snack(context, Strings.get('marks_invalid'));
       }
     }
 
@@ -1467,7 +1449,7 @@ class MarksView extends StatelessWidget {
             controller: gradeCtrl,
             autofocus: true,
             decoration: InputDecoration(
-              labelText: s.get('marks_mark'),
+              labelText: Strings.get('marks_mark'),
               isDense: true,
               filled: true,
               fillColor: t.surface,
@@ -1480,7 +1462,7 @@ class MarksView extends StatelessWidget {
               child: TextField(
                 controller: weightCtrl,
                 decoration: InputDecoration(
-                  labelText: s.get('marks_weight'),
+                  labelText: Strings.get('marks_weight'),
                   isDense: true,
                   filled: true,
                   fillColor: t.surface,
@@ -1493,11 +1475,11 @@ class MarksView extends StatelessWidget {
           IconButton(
               icon: Icon(Icons.check,
                   color: t.green, size: 18),
-              tooltip: s.get('marks_save'),
+              tooltip: Strings.get('marks_save'),
               onPressed: save),
           IconButton(
               icon: const Icon(Icons.close, size: 18),
-              tooltip: s.get('cancel'),
+              tooltip: Strings.get('cancel'),
               onPressed: cancel),
         ],
       ),
@@ -1508,8 +1490,7 @@ class MarksView extends StatelessWidget {
       BuildContext context, SubjectSummary summary) {
     final c = controller;
     final t = tokens;
-    final s = c.s;
-    final gKey = 'marks:add:grade:${summary.name}';
+final gKey = 'marks:add:grade:${summary.name}';
     final wKey = 'marks:add:weight:${summary.name}';
     final gradeCtrl =
         TextEditingController(text: c.draft(gKey));
@@ -1524,7 +1505,7 @@ class MarksView extends StatelessWidget {
       if (!c.predictAdd(
           summary.name, typed, weightCtrl.text)) {
         c.setDraft(gKey, typed);
-        _snack(context, s.get('marks_invalid'));
+        _snack(context, Strings.get('marks_invalid'));
       }
     }
 
@@ -1534,7 +1515,7 @@ class MarksView extends StatelessWidget {
             child: TextField(
           controller: gradeCtrl,
           decoration: InputDecoration(
-            labelText: s.get('marks_mark'),
+            labelText: Strings.get('marks_mark'),
             hintText: summary.scale == 'percent'
                 ? '85 %'
                 : '1, 2-, 3',
@@ -1550,7 +1531,7 @@ class MarksView extends StatelessWidget {
             child: TextField(
               controller: weightCtrl,
               decoration: InputDecoration(
-                labelText: s.get('marks_weight'),
+                labelText: Strings.get('marks_weight'),
                 isDense: true,
                 filled: true,
                 fillColor: t.surface,
@@ -1564,15 +1545,14 @@ class MarksView extends StatelessWidget {
         ElevatedButton.icon(
             onPressed: add,
             icon: const Icon(Icons.add, size: 18),
-            label: Text(s.get('marks_add'))),
+            label: Text(Strings.get('marks_add'))),
       ],
     );
   }
 
   List<Widget> _detailPlanned(SubjectSummary summary) {
     final t = tokens;
-    final s = controller.s;
-    final rows = <Widget>[];
+final rows = <Widget>[];
     final sorted = summary.planned.toList()
       ..sort((a, b) {
         final da = _plannedDate(a) ?? DateTime(9999);
@@ -1583,7 +1563,7 @@ class MarksView extends StatelessWidget {
       final day = _plannedDate(m);
       final weight = formatWeight(parseWeight(m['Weight']));
       final caption = '${m['Caption'] ?? ''}'.trim().isEmpty
-          ? s.get('marks_planned_test')
+          ? Strings.get('marks_planned_test')
           : '${m['Caption'] ?? ''}'.trim();
       rows.add(Row(
         children: [
@@ -1601,7 +1581,7 @@ class MarksView extends StatelessWidget {
                         fontSize: t.fsSmall,
                         fontWeight: FontWeight.bold)),
                 Text(
-                    '${day == null ? '?' : czDay(day)} · ${s.get('marks_weight')} $weight',
+                    '${day == null ? '?' : czDay(day)} · ${Strings.get('marks_weight')} $weight',
                     style: TextStyle(
                         color: t.faint,
                         fontSize: t.fsTiny)),
@@ -1611,7 +1591,7 @@ class MarksView extends StatelessWidget {
           TextButton(
               onPressed: () => controller.usePlannedWeight(
                   summary.name, weight),
-              child: Text(s.get('marks_use_weight'),
+              child: Text(Strings.get('marks_use_weight'),
                   style: TextStyle(
                       color: t.accent,
                       fontSize: t.fsSmall))),

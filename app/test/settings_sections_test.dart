@@ -1,3 +1,4 @@
+import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -54,7 +55,7 @@ void main() {
 
     for (final language in ['cs', 'en']) {
       testWidgets('every section builds ($language)', (t) async {
-        Str.language = language;
+        Strings.lang = language;
         final c = _controller();
         for (final section in SettingsController.sections) {
           await _openSection(t, c, section.$1,
@@ -63,7 +64,7 @@ void main() {
           expect(find.byType(SettingsView), findsOneWidget,
               reason: section.$1);
         }
-        Str.language = 'cs';
+        Strings.lang = 'cs';
       });
     }
 
@@ -143,7 +144,7 @@ void main() {
         await t.pumpWidget(
             _app(c, narrow: true));
         // Delete the grouped row.
-        await t.tap(find.byTooltip(Str.t('delete')).first);
+        await t.tap(find.byTooltip(Strings.get('delete')).first);
         await t.pump();
         expect(c.userFreeDays(), isEmpty);
       });
@@ -184,7 +185,7 @@ void main() {
         final dd = find.byKey(const Key('rule:excuse_mode'));
         await t.tap(dd);
         await t.pumpAndSettle();
-        await t.tap(find.text(Str.t('mode_auto')).last);
+        await t.tap(find.text(Strings.get('mode_auto')).last);
         await t.pumpAndSettle();
         expect(asked, 'excuse_mode');
         expect(c.get('excuse_mode'), 'confirm'); // nothing saved yet
@@ -256,7 +257,7 @@ void main() {
             t.widget<SwitchListTile>(
                 find.byKey(const Key('browser:autostart'))).value,
             isFalse);
-        expect(SnackLog.last, Str.t('autostart_failed'));
+        expect(SnackLog.last, Strings.get('autostart_failed'));
       });
 
       testWidgets('store build points autostart to windows settings',
@@ -264,10 +265,10 @@ void main() {
         final c = SettingsController({}, storeManaged: true);
         await _openSection(t, c, 'browser');
         expect(
-            find.text(Str.t('autostart_store_managed')), findsOneWidget);
-        expect(find.text(Str.t('autostart_open_settings')),
+            find.text(Strings.get('autostart_store_managed')), findsOneWidget);
+        expect(find.text(Strings.get('autostart_open_settings')),
             findsOneWidget);
-        expect(find.text(Str.t('autostart')), findsNothing);
+        expect(find.text(Strings.get('autostart')), findsNothing);
       });
     });
   });

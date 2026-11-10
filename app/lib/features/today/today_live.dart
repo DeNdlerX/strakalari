@@ -5,7 +5,7 @@ import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../controllers/app_state.dart';
 import '../../l10n/strings.dart';
-import '../common/app_strings.dart';
+
 import '../common/app_tokens.dart';
 import '../common/format.dart';
 import '../common/schedule_logic.dart';
@@ -52,10 +52,8 @@ Map<String, List<SlotBaseline>> convertStableBaseline(
 /// Builds a [TodayController] populated from [s] and wired so actions
 /// mutate [s] directly.
 TodayController todayControllerFor(AppState s, {DateTime? now}) {
-  final lang = '${s.get('language', 'cs')}';
   late final TodayController c;
   c = TodayController(
-    s: AppStrings(lang == 'en' ? 'en' : 'cs'),
     config: Map<String, Object?>.of(s.config.data),
     onSave: s.save,
     onRefreshRequest: () => s.startRefresh('all'),

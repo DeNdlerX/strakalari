@@ -6,7 +6,7 @@ import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../controllers/app_state.dart';
 import '../../l10n/strings.dart';
-import '../common/app_strings.dart';
+
 import '../common/app_tokens.dart';
 import 'wizard_controller.dart';
 import 'wizard_view.dart';
@@ -43,7 +43,7 @@ List<CalendarPreset> buildCalendarPresets([String? language]) {
   }
   out.add(CalendarPreset(
     id: core.customId,
-    title: Strings.get('cal_custom'),
+    title: Strings.get('wiz_cal_custom'),
     custom: true,
   ));
   return out;
@@ -59,7 +59,6 @@ WizardController wizardControllerFor(AppState s) {
 
   late final WizardController c;
   c = WizardController(
-    s: AppStrings(lang),
     config: Map<String, Object?>.of(s.config.data),
     onSave: (updates) => s.save(updates),
     onTestRequest: (service, overrides) {

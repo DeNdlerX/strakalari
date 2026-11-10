@@ -7,17 +7,14 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../controllers/app_state.dart';
-import '../common/app_strings.dart';
+
 import '../common/app_tokens.dart';
 import 'absences_controller.dart';
 import 'absences_view.dart';
 
 /// Builds a snapshot [AbsencesController] from the shared [AppState].
 AbsencesController absencesControllerFor(AppState s) {
-  final lang = '${s.get('language', 'cs')}';
-  final c = AbsencesController(
-    s: AppStrings(lang == 'en' ? 'en' : 'cs'),
-  );
+  final c = AbsencesController();
   c.demoMode = s.demoMode;
   c.updatedLabel = s.updatedLabel;
   final (states, _) = s.subjectStates();

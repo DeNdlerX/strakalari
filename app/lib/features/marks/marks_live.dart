@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../controllers/app_state.dart' hide MarksController;
-import '../common/app_strings.dart';
+
 import '../common/app_tokens.dart';
 import 'marks_controller.dart';
 import 'marks_view.dart';
@@ -44,7 +44,6 @@ Map<String, Map<String, Object?>> _clonePredictions(
 MarksController marksControllerFor(AppState s, {DateTime? todayOverride}) {
   final lang = '${s.get('language', 'cs')}' == 'en' ? 'en' : 'cs';
   final c = MarksController(
-    s: AppStrings(lang),
     config: Map<String, Object?>.of(s.config.data),
     onSave: s.save,
   );

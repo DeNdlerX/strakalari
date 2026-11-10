@@ -1,3 +1,4 @@
+import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
 
 import 'package:app/features/settings/settings_controller.dart';
@@ -92,7 +93,7 @@ class _AutosaveFieldState extends State<AutosaveField> {
       try {
         newVal = widget.parse!(val);
       } catch (_) {
-        appSnack(context, Str.t('save_failed'));
+        appSnack(context, Strings.get('save_failed'));
         return;
       }
     }
@@ -189,7 +190,7 @@ class _TemplateEditorState extends State<TemplateEditor> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(Str.t(widget.titleKey)),
+            Text(Strings.get(widget.titleKey)),
             for (var i = 0; i < values.length; i++)
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -201,7 +202,7 @@ class _TemplateEditorState extends State<TemplateEditor> {
                           key: Key('tpl:${widget.configKey}:$i:name'),
                           decoration: InputDecoration(
                               labelText:
-                                  Str.t('tpl_name', {'n': i + 1})),
+                                  Strings.format('tpl_name', {'n': i + 1})),
                           controller: TextEditingController(
                               text: values[i]['name']),
                           onChanged: (v) => values[i]['name'] = v,
@@ -209,7 +210,7 @@ class _TemplateEditorState extends State<TemplateEditor> {
                         TextField(
                           key: Key('tpl:${widget.configKey}:$i:text'),
                           decoration: InputDecoration(
-                              labelText: Str.t('tpl_text')),
+                              labelText: Strings.get('tpl_text')),
                           controller: TextEditingController(
                               text: values[i]['text']),
                           maxLines: 2,
@@ -219,7 +220,7 @@ class _TemplateEditorState extends State<TemplateEditor> {
                     ),
                   ),
                   IconButton(
-                    tooltip: Str.t('delete'),
+                    tooltip: Strings.get('delete'),
                     icon: const Icon(Icons.delete_outline),
                     onPressed: () {
                       setState(() => values.removeAt(i));
@@ -234,7 +235,7 @@ class _TemplateEditorState extends State<TemplateEditor> {
                     () => values.add({'name': '', 'text': ''}));
                 _commit();
               },
-              child: Text('+ ${Str.t('add')}'),
+              child: Text('+ ${Strings.get('add')}'),
             ),
           ],
         ),
@@ -269,7 +270,7 @@ class SettingsView extends StatelessWidget {
     if (narrow && !controller.settingsOpen) {
       return ListView(
         children: [
-          ListTile(title: Text(Str.t('settings_title'))),
+          ListTile(title: Text(Strings.get('settings_title'))),
           _nav(context, here),
         ],
       );
@@ -281,14 +282,14 @@ class SettingsView extends StatelessWidget {
           Row(
             children: [
               IconButton(
-                tooltip: Str.t('settings_title'),
+                tooltip: Strings.get('settings_title'),
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () {
                   controller.closeSettingsSection();
                   onChanged?.call();
                 },
               ),
-              Expanded(child: Text(Str.t(labelKey))),
+              Expanded(child: Text(Strings.get(labelKey))),
             ],
           ),
           ...body,
@@ -297,7 +298,7 @@ class SettingsView extends StatelessWidget {
     }
     return Column(
       children: [
-        ListTile(title: Text(Str.t('settings_title'))),
+        ListTile(title: Text(Strings.get('settings_title'))),
         Expanded(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -309,7 +310,7 @@ class SettingsView extends StatelessWidget {
               Expanded(
                 child: ListView(
                   children: [
-                    ListTile(title: Text(Str.t(labelKey))),
+                    ListTile(title: Text(Strings.get(labelKey))),
                     ...body,
                   ],
                 ),
@@ -331,13 +332,13 @@ class SettingsView extends StatelessWidget {
       if (items.isNotEmpty) items.add(const SizedBox(height: 8));
       items.add(Padding(
         padding: const EdgeInsets.only(left: 10),
-        child: Text(Str.t(group.$1)),
+        child: Text(Strings.get(group.$1)),
       ));
       for (final id in ids) {
         final active =
             controller.settingsSection == id && !narrow;
         items.add(ListTile(
-          title: Text(Str.t(labels[id]!)),
+          title: Text(Strings.get(labels[id]!)),
           selected: active,
           onTap: () {
             controller.setSettingsSection(id);
@@ -410,7 +411,7 @@ class SettingsView extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Text(
-          '${ok ? Str.t('connection_ok') : Str.t('connection_failed')} — $msg',
+          '${ok ? Strings.get('connection_ok') : Strings.get('connection_failed')} — $msg',
           style: TextStyle(color: ok ? Colors.green : Colors.red),
         ),
       ),
@@ -431,65 +432,65 @@ class SettingsView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(Str.t('account_bakalari')),
+              Text(Strings.get('account_bakalari')),
               AutosaveField(
                   controller: c,
-                  label: Str.t('bakalari_url'),
+                  label: Strings.get('bakalari_url'),
                   draftKey: 'acc:bakalari_url',
                   configKey: 'bakalari_url',
                   fallback: '${c.get('bakalari_url', '')}'),
-              Text(Str.t('bakalari_url_hint')),
+              Text(Strings.get('bakalari_url_hint')),
               AutosaveField(
                   controller: c,
                   label:
-                      "${Str.t('account_bakalari')} — ${Str.t('username')}",
+                      "${Strings.get('account_bakalari')} — ${Strings.get('username')}",
                   draftKey: 'acc:bakalari_username',
                   configKey: 'bakalari_username',
                   fallback: '${c.get('bakalari_username', '')}'),
               AutosaveField(
                   controller: c,
                   label:
-                      "${Str.t('account_bakalari')} — ${Str.t('password')}",
+                      "${Strings.get('account_bakalari')} — ${Strings.get('password')}",
                   draftKey: 'acc:bakalari_password',
                   configKey: 'bakalari_password',
                   password: true,
                   hint: bPassSet
-                      ? Str.t('password_saved_hint')
-                      : Str.t('secret_empty')),
+                      ? Strings.get('password_saved_hint')
+                      : Strings.get('secret_empty')),
               const Divider(),
-              Text(Str.t('account_strava')),
+              Text(Strings.get('account_strava')),
               AutosaveField(
                   controller: c,
-                  label: Str.t('strava_url'),
+                  label: Strings.get('strava_url'),
                   draftKey: 'acc:strava_url',
                   configKey: 'strava_url',
                   fallback: '${c.get('strava_url', 'https://strava.cz')}'),
               AutosaveField(
                   controller: c,
                   label:
-                      "${Str.t('account_strava')} — ${Str.t('username')}",
+                      "${Strings.get('account_strava')} — ${Strings.get('username')}",
                   draftKey: 'acc:strava_username',
                   configKey: 'strava_username',
                   fallback: '${c.get('strava_username', '')}'),
               AutosaveField(
                   controller: c,
                   label:
-                      "${Str.t('account_strava')} — ${Str.t('password')}",
+                      "${Strings.get('account_strava')} — ${Strings.get('password')}",
                   draftKey: 'acc:strava_password',
                   configKey: 'strava_password',
                   password: true,
                   hint: sPassSet
-                      ? Str.t('password_saved_hint')
-                      : Str.t('secret_empty')),
+                      ? Strings.get('password_saved_hint')
+                      : Strings.get('secret_empty')),
               AutosaveField(
                   controller: c,
-                  label: Str.t('canteen_id'),
+                  label: Strings.get('canteen_id'),
                   draftKey: 'acc:strava_canteen_id',
                   configKey: 'strava_canteen_id',
                   fallback: '${c.get('strava_canteen_id', '')}'),
-              Text(Str.t('canteen_id_hint')),
+              Text(Strings.get('canteen_id_hint')),
               SwitchListTile(
-                title: Text(Str.t('use_strava')),
+                title: Text(Strings.get('use_strava')),
                 value: c.get('use_strava', true) == true,
                 onChanged: (v) =>
                     c.saveQuiet({'use_strava': v}),
@@ -504,17 +505,17 @@ class SettingsView extends StatelessWidget {
           OutlinedButton(
               onPressed: () {
                 final ok = c.testConnection('bakalari', _accountOverrides());
-                appSnack(context, Str.t(ok ? 'testing' : 'already_running'));
+                appSnack(context, Strings.get(ok ? 'testing' : 'already_running'));
                 onChanged?.call();
               },
-              child: Text(Str.t('test_bakalari'))),
+              child: Text(Strings.get('test_bakalari'))),
           OutlinedButton(
               onPressed: () {
                 final ok = c.testConnection('strava', _accountOverrides());
-                appSnack(context, Str.t(ok ? 'testing' : 'already_running'));
+                appSnack(context, Strings.get(ok ? 'testing' : 'already_running'));
                 onChanged?.call();
               },
-              child: Text(Str.t('test_strava'))),
+              child: Text(Strings.get('test_strava'))),
         ],
       ),
       ?bRes,
@@ -547,7 +548,7 @@ class SettingsView extends StatelessWidget {
             children: [
               AutosaveField(
                 controller: c,
-                label: Str.t('default_limit'),
+                label: Strings.get('default_limit'),
                 draftKey: 'lim:default',
                 configKey: 'absence_critical_pct',
                 fallback: '${c.get('absence_critical_pct', 25.0)}',
@@ -555,7 +556,7 @@ class SettingsView extends StatelessWidget {
               ),
               AutosaveField(
                 controller: c,
-                label: Str.t('warn_limit'),
+                label: Strings.get('warn_limit'),
                 draftKey: 'lim:warn',
                 configKey: 'absence_warn_pct',
                 fallback: '${c.get('absence_warn_pct', 15.0)}',
@@ -563,7 +564,7 @@ class SettingsView extends StatelessWidget {
               ),
               AutosaveField(
                 controller: c,
-                label: Str.t('reserve_limit'),
+                label: Strings.get('reserve_limit'),
                 draftKey: 'lim:reserve',
                 configKey: 'absence_plan_reserve_pct',
                 fallback:
@@ -573,7 +574,7 @@ class SettingsView extends StatelessWidget {
                   return v.clamp(0.0, 99.9);
                 },
               ),
-              Text(Str.t('reserve_hint')),
+              Text(Strings.get('reserve_hint')),
               for (final subject in subjects)
                 AutosaveField(
                   key: Key('lim:subj:$subject'),
@@ -598,7 +599,7 @@ class SettingsView extends StatelessWidget {
                     c.saveQuiet({'subject_limits': current});
                   },
                 ),
-              Text(Str.t('limit_subject_hint')),
+              Text(Strings.get('limit_subject_hint')),
             ],
           ),
         ),
@@ -619,18 +620,18 @@ class SettingsView extends StatelessWidget {
             children: [
               DropdownButtonFormField<String>(
                 decoration:
-                    InputDecoration(labelText: Str.t('cal_preset')),
+                    InputDecoration(labelText: Strings.get('cal_preset')),
                 initialValue: 'custom',
-                items: const [
+                items: [
                   DropdownMenuItem(
-                      value: 'custom', child: Text('Vlastní')),
+                      value: 'custom', child: Text(Strings.get('cal_custom_opt'))),
                 ],
                 onChanged: (v) =>
                     c.save({'school_preset_id': v ?? 'custom'}),
               ),
               AutosaveField(
                 controller: c,
-                label: Str.t('cal_sem1'),
+                label: Strings.get('cal_sem1'),
                 draftKey: 'cal:sem1',
                 configKey: 'sem1_close',
                 fallback: '${c.get('sem1_close', '')}',
@@ -645,7 +646,7 @@ class SettingsView extends StatelessWidget {
               ),
               AutosaveField(
                 controller: c,
-                label: Str.t('cal_sem2'),
+                label: Strings.get('cal_sem2'),
                 draftKey: 'cal:sem2',
                 configKey: 'sem2_close',
                 fallback: '${c.get('sem2_close', '')}',
@@ -668,47 +669,47 @@ class SettingsView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(Str.t('cal_free_days')),
+              Text(Strings.get('cal_free_days')),
               AutosaveField(
                   controller: c,
-                  label: Str.t('cal_date'),
+                  label: Strings.get('cal_date'),
                   draftKey: 'cal:add_date',
                   configKey: '',
                   draftOnly: true),
               AutosaveField(
                   controller: c,
-                  label: Str.t('cal_label'),
+                  label: Strings.get('cal_label'),
                   draftKey: 'cal:add_label',
                   configKey: '',
                   draftOnly: true),
               FilledButton(
                 key: const Key('cal:add_single'),
                 onPressed: () => c.addSingleDay(),
-                child: Text(Str.t('cal_add_single')),
+                child: Text(Strings.get('cal_add_single')),
               ),
               const Divider(),
               AutosaveField(
                   controller: c,
-                  label: Str.t('cal_from'),
+                  label: Strings.get('cal_from'),
                   draftKey: 'cal:from_',
                   configKey: '',
                   draftOnly: true),
               AutosaveField(
                   controller: c,
-                  label: Str.t('cal_to'),
+                  label: Strings.get('cal_to'),
                   draftKey: 'cal:to',
                   configKey: '',
                   draftOnly: true),
               AutosaveField(
                   controller: c,
-                  label: Str.t('cal_label'),
+                  label: Strings.get('cal_label'),
                   draftKey: 'cal:range_label',
                   configKey: '',
                   draftOnly: true),
               FilledButton(
                 key: const Key('cal:add_range'),
                 onPressed: () => c.addDayRange(),
-                child: Text(Str.t('cal_add_range')),
+                child: Text(Strings.get('cal_add_range')),
               ),
             ],
           ),
@@ -720,7 +721,7 @@ class SettingsView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (days.isEmpty) Text(Str.t('cal_no_days')),
+              if (days.isEmpty) Text(Strings.get('cal_no_days')),
               // Consecutive days with the same label form one grouped
               // row with one delete button (like the Python timeline).
               for (final group in _groupDays(days))
@@ -728,7 +729,7 @@ class SettingsView extends StatelessWidget {
                   title: Text(group.$1),
                   subtitle: group.$2.isEmpty ? null : Text(group.$2),
                   trailing: IconButton(
-                    tooltip: Str.t('delete'),
+                    tooltip: Strings.get('delete'),
                     icon: const Icon(Icons.delete_outline),
                     onPressed: () {
                       for (final d in group.$3) {
@@ -781,7 +782,7 @@ class SettingsView extends StatelessWidget {
       final title = current.length == 1
           ? current.first.$2
           : '${current.first.$2} – ${current.last.$2} · '
-              '${Str.t('cal_range_days', {'n': current.length})}';
+              '${Strings.format('cal_range_days', {'n': current.length})}';
       out[idx] = (title, label, keys);
     }
     return out;
@@ -797,8 +798,8 @@ class SettingsView extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             child: Column(
               children: [
-                Text(Str.t('wakeup_title')),
-                Text(Str.t('wakeup_unavailable')),
+                Text(Strings.get('wakeup_title')),
+                Text(Strings.get('wakeup_unavailable')),
               ],
             ),
           ),
@@ -811,16 +812,16 @@ class SettingsView extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Column(
             children: [
-              Text(Str.t('wakeup_title')),
+              Text(Strings.get('wakeup_title')),
               SwitchListTile(
-                title: Text(Str.t('wakeup_enable')),
+                title: Text(Strings.get('wakeup_enable')),
                 value: c.get('wakeup_enabled', false) == true,
                 onChanged: (v) =>
                     c.save({'wakeup_enabled': v}),
               ),
               AutosaveField(
                 controller: c,
-                label: Str.t('wakeup_minutes'),
+                label: Strings.get('wakeup_minutes'),
                 draftKey: 'rule:wakeup_min',
                 configKey: 'wakeup_minutes_before',
                 fallback: '${c.get('wakeup_minutes_before', 60)}',
@@ -865,7 +866,7 @@ class SettingsView extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: AutosaveField(
               controller: c,
-              label: Str.t('signature'),
+              label: Strings.get('signature'),
               draftKey: 'tpl:your_signature',
               configKey: 'your_signature',
               fallback: '${c.get('your_signature', '')}'),
@@ -878,29 +879,28 @@ class SettingsView extends StatelessWidget {
   List<Widget> _rules(BuildContext context) {
     final c = controller;
     const modes = ['auto', 'confirm', 'dry_run'];
-    String modeLabel(String m) => Str.t(
-        {'auto': 'mode_auto', 'confirm': 'mode_confirm', 'dry_run': 'mode_dry_run'}[m]!);
+    String modeLabel(String m) => Strings.get({'auto': 'mode_auto', 'confirm': 'mode_confirm', 'dry_run': 'mode_dry_run'}[m]!);
     return [
       Card(
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
             children: [
-              Text(Str.t('automation_disclaimer')),
+              Text(Strings.get('automation_disclaimer')),
               SwitchListTile(
                 key: const Key('rule:pause'),
-                title: Text(Str.t('automation_pause')),
+                title: Text(Strings.get('automation_pause')),
                 value: c.automationPaused(),
                 onChanged: (v) {
                   c.setAutomationPaused(v);
                   onChanged?.call();
                 },
               ),
-              Text(Str.t('automation_pause_hint')),
+              Text(Strings.get('automation_pause_hint')),
               DropdownButtonFormField<String>(
                 key: const Key('rule:excuse_mode'),
                 decoration: InputDecoration(
-                    labelText: Str.t('excuse_mode_label')),
+                    labelText: Strings.get('excuse_mode_label')),
                 initialValue: '${c.get('excuse_mode', 'confirm')}',
                 items: [
                   for (final m in modes)
@@ -910,7 +910,7 @@ class SettingsView extends StatelessWidget {
                   final r = c.commitMode(
                       'excuse_mode', v ?? 'confirm', 'confirm');
                   if (r == 'cancelled') {
-                    appSnack(context, Str.t('saved'));
+                    appSnack(context, Strings.get('saved'));
                   }
                   onChanged?.call();
                 },
@@ -918,7 +918,7 @@ class SettingsView extends StatelessWidget {
               DropdownButtonFormField<String>(
                 key: const Key('rule:order_mode'),
                 decoration: InputDecoration(
-                    labelText: Str.t('order_mode_label')),
+                    labelText: Strings.get('order_mode_label')),
                 initialValue: '${c.get('strava_order_mode', 'confirm')}',
                 items: [
                   for (final m in modes)
@@ -930,11 +930,11 @@ class SettingsView extends StatelessWidget {
                   onChanged?.call();
                 },
               ),
-              Text(Str.t('automation_modes_hint')),
+              Text(Strings.get('automation_modes_hint')),
               AutosaveField(
                 key: const Key('rule:interval'),
                 controller: c,
-                label: Str.t('check_interval'),
+                label: Strings.get('check_interval'),
                 draftKey: 'rule:interval',
                 configKey: 'check_interval_minutes',
                 fallback: '${c.get('check_interval_minutes', 60)}',
@@ -950,7 +950,7 @@ class SettingsView extends StatelessWidget {
               ),
               AutosaveField(
                 controller: c,
-                label: Str.t('excuse_delay'),
+                label: Strings.get('excuse_delay'),
                 draftKey: 'rule:delay',
                 configKey: 'excuse_delay_days',
                 fallback: '${c.get('excuse_delay_days', 2)}',
@@ -966,7 +966,7 @@ class SettingsView extends StatelessWidget {
               ),
               AutosaveField(
                 controller: c,
-                label: Str.t('go_back_weeks'),
+                label: Strings.get('go_back_weeks'),
                 draftKey: 'rule:goback',
                 configKey: 'go_back_weeks',
                 fallback: '${c.get('go_back_weeks', 4)}',
@@ -982,7 +982,7 @@ class SettingsView extends StatelessWidget {
               ),
               AutosaveField(
                 controller: c,
-                label: Str.t('go_forward_weeks'),
+                label: Strings.get('go_forward_weeks'),
                 draftKey: 'rule:goforward',
                 configKey: 'go_forward_weeks',
                 fallback: '${c.get('go_forward_weeks', 1)}',
@@ -999,18 +999,18 @@ class SettingsView extends StatelessWidget {
               AutosaveField(
                 key: const Key('rule:cutoff'),
                 controller: c,
-                label: Str.t('lunch_cutoff_label'),
+                label: Strings.get('lunch_cutoff_label'),
                 draftKey: 'rule:cutoff',
                 configKey: 'lunch_order_cutoff_time',
                 fallback:
                     '${c.get('lunch_order_cutoff_time', '')}',
-                hint: Str.t('lunch_cutoff_hint'),
+                hint: Strings.get('lunch_cutoff_hint'),
                 parse: (raw) {
                   final cleaned = raw.trim();
                   if (cleaned.isNotEmpty &&
                       !SettingsController.isValidCutoff(cleaned)) {
                     throw FormatException(
-                        Str.t('lunch_cutoff_invalid'));
+                        Strings.get('lunch_cutoff_invalid'));
                   }
                   return cleaned;
                 },
@@ -1033,12 +1033,12 @@ class SettingsView extends StatelessWidget {
             child: Column(
               children: [
                 SwitchListTile(
-                  title: Text(Str.t('run_in_background')),
+                  title: Text(Strings.get('run_in_background')),
                   value: c.get('run_in_background', true) == true,
                   onChanged: (v) =>
                       c.saveQuiet({'run_in_background': v}),
                 ),
-                Text(Str.t('run_in_background_hint')),
+                Text(Strings.get('run_in_background_hint')),
               ],
             ),
           ),
@@ -1052,11 +1052,11 @@ class SettingsView extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             child: Column(
               children: [
-                Text(Str.t('autostart_store_managed')),
+                Text(Strings.get('autostart_store_managed')),
                 OutlinedButton(
                     onPressed: () {},
                     child:
-                        Text(Str.t('autostart_open_settings'))),
+                        Text(Strings.get('autostart_open_settings'))),
               ],
             ),
           ),
@@ -1074,7 +1074,7 @@ class SettingsView extends StatelessWidget {
                 children: [
                   SwitchListTile(
                     key: const Key('browser:autostart'),
-                    title: Text(Str.t('autostart')),
+                    title: Text(Strings.get('autostart')),
                     value: on,
                     onChanged: (v) {
                       if (c.toggleAutostart(v)) {
@@ -1082,12 +1082,12 @@ class SettingsView extends StatelessWidget {
                       } else {
                         // Rejected: the switch keeps the old state.
                         setState(() {});
-                        appSnack(ctx, Str.t('autostart_failed'));
+                        appSnack(ctx, Strings.get('autostart_failed'));
                       }
                     },
                   ),
                   SwitchListTile(
-                    title: Text(Str.t('minimize_to_tray')),
+                    title: Text(Strings.get('minimize_to_tray')),
                     value: c.get('minimize_to_tray', true) == true,
                     onChanged: (v) =>
                         c.saveQuiet({'minimize_to_tray': v}),
@@ -1113,21 +1113,21 @@ class SettingsView extends StatelessWidget {
               DropdownButtonFormField<String>(
                 decoration: InputDecoration(
                     labelText:
-                        '${Str.t('theme_dark')} / ${Str.t('theme_light')}'),
+                        '${Strings.get('theme_dark')} / ${Strings.get('theme_light')}'),
                 initialValue: '${c.get('theme', 'dark')}',
-                items: const [
+                items: [
                   DropdownMenuItem(
-                      value: 'dark', child: Text('Tmavý')),
+                      value: 'dark', child: Text(Strings.get('theme_dark'))),
                   DropdownMenuItem(
-                      value: 'light', child: Text('Světlý')),
+                      value: 'light', child: Text(Strings.get('theme_light'))),
                 ],
                 onChanged: (v) => c.save({'theme': v ?? 'dark'}),
               ),
               DropdownButtonFormField<String>(
                 decoration:
-                    InputDecoration(labelText: Str.t('language')),
-                initialValue: Str.language,
-                items: const [
+                    InputDecoration(labelText: Strings.get('language')),
+                initialValue: Strings.lang,
+                items: [
                   DropdownMenuItem(
                       value: 'cs', child: Text('Čeština')),
                   DropdownMenuItem(
@@ -1135,7 +1135,7 @@ class SettingsView extends StatelessWidget {
                 ],
                 onChanged: (v) {
                   if (v != null) {
-                    Str.language = v;
+                    Strings.lang = v;
                     c.save({'language': v});
                   }
                   onChanged?.call();
@@ -1143,7 +1143,7 @@ class SettingsView extends StatelessWidget {
               ),
               SwitchListTile(
                 title: Text(
-                    "${Str.t('density')} (${Str.t('density_compact')})"),
+                    "${Strings.get('density')} (${Strings.get('density_compact')})"),
                 value: c.get('compact_density', false) == true,
                 onChanged: (v) =>
                     c.save({'compact_density': v}),
@@ -1158,10 +1158,10 @@ class SettingsView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(Str.t('tutorials')),
-              Text(Str.t('tutorials_hint')),
+              Text(Strings.get('tutorials')),
+              Text(Strings.get('tutorials_hint')),
               SwitchListTile(
-                title: Text(Str.t('tutorials_toggle')),
+                title: Text(Strings.get('tutorials_toggle')),
                 value: c.get('tutorials_enabled', true) == true,
                 onChanged: (v) =>
                     c.save({'tutorials_enabled': v}),
@@ -1170,12 +1170,12 @@ class SettingsView extends StatelessWidget {
                 onPressed: () {
                   if (c.save(
                       {'tutorials_done': [], 'tutorials_enabled': true})) {
-                    appSnack(context, Str.t('tutorials_replayed'));
+                    appSnack(context, Strings.get('tutorials_replayed'));
                   } else {
-                    appSnack(context, Str.t('save_failed'));
+                    appSnack(context, Strings.get('save_failed'));
                   }
                 },
-                child: Text(Str.t('tutorials_replay')),
+                child: Text(Strings.get('tutorials_replay')),
               ),
             ],
           ),
@@ -1197,22 +1197,22 @@ class SettingsView extends StatelessWidget {
             children: [
               AutosaveField(
                   controller: c,
-                  label: Str.t('gemini_key'),
+                  label: Strings.get('gemini_key'),
                   draftKey: 'ai:key',
                   configKey: 'gemini_api_key',
                   password: true,
                   hint: hasKey
-                      ? Str.t('key_saved_hint')
-                      : Str.t('secret_empty')),
-              Text(Str.t('ai_key_steps')),
+                      ? Strings.get('key_saved_hint')
+                      : Strings.get('secret_empty')),
+              Text(Strings.get('ai_key_steps')),
               AutosaveField(
                   controller: c,
-                  label: Str.t('gemini_model'),
+                  label: Strings.get('gemini_model'),
                   draftKey: 'ai:model',
                   configKey: 'gemini_model',
                   fallback:
                       '${c.get('gemini_model', 'gemini-3.8-flash')}'),
-              Text(Str.t('ai_model_hint')),
+              Text(Strings.get('ai_model_hint')),
             ],
           ),
         ),
@@ -1223,27 +1223,27 @@ class SettingsView extends StatelessWidget {
           child: Column(
             children: [
               SwitchListTile(
-                title: Text(Str.t('ai_auto_enable')),
+                title: Text(Strings.get('ai_auto_enable')),
                 value: c.get('gemini_auto_enabled', false) == true,
                 onChanged: (v) =>
                     c.saveQuiet({'gemini_auto_enabled': v}),
               ),
-              Text(Str.t('ai_auto_hint')),
+              Text(Strings.get('ai_auto_hint')),
               AutosaveField(
                   controller: c,
-                  label: Str.t('ai_prompt'),
+                  label: Strings.get('ai_prompt'),
                   draftKey: 'ai:prompt',
                   configKey: 'gemini_prompt',
                   fallback: '${c.get('gemini_prompt', '')}',
                   multiline: true,
-                  hint: Str.t('ai_prompt_hint')),
+                  hint: Strings.get('ai_prompt_hint')),
               AutosaveField(
                 controller: c,
-                label: Str.t('ai_interval'),
+                label: Strings.get('ai_interval'),
                 draftKey: 'ai:interval',
                 configKey: 'gemini_interval_days',
                 fallback: '${c.get('gemini_interval_days', 2)}',
-                hint: Str.t('ai_interval_hint'),
+                hint: Strings.get('ai_interval_hint'),
                 parse: (raw) {
                   final v =
                       int.tryParse(raw.replaceAll(',', '.'));
@@ -1272,10 +1272,10 @@ class SettingsView extends StatelessWidget {
                     .trim();
                 if (model.isNotEmpty) ov['gemini_model'] = model;
                 final ok = c.testConnection('ai', ov);
-                appSnack(context, Str.t(ok ? 'testing' : 'already_running'));
+                appSnack(context, Strings.get(ok ? 'testing' : 'already_running'));
                 onChanged?.call();
               },
-              child: Text(Str.t('wiz_test_key'))),
+              child: Text(Strings.get('wiz_test_key'))),
           if (hasKey)
             OutlinedButton(
               onPressed: () {
@@ -1286,7 +1286,7 @@ class SettingsView extends StatelessWidget {
                 c.clearDrafts('ai:');
                 onChanged?.call();
               },
-              child: Text(Str.t('delete')),
+              child: Text(Strings.get('delete')),
             ),
         ],
       ),
@@ -1313,14 +1313,14 @@ class SettingsView extends StatelessWidget {
             children: [
               AutosaveField(
                   controller: c,
-                  label: Str.t('cache_ttl'),
+                  label: Strings.get('cache_ttl'),
                   draftKey: 'adv:ttl',
                   configKey: 'cache_ttl_hours',
                   fallback: '${c.get('cache_ttl_hours', 24)}',
                   parse: (raw) => fnum(raw) ?? 24.0),
               AutosaveField(
                   controller: c,
-                  label: Str.t('timeout_page'),
+                  label: Strings.get('timeout_page'),
                   draftKey: 'adv:page_to',
                   configKey: 'page_load_timeout_s',
                   fallback:
@@ -1329,13 +1329,13 @@ class SettingsView extends StatelessWidget {
               const Divider(),
               AutosaveField(
                   controller: c,
-                  label: Str.t('log_file'),
+                  label: Strings.get('log_file'),
                   draftKey: 'adv:log_file',
                   configKey: 'log_file',
                   fallback: '${c.get('log_file', './log.txt')}'),
               AutosaveField(
                   controller: c,
-                  label: Str.t('blacklist_file'),
+                  label: Strings.get('blacklist_file'),
                   draftKey: 'adv:blacklist',
                   configKey: 'strava_blacklist',
                   fallback:
@@ -1385,7 +1385,7 @@ class SettingsView extends StatelessWidget {
       try {
         problems.addAll(c.validateConfig!());
       } catch (exc) {
-        problems.add('${Str.t('config_problems')}: $exc'.split('\n').first);
+        problems.add('${Strings.get('config_problems')}: $exc'.split('\n').first);
       }
     } else {
       // Minimal validation: empty keys / bad reserve type surface here.
@@ -1411,51 +1411,51 @@ class SettingsView extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (problems.isNotEmpty) ...[
-                Text(Str.t('config_problems')),
+                Text(Strings.get('config_problems')),
                 for (final p in problems)
                   Text('• $p',
                       style: const TextStyle(color: Colors.red)),
               ] else
-                Text(Str.t('config_ok'),
+                Text(Strings.get('config_ok'),
                     style: const TextStyle(color: Colors.green)),
               const Divider(),
               Text(
-                  '${Str.t('app_version')} ${c.get('app_version', '')}'),
+                  '${Strings.get('app_version')} ${c.get('app_version', '')}'),
               DropdownButtonFormField<String>(
                 decoration: InputDecoration(
-                    labelText: Str.t('update_channel')),
+                    labelText: Strings.get('update_channel')),
                 initialValue: c.updateChannel,
                 items: [
                   DropdownMenuItem(
                       value: 'stable',
                       child:
-                          Text(Str.t('update_channel_stable'))),
+                          Text(Strings.get('update_channel_stable'))),
                   DropdownMenuItem(
                       value: 'beta',
-                      child: Text(Str.t('update_channel_beta'))),
+                      child: Text(Strings.get('update_channel_beta'))),
                 ],
                 onChanged: (v) {
                   if (v != null) {
                     if (!c.changeUpdateChannel(v)) {
-                      appSnack(context, Str.t('save_failed'));
+                      appSnack(context, Strings.get('save_failed'));
                     }
                   }
                   onChanged?.call();
                 },
               ),
-              Text(Str.t('update_channel_hint')),
+              Text(Strings.get('update_channel_hint')),
               Text(
-                  '${Str.t('cache_info')} ${c.get('cache_info', '')}'),
+                  '${Strings.get('cache_info')} ${c.get('cache_info', '')}'),
               OutlinedButton(
                   onPressed: () {
                     if (c.clearCache()) {
-                      appSnack(context, Str.t('cache_cleared'));
+                      appSnack(context, Strings.get('cache_cleared'));
                     } else {
-                      appSnack(context, Str.t('save_failed'));
+                      appSnack(context, Strings.get('save_failed'));
                     }
                     onChanged?.call();
                   },
-                  child: Text(Str.t('clear_cache'))),
+                  child: Text(Strings.get('clear_cache'))),
             ],
           ),
         ),

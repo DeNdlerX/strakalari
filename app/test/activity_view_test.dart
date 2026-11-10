@@ -1,3 +1,4 @@
+import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -59,10 +60,10 @@ void main() {
       final groups = groupAudit(items);
       expect(groups.map((g) => g.length).toList(), [2, 1, 1]);
       expect(auditRowTitle(groups[0]),
-          "${Str.t('audit_kind_lunch')} · ${Str.t('audit_lunch_order')} ×2");
+          "${Strings.get('audit_kind_lunch')} · ${Strings.get('audit_lunch_order')} ×2");
       final subs = auditRowSubs(groups[0], {});
       expect(subs.join(' '), contains('5. 10., 6. 10.'));
-      expect(subs.join(' '), contains(Str.t('audit_reason_low_balance')));
+      expect(subs.join(' '), contains(Strings.get('audit_reason_low_balance')));
       expect(
           subs.any((t) => t == 'order' || t.endsWith(': order')), isFalse);
       expect(auditRowSubs(groups[2], {}).join(' '),
@@ -72,11 +73,11 @@ void main() {
     test('time helpers', () {
       final now = DateTime(2026, 9, 26, 12, 0);
       expect(agoText(now.subtract(const Duration(seconds: 20)), now),
-          Str.t('ago_now'));
+          Strings.get('ago_now'));
       expect(agoText(now.subtract(const Duration(minutes: 12)), now),
-          Str.t('ago_min', {'n': 12}));
+          Strings.format('ago_min', {'n': 12}));
       expect(agoText(now.subtract(const Duration(hours: 2)), now),
-          Str.t('ago_hours', {'n': 2}));
+          Strings.format('ago_hours', {'n': 2}));
       expect(
           agoText(DateTime(2026, 9, 25, 7, 5), now), '25. 9. 07:05');
       expect(agoText(null, now), '—');
@@ -105,17 +106,17 @@ void main() {
     testWidgets('hero shows working then error states', (t) async {
       final c = _controller();
       await t.pumpWidget(_app(ActivityView(controller: c)));
-      expect(find.text(Str.t('status_idle')), findsOneWidget);
+      expect(find.text(Strings.get('status_idle')), findsOneWidget);
       c.refreshRunning = true;
       c.currentStep = 'fetching…';
       await t.pumpWidget(_app(ActivityView(controller: c)));
-      expect(find.text(Str.t('refreshing')), findsOneWidget);
+      expect(find.text(Strings.get('refreshing')), findsOneWidget);
       c.refreshRunning = false;
       c.status = 'error';
       c.runs.add(
           {'ok': false, 'finished': 'x', 'started': 'x', 'detail': 'boom'});
       await t.pumpWidget(_app(ActivityView(controller: c)));
-      expect(find.text(Str.t('status_error')), findsOneWidget);
+      expect(find.text(Strings.get('status_error')), findsOneWidget);
       expect(find.text('boom'), findsOneWidget);
     });
 
@@ -126,8 +127,8 @@ void main() {
         ];
       await t.pumpWidget(_app(ActivityView(controller: c)));
       expect(
-          find.text(Str.t('log_errors', {'n': 1})), findsOneWidget);
-      await t.tap(find.byTooltip(Str.t('clear_log')));
+          find.text(Strings.format('log_errors', {'n': 1})), findsOneWidget);
+      await t.tap(find.byTooltip(Strings.get('clear_log')));
       await t.pump();
       expect(c.logLines, isEmpty);
     });
@@ -139,7 +140,7 @@ void main() {
           {'ok': false, 'scope': 'strava', 'detail': 'boom'},
         ];
       await t.pumpWidget(_app(ActivityView(controller: c)));
-      expect(find.text(Str.t('run_history')), findsOneWidget);
+      expect(find.text(Strings.get('run_history')), findsOneWidget);
       expect(find.textContaining('boom'), findsOneWidget);
     });
   });

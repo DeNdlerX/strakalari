@@ -1,4 +1,4 @@
-import 'app_strings.dart';
+import '../../l10n/strings.dart';
 
 /// Pure formatting/parsing helpers ported from
 /// `strakalari/flet_ui/components.py` (day names, Czech dates, plural
@@ -52,10 +52,15 @@ String dayName(Object? value, String language, {bool short = false}) {
 }
 
 /// `'1 hodina' / '3 hodiny' / '5 hodin'` (Czech plurals; English 1/other).
-String lessonsText(int n, AppStrings s) {
-  if (n == 1) return s.tr('lessons_one', {'n': n});
-  if (n >= 2 && n <= 4) return s.tr('lessons_few', {'n': n});
-  return s.tr('lessons_many', {'n': n});
+String lessonsText(int n, [Object? _]) {
+  if (Strings.lang == 'en') {
+    return n == 1
+        ? Strings.format('lessons_one', {'n': n})
+        : Strings.format('lessons_many', {'n': n});
+  }
+  if (n == 1) return Strings.format('lessons_one', {'n': n});
+  if (n >= 2 && n <= 4) return Strings.format('lessons_few', {'n': n});
+  return Strings.format('lessons_many', {'n': n});
 }
 
 /// Czech short date: `7. 9.` — accepts a [DateTime] or `DD.MM.YYYY`.

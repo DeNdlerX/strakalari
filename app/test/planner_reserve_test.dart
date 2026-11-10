@@ -1,7 +1,7 @@
+import 'package:app/l10n/strings.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:app/features/planner/plan_reserve.dart';
-import 'package:app/widgets/overlays.dart';
 
 void main() {
   group('planner_reserve', () {
@@ -121,11 +121,11 @@ void main() {
     });
 
     test('days text plurals', () {
-      Str.language = 'cs';
+      Strings.lang = 'cs';
       expect(daysText(1), contains('1'));
       expect(daysText(3), contains('3'));
       expect(daysText(5), contains('5'));
-      Str.language = 'en';
+      Strings.lang = 'en';
       expect(daysText(1), contains('1'));
     });
 

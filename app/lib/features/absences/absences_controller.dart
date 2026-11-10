@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import '../common/app_strings.dart';
+import '../../l10n/strings.dart';
 import '../common/format.dart';
 
 /// One subject's absence state — the fields `views/absences.py` reads
@@ -45,9 +45,7 @@ class SubjectBudget {
 /// the planner domain and arrives via [subjects]; this file ports the
 /// view-side aggregation and detail lines exactly).
 class AbsencesController extends ChangeNotifier {
-  final AppStrings s;
-
-  AbsencesController({this.s = const AppStrings()});
+AbsencesController();
 
   /// Per-subject absence states (planner domain input).
   List<SubjectAbsence> subjects = [];
@@ -79,19 +77,19 @@ class AbsencesController extends ChangeNotifier {
   String detail(SubjectAbsence subject) {
     final budget = budgets?[canonSubject(subject.name)];
     if (budget == null) {
-      return '${s.get('col_limit')}: ${gFormat(subject.limitPct)} % · '
-          '${s.get('safe_to')}: ${gFormat(subject.effectivePlanLimit)} % · '
-          '${s.get('col_safe')}: ${subject.effectivePlanSafe}';
+      return '${Strings.get('col_limit')}: ${gFormat(subject.limitPct)} % · '
+          '${Strings.get('safe_to')}: ${gFormat(subject.effectivePlanLimit)} % · '
+          '${Strings.get('col_safe')}: ${subject.effectivePlanSafe}';
     }
     final parts = <String>[
-      '${s.get('col_limit')}: ${gFormat(subject.limitPct)} %',
-      s.tr('hours_free', {'n': budget.freeHours}),
+      '${Strings.get('col_limit')}: ${gFormat(subject.limitPct)} %',
+      Strings.format('hours_free', {'n': budget.freeHours}),
     ];
     if (budget.planned != 0) {
       parts.add(
-          '${s.get('legend_planned')}: ${budget.planned.toInt()} h');
+          '${Strings.get('legend_planned')}: ${budget.planned.toInt()} h');
     }
-    parts.add(s.tr('budget_end', {
+    parts.add(Strings.format('budget_end', {
       'p': budget.projectedPct.toStringAsFixed(1),
     }));
     return parts.join(' · ');

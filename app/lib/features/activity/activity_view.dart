@@ -1,3 +1,4 @@
+import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
 
 import 'package:app/features/activity/activity_controller.dart';
@@ -7,9 +8,9 @@ import 'package:app/widgets/overlays.dart';
 String agoText(DateTime? when, DateTime now) {
   if (when == null) return '—';
   final secs = now.difference(when).inSeconds;
-  if (secs < 60) return Str.t('ago_now');
-  if (secs < 3600) return Str.t('ago_min', {'n': secs ~/ 60});
-  if (secs < 6 * 3600) return Str.t('ago_hours', {'n': secs ~/ 3600});
+  if (secs < 60) return Strings.get('ago_now');
+  if (secs < 3600) return Strings.format('ago_min', {'n': secs ~/ 60});
+  if (secs < 6 * 3600) return Strings.format('ago_hours', {'n': secs ~/ 3600});
   final hm =
       '${when.hour.toString().padLeft(2, '0')}:${when.minute.toString().padLeft(2, '0')}';
   if (when.year == now.year &&
@@ -125,11 +126,11 @@ String auditRowTitle(List<Map<String, dynamic>> group) {
   final kind = '${first['kind'] ?? 'excuse'}';
   final detail =
       first['detail'] is Map ? first['detail'] as Map : const {};
-  var title = Str.t('audit_kind_$kind');
+  var title = Strings.get('audit_kind_$kind');
   if (kind == 'lunch') {
     final action = '${detail['meal'] ?? ''}'.contains('&-1&')
-        ? Str.t('audit_lunch_cancel')
-        : Str.t('audit_lunch_order');
+        ? Strings.get('audit_lunch_cancel')
+        : Strings.get('audit_lunch_order');
     title = '$title · $action';
   }
   if (group.length > 1) title = '$title ×${group.length}';
@@ -157,7 +158,7 @@ List<String> auditRowSubs(
       subs.add(_daysLabel(days));
     }
     if (detail['reason'] == 'low_balance') {
-      subs.add(Str.t('audit_reason_low_balance'));
+      subs.add(Strings.get('audit_reason_low_balance'));
     }
   } else {
     final summaries = [
@@ -236,7 +237,7 @@ class ActivityView extends StatelessWidget {
     return ListView(
       children: [
         ListTile(
-          title: Text(Str.t('activity_title')),
+          title: Text(Strings.get('activity_title')),
           subtitle: Text(updatedLabel),
         ),
         ...blocks,
@@ -250,13 +251,13 @@ class ActivityView extends StatelessWidget {
     final sending = c.sendingLabel;
     String headline;
     if (kind == 'working') {
-      headline = c.refreshRunning ? Str.t('refreshing') : sending;
+      headline = c.refreshRunning ? Strings.get('refreshing') : sending;
     } else if (kind == 'error') {
-      headline = Str.t('status_error');
+      headline = Strings.get('status_error');
     } else if (kind == 'ok') {
-      headline = Str.t('status_ok');
+      headline = Strings.get('status_ok');
     } else {
-      headline = Str.t('status_idle');
+      headline = Strings.get('status_idle');
     }
     return Card(
       child: Padding(
@@ -275,13 +276,13 @@ class ActivityView extends StatelessWidget {
                 if (c.refreshRunning)
                   TextButton(
                       onPressed: c.cancelRefresh,
-                      child: Text(Str.t('cancel_refresh')))
+                      child: Text(Strings.get('cancel_refresh')))
                 else
                   FilledButton(
                     onPressed: sending.isNotEmpty
                         ? null
                         : () => c.startRefresh(),
-                    child: Text(Str.t('refresh_data')),
+                    child: Text(Strings.get('refresh_data')),
                   ),
               ],
             ),
@@ -308,12 +309,12 @@ class ActivityView extends StatelessWidget {
     return Wrap(
       spacing: 8,
       children: [
-        _tile(Str.t('last_run'),
+        _tile(Strings.get('last_run'),
             last == null ? '—' : runWhen(last, now)),
-        _tile(Str.t('next_run'), c.nextRunLabel(now: now)),
-        _tile(Str.t('stat_success'),
+        _tile(Strings.get('next_run'), c.nextRunLabel(now: now)),
+        _tile(Strings.get('stat_success'),
             total == 0 ? '—' : '$good/$total'),
-        _tile(Str.t('stat_sent_week'), '$sent'),
+        _tile(Strings.get('stat_sent_week'), '$sent'),
       ],
     );
   }
@@ -335,8 +336,8 @@ class ActivityView extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(Str.t('run_history')),
-            if (c.runs.isEmpty) Text(Str.t('no_runs_yet')),
+            Text(Strings.get('run_history')),
+            if (c.runs.isEmpty) Text(Strings.get('no_runs_yet')),
             for (final run in c.runs.reversed.take(10))
               ListTile(
                 title: Text(
@@ -365,15 +366,15 @@ class ActivityView extends StatelessWidget {
           children: [
             Row(
               children: [
-                Expanded(child: Text(Str.t('live_log'))),
+                Expanded(child: Text(Strings.get('live_log'))),
                 if (errors > 0)
-                  Chip(label: Text(Str.t('log_errors', {'n': errors}))),
+                  Chip(label: Text(Strings.format('log_errors', {'n': errors}))),
                 IconButton(
-                  tooltip: Str.t('log_copy_tooltip'),
+                  tooltip: Strings.get('log_copy_tooltip'),
                   icon: const Icon(Icons.content_copy_outlined),
                   onPressed: () async {
                     if (c.logLines.isEmpty) {
-                      appSnack(context, Str.t('no_log_yet'));
+                      appSnack(context, Strings.get('no_log_yet'));
                       return;
                     }
                     final ok = await copyAppText(c.logLines.join('\n'));
@@ -381,20 +382,20 @@ class ActivityView extends StatelessWidget {
                       appSnack(
                           context,
                           ok
-                              ? Str.t('error_copied')
-                              : Str.t('error_copy_failed'));
+                              ? Strings.get('error_copied')
+                              : Strings.get('error_copy_failed'));
                     }
                   },
                 ),
                 IconButton(
-                  tooltip: Str.t('clear_log'),
+                  tooltip: Strings.get('clear_log'),
                   icon: const Icon(Icons.delete_sweep_outlined),
                   onPressed: c.clearLog,
                 ),
               ],
             ),
             if (lines.isEmpty)
-              Text(Str.t('no_log_yet'))
+              Text(Strings.get('no_log_yet'))
             else
               Container(
                 height: (64 + 19 * lines.length).clamp(64, 320).toDouble(),
@@ -451,16 +452,15 @@ class ActivityView extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(Str.t('automation_history')),
+            Text(Strings.get('automation_history')),
             if (auditError.isNotEmpty) Text(auditError),
             if (groups.isEmpty && auditError.isEmpty)
-              Text(Str.t('automation_history_empty')),
+              Text(Strings.get('automation_history_empty')),
             for (final g in groups.take(12))
               ListTile(
                 title: Text(auditRowTitle(g)),
                 subtitle: Text(auditRowSubs(g, foodNames).join(' · ')),
-                trailing: Text(Str.t(
-                    'audit_${g.first['outcome'] ?? 'failed'}')),
+                trailing: Text(Strings.get('audit_${g.first['outcome'] ?? 'failed'}')),
               ),
           ],
         ),

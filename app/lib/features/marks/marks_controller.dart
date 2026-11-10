@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import '../common/app_strings.dart';
+import '../../l10n/strings.dart';
 import '../common/format.dart';
 import 'grades_logic.dart';
 
@@ -11,9 +11,7 @@ import 'grades_logic.dart';
 /// session, never written to disk, so a hypothetical mark can not
 /// linger next to the real one once the teacher enters it.
 class MarksController extends ChangeNotifier {
-  final AppStrings s;
-
-  /// Reads config values (same keys as Python: `marks_scale`,
+/// Reads config values (same keys as Python: `marks_scale`,
   /// `marks_subject_scales`, `marks_sort`, `marks_percent_bands`).
   final Map<String, Object?> config;
 
@@ -21,7 +19,6 @@ class MarksController extends ChangeNotifier {
   final bool Function(Map<String, Object?> updates) onSave;
 
   MarksController({
-    this.s = const AppStrings(),
     Map<String, Object?>? config,
     bool Function(Map<String, Object?> updates)? onSave,
   })  : config = config ?? {},
@@ -455,11 +452,11 @@ class MarksController extends ChangeNotifier {
 
   /// Bands source line — like `marks._bands_source_text`.
   String bandsSourceText(String source) {
-    if (source == 'user') return s.get('marks_bands_src_user');
+    if (source == 'user') return Strings.get('marks_bands_src_user');
     if (source == 'preset') {
-      return s.tr('marks_bands_src_preset', {'school': presetTitle});
+      return Strings.format('marks_bands_src_preset', {'school': presetTitle});
     }
-    return s.get('marks_bands_src_default');
+    return Strings.get('marks_bands_src_default');
   }
 
   /// `1: 100–87 · 2: 87–72 · … · 5: 40–0` (the Bakaláři table layout).

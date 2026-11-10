@@ -1681,4 +1681,19 @@ class Strings {
     });
     return text;
   }
+
+  /// Whether [key] exists in the string tables.
+  static bool hasKey(String key) =>
+      _cs.containsKey(key) ||
+      _en.containsKey(key) ||
+      _mobileCs.containsKey(key) ||
+      _mobileEn.containsKey(key);
+
+  /// All known string keys.
+  static Set<String> get allKeys => {
+        ..._cs.keys,
+        ..._en.keys,
+        ..._mobileCs.keys,
+        ..._mobileEn.keys,
+      };
 }

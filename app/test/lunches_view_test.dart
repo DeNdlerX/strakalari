@@ -1,3 +1,4 @@
+import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -32,8 +33,8 @@ void main() {
         controller: c,
         onOpenSettings: () => opened = true,
       )));
-      expect(find.text(Str.t('strava_disabled_title')), findsOneWidget);
-      await t.tap(find.text(Str.t('go_to_settings')));
+      expect(find.text(Strings.get('strava_disabled_title')), findsOneWidget);
+      await t.tap(find.text(Strings.get('go_to_settings')));
       expect(opened, isTrue);
     });
 
@@ -49,8 +50,8 @@ void main() {
       expect(find.textContaining('Nové jídlo'), findsOneWidget);
       expect(find.textContaining('Staré jídlo'), findsNothing);
       expect(
-          find.text(Str.t('lunch_show_past', {'n': 1})), findsOneWidget);
-      await t.tap(find.text(Str.t('lunch_show_past', {'n': 1})));
+          find.text(Strings.format('lunch_show_past', {'n': 1})), findsOneWidget);
+      await t.tap(find.text(Strings.format('lunch_show_past', {'n': 1})));
       await t.pump();
       expect(c.showPastLunches, isTrue);
     });
@@ -66,8 +67,8 @@ void main() {
           ..food = {}
           ..config['strava_status'] = status;
         await t.pumpWidget(_app(LunchesView(controller: c)));
-        expect(find.text(Str.t('no_data')), findsOneWidget);
-        expect(find.text(Str.t(key)), findsOneWidget);
+        expect(find.text(Strings.get('no_data')), findsOneWidget);
+        expect(find.text(Strings.get(key)), findsOneWidget);
       }
     });
 
@@ -88,9 +89,9 @@ void main() {
       expect(c.pendingLunchCount, 1);
       // Shell rebuilds on notify; tests re-pump explicitly.
       await t.pumpWidget(_app(LunchesView(controller: c)));
-      expect(find.text('${Str.t('send_orders')} (1)'), findsOneWidget);
+      expect(find.text('${Strings.get('send_orders')} (1)'), findsOneWidget);
       // Day badge says "to send".
-      expect(find.text(Str.t('to_send')), findsWidgets);
+      expect(find.text(Strings.get('to_send')), findsWidgets);
     });
 
     testWidgets('closed day is read-only', (t) async {
@@ -101,7 +102,7 @@ void main() {
       };
       await t.pumpWidget(_app(LunchesView(controller: c)));
       expect(
-          find.text(Str.t('lunch_closed_badge')), findsWidgets);
+          find.text(Strings.get('lunch_closed_badge')), findsWidgets);
       // Disabled rows are not clickable (like the Flet view): the
       // closed note above them explains why.
       await t.tap(find.textContaining('Vepřové').first,
@@ -118,7 +119,7 @@ void main() {
       };
       c.webOrders = {future: 'jidlo&1&x'};
       await t.pumpWidget(_app(LunchesView(controller: c)));
-      expect(find.text(Str.t('web_ordered')), findsOneWidget);
+      expect(find.text(Strings.get('web_ordered')), findsOneWidget);
     });
 
     testWidgets('no-lunch option clears the pick', (t) async {
@@ -130,7 +131,7 @@ void main() {
       c.orders = {future: 'jidlo&1&x'};
       c.pendingOrders = {future};
       await t.pumpWidget(_app(LunchesView(controller: c)));
-      await t.tap(find.text(Str.t('no_order_option')));
+      await t.tap(find.text(Strings.get('no_order_option')));
       await t.pump();
       expect(c.orders.containsKey(future), isFalse);
     });
@@ -142,12 +143,12 @@ void main() {
       expect(view.dayStatus(day), isNull);
       c.webOrders = {day: 'm1'};
       c.orders = {day: 'm1'};
-      expect(view.dayStatus(day), Str.t('web_ordered'));
+      expect(view.dayStatus(day), Strings.get('web_ordered'));
       c.orders = {day: 'm2'};
       c.pendingOrders = {day};
-      expect(view.dayStatus(day), Str.t('to_send'));
+      expect(view.dayStatus(day), Strings.get('to_send'));
       c.cancelledLunches.add(day);
-      expect(view.dayStatus(day), Str.t('no_lunch'));
+      expect(view.dayStatus(day), Strings.get('no_lunch'));
     });
 
     test('order past cutoff stages nothing', () {

@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import '../common/app_strings.dart';
+import '../../l10n/strings.dart';
 import '../common/format.dart';
 
 /// First-run setup wizard — a `ChangeNotifier` port of
@@ -15,9 +15,7 @@ import '../common/format.dart';
 /// persistence ([onSave]), live tests ([onTestRequest]) and side
 /// effects ([onFinishRefresh], [onOpenUrl], [onAlarmPermission]).
 class WizardController extends ChangeNotifier {
-  final AppStrings s;
-
-  /// Reads config values.
+/// Reads config values.
   final Map<String, Object?> config;
 
   /// Persists config updates. False when the write failed.
@@ -53,7 +51,6 @@ class WizardController extends ChangeNotifier {
   final void Function(String service, String fp)? onVerified;
 
   WizardController({
-    this.s = const AppStrings(),
     Map<String, Object?>? config,
     bool Function(Map<String, Object?> updates)? onSave,
     void Function(String service, Map<String, String> overrides)?
@@ -518,9 +515,9 @@ class WizardController extends ChangeNotifier {
   /// show (null = auto-advanced, no message).
   String? continueTestStep(
       String service, int atStep, bool readyOk, String needKey) {
-    if (!readyOk) return s.get(needKey);
+    if (!readyOk) return Strings.get(needKey);
     if (verified[service] == fingerprintFor(service)) {
-      if (!_saveFor(service)) return s.get('save_failed');
+      if (!_saveFor(service)) return Strings.get('save_failed');
       goTo(stepAfter(atStep));
       return null;
     }
@@ -558,7 +555,7 @@ class WizardController extends ChangeNotifier {
     notifyListeners();
     if (!ok || wasTesting != service) return null;
     final fp = fingerprintFor(service);
-    if (!_saveFor(service)) return s.get('save_failed');
+    if (!_saveFor(service)) return Strings.get('save_failed');
     verified[service] = fp;
     onVerified?.call(service, fp);
     // Auto-advance only when still on the same step with unchanged fields.
@@ -609,7 +606,7 @@ class WizardController extends ChangeNotifier {
           }
           return (
             advanced: false,
-            snack: s.get('save_failed'),
+            snack: Strings.get('save_failed'),
             finishedMessage: null
           );
         }
@@ -628,7 +625,7 @@ class WizardController extends ChangeNotifier {
           }
           return (
             advanced: false,
-            snack: s.get('save_failed'),
+            snack: Strings.get('save_failed'),
             finishedMessage: null
           );
         }
@@ -640,7 +637,7 @@ class WizardController extends ChangeNotifier {
         if (updates == null || !_save(updates)) {
           return (
             advanced: false,
-            snack: s.get(updates == null
+            snack: Strings.get(updates == null
                 ? 'wiz_limits_invalid'
                 : 'save_failed'),
             finishedMessage: null
@@ -651,7 +648,7 @@ class WizardController extends ChangeNotifier {
         if (!disclaimerOk) {
           return (
             advanced: false,
-            snack: s.get('wiz_disclaimer_need'),
+            snack: Strings.get('wiz_disclaimer_need'),
             finishedMessage: null
           );
         }
@@ -663,7 +660,7 @@ class WizardController extends ChangeNotifier {
         if (!saveCalendar()) {
           return (
             advanced: false,
-            snack: s.get(calPreset().isEmpty
+            snack: Strings.get(calPreset().isEmpty
                 ? 'wiz_cal_pick'
                 : 'save_failed'),
             finishedMessage: null
@@ -674,7 +671,7 @@ class WizardController extends ChangeNotifier {
         if (!saveAlarm()) {
           return (
             advanced: false,
-            snack: s.get(alarmMinutes() == null
+            snack: Strings.get(alarmMinutes() == null
                 ? 'wakeup_minutes_invalid'
                 : 'save_failed'),
             finishedMessage: null
@@ -685,7 +682,7 @@ class WizardController extends ChangeNotifier {
         if (!saveSignature()) {
           return (
             advanced: false,
-            snack: s.get(signature().isEmpty
+            snack: Strings.get(signature().isEmpty
                 ? 'wiz_need_signature'
                 : 'save_failed'),
             finishedMessage: null
@@ -702,7 +699,7 @@ class WizardController extends ChangeNotifier {
       return (
         advanced: true,
         snack: null,
-        finishedMessage: s.get(started
+        finishedMessage: Strings.get(started
             ? 'wiz_finishing_refresh'
             : 'already_running')
       );
@@ -726,9 +723,9 @@ class WizardController extends ChangeNotifier {
     };
     final service = tested[step];
     if (service != null && _testNeeded(service)) {
-      return s.get('wiz_test_continue');
+      return Strings.get('wiz_test_continue');
     }
-    return s.get('wiz_next');
+    return Strings.get('wiz_next');
   }
 
   /// Whether Skip is offered on this step (welcome has nothing to
