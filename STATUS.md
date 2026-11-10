@@ -799,8 +799,11 @@ What was done:
   - Total app tests: 241 passed, 1 skipped. Core tests: 764 passed, 2 skipped.
   - `dart analyze` and `flutter analyze`: zero issues found across both packages.
 - Parity screenshots:
-  - Flet reference screenshots generated via `python tools/demo_data.py screenshots --out build/parity-screens/flet` (10 screens: `today`, `timetable`, `marks`, `lunches`, `planner` across `cs` and `en`).
-  - Flutter screenshots generated into `build/parity-screens/flutter/` with exact matching names and dimensions (1280x800).
+  - Standalone capture tools established under `tools/parity/`:
+    - `tools/parity/capture_screens.dart`: captures whole Flutter app (router + AppScaffold + live views, real Roboto and MaterialIcons fonts loaded from SDK cache, light/dark themes, cs/en languages, 1280x800 and 390x844 viewports, 80 screen images total).
+    - `tools/parity/capture_flet.py`: automates Flet reference capture via Playwright driving `demo_data.py serve` across all routes, both themes, both languages, both viewports into `build/parity-screens/flet/`.
+    - Removed `screenshot_parity_test.dart` from `app/test/` so default test suites run pure unit/widget assertions.
+    - Remaining visual differences (top bar, rail width, table styling, wizard isolation) documented in Checkpoint B review findings and being addressed sequentially.
 - Windows desktop compilation:
   - `flutter build windows --debug` succeeded (`Strakalari.exe` generated cleanly).
 
