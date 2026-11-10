@@ -104,27 +104,29 @@ final step = c.step.clamp(0, WizardController.stepDone);
             const Divider(height: 24),
             ...content,
             const Divider(height: 24),
-            if (narrow)
-              Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.stretch,
-                children: [
-                  nav.last,
-                  if (nav.length > 1)
-                    Row(
-                      mainAxisAlignment:
-                          MainAxisAlignment.spaceBetween,
-                      children: [
-                        for (final w in nav
-                            .sublist(0, nav.length - 1)
-                            .where((w) => w is! Spacer))
-                          w,
-                      ],
-                    ),
-                ],
-              )
-            else
-              Row(children: nav),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                if (narrow || constraints.maxWidth < 620) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      nav.last,
+                      if (nav.length > 1)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            for (final w in nav
+                                .sublist(0, nav.length - 1)
+                                .where((w) => w is! Spacer))
+                              w,
+                          ],
+                        ),
+                    ],
+                  );
+                }
+                return Row(children: nav);
+              },
+            ),
           ],
         ),
       ),

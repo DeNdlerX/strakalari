@@ -7,6 +7,17 @@ import 'package:strakalari_core/strakalari_core.dart' as core;
 class LunchController {
   final Map<String, dynamic> config;
   final List<void Function()> _listeners = [];
+  final Map<String, bool> expandedDays = {};
+  void Function(String key, bool expanded)? setDayExpandedHook;
+
+  bool isDayExpanded(String key, {bool defaultValue = true}) =>
+      expandedDays[key] ?? defaultValue;
+
+  void setDayExpanded(String key, bool expanded) {
+    expandedDays[key] = expanded;
+    setDayExpandedHook?.call(key, expanded);
+    _emit();
+  }
 
   Map<String, Map<String, String>> food = {};
   Map<String, String> webOrders = {};

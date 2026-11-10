@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'package:app/features/lunches/lunches_format.dart';
 import 'package:app/features/lunches/lunches_controller.dart';
+import '../common/format.dart';
 import 'package:app/widgets/overlays.dart';
 
 /// Obědy: weekly menu with a radio picker + AI/blacklist side panel.
@@ -288,8 +289,16 @@ class LunchesView extends StatelessWidget {
     if (hidden > 0) {
       rows.add(Text(Strings.format('hidden_meals', {'n': hidden})));
     }
+    final parsed = parseCzDate(day);
+    final now = nowFor?.call() ?? DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final isPast = parsed != null && parsed.isBefore(today);
+    final expKey = 'lunch:$day';
+    final expanded = c.isDayExpanded(expKey, defaultValue: !isPast);
+
     return Card(
       child: ExpansionTile(
+        key: ValueKey('tile_$day'),
         title: Row(
           children: [
             Expanded(child: Text(day)),
@@ -297,7 +306,8 @@ class LunchesView extends StatelessWidget {
             if (!orderOpen) Chip(label: Text(Strings.get('lunch_closed_badge'))),
           ],
         ),
-        initiallyExpanded: true,
+        initiallyExpanded: expanded,
+        onExpansionChanged: (v) => c.setDayExpanded(expKey, v),
         children: [
           Padding(
             padding: const EdgeInsets.all(8),

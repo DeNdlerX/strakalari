@@ -9,6 +9,7 @@ import '../../controllers/app_state.dart';
 import '../../l10n/strings.dart';
 
 import '../common/app_tokens.dart';
+import '../common/open_url.dart';
 import 'wizard_controller.dart';
 import 'wizard_view.dart';
 
@@ -81,6 +82,7 @@ WizardController wizardControllerFor(AppState s) {
     onClearDrafts: (prefix) => s.clearDrafts(prefix),
     onStepChanged: (step) => s.wizardGoto(step, WizardController.stepDone),
     onFinished: () => s.wizardFinished(),
+    onOpenUrl: () => openUrl(aiStudioUrl),
     onVerified: (service, fp) {
       s.wizardVerified[service] = fp;
     },

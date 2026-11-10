@@ -69,7 +69,7 @@ extension MarksLogic on AppState {
     if (bands == null) return save({'marks_percent_bands': <double>[]});
     if (!bandsValid(bands)) return false;
     return save({
-      'marks_percent_bands': [for (final b in bands) (b as num).toDouble()],
+      'marks_percent_bands': normalizeBands(bands),
     });
   }
 

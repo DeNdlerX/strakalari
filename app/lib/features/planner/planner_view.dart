@@ -1,5 +1,6 @@
 import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
+import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import 'package:app/features/planner/plan_reserve.dart';
 import 'package:app/features/planner/planner_controller.dart';
@@ -756,15 +757,18 @@ class PlannerView extends StatelessWidget {
 }
 
 /// Single-day plan dialog: template picker + lunch toggle + impact preview.
+typedef _PlanDayDialog = PlanDayDialog;
+
 /// Port of planner._plan_dialog (Flet dialog cases).
-class _PlanDayDialog extends StatefulWidget {
+class PlanDayDialog extends StatefulWidget {
   final PlannerController controller;
   final DateTime day;
   final bool stravaOn;
   final bool Function(String dayLabel)? isLunchOpen;
   final List<ImpactTerm> Function(Map<String, dynamic> entry)? impactOf;
 
-  const _PlanDayDialog({
+  const PlanDayDialog({
+    super.key,
     required this.controller,
     required this.day,
     required this.stravaOn,
@@ -773,10 +777,10 @@ class _PlanDayDialog extends StatefulWidget {
   });
 
   @override
-  State<_PlanDayDialog> createState() => _PlanDayDialogState();
+  State<PlanDayDialog> createState() => _PlanDayDialogState();
 }
 
-class _PlanDayDialogState extends State<_PlanDayDialog> {
+class _PlanDayDialogState extends State<PlanDayDialog> {
   int picked = 0;
   bool cancelLunch = true;
 
@@ -972,33 +976,53 @@ class _PlanAllDialogState extends State<_PlanAllDialog> {
 }
 
 /// Custom days-off picker: month calendar + picked days' lessons.
+typedef _CustomPlanDialog = CustomPlanDialog;
+
 /// Port of planner._custom_plan_dialog (simplified but functional).
-class _CustomPlanDialog extends StatefulWidget {
+class CustomPlanDialog extends StatefulWidget {
   final PlannerController controller;
   final bool stravaOn;
   final List<PickerSlot> Function(DateTime day) lessonsFor;
   final Set<DateTime> freeDays;
   final List<ImpactTerm> Function(List<Map<String, dynamic>> entries)?
       impactOfEntries;
+  final DateTime? initialMonth;
+  final DateTime? preselect;
+  final DateTime? firstMonth;
+  final DateTime? lastMonth;
 
-  const _CustomPlanDialog({
+  const CustomPlanDialog({
+    super.key,
     required this.controller,
     required this.stravaOn,
     required this.lessonsFor,
     required this.freeDays,
     this.impactOfEntries,
+    this.initialMonth,
+    this.preselect,
+    this.firstMonth,
+    this.lastMonth,
   });
 
   @override
-  State<_CustomPlanDialog> createState() => _CustomPlanDialogState();
+  State<CustomPlanDialog> createState() => _CustomPlanDialogState();
 }
 
-class _CustomPlanDialogState extends State<_CustomPlanDialog> {
+class _CustomPlanDialogState extends State<CustomPlanDialog> {
   final Map<DateTime, Set<int>> picked = {};
-  DateTime month = DateTime.now();
+  late DateTime month;
   DateTime? openDay;
   int templateIdx = 0;
   bool cancelLunch = true;
+
+  @override
+  void initState() {
+    super.initState();
+    month = widget.initialMonth ?? DateTime.now();
+    if (widget.preselect != null) {
+      _tapDay(widget.preselect!);
+    }
+  }
 
   DateTime _norm(DateTime d) => DateTime(d.year, d.month, d.day);
 
@@ -1035,31 +1059,23 @@ class _CustomPlanDialogState extends State<_CustomPlanDialog> {
   }
 
   List<Map<String, dynamic>> _entries(String template) {
-    final out = <Map<String, dynamic>>[];
-    for (final day in picked.keys) {
-      final sel = picked[day] ?? {};
-      if (sel.isEmpty) continue;
-      final taught = [
-        for (final s in _slots(day))
-          if (s.taught && s.period != null) s.period!,
-      ];
-      // Fewest entries covering exactly the picked lessons: whole day
-      // when everything taught is picked, else one partial-day entry.
-      final whole = taught.isNotEmpty &&
-          sel.containsAll(taught) &&
-          taught.toSet().containsAll(sel);
-      out.add({
-        'start_date':
-            '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}',
-        'end_date':
-            '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}',
-        'start_period': whole ? null : sel.reduce((a, b) => a < b ? a : b),
-        'end_period': whole ? null : sel.reduce((a, b) => a > b ? a : b),
-        'template': template,
-        'cancel_lunch': cancelLunch,
-      });
-    }
-    return out;
+    final chosen = <DateTime, Set<int>>{
+      for (final e in picked.entries)
+        if (e.value.isNotEmpty) e.key: e.value,
+    };
+    final lessons = <DateTime, Set<int>>{
+      for (final day in chosen.keys)
+        day: {
+          for (final s in _slots(day))
+            if (s.taught && s.period != null) s.period!,
+        },
+    };
+    return core.entriesForSelection(
+      picked: chosen,
+      lessons: lessons,
+      template: template,
+      cancelLunch: cancelLunch,
+    ).map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
   @override
@@ -1140,20 +1156,30 @@ class _CustomPlanDialogState extends State<_CustomPlanDialog> {
   }
 
   Widget _calendarHeader() {
+    final fm = widget.firstMonth != null
+        ? DateTime(widget.firstMonth!.year, widget.firstMonth!.month, 1)
+        : null;
+    final lm = widget.lastMonth != null
+        ? DateTime(widget.lastMonth!.year, widget.lastMonth!.month, 1)
+        : null;
+    final canPrev = fm == null || month.isAfter(fm);
+    final canNext = lm == null || month.isBefore(lm);
     return Row(
       children: [
         IconButton(
           icon: const Icon(Icons.chevron_left),
           tooltip: Strings.get('pick_prev_month'),
-          onPressed: () =>
-              setState(() => month = monthAdd(month, -1)),
+          onPressed: canPrev
+              ? () => setState(() => month = monthAdd(month, -1))
+              : null,
         ),
         Expanded(child: Center(child: Text('${month.month}/${month.year}'))),
         IconButton(
           icon: const Icon(Icons.chevron_right),
           tooltip: Strings.get('pick_next_month'),
-          onPressed: () =>
-              setState(() => month = monthAdd(month, 1)),
+          onPressed: canNext
+              ? () => setState(() => month = monthAdd(month, 1))
+              : null,
         ),
       ],
     );
@@ -1193,6 +1219,7 @@ class _CustomPlanDialogState extends State<_CustomPlanDialog> {
     final part = sel.isNotEmpty && !full;
     final free = widget.freeDays.contains(day);
     return InkWell(
+      key: ValueKey('day_${day.year}_${day.month}_${day.day}'),
       onTap: (pickable.isEmpty || free) ? null : () => _tapDay(day),
       child: Container(
         height: 44,
@@ -1238,7 +1265,16 @@ class _CustomPlanDialogState extends State<_CustomPlanDialog> {
             trailing: Checkbox(
               value: _full(day),
               tristate: true,
-              onChanged: (_) => _tapDay(day),
+              onChanged: (_) {
+                setState(() {
+                  if (_full(day)) {
+                    picked[day] = <int>{};
+                  } else {
+                    picked[day] = _pickable(day);
+                  }
+                  openDay = day;
+                });
+              },
             ),
             onTap: () => setState(
                 () => openDay = isOpen ? null : day),

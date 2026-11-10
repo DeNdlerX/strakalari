@@ -1,7 +1,12 @@
 import 'dart:io';
 
 import 'package:app/controllers/app_state.dart';
+import 'package:app/features/common/app_tokens.dart';
+import 'package:app/features/today/today_live.dart';
+import 'package:app/features/today/today_view.dart';
+import 'package:app/l10n/strings.dart';
 import 'package:clock/clock.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:strakalari_core/strakalari_core.dart';
 
@@ -221,5 +226,57 @@ void main() {
     });
     expect(st.setExcuseDayPerLesson(false), isFalse);
     expect(st.excuseDayPerLesson(), isTrue);
+  });
+
+  testWidgets('dayCardSwitchSendsLessonsSeparately', (tester) async {
+    await inSept(() async {
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final st = dayState([_lesson(1, 'M'), _lesson(2, 'F')]);
+      st.config.data['your_signature'] = 'Jan Novák';
+
+      final c = todayControllerFor(st);
+      final calls = <(String, bool)>[];
+      c.onSend = (request) async {
+        calls.add((request.key.replaceFirst('day|', ''), request.perLesson));
+        return true;
+      };
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TodayView(
+              controller: c,
+              tokens: AppTokens.dark(),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(tester.widget<Switch>(find.byType(Switch)).value, isFalse);
+      expect(find.text(Strings.get('excuse_day')), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(ElevatedButton, Strings.get('excuse_day')));
+      await tester.pump();
+
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
+      final btnLabel = Strings.format('excuse_lessons', {'lessons': '2 hodiny'});
+      expect(find.text(btnLabel), findsOneWidget);
+      expect(find.textContaining('2 hodiny zvlášť'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(ElevatedButton, btnLabel));
+      await tester.pump();
+
+      expect(calls, [('2026-09-18', false), ('2026-09-18', true)]);
+    });
   });
 }

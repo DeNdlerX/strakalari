@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 6 · Next step: Fix finding B-M7 (port deferred Python UI tests into app/test) in `reviews/checkpoint-B.md`, then proceed through must-fix findings B-M8 to B-M14.
+Current phase: 6 · Next step: Fix finding B-M8 (AppState.save warning prints on invalid update / failed save / listener error) in `reviews/checkpoint-B.md`, then proceed through must-fix findings B-M9 to B-M14.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -745,6 +745,22 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
   - **B-M4** (`968a09a`): catch view rendering errors in `ViewErrorBoundary` wrapped around views in `AppScaffold`, report to `AppState.reportError` with route tag, render error card matching Python, and add `app/test/error_boundary_test.dart`.
   - **B-M5** (`019ec5f`): wire tutorial `begin(route)` in scaffold, floating bubble layer (`tutorialLayer`), 18 UI anchors across all views, delete duplicate tutorial controller in `overlays.dart`, and port deferred tutorial tests in `app/test/tutorial_test.dart` (28 tests).
   - **B-M6** (`faa1a77`): delete duplicated feature business logic in `app/lib/features/` (`common/schedule_logic.dart`, `common/lesson_model.dart`, `marks/grades_logic.dart`, `lunches/lunch_filter.dart`), re-point today, timetable, marks, and lunches controllers and views directly to `strakalari_core` and `AppState`, add `MarkRow.text` in `strakalari_core`, add `app/lib/features/lunches/lunches_format.dart` for Strava display parsing, remove obsolete `convertStableBaseline`, and update `lunches_filter_test.dart` to test canonical `core.prefsBanKeywords`, `core.isFoodBanned`, and `AppState.applyFoodFilter`.
+  - **B-M7**: port ~150 deferred UI test cases into `app/test/` across 13 suites (total 405 app tests passing green):
+    - `excuse_day_scope_test.dart`: `test_day_card_switch_sends_lessons_separately` (8/8)
+    - `early_leave_test.dart`: full port of `test_early_leave.py` (`TestSoonDetection`, `TestSoonStatus`, `TestSoonTemplates`) (13/13)
+    - `timetable_week_switch_test.dart`: full port of `test_timetable_week_switch.py` (3/3)
+    - `stable_change_signals_test.dart`: UI cases from `test_stable_change_signals.py` (3/3)
+    - `open_url_test.dart`: runtime cases for `openUrl` via `app/lib/features/common/open_url.dart` (3/3)
+    - `settings_refresh_interactive_test.dart`: full port of `test_settings_refresh_interactive.py` (4/4)
+    - `marks_view_test.dart`: full port of `test_marks_view.py` (15/15)
+    - `planner_dialog_test.dart`: full port of `test_planner_dialog.py` (6/6)
+    - `plan_picker_test.dart`: full port of `test_plan_picker.py` (12/12)
+    - `wakeup_ui_test.dart`: UI cases across `TestTimetableViews`, `TestCollapsibleDays`, `TestWakeupUI` (12/12)
+    - `mobile_narrow_shell_test.dart`: full port of `TestNarrowShell` from `test_mobile.py` (10/10)
+    - `ui_views_test.dart`: full port of remaining `test_ui_views.py` cases (19/19)
+    - `wizard_setup_full_test.dart`: full port of remaining `test_wizard_setup.py` cases (36/36)
+    - Fixed view and controller logic for parity: normalized marks bands in `MarksLogic.setMarksBands`, used canonical `core.entriesForSelection` in planner custom dialog, exposed `expandedDays` reactive state in `LunchesController`, added `PopScope` hierarchy in `Scaffold`, and made wizard nav buttons responsive via `LayoutBuilder`.
+    - Documented dropped Flet-specific framework tests: Flet container reuse (`test_scrollable_reuses_container_across_rebuilds`, `test_scrollable_row_and_type_mismatch`, `test_timetable_build_reuses_body_across_renders`), Flet RPC monkeypatching (`test_stale_method_reply_does_not_raise`), Flet scroll offset restoration (`test_restore_scroll_only_touches_scrollers_of_current_render`), and AST reflection tests (`test_open_url_ast_inspection`, `test_open_url_controls_are_safe`).
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 

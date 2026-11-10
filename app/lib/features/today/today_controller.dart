@@ -206,8 +206,8 @@ class TodayController extends ChangeNotifier {
   /// Template lists for the dropdowns
   /// (`late_income_excuses`, `left_soon_excuses`, `short_absence_excuses`,
   /// `long_absence_excuses`; plain strings or `{name, text}` maps).
-  List<Object?> Function(String configKey) templateSource =
-      (_) => const [];
+  late List<Object?> Function(String configKey) templateSource =
+      (key) => (config[key] as List?) ?? const [];
 
   // -- in-memory UI state (like AppState fields) ------------------------------
 

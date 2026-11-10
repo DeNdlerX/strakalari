@@ -47,6 +47,18 @@ ShellLayout layoutForSize(double width, double height) {
   return (width > height && height > 0) ? ShellLayout.side : ShellLayout.bar;
 }
 
+/// Where the phone's Back button leads: a More screen -> More,
+/// anything else -> Today; null on Today or while the wizard is shown
+/// (Back leaves the app). Port of `back_target()`.
+String? backTarget({
+  required String route,
+  required bool narrow,
+  required bool wizardShown,
+}) {
+  if (route == 'today' || wizardShown) return null;
+  return (moreRoutes.contains(route) && narrow) ? 'more' : 'today';
+}
+
 const Map<String, IconData> _railIcons = {
   'today': Icons.home_outlined,
   'timetable': Icons.calendar_month_outlined,
@@ -210,6 +222,28 @@ class AppScaffold extends ConsumerWidget {
       ],
     );
 
+    final target = backTarget(
+      route: route,
+      narrow: narrow,
+      wizardShown: appState.wizardShown,
+    );
+    final canPop = target == null && !(route == 'settings' && appState.settingsOpen);
+
+    Widget wrapPop(Widget scaffold) {
+      return PopScope(
+        canPop: canPop,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) return;
+          if (route == 'settings' && appState.settingsOpen) {
+            appState.closeSettingsSection();
+          } else if (target != null) {
+            context.go(routeLocation(target));
+          }
+        },
+        child: scaffold,
+      );
+    }
+
     switch (layout) {
       case ShellLayout.bar:
         final tabs = narrowTabs;
@@ -222,7 +256,7 @@ class AppScaffold extends ConsumerWidget {
             index = 0;
           }
         }
-        return Scaffold(
+        return wrapPop(Scaffold(
           body: SafeArea(
             bottom: false,
             child: right,
@@ -246,12 +280,12 @@ class AppScaffold extends ConsumerWidget {
                 ),
             ],
           ),
-        );
+        ));
       case ShellLayout.side:
         final tabs = narrowTabs;
         var sideIndex = tabs.indexOf(route);
         if (sideIndex < 0) sideIndex = tabs.indexOf('more');
-        return Scaffold(
+        return wrapPop(Scaffold(
           body: Row(
             children: [
               Container(
@@ -293,11 +327,11 @@ class AppScaffold extends ConsumerWidget {
               ),
             ],
           ),
-        );
+        ));
       case ShellLayout.wide:
         var railIndex = shellRoutes.indexOf(route);
         if (railIndex < 0) railIndex = 0;
-        return Scaffold(
+        return wrapPop(Scaffold(
           body: Row(
             children: [
               NavigationRail(
@@ -320,7 +354,7 @@ class AppScaffold extends ConsumerWidget {
               Expanded(child: right),
             ],
           ),
-        );
+        ));
     }
   }
 

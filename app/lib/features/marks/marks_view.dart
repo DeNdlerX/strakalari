@@ -497,6 +497,7 @@ final selected = c.selectedSubject == summary.name;
     }
 
     return Card(
+      key: ValueKey('marks:subject:${summary.name}'),
       color:
           selected ? tintColor(t.accent, 0.08) : t.card,
       shape: RoundedRectangleBorder(
@@ -902,10 +903,10 @@ final (bands, source) = c.marksBandsSource();
                     size: 16, color: t.faint),
               ),
             Expanded(
-              child: Text(title,
+              child: Text(title.toUpperCase(),
                   style: TextStyle(
                       color: t.text,
-                      fontSize: t.fsSection,
+                      fontSize: t.fsSmall,
                       fontWeight: FontWeight.bold)),
             ),
           ],
@@ -999,10 +1000,10 @@ final head = Row(
                   size: 16, color: t.faint),
               const SizedBox(width: 6),
               Expanded(
-                  child: Text(Strings.get('marks_predictor'),
+                  child: Text(Strings.get('marks_predictor').toUpperCase(),
                       style: TextStyle(
                           color: t.text,
-                          fontSize: t.fsSection,
+                          fontSize: t.fsSmall,
                           fontWeight: FontWeight.bold))),
               if (summary.predicting)
                 TextButton(
@@ -1609,7 +1610,7 @@ final rows = <Widget>[];
                         fontSize: t.fsSmall,
                         fontWeight: FontWeight.bold)),
                 Text(
-                    '${day == null ? '?' : czDay(day)} · ${Strings.get('marks_weight')} $weight',
+                    '${day == null ? '?' : czDayYear(day)} · ${Strings.get('marks_weight')} $weight',
                     style: TextStyle(
                         color: t.faint,
                         fontSize: t.fsTiny)),
