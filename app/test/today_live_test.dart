@@ -2,7 +2,9 @@ import 'dart:io';
 
 import 'package:app/controllers/app_state.dart';
 import 'package:app/features/common/app_tokens.dart';
+import 'package:app/features/today/today_controller.dart';
 import 'package:app/features/today/today_live.dart';
+import 'package:app/l10n/strings.dart';
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -103,6 +105,119 @@ void main() {
       expect(s.tutorial?.$1, 'excuse');
     });
   });
+
+  test('absentKeyFromExcuseTasksIsNeverSent', () async {
+    final s = AppState(
+      configData: {'your_signature': 'Jan Novák'},
+      data: {
+        'timetable': {
+          '18.09.2026': [
+            {
+              'subject': 'Matematika',
+              'time': '1 (8:00 - 8:45)',
+              'status': 'absent',
+            },
+          ],
+        },
+      },
+    );
+    final c = todayControllerFor(s, now: DateTime(2026, 9, 20, 12, 0));
+    final fakeRequest = ExcuseSendRequest(
+      scope: 'single',
+      key: '2026-09-18|99|NeznamyPredmet',
+      label: 'Unknown',
+      jobs: [
+        const ExcuseJob(
+          {'type': 'pure days'},
+          'text',
+        ),
+      ],
+    );
+    final sent = await c.send(fakeRequest);
+    expect(sent, isFalse);
+    expect(c.lastMessage, Strings.get('excuse_failed'));
+    expect(s.excuseLog, isEmpty);
+  });
+
+  testWidgets('dayCardSwitchSendsLessonsSeparately', (tester) async {
+    await withClock(Clock.fixed(DateTime(2026, 9, 20, 12, 0)), () async {
+      final s = AppState(
+        configData: {
+          'your_signature': 'Jan Novák',
+          'bakalari_url': 'https://b.example.cz',
+          'bakalari_username': 'u',
+          'bakalari_password': 'p',
+        },
+        data: {
+          'timetable': {
+            '18.09.2026': [
+              {
+                'subject': 'Matematika',
+                'teacher': 'T',
+                'time': '1 (8:00 - 8:45)',
+                'absenceType': 'Absent',
+              },
+              {
+                'subject': 'Fyzika',
+                'teacher': 'T',
+                'time': '2 (8:55 - 9:40)',
+                'absenceType': 'Absent',
+              },
+            ],
+          },
+          'sent_excuses_from': '2026-09-01',
+        },
+      )..demoMode = false;
+
+      final calls = <(String, bool)>[];
+      s.submitDayExcuseOverride = (dayIso, template, perLesson) {
+        calls.add((dayIso, perLesson));
+        return true;
+      };
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => FixedAppStateController(s)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LiveTodayView(
+                tokens: AppTokens.dark(),
+                now: DateTime(2026, 9, 20, 12, 0),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Initially, per_lesson is false
+      final switchFinder = find.byType(Switch);
+      expect(switchFinder, findsOneWidget);
+      expect(tester.widget<Switch>(switchFinder).value, isFalse);
+
+      final wholeDayBtn = find.text('Omluvit celý den');
+      expect(wholeDayBtn, findsOneWidget);
+      await tester.tap(wholeDayBtn);
+      await tester.pumpAndSettle();
+
+      // Switch to per_lesson = true
+      await tester.tap(switchFinder);
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<Switch>(switchFinder).value, isTrue);
+      final lessonsBtn = find.text('Omluvit 2 hodiny');
+      expect(lessonsBtn, findsOneWidget);
+      await tester.tap(lessonsBtn);
+      await tester.pumpAndSettle();
+
+      expect(calls, [
+        ('2026-09-18', false),
+        ('2026-09-18', true),
+      ]);
+    });
+  });
 }
 
 class FixedAppStateController extends AppStateController {
@@ -110,5 +225,11 @@ class FixedAppStateController extends AppStateController {
   FixedAppStateController(this.fixed);
 
   @override
-  AppState build() => fixed;
+  AppState build() {
+    fixed.onChanged = () {
+      // ignore: avoid_self_assignment
+      state = state;
+    };
+    return fixed;
+  }
 }

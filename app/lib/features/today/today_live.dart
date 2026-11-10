@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../controllers/app_state.dart';
+import '../../l10n/strings.dart';
 import '../common/app_strings.dart';
 import '../common/app_tokens.dart';
 import '../common/format.dart';
@@ -81,29 +82,29 @@ TodayController todayControllerFor(AppState s, {DateTime? now}) {
           .excuseTasks()
           .where((t) => '${t['key']}' == request.key)
           .firstOrNull;
-      final parts = request.key.split('|');
+      if (existing == null) {
+        s.logLine(Strings.get('excuse_failed'));
+        c.lastMessage = Strings.get('excuse_failed');
+        return false;
+      }
       final job = request.jobs.isNotEmpty ? request.jobs.first : null;
-      final rawType = '${job?.excuse['type'] ?? ''}';
-      final kind = rawType == 'income'
-          ? 'late'
-          : (rawType == 'soon' ? 'soon' : 'short');
-      final taskMap = existing ??
-          <String, Object?>{
-            'key': request.key,
-            'date': parts.isNotEmpty ? parts[0] : '',
-            'period': parts.length > 1
-                ? int.tryParse(parts[1])
-                : job?.excuse['starting_lesson'],
-            'kind': kind,
-            'label': request.label,
-          };
-      final ok = s.submitExcuse(taskMap, job?.customText ?? '');
+      final ok = s.submitExcuse(existing, job?.customText ?? '');
       if (s.lastSnackMessage.isNotEmpty) {
         c.lastMessage = s.lastSnackMessage;
       }
       return ok;
     },
   );
+
+  c.excuseTasksProvider = ({today}) => [
+        for (final t in s.excuseTasks()) ExcuseTask.fromMap(t),
+      ];
+  c.ignoredTasksProvider = () => [
+        for (final t in s.ignoredTasks()) ExcuseTask.fromMap(t),
+      ];
+  c.dayFullyAbsentProvider = (dayIso, {today}) => s.dayFullyAbsent(dayIso);
+  c.dayExcusePlanProvider = (dayIso, {bool perLesson = false}) =>
+      s.dayExcusePlan(dayIso, perLesson);
 
   c.timetable = {
     for (final e in s.timetable().entries)

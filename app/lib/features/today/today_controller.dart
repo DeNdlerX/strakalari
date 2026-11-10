@@ -4,10 +4,46 @@ import '../common/app_strings.dart';
 import '../common/format.dart';
 import '../common/lesson_model.dart';
 import '../common/schedule_logic.dart';
-import 'excuse_logic.dart';
-import 'excuse_logic.dart' as excuses;
 
-export 'excuse_logic.dart' show ExcuseTask;
+/// One pending excuse task (represented in AppState as a map from excuseTasks).
+class ExcuseTask {
+  final String key;
+  final String kind; // late | early | soon | short
+  final String label;
+  final String detail;
+  final DateTime? date;
+  final int? period;
+  final Map<String, Object?> rawTask;
+
+  const ExcuseTask({
+    required this.key,
+    required this.kind,
+    required this.label,
+    this.detail = '',
+    this.date,
+    this.period,
+    this.rawTask = const {},
+  });
+
+  factory ExcuseTask.fromMap(Map<String, Object?> t) {
+    DateTime? d;
+    final dateStr = '${t['date'] ?? ''}';
+    if (dateStr.isNotEmpty) {
+      d = DateTime.tryParse(dateStr);
+    }
+    return ExcuseTask(
+      key: '${t['key'] ?? ''}',
+      kind: '${t['kind'] ?? 'short'}',
+      label: '${t['label'] ?? ''}',
+      detail: '${t['detail'] ?? ''}',
+      date: d,
+      period: t['period'] is int
+          ? t['period'] as int
+          : int.tryParse('${t['period'] ?? ''}'),
+      rawTask: t,
+    );
+  }
+}
 
 /// One template option as a `(name, text)` pair — like
 /// `planner._template_options`.
@@ -227,29 +263,27 @@ class TodayController extends ChangeNotifier {
 
   // -- tasks ----------------------------------------------------------------------
 
-  List<ExcuseTask> get _unexcused => unexcusedTasks(
-        demoMode: demoMode,
-        timetable: timetable,
-        periodWord: s.get('period').toLowerCase(),
-        sentKeys: sentTaskKeys,
-        history: excuseHistory,
-      );
+  List<ExcuseTask> Function({DateTime? today})? excuseTasksProvider;
+  List<ExcuseTask> Function()? ignoredTasksProvider;
+  bool Function(String dayIso, {DateTime? today})? dayFullyAbsentProvider;
+  List<Map<String, Object?>> Function(String dayIso, {bool perLesson})?
+      dayExcusePlanProvider;
 
-  /// Pending excuse tasks — like `state.excuse_tasks()`.
+  /// Pending excuse tasks — provided directly from `AppState.excuseTasks()`.
   List<ExcuseTask> excuseTasks({DateTime? today}) {
-    final now = today ?? DateTime.now();
-    final day = DateTime(now.year, now.month, now.day);
-    return pendingTasks(
-      unexcused: _unexcused,
-      today: day,
-      outboxFrom: outboxFrom,
-      ignoredKeys: ignoredKeys,
-    );
+    if (excuseTasksProvider != null) {
+      return excuseTasksProvider!(today: today);
+    }
+    return const [];
   }
 
-  /// Currently ignored tasks — like `state.ignored_tasks()`.
-  List<ExcuseTask> ignoredTasks() =>
-      excuses.ignoredTasks(_unexcused, ignoredKeys);
+  /// Currently ignored tasks — provided directly from `AppState.ignoredTasks()`.
+  List<ExcuseTask> ignoredTasks() {
+    if (ignoredTasksProvider != null) {
+      return ignoredTasksProvider!();
+    }
+    return const [];
+  }
 
   /// Groups tasks by day ISO, capped at 12 with the overflow count —
   /// like the `tasks[:12]` slice in `_excuse_cards`.
@@ -258,11 +292,14 @@ class TodayController extends ChangeNotifier {
     final tasks = excuseTasks(today: today);
     final byDay = <String, List<ExcuseTask>>{};
     for (final t in tasks.take(12)) {
-      (byDay[isoDayOf(t.date)] ??= []).add(t);
+      final iso = t.date != null
+          ? isoDay(t.date!)
+          : ('${t.rawTask['date'] ?? ''}');
+      (byDay[iso] ??= []).add(t);
     }
     return (
       byDay: byDay,
-      overflow: tasks.length > 12 ? tasks.length - 12 : 0
+      overflow: tasks.length > 12 ? tasks.length - 12 : 0,
     );
   }
 
@@ -329,7 +366,11 @@ class TodayController extends ChangeNotifier {
     lastIgnoreError = '';
     final added = excuseTasks(today: today)
         .where((t) =>
-            isoDayOf(t.date) == dayIso && !ignoredKeys.contains(t.key))
+            (t.date != null
+                ? isoDay(t.date!)
+                : ('${t.rawTask['date'] ?? ''}')) ==
+            dayIso &&
+            !ignoredKeys.contains(t.key))
         .map((t) => t.key)
         .toList();
     if (added.isEmpty || !_changeIgnored(add: added)) return [];
@@ -450,18 +491,12 @@ class TodayController extends ChangeNotifier {
   // -- day cards ------------------------------------------------------------------------
 
   /// Like `state.day_fully_absent`.
-  bool dayFullyAbsent(String dayIso, {DateTime? today}) => dayFullyAbsentOf(
-      dayIso: dayIso,
-      pending: excuseTasks(today: today),
-      timetable: timetable);
-
-  bool dayFullyAbsentOf({
-    required String dayIso,
-    required List<ExcuseTask> pending,
-    required Map<String, List<Object?>> timetable,
-  }) =>
-      excuses.dayFullyAbsent(
-          dayIso: dayIso, pending: pending, timetable: timetable);
+  bool dayFullyAbsent(String dayIso, {DateTime? today}) {
+    if (dayFullyAbsentProvider != null) {
+      return dayFullyAbsentProvider!(dayIso, today: today);
+    }
+    return false;
+  }
 
   /// Like `state.excuse_day_per_lesson` + `set_excuse_day_per_lesson`
   /// (saved; false restores the old mode when the save fails).
@@ -504,17 +539,21 @@ class TodayController extends ChangeNotifier {
   ExcuseSendRequest? singleRequest(ExcuseTask task, String template) {
     final key = task.key;
     if (key.isEmpty || sendingKeys.contains(key)) return null;
-    if (task.date == null || task.period == null) return null;
-    final dayLabel = dayKey(task.date!);
-    final excuse =
-        lessonExcuse(task.kind, dayLabel, task.period!);
     final text = template.trim().isEmpty ? null : template;
     return ExcuseSendRequest(
       scope: 'single',
       key: key,
       label: task.label,
-      jobs: [ExcuseJob(excuse, text)],
+      jobs: [ExcuseJob(task.rawTask, text)],
     );
+  }
+
+  List<Map<String, Object?>> dayExcusePlan(String dayIso,
+      {bool perLesson = false}) {
+    if (dayExcusePlanProvider != null) {
+      return dayExcusePlanProvider!(dayIso, perLesson: perLesson);
+    }
+    return const [];
   }
 
   /// Builds the day send request — like `state.submit_day_excuse`
@@ -524,18 +563,15 @@ class TodayController extends ChangeNotifier {
     if (dayIso.isEmpty || sendingKeys.contains('day|$dayIso')) {
       return null;
     }
-    final pending = excuseTasks(today: today);
-    final plan = dayExcusePlan(
-        dayIso: dayIso,
-        pending: pending,
-        timetable: timetable,
-        perLesson: perLesson);
+    final plan = dayExcusePlan(dayIso, perLesson: perLesson);
     if (plan.isEmpty) return null;
     final text = template.trim().isEmpty ? null : template;
+    final day = DateTime.tryParse(dayIso);
+    final label = day == null ? dayIso : dayKey(day);
     return ExcuseSendRequest(
       scope: 'day',
       key: 'day|$dayIso',
-      label: dayKey(parseCzDate(dayIso) ?? DateTime.now()),
+      label: label,
       jobs: [
         for (final excuse in plan)
           ExcuseJob(

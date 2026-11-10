@@ -57,6 +57,19 @@ extension ExcuseTasksLogic on AppState {
   static final Expando<List<Map<String, Object?>> Function()>
       _allExcuseTasksOverrides = Expando();
 
+  /// Test hook: overrides `submitDayExcuse` (mirrors
+  /// `monkeypatch.setattr(state, "submit_day_excuse", ...)` in Python).
+  bool Function(String dayIso, String template, bool perLesson)?
+      get submitDayExcuseOverride => _submitDayExcuseOverrides[this];
+  set submitDayExcuseOverride(
+      bool Function(String dayIso, String template, bool perLesson)? fn) {
+    _submitDayExcuseOverrides[this] = fn;
+  }
+
+  static final Expando<
+          bool Function(String dayIso, String template, bool perLesson)>
+      _submitDayExcuseOverrides = Expando();
+
   List<Map<String, Object?>> _allExcuseTasks() {
     final override = allExcuseTasksOverride;
     if (override != null) return override();
@@ -398,6 +411,8 @@ extension ExcuseTasksLogic on AppState {
   /// configured default text. Port of `submit_day_excuse()`.
   bool submitDayExcuse(String dayIso,
       [String template = '', bool perLesson = false]) {
+    final override = submitDayExcuseOverride;
+    if (override != null) return override(dayIso, template, perLesson);
     final day = parseCzDate(dayIso);
     if (day == null) return false;
     final dayLabel = fmtDay(day);
