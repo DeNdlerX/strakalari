@@ -35,6 +35,12 @@ ActivityController activityControllerFor(AppState s) {
   c.cancelRefreshHook = s.cancelRefresh;
   c.clearLogHook = s.clearLog;
   c.dismissUpdateHook = s.dismissUpdate;
+  c.automationPausedHook = s.automationPaused;
+  c.setAutomationPausedHook = s.setAutomationPaused;
+  c.editRulesHook = () {
+    s.settingsSection = 'rules';
+    s.go('settings');
+  };
   return c;
 }
 

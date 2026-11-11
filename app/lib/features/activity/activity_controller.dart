@@ -39,6 +39,22 @@ class ActivityController {
   void Function()? clearLogHook;
   void Function()? dismissUpdateHook;
 
+  /// Automation card: pause state, the switch, and "Upravit pravidla".
+  bool Function()? automationPausedHook;
+  bool Function(bool paused)? setAutomationPausedHook;
+  void Function()? editRulesHook;
+
+  bool automationPaused() =>
+      automationPausedHook?.call() ?? config['automation_paused'] == true;
+
+  bool setAutomationPaused(bool paused) {
+    final ok = setAutomationPausedHook?.call(paused) ?? true;
+    _emit();
+    return ok;
+  }
+
+  void editRules() => editRulesHook?.call();
+
   /// Last normalized scope (tests assert 'bogus' → 'all').
   String lastScope = 'all';
 

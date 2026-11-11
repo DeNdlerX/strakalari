@@ -233,6 +233,7 @@ class ActivityView extends StatelessWidget {
       _stats(now),
       _historyCard(now),
       _logCard(context),
+      _automationCard(context),
       _auditCard(now),
     ];
     return ListView(
@@ -442,6 +443,93 @@ class ActivityView extends StatelessWidget {
                     fontSize: 12,
                     color: color))),
       ],
+    );
+  }
+
+  Widget _modeRow(String label, String key) {
+    final c = controller;
+    final mode = '${c.config[key] ?? 'confirm'}'.isEmpty
+        ? 'confirm'
+        : '${c.config[key] ?? 'confirm'}';
+    final color = {'auto': Colors.green, 'dry_run': Colors.amber}[mode];
+    final text = Strings.get(
+        {'auto': 'mode_auto', 'dry_run': 'mode_dry_run'}[mode] ??
+            'mode_confirm');
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label),
+        Text(text, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
+
+  /// The automation card: pause switch plus the current modes. Port of
+  /// `_automation_card` (views/activity.py).
+  Widget _automationCard(BuildContext context) {
+    final c = controller;
+    final paused = c.automationPaused();
+    return Card(
+      key: const Key('activity:automation'),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(children: [
+              const Icon(Icons.bolt_outlined, size: 18),
+              const SizedBox(width: 8),
+              Text(Strings.get('automation_card'),
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+            ]),
+            const SizedBox(height: 8),
+            if (paused)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(children: [
+                  const Icon(Icons.pause_circle_outline,
+                      size: 18, color: Colors.amber),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(Strings.get('automation_paused_banner'),
+                        style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.amber,
+                            fontWeight: FontWeight.bold)),
+                  ),
+                ]),
+              )
+            else
+              Text(Strings.get('automation_running'),
+                  style: const TextStyle(fontSize: 12)),
+            SwitchListTile(
+              key: const Key('activity:pause'),
+              contentPadding: EdgeInsets.zero,
+              title: Text(Strings.get('automation_pause')),
+              value: paused,
+              onChanged: c.setAutomationPaused,
+            ),
+            Text(Strings.get('automation_pause_hint'),
+                style: const TextStyle(fontSize: 12)),
+            const Divider(),
+            _modeRow(Strings.get('excuse_mode_label'), 'excuse_mode'),
+            _modeRow(Strings.get('order_mode_label'), 'strava_order_mode'),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                icon: const Icon(Icons.tune),
+                label: Text(Strings.get('automation_edit')),
+                onPressed: c.editRules,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
