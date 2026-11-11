@@ -1,6 +1,6 @@
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
-import 'package:app/widgets/app_widgets.dart' show dialogWidth;
+import 'package:app/widgets/app_widgets.dart' as w show dialogWidth, HeaderRow;
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../l10n/strings.dart';
@@ -25,12 +25,16 @@ class TimetableView extends StatelessWidget {
   final bool narrow;
   final DateTime? now;
 
+  /// The "updated" line under the title (`state.updated_label`).
+  final String updatedLabel;
+
   const TimetableView({
     super.key,
     required this.controller,
     required this.tokens,
     this.narrow = false,
     this.now,
+    this.updatedLabel = '',
   });
 
   static const double gutterW = 72;
@@ -158,19 +162,10 @@ final header = _headerRow();
     return core.daysBetween(week1Monday, thursday) ~/ 7 + 1;
   }
 
-  Widget _headerRow() {
-    final t = tokens;
-    return Row(
-      children: [
-        Expanded(
-            child: Text(Strings.get('timetable_title'),
-                style: TextStyle(
-                    color: t.text,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold))),
-      ],
-    );
-  }
+  Widget _headerRow() => w.HeaderRow(
+      heading: Strings.get('timetable_title'),
+      updated: updatedLabel,
+      tok: tokens);
 
   Widget _nav(BuildContext context, String label, bool showStable) {
     final c = controller;
@@ -226,7 +221,7 @@ final prev = IconButton(
             spacing: 8,
             runSpacing: 8,
             children: [
-              TextButton(
+              OutlinedButton(
                   onPressed: () => c.goTimetableWeek(null),
                   child: Text(Strings.get('this_week'))),
               stableBtn,
@@ -242,7 +237,7 @@ final prev = IconButton(
         labelWidget,
         next,
         const SizedBox(width: 8),
-        TextButton(
+        OutlinedButton(
             onPressed: () => c.goTimetableWeek(null),
             child: Text(Strings.get('this_week'))),
         stableBtn,
@@ -1020,7 +1015,7 @@ final detail = c.detail(lesson, day);
         title: Text(detail.subject,
             style: const TextStyle(fontWeight: FontWeight.bold)),
         content: SizedBox(
-          width: dialogWidth(context, 380),
+          width: w.dialogWidth(context, 380),
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
