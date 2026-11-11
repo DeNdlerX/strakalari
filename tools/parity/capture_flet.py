@@ -31,6 +31,43 @@ def wait_http(url, timeout=30.0):
             time.sleep(0.5)
     raise RuntimeError(f"Server at {url} did not respond within {timeout}s")
 
+def capture_wizard(out_dir, lang, theme, port):
+    """The first-run wizard: a folder with no credentials (no demo data)."""
+    import json
+
+    with tempfile.TemporaryDirectory(prefix=f"flet-wiz-{lang}-{theme}-", ignore_cleanup_errors=True) as tmp_dir:
+        with open(os.path.join(tmp_dir, "config.json"), "w", encoding="utf-8") as f:
+            json.dump({"theme": theme, "language": lang}, f)
+        server = subprocess.Popen(
+            [sys.executable, os.path.join(ROOT, "tools", "parity", "serve_wizard.py"), tmp_dir, "--port", str(port)],
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+        )
+        try:
+            url = f"http://127.0.0.1:{port}"
+            wait_http(url)
+            with sync_playwright() as p:
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=["--use-gl=swiftshader", "--enable-unsafe-swiftshader"],
+                )
+                for width, height in [(1280, 800), (390, 844)]:
+                    page = browser.new_page(viewport={"width": width, "height": height},
+                                            device_scale_factor=1)
+                    page.goto(url)
+                    time.sleep(5)
+                    dest = os.path.join(out_dir, f"wizard-{lang}-{theme}-{width}.png")
+                    page.screenshot(path=dest)
+                    print(f"Captured {dest}")
+                    page.close()
+                browser.close()
+        finally:
+            try:
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(server.pid)], capture_output=True)
+            except Exception:
+                server.kill()
+            time.sleep(1)
+
+
 def capture_flet():
     out_dir = os.path.join(ROOT, "build", "parity-screens", "flet")
     os.makedirs(out_dir, exist_ok=True)
@@ -44,6 +81,7 @@ def capture_flet():
         for theme in themes:
             with tempfile.TemporaryDirectory(prefix=f"flet-cap-{lang}-{theme}-", ignore_cleanup_errors=True) as tmp_dir:
                 generate(tmp_dir, lang=lang, theme=theme, tutorials=False)
+                capture_wizard(out_dir, lang, theme, port + 1)
                 server = subprocess.Popen(
                     [sys.executable, os.path.join(ROOT, "tools", "demo_data.py"), "serve", tmp_dir, "--port", str(port)],
                     env={**os.environ, "PYTHONIOENCODING": "utf-8"},

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,8 +22,12 @@ class FixedAppStateController extends AppStateController {
 }
 
 Future<void> _loadRealFonts() async {
-  final fontDir = Directory(
-      'C:/Users/matou/flutter/3.44.8/bin/cache/artifacts/material_fonts');
+  // The Flutter SDK that runs this tool: FLUTTER_ROOT, else ~/flutter/3.44.8.
+  final home = Platform.environment['USERPROFILE'] ??
+      Platform.environment['HOME'] ??
+      '';
+  final root = Platform.environment['FLUTTER_ROOT'] ?? '$home/flutter/3.44.8';
+  final fontDir = Directory('$root/bin/cache/artifacts/material_fonts');
   if (!fontDir.existsSync()) return;
 
   final robotoLoader = FontLoader('Roboto');
@@ -92,20 +97,46 @@ void main() {
               tester.view.resetDevicePixelRatio();
             });
 
-            final demoDir =
-                Directory('../build/parity-screens/demo-$lang').absolute;
+            // One demo folder per language AND theme, written before the
+            // AppState exists so its constructor reads the theme and the
+            // language like the real start-up does.
+            // The wizard is captured on a fresh folder without credentials.
+            final isWizard = screen == 'wizard';
+            final demoDir = Directory(
+                    '../build/parity-screens/${isWizard ? 'fresh' : 'demo'}-$lang-$theme')
+                .absolute;
+            await tester.runAsync(() async {
+              if (isWizard) {
+                demoDir.createSync(recursive: true);
+                File('${demoDir.path}/config.json').writeAsStringSync(
+                    '{"theme": "$theme", "language": "$lang"}');
+              } else if (!demoDir.existsSync() || screen == 'today') {
+                final python =
+                    Platform.environment['STRAKALARI_PYTHON'] ?? 'python';
+                final r = await Process.run(python, [
+                  '../tools/demo_data.py',
+                  'generate',
+                  demoDir.path,
+                  '--lang',
+                  lang,
+                  '--theme',
+                  theme,
+                ], environment: {'PYTHONUTF8': '1'});
+                if (r.exitCode != 0) {
+                  throw StateError('demo_data.py failed: ${r.stderr}');
+                }
+              }
+            });
             setEnvironmentOverride({
+              ...Platform.environment,
               'STRAKALARI_DATA_DIR': demoDir.path,
               'STRAKALARI_NO_KEYRING': '1',
             });
             allowMissingKeyStoreForTesting = true;
             clearKeyCache();
-            Strings.lang = lang;
 
             final state = AppState();
             state.wizardDismissed = screen != 'wizard';
-            state.config.set('theme', theme);
-            state.config.set('language', lang);
 
             final repaintKey = GlobalKey();
             final router = buildRouter();
@@ -116,17 +147,31 @@ void main() {
               ],
             );
 
+            // Exactly what `MyApp` (lib/main.dart) builds.
             await tester.pumpWidget(
               UncontrolledProviderScope(
                 container: container,
                 child: RepaintBoundary(
                   key: repaintKey,
-                  child: MaterialApp.router(
-                    routerConfig: router,
-                    theme: theme == 'dark'
-                        ? ThemeData.dark(useMaterial3: true)
-                        : ThemeData.light(useMaterial3: true),
-                  ),
+                  child: Consumer(builder: (context, ref, _) {
+                    final appState = ref.watch(appStateProvider);
+                    final light = appState.tok.mode == 'light';
+                    return MaterialApp.router(
+                      debugShowCheckedModeBanner: false,
+                      title: Strings.get('app_title'),
+                      theme: appState.tok.toThemeData(),
+                      darkTheme: appState.tok.toThemeData(),
+                      themeMode: light ? ThemeMode.light : ThemeMode.dark,
+                      locale: Locale(Strings.lang),
+                      supportedLocales: const [Locale('cs'), Locale('en')],
+                      localizationsDelegates: const [
+                        GlobalMaterialLocalizations.delegate,
+                        GlobalWidgetsLocalizations.delegate,
+                        GlobalCupertinoLocalizations.delegate,
+                      ],
+                      routerConfig: router,
+                    );
+                  }),
                 ),
               ),
             );
