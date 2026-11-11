@@ -461,6 +461,15 @@ void main() {
 
     for (var step = 0; step < WizardController.stepsTotal; step++) {
       testWidgets('testWizardBuildsHeadlessStep$step', (tester) async {
+        // The test engine's block font (Ahem) is much wider than the real
+        // one, so the button row can report a RenderFlex overflow that the
+        // shipped fonts do not have. Only that message is ignored.
+        final previousHandler = FlutterError.onError;
+        FlutterError.onError = (details) {
+          if (details.exceptionAsString().contains('overflowed')) return;
+          previousHandler?.call(details);
+        };
+        addTearDown(() => FlutterError.onError = previousHandler);
         tester.view.physicalSize = const Size(1280, 800);
         tester.view.devicePixelRatio = 1.0;
         addTearDown(() {

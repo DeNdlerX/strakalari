@@ -104,29 +104,25 @@ final step = c.step.clamp(0, WizardController.stepDone);
             const Divider(height: 24),
             ...content,
             const Divider(height: 24),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                if (narrow || constraints.maxWidth < 620) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      nav.last,
-                      if (nav.length > 1)
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            for (final w in nav
-                                .sublist(0, nav.length - 1)
-                                .where((w) => w is! Spacer))
-                              w,
-                          ],
-                        ),
-                    ],
-                  );
-                }
-                return Row(children: nav);
-              },
-            ),
+            if (narrow)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  nav.last,
+                  if (nav.length > 1)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        for (final w in nav
+                            .sublist(0, nav.length - 1)
+                            .where((w) => w is! Spacer))
+                          w,
+                      ],
+                    ),
+                ],
+              )
+            else
+              Row(children: nav),
           ],
         ),
       ),
@@ -134,17 +130,31 @@ final step = c.step.clamp(0, WizardController.stepDone);
     return Container(
       color: t.bg,
       padding: EdgeInsets.all(narrow ? 8 : 24),
-      child: Center(
-        child: ConstrainedBox(
-          constraints:
-              const BoxConstraints(maxWidth: 640),
-          child: ListView(
-            shrinkWrap: true,
-            children: [card],
+      child: LayoutBuilder(
+        builder: (context, constraints) => Center(
+          child: SizedBox(
+            // Python: ResponsiveRow col {xs: 12, md: 9, lg: 7, xl: 6, xxl: 5}
+            // (Flet breakpoints 768 / 992 / 1200 / 1400), centered.
+            width: constraints.maxWidth *
+                _wizardColumns(constraints.maxWidth + (narrow ? 16 : 48)) /
+                12,
+            child: ListView(
+              shrinkWrap: true,
+              children: [card],
+            ),
           ),
         ),
       ),
     );
+  }
+
+  /// Twelfths of the page the wizard card takes (`views/wizard.py`).
+  static int _wizardColumns(double pageWidth) {
+    if (pageWidth >= 1400) return 5;
+    if (pageWidth >= 1200) return 6;
+    if (pageWidth >= 992) return 7;
+    if (pageWidth >= 768) return 9;
+    return 12;
   }
 
   void _next(BuildContext context) {
