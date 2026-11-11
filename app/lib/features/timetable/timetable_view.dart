@@ -1,5 +1,6 @@
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
+import 'package:app/widgets/app_widgets.dart' show dialogWidth;
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../l10n/strings.dart';
@@ -1020,7 +1021,7 @@ final detail = c.detail(lesson, day);
         title: Text(detail.subject,
             style: const TextStyle(fontWeight: FontWeight.bold)),
         content: SizedBox(
-          width: 380,
+          width: dialogWidth(context, 380),
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,

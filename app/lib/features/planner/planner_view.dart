@@ -1,6 +1,7 @@
 import 'package:clock/clock.dart';
 import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
+import 'package:app/widgets/app_widgets.dart' show dialogWidth;
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import 'package:app/features/planner/plan_reserve.dart';
@@ -1097,7 +1098,7 @@ class _CustomPlanDialogState extends State<CustomPlanDialog> {
     return AlertDialog(
       title: Text(Strings.get('plan_custom')),
       content: SizedBox(
-        width: 520,
+        width: dialogWidth(context, 520),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,

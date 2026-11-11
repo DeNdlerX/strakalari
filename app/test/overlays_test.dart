@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:app/features/more.dart';
+import 'package:app/widgets/app_widgets.dart' show dialogWidth;
 import 'package:app/widgets/overlays.dart';
 
 Finder _sel(String data) => find.byWidgetPredicate(
@@ -96,6 +97,31 @@ void main() {
                   (w) => w is SizedBox && w.width == 326))
           .first);
       expect(box.width, 326);
+    });
+
+    // components.dialog_width: int(max(240, min(preferred, width - 64))).
+    testWidgets('dialogWidth clamps like Python', (t) async {
+      late double got;
+      Future<void> at(double w, double preferred) async {
+        t.view.physicalSize = Size(w, 800);
+        t.view.devicePixelRatio = 1.0;
+        await t.pumpWidget(MaterialApp(
+            home: Builder(builder: (context) {
+          got = dialogWidth(context, preferred);
+          return const SizedBox();
+        })));
+      }
+
+      addTearDown(t.view.resetPhysicalSize);
+      addTearDown(t.view.resetDevicePixelRatio);
+      await at(390, 560);
+      expect(got, 326);
+      await at(1280, 520);
+      expect(got, 520);
+      await at(200, 440);
+      expect(got, 240);
+      await at(390, 380);
+      expect(got, 326);
     });
 
     test('snack log records', () {

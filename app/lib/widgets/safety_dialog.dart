@@ -129,7 +129,7 @@ Future<void> confirmAutoMode(
 }) async {
   final result = await showDialog<String>(
     context: context,
-    barrierDismissible: true,
+    barrierDismissible: false, // modal=True in safety.py
     builder: (dialogCtx) => AutoConfirmDialog(
       modeKey: modeKey,
       unsigned: unsigned,

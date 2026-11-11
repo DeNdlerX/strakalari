@@ -1,6 +1,7 @@
 import 'package:clock/clock.dart';
 import '../../l10n/strings.dart';
 import 'package:flutter/material.dart';
+import 'package:app/widgets/app_widgets.dart' show dialogWidth;
 
 import '../../tutorial/tutorial_ui.dart';
 import '../common/app_tokens.dart';
@@ -566,10 +567,13 @@ final field = TextEditingController();
     String? error;
     showDialog<void>(
       context: context,
+      barrierDismissible: false, // modal=True in today.py
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           title: Text(Strings.get('signature_ask_title')),
-          content: Column(
+          content: SizedBox(
+            width: dialogWidth(context, 440),
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -589,6 +593,7 @@ final field = TextEditingController();
                     context, setState, field, (e) => error = e),
               ),
             ],
+          ),
           ),
           actions: [
             TextButton(
