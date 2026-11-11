@@ -26,6 +26,7 @@ LunchController lunchControllerFor(AppState s) {
     onTutorialEvent: s.tutorialEvent,
     onLog: s.logLine,
   );
+  c.orderDeadline = s.lunchOrderDeadline;
   c.food = {
     for (final e in s.food().entries) e.key: Map<String, String>.of(e.value),
   };

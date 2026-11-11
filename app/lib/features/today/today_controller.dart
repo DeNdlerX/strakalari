@@ -3,6 +3,7 @@ import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../l10n/strings.dart';
 import '../common/format.dart';
+import '../../widgets/app_widgets.dart' show lessonKind;
 
 /// One pending excuse task (represented in AppState as a map from excuseTasks).
 class ExcuseTask {
@@ -88,6 +89,9 @@ class NextLessonInfo {
   final String meta;
   final String? deltaText;
   final String? statusLabel;
+
+  /// Badge kind of the status (`lesson_kind`), for its colour.
+  final String statusKind;
   final String? headingLabel;
   final String? upcomingHeadline;
   final String? alarmBadge;
@@ -98,6 +102,7 @@ class NextLessonInfo {
     required this.meta,
     this.deltaText,
     this.statusLabel,
+    this.statusKind = 'info',
     this.headingLabel,
     this.upcomingHeadline,
     this.alarmBadge,
@@ -733,6 +738,7 @@ class TodayController extends ChangeNotifier {
         meta: meta(parsed),
         deltaText: Strings.format('ends_in', {'m': left}),
         statusLabel: statusLabel(parsed.status),
+        statusKind: lessonKind(parsed.status),
         headingLabel: Strings.get('now_running'),
       );
     }
@@ -751,6 +757,7 @@ class TodayController extends ChangeNotifier {
         meta: meta(parsed),
         deltaText: Strings.format('starts_in', {'m': wait}),
         statusLabel: statusLabel(parsed.status),
+        statusKind: lessonKind(parsed.status),
         headingLabel: Strings.get(
             phase == 'before' ? 'before_school' : 'up_next'),
         alarmBadge: alarmBadge(today),

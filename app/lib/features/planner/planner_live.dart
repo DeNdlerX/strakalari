@@ -11,9 +11,7 @@ import 'planner_view.dart';
 void _syncFromState(PlannerController c, AppState s) {
   c.plannedSkips
     ..clear()
-    ..addAll([
-      for (final e in s.plannedSkips) Map<String, dynamic>.of(e),
-    ]);
+    ..addAll([for (final e in s.plannedSkips) Map<String, dynamic>.of(e)]);
   c.cancelledLunches
     ..clear()
     ..addAll(s.cancelledLunches);
@@ -46,25 +44,26 @@ PlannerController plannerControllerFor(AppState s) {
     s.selectPlannerTerm(key);
     _syncFromState(c, s);
   };
-  c.planCustomSkipHook = (
-    startIso,
-    endIso,
-    startPeriod,
-    endPeriod,
-    template, {
-    required cancelLunch,
-  }) {
-    final ok = s.planCustomSkip(
-      startIso,
-      endIso,
-      startPeriod,
-      endPeriod,
-      template,
-      cancelLunch: cancelLunch,
-    );
-    _syncFromState(c, s);
-    return ok;
-  };
+  c.planCustomSkipHook =
+      (
+        startIso,
+        endIso,
+        startPeriod,
+        endPeriod,
+        template, {
+        required cancelLunch,
+      }) {
+        final ok = s.planCustomSkip(
+          startIso,
+          endIso,
+          startPeriod,
+          endPeriod,
+          template,
+          cancelLunch: cancelLunch,
+        );
+        _syncFromState(c, s);
+        return ok;
+      };
   c.planEntriesHook = (rawEntries) {
     final n = s.planEntries([
       for (final r in rawEntries) Map<String, Object?>.of(r),
@@ -79,6 +78,21 @@ PlannerController plannerControllerFor(AppState s) {
   };
   return c;
 }
+
+DayOptionData _dayOption(core.DayOption o) => DayOptionData(
+  day: o.day,
+  lessonsCount: o.lessonsCount,
+  cost: o.budgetHours.toDouble(),
+  budgetHours: o.budgetHours.toDouble(),
+  tags: o.tags,
+  streak: o.streak,
+  feasible: o.feasible,
+  blockedNames: o.names,
+  blockedBy: o.blockedBy,
+  lessons: o.lessons,
+  finalWeek: o.finalWeek,
+  lateWeek: o.lateWeek,
+);
 
 /// Converts [AppState.yearPlan] into [YearPlanData] for [PlannerView].
 YearPlanData? yearPlanDataFor(AppState s, [DateTime? now]) {
@@ -116,22 +130,10 @@ YearPlanData? yearPlanDataFor(AppState s, [DateTime? now]) {
               status: b.status,
             ),
         ],
-        recommended: [
-          for (final o in t.recommended)
-            DayOptionData(
-              day: o.day,
-              lessonsCount: o.lessonsCount,
-              cost: o.budgetHours.toDouble(),
-              budgetHours: o.budgetHours.toDouble(),
-              tags: o.tags,
-              streak: o.streak,
-              feasible: o.feasible,
-              blockedNames: o.names,
-              blockedBy: o.blockedBy,
-              lessons: o.lessons,
-              finalWeek: o.finalWeek,
-            ),
-        ],
+        recommended: [for (final o in t.recommended) _dayOption(o)],
+        options: {
+          for (final e in t.options.entries) e.key: _dayOption(e.value),
+        },
         planned: [
           for (final p in t.planned)
             PlannedRowData(
@@ -140,6 +142,15 @@ YearPlanData? yearPlanDataFor(AppState s, [DateTime? now]) {
               costHours: p.hours,
               over: p.over.isNotEmpty,
               reserve: p.reserve.isNotEmpty,
+              costSum: p.cost.values.fold(0, (a, b) => a + b),
+              overNames: [
+                for (final c in p.over)
+                  if (t.budgetByCanon[c] != null) t.budgetByCanon[c]!.name,
+              ],
+              reserveNames: [
+                for (final c in p.reserve)
+                  if (t.budgetByCanon[c] != null) t.budgetByCanon[c]!.name,
+              ],
             ),
         ],
         hasData: t.hasData,
@@ -160,8 +171,9 @@ List<ImpactTerm> _convertImpacts(List<(Object?, List<Object?>)> raw) {
   final out = <ImpactTerm>[];
   for (final (termObj, rowsObj) in raw) {
     final key = termObj is core.TermPlan ? termObj.key : 'sem1';
-    final label =
-        key == 'sem1' ? Strings.get('term_sem1') : Strings.get('term_sem2');
+    final label = key == 'sem1'
+        ? Strings.get('term_sem1')
+        : Strings.get('term_sem2');
     final rows = <ImpactRowData>[
       for (final r in rowsObj)
         if (r is core.ImpactRow)
@@ -183,11 +195,7 @@ class LivePlannerView extends ConsumerWidget {
   final bool narrow;
   final DateTime? now;
 
-  const LivePlannerView({
-    super.key,
-    this.narrow = false,
-    this.now,
-  });
+  const LivePlannerView({super.key, this.narrow = false, this.now});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -213,10 +221,7 @@ class LivePlannerView extends ConsumerWidget {
       final (presetN, addedN, forcedN, sem1, sem2) = s.calendarSummary();
       calSummary =
           '${Strings.format('cal_summary', {'preset': presetN, 'added': addedN, 'forced': forcedN})}'
-          ' · ${Strings.format('cal_closes', {
-        'a': sem1.isEmpty ? Strings.get('cal_auto') : sem1,
-        'b': sem2.isEmpty ? Strings.get('cal_auto') : sem2,
-      })}';
+          ' · ${Strings.format('cal_closes', {'a': sem1.isEmpty ? Strings.get('cal_auto') : sem1, 'b': sem2.isEmpty ? Strings.get('cal_auto') : sem2})}';
     } catch (_) {
       calSummary = '';
     }
@@ -240,10 +245,9 @@ class LivePlannerView extends ConsumerWidget {
         ),
       ),
       impactOfEntries: (entries) => _convertImpacts(
-        s.planImpactEntries(
-          [for (final e in entries) Map<String, Object?>.of(e)],
-          now,
-        ),
+        s.planImpactEntries([
+          for (final e in entries) Map<String, Object?>.of(e),
+        ], now),
       ),
       freeDays: () => s.calendarData().dates,
       onOpenAbsences: () => s.go('absences'),

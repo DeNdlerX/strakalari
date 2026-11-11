@@ -47,7 +47,7 @@ final header = Row(
     );
     if (c.subjects.isEmpty) {
       return ListView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.zero,
         children: [
           header,
           SizedBox(height: t.gap),
@@ -94,7 +94,7 @@ final header = Row(
     if (narrow) {
       // Phone: header and stats scroll away with the list (landscape).
       return ListView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.zero,
         children: [
           header,
           SizedBox(height: t.gap / 2 + 2),
@@ -106,7 +106,7 @@ final header = Row(
       );
     }
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

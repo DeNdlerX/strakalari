@@ -11,6 +11,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:strakalari_core/strakalari_core.dart';
 
+/// The Ahem test font is far wider than the real one: a wide surface keeps
+/// a picker and its buttons on one row, as on a desktop.
+void _wideSurface(WidgetTester tester) {
+  tester.view.physicalSize = const Size(1600, 1000);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+}
+
 void main() {
   late Directory tmp;
 
@@ -140,6 +148,7 @@ void main() {
   });
 
   testWidgets('dayCardSwitchSendsLessonsSeparately', (tester) async {
+    _wideSurface(tester);
     await withClock(Clock.fixed(DateTime(2026, 9, 20, 12, 0)), () async {
       final s = AppState(
         configData: {

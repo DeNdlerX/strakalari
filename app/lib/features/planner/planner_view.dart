@@ -1,7 +1,8 @@
 import 'package:clock/clock.dart';
 import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
-import 'package:app/widgets/app_widgets.dart' show dialogWidth;
+import 'package:app/widgets/app_widgets.dart' as w;
+import 'package:app/features/common/app_tokens.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import 'package:app/features/planner/plan_reserve.dart';
@@ -66,13 +67,15 @@ class DayOptionData {
   final int lessonsCount;
   final double cost;
   final double budgetHours;
-  final List<String> tags; // bridge | long_weekend | light | free | final_week | late_week
+  final List<String>
+  tags; // bridge | long_weekend | light | free | final_week | late_week
   final int streak;
   final bool feasible;
   final Map<String, String> blockedNames;
   final List<String> blockedBy;
   final List<String> lessons;
   final bool finalWeek;
+  final bool lateWeek;
 
   const DayOptionData({
     required this.day,
@@ -86,6 +89,7 @@ class DayOptionData {
     this.blockedBy = const [],
     this.lessons = const [],
     this.finalWeek = false,
+    this.lateWeek = false,
   });
 }
 
@@ -97,12 +101,22 @@ class PlannedRowData {
   final bool over;
   final bool reserve;
 
+  /// Sum of the per-subject hours it costs (Python `sum(row.cost.values())`).
+  final int costSum;
+
+  /// Display names of the subjects past the limit / eating the buffer.
+  final List<String> overNames;
+  final List<String> reserveNames;
+
   const PlannedRowData({
     required this.entry,
     required this.days,
     this.costHours = 0,
     this.over = false,
     this.reserve = false,
+    this.costSum = 0,
+    this.overNames = const [],
+    this.reserveNames = const [],
   });
 }
 
@@ -118,6 +132,7 @@ class TermPlanData {
   final TightestData? tightest;
   final List<BudgetRowData> budgets;
   final List<DayOptionData> recommended;
+  final Map<DateTime, DayOptionData> options;
   final List<PlannedRowData> planned;
   final bool hasData;
   final bool active;
@@ -133,6 +148,7 @@ class TermPlanData {
     this.tightest,
     this.budgets = const [],
     this.recommended = const [],
+    this.options = const {},
     this.planned = const [],
     this.hasData = false,
     this.active = false,
@@ -144,8 +160,11 @@ class TightestData {
   final double free;
   final String status;
 
-  const TightestData(
-      {required this.name, required this.free, required this.status});
+  const TightestData({
+    required this.name,
+    required this.free,
+    required this.status,
+  });
 }
 
 /// Whole-year plan (core-backed later; tests hand-build it).
@@ -201,8 +220,7 @@ class PickerSlot {
     this.changed = false,
   });
 
-  bool get pickable =>
-      taught && period != null && !past && !planned;
+  bool get pickable => taught && period != null && !past && !planned;
 }
 
 /// The planner screen: year overview, budgets, recommendations, planned.
@@ -217,7 +235,7 @@ class PlannerView extends StatelessWidget {
   final bool narrow;
   final List<ImpactTerm> Function(Map<String, dynamic> entry)? impactOf;
   final List<ImpactTerm> Function(List<Map<String, dynamic>> entries)?
-      impactOfEntries;
+  impactOfEntries;
   final List<PickerSlot> Function(DateTime day)? lessonsFor;
   final Set<DateTime> Function()? freeDays;
   final VoidCallback? onOpenAbsences;
@@ -243,335 +261,757 @@ class PlannerView extends StatelessWidget {
     this.tutorialEvent,
   });
 
+  Tokens _tok(BuildContext context) => tokensOf(context);
+
   @override
   Widget build(BuildContext context) {
+    final tok = _tok(context);
     final reserve = controller.planReserve();
-    final intro =
-        '${Strings.get('planner_desc')} ${Strings.format('plan_buffer_note', {'reserve': reserve})}';
+    final intro = Text(
+      '${Strings.get('planner_desc')} ${Strings.format('plan_buffer_note', {'reserve': reserve})}',
+      style: TextStyle(color: tok.muted, fontSize: tok.fsSmall),
+    );
+    final blocks = <Widget>[];
     if (plan == null || !hasData) {
-      return ListView(
-        children: [
-          ListTile(title: Text(Strings.get('planner_title')), subtitle: Text(updatedLabel)),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Text(intro),
+      blocks
+        ..add(
+          w.HeaderRow(
+            heading: Strings.get('planner_title'),
+            updated: updatedLabel,
+            tok: tok,
           ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Text(Strings.get('no_data')),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text(!hasTimetable
-                ? Strings.get('planner_need_refresh')
-                : Strings.get('need_credentials')),
-          ),
-        ],
-      );
+        )
+        ..add(intro)
+        ..add(w.EmptyState(text: Strings.get('no_data'), tok: tok));
+      if (!hasTimetable) {
+        blocks.add(_small(tok, Strings.get('planner_need_refresh')));
+      } else {
+        blocks.add(_small(tok, Strings.get('need_credentials')));
+      }
+      return _scroll(tok, blocks);
     }
     final p = plan!;
     final term = p.term(controller.plannerTerm) ?? p.defaultTerm;
-    return ListView(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 12,
-            runSpacing: 8,
+    final customBtn = Tooltip(
+      message: Strings.get('plan_custom_hint'),
+      child: ElevatedButton.icon(
+        onPressed: () => showCustomPlanDialog(context),
+        icon: const Icon(Icons.edit_calendar_outlined, size: 18),
+        label: Text(Strings.get('plan_custom')),
+      ),
+    );
+    final seeAbsences = OutlinedButton(
+      onPressed: onOpenAbsences,
+      child: Text(Strings.get('see_absences')),
+    );
+    if (narrow) {
+      blocks
+        ..add(
+          w.HeaderRow(
+            heading: Strings.get('planner_title'),
+            updated: updatedLabel,
+            tok: tok,
+          ),
+        )
+        ..add(
+          Wrap(spacing: 8, runSpacing: 8, children: [seeAbsences, customBtn]),
+        );
+    } else {
+      blocks.add(
+        w.HeaderRow(
+          heading: Strings.get('planner_title'),
+          updated: updatedLabel,
+          tok: tok,
+          actions: [seeAbsences, customBtn],
+        ),
+      );
+    }
+    blocks.add(intro);
+    if (term == null) {
+      blocks.add(
+        w.AppCard(
+          tok: tok,
+          children: [
+            _small(tok, Strings.get('term_nothing'), size: tok.fsBody),
+          ],
+        ),
+      );
+    } else {
+      if (p.terms.length >= 2) {
+        blocks.add(
+          Wrap(
+            spacing: tok.gap / 2,
+            runSpacing: tok.gap / 2,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    Strings.get('planner_title'),
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                  if (updatedLabel.isNotEmpty)
-                    Text(
-                      updatedLabel,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                ],
-              ),
-              TextButton(
-                  onPressed: onOpenAbsences,
-                  child: Text(Strings.get('see_absences'))),
-              FilledButton(
-                onPressed: () => showCustomPlanDialog(context),
-                child: Text(Strings.get('plan_custom')),
-              ),
+              for (final other in p.terms)
+                () {
+                  final label =
+                      '${_termTitle(other)} · ${Strings.format('term_until', {'d': w.czDay(other.close)})}';
+                  void pick() => controller.selectPlannerTerm(other.key);
+                  return other.key == term.key
+                      ? ElevatedButton(onPressed: pick, child: Text(label))
+                      : OutlinedButton(onPressed: pick, child: Text(label));
+                }(),
             ],
           ),
+        );
+      }
+      if (!term.hasData) {
+        blocks.add(
+          Text(
+            Strings.get('term_fresh'),
+            style: TextStyle(color: tok.accent, fontSize: tok.fsSmall),
+          ),
+        );
+      }
+      blocks.add(_statsRow(tok, term));
+      blocks.addAll(_warnings(tok, term));
+      blocks.add(w.SectionHeader(Strings.get('section_overview'), tok: tok));
+      blocks.add(
+        TutorialAnchor(
+          anchorKey: 'plan_strip',
+          child: _calendarStrip(context, tok, p, term),
         ),
-        Padding(padding: const EdgeInsets.all(12), child: Text(intro)),
-        if (term != null) ...[
-          if (p.terms.length > 1)
-            Wrap(
-              spacing: 8,
-              children: [
-                for (final other in p.terms)
-                  ChoiceChip(
-                    label: Text(
-                        '${other.key == 'sem1' ? Strings.get('term_sem1') : Strings.get('term_sem2')} · ${Strings.format('term_until', {'d': _cz(other.close)})}'),
-                    selected: other.key == term.key,
-                    onSelected: (_) =>
-                        controller.selectPlannerTerm(other.key),
-                  ),
-              ],
-            ),
-          if (!term.hasData)
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Text(Strings.get('term_fresh')),
-            ),
-          _statsRow(term),
-          ..._warnings(term),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Text(Strings.get('section_overview'),
-                style: Theme.of(context).textTheme.titleMedium),
-          ),
-          TutorialAnchor(
-            anchorKey: 'plan_strip',
-            child: _calendarStrip(context, p, term),
-          ),
-          _recommended(context, p, term),
-          ..._budgets(context, term),
-        ],
-        ..._planned(context, p),
-        Padding(padding: const EdgeInsets.all(12), child: Text(calendarSummary)),
-        TextButton(
-            onPressed: onOpenCalendar,
-            child: Text(Strings.get('cal_open_calendar'))),
-      ],
-    );
+      );
+      blocks.addAll(_recommended(context, tok, p, term));
+      blocks.addAll(_budgets(tok, term));
+    }
+    blocks.addAll(_planned(context, tok, p));
+    blocks.addAll(_footer(tok));
+    return _scroll(tok, blocks);
   }
 
-  Widget _statsRow(TermPlanData term) {
-    final plannedDays =
-        term.plannedDates.intersection(term.remainingDays.toSet()).length;
-    final plannedHours =
-        term.planned.fold(0, (sum, r) => sum + r.costHours);
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        _stat(Strings.get('stat_can_afford'), daysText(term.capacity)),
-        _stat(Strings.get('stat_planned'),
-            '${daysText(plannedDays)} · $plannedHours h'),
-        _stat(
-            '${Strings.get('stat_tightest')} · ${Strings.format('hours_free', {'n': hoursText(term.tightest?.free ?? 0)})}',
-            term.tightest?.name ?? '—'),
-        _stat(Strings.get('planner_horizon'), '${term.remainingDays.length}'),
+  Widget _scroll(Tokens tok, List<Widget> blocks) => ListView(
+    padding: EdgeInsets.zero,
+    children: [
+      for (var i = 0; i < blocks.length; i++) ...[
+        blocks[i],
+        if (i != blocks.length - 1) SizedBox(height: tok.gap),
       ],
-    );
-  }
+      SizedBox(height: tok.pad * 2),
+    ],
+  );
 
-  Widget _stat(String label, String value) => Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [Text(label), Text(value)],
-          ),
+  Widget _small(Tokens tok, String text, {bool faint = true, double? size}) =>
+      Text(
+        text,
+        style: TextStyle(
+          color: faint ? tok.faint : tok.muted,
+          fontSize: size ?? tok.fsSmall,
         ),
       );
 
-  List<Widget> _warnings(TermPlanData term) {
+  static String _termTitle(TermPlanData t) =>
+      t.key == 'sem1' ? Strings.get('term_sem1') : Strings.get('term_sem2');
+
+  static String _dayLabel(DateTime d) =>
+      '${w.dayName(d)} ${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
+
+  Widget _statsRow(Tokens tok, TermPlanData term) {
+    final remaining = term.remainingDays.toSet();
+    final plannedDays = term.plannedDates.intersection(remaining).length;
+    final plannedHours = term.planned.fold(0, (sum, r) => sum + r.costHours);
+    final tight = term.tightest;
+    var tightLabel = Strings.get('stat_tightest');
+    var tightValue = '—';
+    var tightKind = 'info';
+    if (tight != null) {
+      tightLabel =
+          '${Strings.get('stat_tightest')} · ${Strings.format('hours_free', {'n': hoursText(tight.free)})}';
+      tightValue = tight.name;
+      tightKind =
+          const {
+            'over': 'critical',
+            'reserve': 'warning',
+            'tight': 'warning',
+          }[tight.status] ??
+          'ok';
+    }
+    final cards = <Widget>[
+      w.StatCard(
+        label: Strings.get('stat_can_afford'),
+        value: daysText(term.capacity),
+        tok: tok,
+        kind: term.capacity > 0 ? 'ok' : 'warning',
+      ),
+      w.StatCard(
+        label: Strings.get('stat_planned'),
+        value: '${daysText(plannedDays)} · $plannedHours h',
+        tok: tok,
+        kind: plannedDays > 0 ? 'sent' : 'info',
+      ),
+      w.StatCard(
+        label: tightLabel,
+        value: tightValue,
+        tok: tok,
+        kind: tightKind,
+        singleLine: true,
+      ),
+      w.StatCard(
+        label: Strings.get('planner_horizon'),
+        value: '${term.remainingDays.length}',
+        tok: tok,
+      ),
+    ];
+    if (!narrow || cards.length <= 3) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: tok.gap,
+        children: cards,
+      );
+    }
+    final half = tok.gap / 2;
+    return Column(
+      spacing: half,
+      children: [
+        for (var i = 0; i < cards.length; i += 2)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: half,
+            children: cards.sublist(i, i + 2),
+          ),
+      ],
+    );
+  }
+
+  List<Widget> _warnings(Tokens tok, TermPlanData term) {
+    final over = <String>{for (final r in term.planned) ...r.overNames}.toList()
+      ..sort();
+    final reserveSet = <String>{for (final r in term.planned) ...r.reserveNames}
+      ..removeAll(over);
+    final reserveW = reserveSet.toList()..sort();
+    final fast = [...term.fastPace]..sort();
     final out = <Widget>[];
-    final over = term.planned
-        .where((r) => r.over)
-        .map((r) => entryLabel(r.entry))
-        .toSet();
-    final reserveW = term.planned
-        .where((r) => r.reserve && !r.over)
-        .map((r) => entryLabel(r.entry))
-        .toSet();
     if (over.isNotEmpty) {
-      out.add(Text(Strings.format('warn_over', {'subjects': over.join(', ')}),
-          style: const TextStyle(color: Colors.red)));
+      out.add(
+        Text(
+          Strings.format('warn_over', {'subjects': over.join(', ')}),
+          style: TextStyle(color: tok.red, fontSize: tok.fsSmall),
+        ),
+      );
     }
     if (reserveW.isNotEmpty) {
-      out.add(Text(
+      out.add(
+        Text(
           Strings.format('warn_reserve', {'subjects': reserveW.join(', ')}),
-          style: const TextStyle(color: Colors.orange)));
+          style: TextStyle(color: tok.yellow, fontSize: tok.fsSmall),
+        ),
+      );
     }
-    if (term.fastPace.isNotEmpty) {
-      out.add(Text(
-          Strings.format('warn_pace', {'subjects': term.fastPace.join(', ')}),
-          style: const TextStyle(color: Colors.orange)));
+    if (fast.isNotEmpty) {
+      out.add(
+        Text(
+          Strings.format('warn_pace', {'subjects': fast.join(', ')}),
+          style: TextStyle(color: tok.yellow, fontSize: tok.fsSmall),
+        ),
+      );
     }
-    return out;
+    return out.isEmpty ? const [] : [w.AppCard(tok: tok, children: out)];
+  }
+
+  String _cellTip(
+    DateTime day,
+    String label,
+    DayOptionData? option, {
+    required bool isFree,
+    required bool isPlanned,
+    required bool past,
+    required YearPlanData p,
+    required bool recommended,
+  }) {
+    if (isFree) {
+      final free = p.freeLabels[day];
+      return '$label · ${free == null || free.isEmpty ? Strings.get('cal_tip_free') : free}';
+    }
+    if (isPlanned) return '$label · ${Strings.get('cal_tip_planned')}';
+    if (past) return '$label · ${Strings.get('cal_tip_past')}';
+    if (option == null) {
+      final n = p.lessonsOn(day);
+      return n > 0 ? '$label · ${w.lessonsText(n)}' : label;
+    }
+    if (!option.feasible) {
+      final names = [
+        for (final c in option.blockedBy) option.blockedNames[c] ?? c,
+      ]..sort();
+      return '$label · ${_costText(option)}\n${Strings.format('cal_tip_blocked', {'subjects': names.join(', ')})}';
+    }
+    final key = recommended ? 'cal_tip_recommended' : 'cal_tip_fits';
+    return '$label · ${_costText(option)}\n${Strings.format(key, {'h': option.budgetHours.round()})}';
   }
 
   Widget _calendarStrip(
-      BuildContext context, YearPlanData p, TermPlanData term) {
-    final recommended = {for (final o in term.recommended) o.day};
+    BuildContext context,
+    Tokens tok,
+    YearPlanData p,
+    TermPlanData term,
+  ) {
+    final recommended = {for (final o in term.recommended) _d(o.day)};
     final overDays = <DateTime>{};
     for (final row in term.planned) {
-      if (row.over) overDays.addAll(row.days);
+      if (row.over) overDays.addAll(row.days.map(_d));
     }
+    final firstMonday = _d(
+      term.start,
+    ).subtract(Duration(days: term.start.weekday - 1));
+    final names = [
+      for (var i = 0; i < 5; i++)
+        w.dayName(firstMonday.add(Duration(days: i)), true),
+    ];
+    Widget strip;
     if (narrow) {
-      // Phone: one row per week (Mon–Fri), numbered finger-sized cells.
-      var monday = term.start
-          .subtract(Duration(days: term.start.weekday - 1));
-      final rows = <Widget>[];
-      while (!monday.isAfter(term.close)) {
-        final week = [
-          for (var i = 0; i < 5; i++) monday.add(Duration(days: i))
-        ];
-        rows.add(Row(
+      const labelW = 28.0;
+      final rows = <Widget>[
+        Row(
+          spacing: 4,
           children: [
-            for (final d in week)
+            const SizedBox(width: labelW),
+            for (final n in names)
               Expanded(
-                  child: _cell(
-                      context, p, term, d, recommended, overDays,
-                      numbered: true)),
-          ],
-        ));
-        monday = monday.add(const Duration(days: 7));
-      }
-      return Card(child: Column(children: rows));
-    }
-    var monday =
-        term.start.subtract(Duration(days: term.start.weekday - 1));
-    final columns = <Widget>[];
-    while (!monday.isAfter(term.close)) {
-      final week = [
-        for (var i = 0; i < 5; i++) monday.add(Duration(days: i))
-      ];
-      columns.add(Expanded(
-        child: Column(
-          children: [
-            for (final d in week)
-              _cell(context, p, term, d, recommended, overDays),
+                child: Center(
+                  child: Text(
+                    n,
+                    style: TextStyle(color: tok.faint, fontSize: tok.fsTiny),
+                  ),
+                ),
+              ),
           ],
         ),
-      ));
-      monday = monday.add(const Duration(days: 7));
+      ];
+      var monday = firstMonday;
+      while (!monday.isAfter(term.close)) {
+        final week = [
+          for (var i = 0; i < 5; i++) monday.add(Duration(days: i)),
+        ];
+        final inTerm = [
+          for (final d in week)
+            if (!d.isBefore(_d(term.start)) && !d.isAfter(term.close)) d,
+        ];
+        final starts = [
+          for (final d in inTerm)
+            if (d.day == 1 || (d == inTerm.first && d == _d(term.start))) d,
+        ];
+        final monthLabel = starts.isEmpty ? '' : '${starts.first.month}.';
+        rows.add(
+          Row(
+            spacing: 4,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: labelW,
+                child: Text(
+                  monthLabel,
+                  style: TextStyle(
+                    color: tok.faint,
+                    fontSize: tok.fsSmall,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              for (final d in week)
+                Expanded(
+                  child: _cell(
+                    context,
+                    tok,
+                    p,
+                    term,
+                    d,
+                    recommended,
+                    overDays,
+                    36,
+                    true,
+                  ),
+                ),
+            ],
+          ),
+        );
+        monday = monday.add(const Duration(days: 7));
+      }
+      strip = Column(spacing: 4, children: rows);
+    } else {
+      var monday = firstMonday;
+      final columns = <Widget>[];
+      int? lastMonth;
+      while (!monday.isAfter(term.close)) {
+        final week = [
+          for (var i = 0; i < 5; i++) monday.add(Duration(days: i)),
+        ];
+        final inTerm = [
+          for (final d in week)
+            if (!d.isBefore(_d(term.start)) && !d.isAfter(term.close)) d,
+        ];
+        var monthLabel = '';
+        if (inTerm.isNotEmpty && inTerm.first.month != lastMonth) {
+          lastMonth = inTerm.first.month;
+          monthLabel = '${inTerm.first.month}.';
+        }
+        columns.add(
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              spacing: 4,
+              children: [
+                SizedBox(
+                  height: 16,
+                  child: Text(
+                    monthLabel,
+                    softWrap: false,
+                    overflow: TextOverflow.visible,
+                    style: TextStyle(color: tok.faint, fontSize: tok.fsTiny),
+                  ),
+                ),
+                for (final d in week)
+                  _cell(
+                    context,
+                    tok,
+                    p,
+                    term,
+                    d,
+                    recommended,
+                    overDays,
+                    18,
+                    false,
+                  ),
+              ],
+            ),
+          ),
+        );
+        monday = monday.add(const Duration(days: 7));
+      }
+      strip = Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: 4,
+        children: [
+          Column(
+            spacing: 4,
+            children: [
+              const SizedBox(height: 16),
+              for (final n in names)
+                SizedBox(
+                  height: 18,
+                  width: 24,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      n,
+                      style: TextStyle(color: tok.faint, fontSize: tok.fsTiny),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          ...columns,
+        ],
+      );
     }
-    return Card(child: Row(children: columns));
+    Widget legend(Color? color, String label, {Color? border}) => Row(
+      mainAxisSize: MainAxisSize.min,
+      spacing: 4,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
+            border: border == null ? null : Border.all(color: border),
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(color: tok.muted, fontSize: tok.fsTiny),
+        ),
+      ],
+    );
+    return w.AppCard(
+      tok: tok,
+      children: [
+        strip,
+        Wrap(
+          spacing: tok.gap,
+          runSpacing: 4,
+          children: [
+            legend(tok.overlay, Strings.get('legend_school')),
+            legend(null, Strings.get('legend_free'), border: tok.border),
+            legend(tok.green, Strings.get('legend_recommended')),
+            legend(tok.accent, Strings.get('legend_planned')),
+            legend(tintColor(tok.red, 0.35), Strings.get('legend_blocked')),
+            legend(null, Strings.get('legend_today'), border: tok.text),
+          ],
+        ),
+        _small(tok, Strings.get('overview_hint')),
+      ],
+    );
   }
 
-  Widget _cell(BuildContext context, YearPlanData p, TermPlanData term,
-      DateTime day, Set<DateTime> recommended, Set<DateTime> overDays,
-      {bool numbered = false}) {
-    final scheme = Theme.of(context).colorScheme;
-    if (day.isBefore(term.start) || day.isAfter(term.close)) {
-      return SizedBox(height: numbered ? 36 : 18);
+  static DateTime _d(DateTime x) => DateTime(x.year, x.month, x.day);
+
+  Widget _cell(
+    BuildContext context,
+    Tokens tok,
+    YearPlanData p,
+    TermPlanData term,
+    DateTime rawDay,
+    Set<DateTime> recommended,
+    Set<DateTime> overDays,
+    double size,
+    bool numbered,
+  ) {
+    final day = _d(rawDay);
+    if (day.isBefore(_d(term.start)) || day.isAfter(_d(term.close))) {
+      return SizedBox(height: size);
     }
-    final key = DateTime(day.year, day.month, day.day);
+    final option = term.options[day];
+    final isFree = p.holidays.contains(day);
+    final isPlanned = term.plannedDates.contains(day);
+    final past = day.isBefore(_d(p.firstDay));
+    final label = '${w.dayName(day, true)} ${w.czDay(day)}';
     Color? fill;
-    if (p.holidays.contains(key)) {
-      fill = null;
-    } else if (term.plannedDates.contains(key)) {
-      fill = overDays.contains(key) ? Colors.red : scheme.primary;
-    } else if (recommended.contains(key)) {
-      fill = Colors.green;
+    Color? border;
+    final isRecommended = recommended.contains(day);
+    if (isFree) {
+      border = tok.border;
+    } else if (isPlanned) {
+      fill = overDays.contains(day) ? tok.red : tok.accent;
+      if (past) fill = tintColor(fill, 0.45);
+    } else if (past) {
+      fill = tintColor(tok.overlay, 0.55);
+    } else if (option == null) {
+      fill = tok.overlay;
+    } else if (!option.feasible) {
+      fill = tintColor(tok.red, 0.35);
+    } else if (isRecommended) {
+      fill = tok.green;
     } else {
-      fill = scheme.surfaceContainerHighest;
+      fill = tok.overlay;
     }
-    final isPast = day.isBefore(p.firstDay);
-    final label =
-        '${_weekdayShort(day.weekday)} ${_cz(day)}';
+    var tip = _cellTip(
+      day,
+      label,
+      option,
+      isFree: isFree,
+      isPlanned: isPlanned,
+      past: past,
+      p: p,
+      recommended: isRecommended,
+    );
+    if (option != null && option.finalWeek && !isPlanned) {
+      tip += '\n${Strings.get('cal_tip_final')}';
+    }
+    final isToday = day == _d(p.today);
+    if (isToday) border = tok.text;
+    VoidCallback? onTap;
+    if (isPlanned && !past) {
+      final entry = controller.plannedFor(_iso(day));
+      if (entry != null) {
+        onTap = () => showPlannedDialog(context, Map.of(entry));
+      }
+    } else if (option != null && !past) {
+      onTap = () => showPlanDayDialog(context, day);
+    }
+    Widget? number;
+    if (numbered) {
+      final solid = fill == tok.green || fill == tok.accent || fill == tok.red;
+      number = Text(
+        '${day.day}',
+        style: TextStyle(
+          fontSize: tok.fsSmall,
+          fontWeight: FontWeight.w600,
+          color: solid
+              ? tok.accentText
+              : (past || isFree ? tok.faint : tok.text),
+        ),
+      );
+    }
     return Tooltip(
-      message: label,
-      child: InkWell(
-        onTap: term.plannedDates.contains(key)
-            ? () => showPlannedDialog(
-                context, controller.plannedFor(_iso(key)) ?? {'start_date': _iso(key), 'end_date': _iso(key)})
-            : () => showPlanDayDialog(context, key),
+      message: tip,
+      child: GestureDetector(
+        onTap: onTap,
         child: Container(
-          height: numbered ? 36 : 18,
-          margin: const EdgeInsets.all(1),
+          height: size,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: fill,
-            borderRadius: BorderRadius.circular(4),
-            border: day.year == p.today.year &&
-                    day.month == p.today.month &&
-                    day.day == p.today.day
-                ? Border.all(color: scheme.onSurface)
-                : null,
+            borderRadius: BorderRadius.circular(numbered ? 6 : 3),
+            border: border == null
+                ? null
+                : Border.all(color: border, width: isToday ? 2 : 1),
           ),
-          child: numbered
-              ? Text('${day.day}',
-                  style: TextStyle(
-                      color: isPast ? Colors.grey : null, fontSize: 12))
-              : null,
+          child: number,
         ),
       ),
     );
   }
 
-  Widget _recommended(
-      BuildContext context, YearPlanData p, TermPlanData term) {
-    final picks = term.recommended;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                  '${Strings.get('section_plan')} (${picks.length})',
-                  style: Theme.of(context).textTheme.titleMedium),
-            ),
-            _targetDropdown(term),
-            if (picks.isNotEmpty)
-              FilledButton(
-                onPressed: () => showPlanAllDialog(
-                    context, [for (final o in picks) o.day]),
-                child: Text('${Strings.get('plan_all')} (${picks.length})'),
-              ),
-          ],
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Text(Strings.get('plan_explain')),
-        ),
-        if (picks.isEmpty)
-          Card(child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Text(Strings.get('plan_budget_empty')),
-          )),
-        for (var i = 0; i < picks.length; i++)
-          if (i == 0)
-            TutorialAnchor(
-              anchorKey: 'plan_first',
-              child: Card(
-                child: ListTile(
-                  title: Text(
-                      '${_weekdayLong(picks[i].day.weekday)} ${_cz(picks[i].day)}'),
-                  subtitle: Text(_costText(picks[i])),
-                  trailing: FilledButton(
-                    onPressed: () => showPlanDayDialog(context, picks[i].day),
-                    child: Text(Strings.get('plan_skip')),
-                  ),
-                ),
-              ),
-            )
-          else
-            Card(
-              child: ListTile(
-                title: Text(
-                    '${_weekdayLong(picks[i].day.weekday)} ${_cz(picks[i].day)}'),
-                subtitle: Text(_costText(picks[i])),
-                trailing: FilledButton(
-                  onPressed: () => showPlanDayDialog(context, picks[i].day),
-                  child: Text(Strings.get('plan_skip')),
-                ),
-              ),
-            ),
-      ],
-    );
+  Widget _tagBadge(Tokens tok, String tag, DayOptionData o) {
+    switch (tag) {
+      case 'bridge':
+        return w.Badge(
+          text: Strings.format('tag_bridge', {'n': o.streak}),
+          tok: tok,
+          kind: 'sent',
+        );
+      case 'long_weekend':
+        return w.Badge(
+          text: Strings.get('tag_long_weekend'),
+          tok: tok,
+          kind: 'ok',
+        );
+      case 'light':
+        return w.Badge(text: Strings.get('tag_light'), tok: tok);
+      case 'free':
+        return w.Badge(text: Strings.get('tag_free'), tok: tok, kind: 'ok');
+      case 'final_week':
+        return w.Badge(
+          text: Strings.get('tag_final_week'),
+          tok: tok,
+          kind: 'warning',
+        );
+      default:
+        return w.Badge(
+          text: Strings.get('tag_late_week'),
+          tok: tok,
+          kind: 'pending',
+        );
+    }
   }
 
-  Widget _targetDropdown(TermPlanData term) {
+  static String _subjectsText(List<String> names, [int limit = 6]) {
+    final unique = {
+      for (final n in names)
+        if (n.trim().isNotEmpty) n,
+    }.toList()..sort();
+    if (unique.length > limit) return '${unique.take(limit).join('; ')} …';
+    return unique.join('; ');
+  }
+
+  List<Widget> _recommended(
+    BuildContext context,
+    Tokens tok,
+    YearPlanData p,
+    TermPlanData term,
+  ) {
+    final picks = term.recommended;
+    final heading = w.SectionHeader(
+      '${Strings.get('section_plan')} (${picks.length})',
+      tok: tok,
+    );
+    final actions = <Widget>[
+      _targetDropdown(tok, term),
+      if (picks.isNotEmpty)
+        ElevatedButton.icon(
+          onPressed: () =>
+              showPlanAllDialog(context, [for (final o in picks) o.day]),
+          icon: const Icon(Icons.done_all, size: 18),
+          label: Text('${Strings.get('plan_all')} (${picks.length})'),
+        ),
+    ];
+    final out = <Widget>[
+      if (narrow) ...[
+        heading,
+        Wrap(spacing: 8, runSpacing: 8, children: actions),
+      ] else
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          spacing: 8,
+          children: [
+            Expanded(child: heading),
+            ...actions,
+          ],
+        ),
+      _small(tok, Strings.get('plan_explain')),
+    ];
+    if (picks.isEmpty) {
+      final already = term.plannedDates
+          .intersection(term.remainingDays.toSet())
+          .length;
+      final target = controller.plannerTargetDays();
+      final text = target > 0 && already >= target
+          ? Strings.format('plan_target_met', {'n': already})
+          : Strings.get('plan_budget_empty');
+      out.add(
+        w.AppCard(
+          tok: tok,
+          children: [
+            Text(
+              text,
+              style: TextStyle(color: tok.faint, fontSize: tok.fsBody),
+            ),
+          ],
+        ),
+      );
+      return out;
+    }
+    for (var i = 0; i < picks.length; i++) {
+      final option = picks[i];
+      final lessonsToday = lessonsFor?.call(option.day) ?? const <PickerSlot>[];
+      final taught = lessonsToday.where((s) => s.taught).toList();
+      final today = clock.now();
+      final Widget when;
+      if (_d(option.day) == _d(today) && taught.isNotEmpty) {
+        final left = taught.where((s) => !s.past).length;
+        when = Text(
+          Strings.format('today_left_note', {'n': left, 't': taught.length}),
+          style: TextStyle(color: tok.yellow, fontSize: tok.fsSmall),
+        );
+      } else {
+        when = Text(
+          _costText(option),
+          style: TextStyle(color: tok.muted, fontSize: tok.fsSmall),
+        );
+      }
+      final card = w.AppCard(
+        tok: tok,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            spacing: 8,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 2,
+                  children: [
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          _dayLabel(option.day),
+                          style: TextStyle(
+                            color: tok.text,
+                            fontSize: tok.fsBody,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        for (final tag in option.tags)
+                          _tagBadge(tok, tag, option),
+                      ],
+                    ),
+                    when,
+                    Text(
+                      _subjectsText(option.lessons),
+                      style: TextStyle(color: tok.faint, fontSize: tok.fsTiny),
+                    ),
+                  ],
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => showPlanDayDialog(context, option.day),
+                child: Text(Strings.get('plan_skip')),
+              ),
+            ],
+          ),
+        ],
+      );
+      out.add(
+        i == 0 ? TutorialAnchor(anchorKey: 'plan_first', child: card) : card,
+      );
+    }
+    return out;
+  }
+
+  Widget _targetDropdown(Tokens tok, TermPlanData term) {
     // Port of `_target_dropdown` (planner.py): the capacity on top of what
     // is already planned in the rest of the term.
     final remaining = term.remainingDays.toSet();
@@ -580,89 +1020,325 @@ class PlannerView extends StatelessWidget {
     final current = controller.plannerTargetDays();
     final top = [maximum, current, 1].reduce((a, b) => a > b ? a : b);
     final limit = top > 60 ? 60 : top;
-    return DropdownButton<int>(
-      value: current <= limit ? current : 0,
-      items: [
-        DropdownMenuItem(
+    return SizedBox(
+      width: 230,
+      child: DropdownButtonFormField<int>(
+        initialValue: current <= limit ? current : 0,
+        isExpanded: true,
+        dropdownColor: tok.card,
+        decoration: InputDecoration(labelText: Strings.get('target_label')),
+        items: [
+          DropdownMenuItem(
             value: 0,
-            child: Text(Strings.format('target_auto', {'n': maximum}))),
-        for (var i = 1; i <= limit; i++)
-          DropdownMenuItem(value: i, child: Text(daysText(i))),
-      ],
-      onChanged: (v) {
-        if (v != null) controller.setPlannerTarget(v);
-      },
+            child: Text(Strings.format('target_auto', {'n': maximum})),
+          ),
+          for (var i = 1; i <= limit; i++)
+            DropdownMenuItem(value: i, child: Text(daysText(i))),
+        ],
+        onChanged: (v) {
+          if (v != null) controller.setPlannerTarget(v);
+        },
+      ),
     );
   }
 
-  List<Widget> _budgets(BuildContext context, TermPlanData term) {
-    if (term.budgets.isEmpty) return [];
-    return [
-      Padding(
-        padding: const EdgeInsets.all(12),
-        child: Text(Strings.get('section_budgets'),
-            style: Theme.of(context).textTheme.titleMedium),
+  Widget _budgetBar(Tokens tok, BudgetRowData b) {
+    final over = b.status == 'over';
+    final segments = <(double, Color)>[
+      (b.missed, over ? tok.red : tok.muted),
+      (b.planned, over ? tok.red : tok.accent),
+      (b.free < 0 ? 0.0 : b.free, tok.green),
+      (
+        (b.buffer < b.schoolLeft ? b.buffer : b.schoolLeft).clamp(0.0, 1e9),
+        tintColor(tok.yellow, 0.55),
       ),
+    ];
+    var total = b.schoolCap > b.missed + b.planned
+        ? b.schoolCap
+        : b.missed + b.planned;
+    if (total < 0.1) total = 0.1;
+    final parts = <Widget>[];
+    var used = 0;
+    for (final (hours, color) in segments) {
+      final share = ((hours < 0 ? 0.0 : hours) / total * 1000).round();
+      if (share <= 0) continue;
+      used += share;
+      parts.add(
+        Expanded(
+          flex: share,
+          child: ColoredBox(color: color),
+        ),
+      );
+    }
+    if (used < 1000) {
+      parts.add(Expanded(flex: 1000 - used, child: const SizedBox.shrink()));
+    }
+    return Container(
+      height: 8,
+      clipBehavior: Clip.hardEdge,
+      decoration: BoxDecoration(
+        color: tok.overlay,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(children: parts),
+    );
+  }
+
+  List<Widget> _budgets(Tokens tok, TermPlanData term) {
+    if (term.budgets.isEmpty) return const [];
+    final rows = <Widget>[];
+    for (final b in term.budgets) {
+      final kind =
+          const {
+            'over': 'critical',
+            'reserve': 'warning',
+            'tight': 'warning',
+          }[b.status] ??
+          'ok';
+      final label = Strings.get(
+        const {
+              'over': 'budget_over',
+              'reserve': 'budget_reserve',
+              'tight': 'budget_tight',
+            }[b.status] ??
+            'budget_ok',
+      );
+      rows.add(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          spacing: 3,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              spacing: 6,
+              children: [
+                Expanded(
+                  child: Text(
+                    b.name,
+                    style: TextStyle(
+                      color: tok.text,
+                      fontSize: tok.fsSmall,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Text(
+                  Strings.format('budget_final', {
+                    'p': b.projectedPct.toStringAsFixed(1),
+                    'limit': b.limitPct,
+                  }),
+                  style: TextStyle(color: tok.faint, fontSize: tok.fsTiny),
+                ),
+                w.Badge(text: label, tok: tok, kind: kind),
+              ],
+            ),
+            _budgetBar(tok, b),
+            Text(
+              Strings.format('budget_line', {
+                'free': hoursText(b.free),
+                'planned': b.planned.toInt(),
+                'buffer': hoursText(b.buffer),
+              }),
+              style: TextStyle(color: tok.muted, fontSize: tok.fsTiny),
+            ),
+          ],
+        ),
+      );
+    }
+    Widget legend(Color color, String label) => Row(
+      mainAxisSize: MainAxisSize.min,
+      spacing: 4,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(color: tok.muted, fontSize: tok.fsTiny),
+        ),
+      ],
+    );
+    return [
+      w.SectionHeader(Strings.get('section_budgets'), tok: tok),
       TutorialAnchor(
         anchorKey: 'plan_budget',
-        child: Card(
-          child: Column(
-            children: [
-              for (final b in term.budgets)
-                ListTile(
-                  title: Text(b.name),
-                  subtitle: LinearProgressIndicator(
-                    value: (b.projectedPct / 100).clamp(0.0, 1.0),
-                  ),
-                  trailing: Text(Strings.format('budget_final',
-                      {'p': b.projectedPct.toStringAsFixed(1), 'limit': b.limitPct})),
+        child: w.AppCard(
+          tok: tok,
+          children: [
+            Wrap(
+              spacing: tok.gap,
+              runSpacing: 4,
+              children: [
+                legend(tok.muted, Strings.get('legend_missed')),
+                legend(tok.accent, Strings.get('legend_planned')),
+                legend(tok.green, Strings.get('legend_free_h')),
+                legend(
+                  tintColor(tok.yellow, 0.55),
+                  Strings.get('legend_buffer'),
                 ),
-            ],
-          ),
+              ],
+            ),
+            ...rows,
+          ],
         ),
       ),
     ];
   }
 
-  List<Widget> _planned(BuildContext context, YearPlanData p) {
-    final planned = controller.plannedSkips;
-    return [
-      Padding(
-        padding: const EdgeInsets.all(12),
-        child: Text('${Strings.get('planned_title')} (${planned.length})',
-            style: Theme.of(context).textTheme.titleMedium),
+  List<Widget> _planned(BuildContext context, Tokens tok, YearPlanData p) {
+    Map<String, Object?> raw(Map<String, dynamic> e) =>
+        Map<String, Object?>.of(e);
+    final planned = [...controller.plannedSkips]
+      ..sort((a, b) {
+        final x = core
+            .entryStartIso(raw(a))
+            .compareTo(core.entryStartIso(raw(b)));
+        if (x != 0) return x;
+        return core.entryEndIso(raw(a)).compareTo(core.entryEndIso(raw(b)));
+      });
+    final costs = <String, (int, bool, bool)>{};
+    for (final term in p.terms) {
+      for (final row in term.planned) {
+        final key = '${core.normalizePlannedEntry(row.entry)}';
+        final old = costs[key] ?? (0, false, false);
+        costs[key] = (
+          old.$1 + row.costSum,
+          old.$2 || row.over,
+          old.$3 || row.reserve,
+        );
+      }
+    }
+    final blocks = <Widget>[
+      w.SectionHeader(
+        '${Strings.get('planned_title')} (${planned.length})',
+        tok: tok,
       ),
-      if (planned.isEmpty)
-        Card(
-            child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Text(Strings.get('no_planned')),
-        )),
-      for (final entry in planned)
-        Card(
-          child: ListTile(
-            title: Text(entryLabel(entry)),
-            trailing: TextButton(
-              onPressed: () {
-                if (controller.unplanEntry(entry)) {
-                  appSnack(context, Strings.get('plan_removed'));
-                } else {
-                  appSnack(context, Strings.get('save_failed'));
-                }
-              },
-              child: Text(Strings.get('unplan')),
+    ];
+    if (planned.isEmpty) {
+      blocks.add(
+        w.AppCard(
+          tok: tok,
+          children: [
+            Text(
+              Strings.get('no_planned'),
+              style: TextStyle(color: tok.faint, fontSize: tok.fsBody),
             ),
-            onTap: () => showPlannedDialog(context, entry),
+          ],
+        ),
+      );
+      return blocks;
+    }
+    final today = _d(clock.now());
+    for (final entry in planned) {
+      final end = DateTime.tryParse(core.entryEndIso(raw(entry)));
+      final isPast = end != null && _d(end).isBefore(today);
+      final template = '${entry['template'] ?? ''}'.trim().split('\n').first;
+      final preview = template.length > 80
+          ? template.substring(0, 80)
+          : template;
+      final (hours, over, reserve) =
+          costs['${core.normalizePlannedEntry(entry)}'] ?? (0, false, false);
+      final badges = <Widget>[
+        Text(
+          entryLabel(entry),
+          style: TextStyle(
+            color: tok.text,
+            fontSize: tok.fsBody,
+            fontWeight: FontWeight.w700,
           ),
         ),
-    ];
+        if (over && !isPast)
+          w.Badge(text: Strings.get('budget_over'), tok: tok, kind: 'critical')
+        else if (reserve && !isPast)
+          w.Badge(
+            text: Strings.get('budget_reserve'),
+            tok: tok,
+            kind: 'warning',
+          ),
+      ];
+      final meta = [
+        if (hours > 0 && !isPast) Strings.format('planned_cost', {'h': hours}),
+        preview,
+      ].where((x) => x.isNotEmpty).join(' · ');
+      blocks.add(
+        w.AppCard(
+          tok: tok,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    spacing: 2,
+                    children: [
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: badges,
+                      ),
+                      if (meta.isNotEmpty)
+                        Text(
+                          meta,
+                          style: TextStyle(
+                            color: tok.muted,
+                            fontSize: tok.fsSmall,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (isPast)
+                  w.Badge(
+                    text: Strings.get('day_passed'),
+                    tok: tok,
+                    kind: 'pending',
+                  )
+                else
+                  TextButton(
+                    style: TextButton.styleFrom(foregroundColor: tok.red),
+                    onPressed: () {
+                      if (controller.unplanEntry(entry)) {
+                        appSnack(context, Strings.get('plan_removed'));
+                      } else {
+                        appSnack(context, Strings.get('save_failed'));
+                      }
+                    },
+                    child: Text(Strings.get('unplan')),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+    return blocks;
   }
+
+  List<Widget> _footer(Tokens tok) => [
+    _small(tok, Strings.get('holidays_note')),
+    if (calendarSummary.isNotEmpty) _small(tok, calendarSummary),
+    Align(
+      alignment: Alignment.centerLeft,
+      child: OutlinedButton(
+        onPressed: onOpenCalendar,
+        child: Text(Strings.get('cal_open_calendar')),
+      ),
+    ),
+  ];
 
   String _costText(DayOptionData option) {
+    final lessons = w.lessonsText(option.lessonsCount);
     if (option.cost == 0) {
-      return '${option.lessonsCount} · ${Strings.get('day_cost_free')}';
+      return '$lessons · ${Strings.get('day_cost_free')}';
     }
-    return '${option.lessonsCount} · ${Strings.format('day_cost', {'n': option.budgetHours})}';
+    return '$lessons · ${Strings.format('day_cost', {'n': option.budgetHours.round()})}';
   }
 
   // -- dialogs ---------------------------------------------------------------
@@ -683,14 +1359,17 @@ class PlannerView extends StatelessWidget {
     return showDialog<void>(
       context: context,
       builder: (ctx) => _PlanAllDialog(
-          controller: controller,
-          days: days,
-          stravaOn: stravaOn),
+        controller: controller,
+        days: days,
+        stravaOn: stravaOn,
+      ),
     );
   }
 
   Future<void> showPlannedDialog(
-      BuildContext context, Map<String, dynamic> entry) {
+    BuildContext context,
+    Map<String, dynamic> entry,
+  ) {
     return showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -698,14 +1377,17 @@ class PlannerView extends StatelessWidget {
         content: Text('${entry['template'] ?? ''}'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: Text(Strings.get('cancel'))),
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(Strings.get('cancel')),
+          ),
           TextButton(
             onPressed: () {
               final ok = controller.unplanEntry(entry);
               Navigator.of(ctx).pop();
-              appSnack(context,
-                  ok ? Strings.get('plan_removed') : Strings.get('save_failed'));
+              appSnack(
+                context,
+                ok ? Strings.get('plan_removed') : Strings.get('save_failed'),
+              );
             },
             child: Text(Strings.get('unplan')),
           ),
@@ -733,12 +1415,6 @@ class PlannerView extends StatelessWidget {
   static String _iso(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  static String _weekdayShort(int weekday) {
-    const cs = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'];
-    const en = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    return (Strings.lang == 'en' ? en : cs)[weekday - 1];
-  }
-
   static String _weekdayLong(int weekday) {
     const cs = [
       'Pondělí',
@@ -747,7 +1423,7 @@ class PlannerView extends StatelessWidget {
       'Čtvrtek',
       'Pátek',
       'Sobota',
-      'Neděle'
+      'Neděle',
     ];
     const en = [
       'Monday',
@@ -756,7 +1432,7 @@ class PlannerView extends StatelessWidget {
       'Thursday',
       'Friday',
       'Saturday',
-      'Sunday'
+      'Sunday',
     ];
     return (Strings.lang == 'en' ? en : cs)[weekday - 1];
   }
@@ -792,9 +1468,11 @@ class _PlanDayDialogState extends State<PlanDayDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final named = templateOptions(widget.controller.config,
-        kind: 'day',
-        signature: '${widget.controller.get('your_signature', '')}');
+    final named = templateOptions(
+      widget.controller.config,
+      kind: 'day',
+      signature: '${widget.controller.get('your_signature', '')}',
+    );
     final options = [for (final e in named) e.value];
     final labels = templateLabels(named);
     final dayIso =
@@ -809,14 +1487,13 @@ class _PlanDayDialogState extends State<PlanDayDialog> {
         orderOpen = true;
       }
     }
-    final impacts = widget.impactOf?.call({
-          'start_date': dayIso,
-          'end_date': dayIso,
-        }) ??
+    final impacts =
+        widget.impactOf?.call({'start_date': dayIso, 'end_date': dayIso}) ??
         const [];
     return AlertDialog(
       title: Text(
-          "${Strings.get('plan_skip')}: ${PlannerView._weekdayLong(widget.day.weekday)} ${PlannerView._cz(widget.day)}"),
+        "${Strings.get('plan_skip')}: ${PlannerView._weekdayLong(widget.day.weekday)} ${PlannerView._cz(widget.day)}",
+      ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -827,19 +1504,16 @@ class _PlanDayDialogState extends State<PlanDayDialog> {
               value: picked.clamp(0, options.length - 1),
               items: [
                 for (var i = 0; i < labels.length; i++)
-                  DropdownMenuItem(
-                      value: i, child: Text(labels[i].value)),
+                  DropdownMenuItem(value: i, child: Text(labels[i].value)),
               ],
-              onChanged: (v) =>
-                  setState(() => picked = v ?? 0),
+              onChanged: (v) => setState(() => picked = v ?? 0),
             ),
             Text(options[picked.clamp(0, options.length - 1)]),
             if (widget.stravaOn && orderOpen)
               CheckboxListTile(
                 title: Text(Strings.get('plan_cancel_lunch')),
                 value: cancelLunch,
-                onChanged: (v) =>
-                    setState(() => cancelLunch = v ?? true),
+                onChanged: (v) => setState(() => cancelLunch = v ?? true),
               ),
             if (widget.stravaOn && !orderOpen)
               Text(Strings.format('lunch_cannot_cancel', {'deadline': '—'})),
@@ -849,16 +1523,23 @@ class _PlanDayDialogState extends State<PlanDayDialog> {
       ),
       actions: [
         TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(Strings.get('cancel'))),
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(Strings.get('cancel')),
+        ),
         FilledButton(
           onPressed: () {
             final ok = widget.controller.planSkip(
-                dayIso, options[picked.clamp(0, options.length - 1)],
-                cancelLunch: cancelLunch);
+              dayIso,
+              options[picked.clamp(0, options.length - 1)],
+              cancelLunch: cancelLunch,
+            );
             Navigator.of(context).pop();
-            appSnack(context,
-                ok ? Strings.get('skip_planned') : Strings.get('skip_not_planned'));
+            appSnack(
+              context,
+              ok
+                  ? Strings.get('skip_planned')
+                  : Strings.get('skip_not_planned'),
+            );
           },
           child: Text(Strings.get('confirm')),
         ),
@@ -875,27 +1556,36 @@ class _PlanDayDialogState extends State<PlanDayDialog> {
       if (impacts.length > 1) out.add(Text(term.label));
       for (final row in term.rows) {
         anyRows = true;
-        if (row.level == 'over' ||
-            (row.level == 'reserve' && worst == 'ok')) {
+        if (row.level == 'over' || (row.level == 'reserve' && worst == 'ok')) {
           worst = row.level;
         }
-        out.add(Text(Strings.format('impact_row', {
-          'name': row.name,
-          'cost': row.cost,
-          'left': hoursText(row.freeAfter),
-          'p': row.projectedAfter.toStringAsFixed(1),
-        })));
+        out.add(
+          Text(
+            Strings.format('impact_row', {
+              'name': row.name,
+              'cost': row.cost,
+              'left': hoursText(row.freeAfter),
+              'p': row.projectedAfter.toStringAsFixed(1),
+            }),
+          ),
+        );
       }
     }
     if (!anyRows) {
       out.add(Text(Strings.get('impact_none')));
       return out;
     }
-    out.add(Text(Strings.get(worst == 'over'
-            ? 'impact_over'
-            : worst == 'reserve'
-                ? 'impact_reserve'
-                : 'impact_ok')));
+    out.add(
+      Text(
+        Strings.get(
+          worst == 'over'
+              ? 'impact_over'
+              : worst == 'reserve'
+              ? 'impact_reserve'
+              : 'impact_ok',
+        ),
+      ),
+    );
     return out;
   }
 }
@@ -906,8 +1596,11 @@ class _PlanAllDialog extends StatefulWidget {
   final List<DateTime> days;
   final bool stravaOn;
 
-  const _PlanAllDialog(
-      {required this.controller, required this.days, required this.stravaOn});
+  const _PlanAllDialog({
+    required this.controller,
+    required this.days,
+    required this.stravaOn,
+  });
 
   @override
   State<_PlanAllDialog> createState() => _PlanAllDialogState();
@@ -919,14 +1612,14 @@ class _PlanAllDialogState extends State<_PlanAllDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final named = templateOptions(widget.controller.config,
-        kind: 'day',
-        signature: '${widget.controller.get('your_signature', '')}');
+    final named = templateOptions(
+      widget.controller.config,
+      kind: 'day',
+      signature: '${widget.controller.get('your_signature', '')}',
+    );
     final options = [for (final e in named) e.value];
     final labels = templateLabels(named);
-    final listing = widget.days
-        .map((d) => PlannerView._cz(d))
-        .join(', ');
+    final listing = widget.days.map((d) => PlannerView._cz(d)).join(', ');
     return AlertDialog(
       title: Text(Strings.get('plan_all_title')),
       content: SingleChildScrollView(
@@ -940,40 +1633,40 @@ class _PlanAllDialogState extends State<_PlanAllDialog> {
                 for (var i = 0; i < options.length; i++)
                   DropdownMenuItem(value: i, child: Text(labels[i].value)),
               ],
-              onChanged: (v) =>
-                  setState(() => picked = v ?? 0),
+              onChanged: (v) => setState(() => picked = v ?? 0),
             ),
             Text(options[picked.clamp(0, options.length - 1)]),
             if (widget.stravaOn)
               CheckboxListTile(
                 title: Text(Strings.get('plan_cancel_lunch')),
                 value: cancelLunch,
-                onChanged: (v) =>
-                    setState(() => cancelLunch = v ?? true),
+                onChanged: (v) => setState(() => cancelLunch = v ?? true),
               ),
           ],
         ),
       ),
       actions: [
         TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(Strings.get('cancel'))),
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(Strings.get('cancel')),
+        ),
         FilledButton(
           onPressed: () {
             final n = widget.controller.planDays(
               [
                 for (final d in widget.days)
-                  '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}'
+                  '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}',
               ],
               options[picked.clamp(0, options.length - 1)],
               cancelLunch: cancelLunch,
             );
             Navigator.of(context).pop();
             appSnack(
-                context,
-                n > 0
-                    ? Strings.format('plan_all_done', {'n': n})
-                    : Strings.get('skip_not_planned'));
+              context,
+              n > 0
+                  ? Strings.format('plan_all_done', {'n': n})
+                  : Strings.get('skip_not_planned'),
+            );
           },
           child: Text(Strings.get('confirm')),
         ),
@@ -992,7 +1685,7 @@ class CustomPlanDialog extends StatefulWidget {
   final List<PickerSlot> Function(DateTime day) lessonsFor;
   final Set<DateTime> freeDays;
   final List<ImpactTerm> Function(List<Map<String, dynamic>> entries)?
-      impactOfEntries;
+  impactOfEntries;
   final DateTime? initialMonth;
   final DateTime? preselect;
   final DateTime? firstMonth;
@@ -1042,9 +1735,9 @@ class _CustomPlanDialogState extends State<CustomPlanDialog> {
   }
 
   Set<int> _pickable(DateTime day) => {
-        for (final s in _slots(day))
-          if (s.pickable) s.period!,
-      };
+    for (final s in _slots(day))
+      if (s.pickable) s.period!,
+  };
 
   bool _full(DateTime day) {
     final p = _pickable(day);
@@ -1077,19 +1770,24 @@ class _CustomPlanDialogState extends State<CustomPlanDialog> {
             if (s.taught && s.period != null) s.period!,
         },
     };
-    return core.entriesForSelection(
-      picked: chosen,
-      lessons: lessons,
-      template: template,
-      cancelLunch: cancelLunch,
-    ).map((e) => Map<String, dynamic>.from(e)).toList();
+    return core
+        .entriesForSelection(
+          picked: chosen,
+          lessons: lessons,
+          template: template,
+          cancelLunch: cancelLunch,
+        )
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    final named = templateOptions(widget.controller.config,
-        kind: 'day',
-        signature: '${widget.controller.get('your_signature', '')}');
+    final named = templateOptions(
+      widget.controller.config,
+      kind: 'day',
+      signature: '${widget.controller.get('your_signature', '')}',
+    );
     final options = [for (final e in named) e.value];
     final labels = templateLabels(named);
     final entries = _entries(options[templateIdx.clamp(0, options.length - 1)]);
@@ -1098,7 +1796,7 @@ class _CustomPlanDialogState extends State<CustomPlanDialog> {
     return AlertDialog(
       title: Text(Strings.get('plan_custom')),
       content: SizedBox(
-        width: dialogWidth(context, 520),
+        width: w.dialogWidth(context, 520),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1108,30 +1806,34 @@ class _CustomPlanDialogState extends State<CustomPlanDialog> {
               _calendarHeader(),
               _calendarGrid(),
               for (final day in chosen) _dayBlock(day),
-              Text(entries.isEmpty
-                  ? Strings.get('pick_empty')
-                  : Strings.format('pick_total', {
-                      'days': daysText(chosen
-                          .where((d) => (picked[d] ?? {}).isNotEmpty)
-                          .length),
-                      'lessons': picked.values.fold<int>(
-                          0, (n, s) => n + s.length),
-                    })),
+              Text(
+                entries.isEmpty
+                    ? Strings.get('pick_empty')
+                    : Strings.format('pick_total', {
+                        'days': daysText(
+                          chosen
+                              .where((d) => (picked[d] ?? {}).isNotEmpty)
+                              .length,
+                        ),
+                        'lessons': picked.values.fold<int>(
+                          0,
+                          (n, s) => n + s.length,
+                        ),
+                      }),
+              ),
               DropdownButton<int>(
                 value: templateIdx.clamp(0, options.length - 1),
                 items: [
                   for (var i = 0; i < options.length; i++)
                     DropdownMenuItem(value: i, child: Text(labels[i].value)),
                 ],
-                onChanged: (v) =>
-                    setState(() => templateIdx = v ?? 0),
+                onChanged: (v) => setState(() => templateIdx = v ?? 0),
               ),
               if (widget.stravaOn)
                 CheckboxListTile(
                   title: Text(Strings.get('plan_cancel_lunch')),
                   value: cancelLunch,
-                  onChanged: (v) =>
-                      setState(() => cancelLunch = v ?? true),
+                  onChanged: (v) => setState(() => cancelLunch = v ?? true),
                 ),
               _PlanDayDialogStaticImpact(impacts: impacts),
             ],
@@ -1140,8 +1842,9 @@ class _CustomPlanDialogState extends State<CustomPlanDialog> {
       ),
       actions: [
         TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(Strings.get('cancel'))),
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(Strings.get('cancel')),
+        ),
         FilledButton(
           onPressed: entries.isEmpty
               ? null
@@ -1149,12 +1852,13 @@ class _CustomPlanDialogState extends State<CustomPlanDialog> {
                   final n = widget.controller.planEntries(entries);
                   Navigator.of(context).pop();
                   appSnack(
-                      context,
-                      n > 0
-                          ? (cancelLunch && widget.stravaOn
+                    context,
+                    n > 0
+                        ? (cancelLunch && widget.stravaOn
                               ? Strings.get('skip_planned')
                               : Strings.get('skip_planned_keep_lunch'))
-                          : Strings.get('skip_not_planned'));
+                        : Strings.get('skip_not_planned'),
+                  );
                 },
           child: Text(Strings.get('confirm')),
         ),
@@ -1198,19 +1902,20 @@ class _CustomPlanDialogState extends State<CustomPlanDialog> {
     final rows = <Widget>[];
     final end = monthAdd(month, 1);
     while (monday.isBefore(end)) {
-      final week = [
-        for (var i = 0; i < 5; i++) monday.add(Duration(days: i))
-      ];
+      final week = [for (var i = 0; i < 5; i++) monday.add(Duration(days: i))];
       if (week.any((d) => d.month == month.month)) {
-        rows.add(Row(
-          children: [
-            for (final d in week)
-              Expanded(
+        rows.add(
+          Row(
+            children: [
+              for (final d in week)
+                Expanded(
                   child: d.month == month.month
                       ? _cell(d)
-                      : const SizedBox(height: 44)),
-          ],
-        ));
+                      : const SizedBox(height: 44),
+                ),
+            ],
+          ),
+        );
       }
       monday = monday.add(const Duration(days: 7));
     }
@@ -1221,8 +1926,7 @@ class _CustomPlanDialogState extends State<CustomPlanDialog> {
     final day = _norm(rawDay);
     final sel = picked[day] ?? {};
     final pickable = _pickable(day);
-    final full = pickable.isNotEmpty &&
-        pickable.difference(sel).isEmpty;
+    final full = pickable.isNotEmpty && pickable.difference(sel).isEmpty;
     final part = sel.isNotEmpty && !full;
     final free = widget.freeDays.contains(day);
     return InkWell(
@@ -1236,20 +1940,16 @@ class _CustomPlanDialogState extends State<CustomPlanDialog> {
           color: full
               ? Theme.of(context).colorScheme.primary
               : part
-                  ? Theme.of(context)
-                      .colorScheme
-                      .primary
-                      .withValues(alpha: 0.3)
-                  : null,
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)
+              : null,
           borderRadius: BorderRadius.circular(8),
           border: free
               ? Border.all(color: Colors.grey)
               : day.year == clock.now().year &&
-                      day.month == clock.now().month &&
-                      day.day == clock.now().day
-                  ? Border.all(
-                      color: Theme.of(context).colorScheme.onSurface)
-                  : null,
+                    day.month == clock.now().month &&
+                    day.day == clock.now().day
+              ? Border.all(color: Theme.of(context).colorScheme.onSurface)
+              : null,
         ),
         child: Text('${day.day}'),
       ),
@@ -1264,11 +1964,14 @@ class _CustomPlanDialogState extends State<CustomPlanDialog> {
         children: [
           ListTile(
             title: Text(PlannerView._cz(day)),
-            subtitle: Text(sel.isEmpty
-                ? Strings.get('pick_nothing')
-                : runsLabel(
-                    [for (final s in _slots(day)) if (s.period != null) s.period!],
-                    sel)),
+            subtitle: Text(
+              sel.isEmpty
+                  ? Strings.get('pick_nothing')
+                  : runsLabel([
+                      for (final s in _slots(day))
+                        if (s.period != null) s.period!,
+                    ], sel),
+            ),
             trailing: Checkbox(
               value: _full(day),
               tristate: true,
@@ -1283,28 +1986,25 @@ class _CustomPlanDialogState extends State<CustomPlanDialog> {
                 });
               },
             ),
-            onTap: () => setState(
-                () => openDay = isOpen ? null : day),
+            onTap: () => setState(() => openDay = isOpen ? null : day),
           ),
           if (isOpen)
             for (final slot in _slots(day))
               if (slot.period != null)
                 CheckboxListTile(
                   title: Text('${slot.period}. ${slot.subject}'),
-                  subtitle:
-                      slot.detail.isEmpty ? null : Text(slot.detail),
+                  subtitle: slot.detail.isEmpty ? null : Text(slot.detail),
                   value: sel.contains(slot.period),
                   onChanged: !slot.pickable
                       ? null
                       : (v) => setState(() {
-                            final s = picked
-                                .putIfAbsent(day, () => <int>{});
-                            if (v == true) {
-                              s.add(slot.period!);
-                            } else {
-                              s.remove(slot.period!);
-                            }
-                          }),
+                          final s = picked.putIfAbsent(day, () => <int>{});
+                          if (v == true) {
+                            s.add(slot.period!);
+                          } else {
+                            s.remove(slot.period!);
+                          }
+                        }),
                 ),
         ],
       ),
@@ -1326,12 +2026,14 @@ class _PlanDayDialogStaticImpact extends StatelessWidget {
         Text(Strings.get('impact_title')),
         for (final term in impacts)
           for (final row in term.rows)
-            Text(Strings.format('impact_row', {
-              'name': row.name,
-              'cost': row.cost,
-              'left': hoursText(row.freeAfter),
-              'p': row.projectedAfter.toStringAsFixed(1),
-            })),
+            Text(
+              Strings.format('impact_row', {
+                'name': row.name,
+                'cost': row.cost,
+                'left': hoursText(row.freeAfter),
+                'p': row.projectedAfter.toStringAsFixed(1),
+              }),
+            ),
       ],
     );
   }
@@ -1342,8 +2044,7 @@ class ReserveDialog extends StatefulWidget {
   final double current;
   final void Function(double value) onSave;
 
-  const ReserveDialog(
-      {super.key, required this.current, required this.onSave});
+  const ReserveDialog({super.key, required this.current, required this.onSave});
 
   @override
   State<ReserveDialog> createState() => _ReserveDialogState();
@@ -1373,15 +2074,16 @@ class _ReserveDialogState extends State<ReserveDialog> {
         children: [
           Text(Strings.get('reserve_hint')),
           TextField(
-              controller: text,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true)),
+            controller: text,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
         ],
       ),
       actions: [
         TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(Strings.get('cancel'))),
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(Strings.get('cancel')),
+        ),
         FilledButton(
           onPressed: () {
             final v = double.tryParse(text.text.replaceAll(',', '.'));

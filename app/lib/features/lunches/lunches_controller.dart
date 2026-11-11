@@ -35,6 +35,9 @@ class LunchController {
   bool sidebarOpen = true;
   Map<String, List<String>> lowBalance = {};
 
+  /// The moment ordering closes for a day (`D.M.YYYY`), for the closed note.
+  DateTime? Function(String day)? orderDeadline;
+
   /// Cutoff predicate (`D.M.YYYY` → open?). Null = always open.
   bool Function(String day)? isOrderOpen;
 
@@ -189,7 +192,8 @@ class LunchController {
       isOpen: isOrderOpen == null
           ? null
           : (dt) => isOrderOpen!(
-              '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}'),
+              '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}',
+            ),
     );
     for (final e in picks.entries) {
       final current = orders[e.key];

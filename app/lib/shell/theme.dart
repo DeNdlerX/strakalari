@@ -151,7 +151,7 @@ class Tokens {
       );
 
   /// Builds the Material [ThemeData] for this token set.
-  ThemeData toThemeData() {
+  ThemeData toThemeData({String? fontFamily}) {
     final scheme = ColorScheme(
       brightness: mode == 'light' ? Brightness.light : Brightness.dark,
       primary: accent,
@@ -166,6 +166,8 @@ class Tokens {
       outline: border,
     );
     return ThemeData(
+      fontFamily: fontFamily,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       colorScheme: scheme,
       scaffoldBackgroundColor: bg,
       cardColor: card,
@@ -176,10 +178,13 @@ class Tokens {
       ),
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: surface,
-        selectedIconTheme: IconThemeData(color: accent),
+        indicatorColor: accent.withValues(alpha: 0.2),
+        selectedIconTheme: IconThemeData(color: text),
         unselectedIconTheme: IconThemeData(color: muted),
-        selectedLabelTextStyle: TextStyle(color: accent, fontSize: fsSmall),
-        unselectedLabelTextStyle: TextStyle(color: muted, fontSize: fsSmall),
+        selectedLabelTextStyle:
+            TextStyle(fontFamily: fontFamily, color: text, fontSize: fsSmall),
+        unselectedLabelTextStyle:
+            TextStyle(fontFamily: fontFamily, color: muted, fontSize: fsSmall),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: surface,
@@ -190,6 +195,81 @@ class Tokens {
         contentTextStyle: TextStyle(color: text),
       ),
       dialogTheme: DialogThemeData(backgroundColor: card),
+      // Flet look: flat bordered cards, outlined filled inputs, pill buttons.
+      cardTheme: CardThemeData(
+        color: card,
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        shadowColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusMd),
+          side: BorderSide(color: border),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: surface,
+        isDense: false,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(4),
+          borderSide: BorderSide(color: border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(4),
+          borderSide: BorderSide(color: border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(4),
+          borderSide: BorderSide(color: accent, width: 2),
+        ),
+        labelStyle: TextStyle(fontFamily: fontFamily, color: muted, fontSize: fsBody),
+        hintStyle: TextStyle(fontFamily: fontFamily, color: faint, fontSize: fsBody),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: accent,
+          foregroundColor: accentText,
+          elevation: 0,
+          shadowColor: Colors.transparent,
+          shape: const StadiumBorder(),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
+          textStyle: TextStyle(fontFamily: fontFamily, fontWeight: FontWeight.w500),
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: accent,
+          foregroundColor: accentText,
+          shape: const StadiumBorder(),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
+          textStyle: TextStyle(fontFamily: fontFamily, fontWeight: FontWeight.w500),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: text,
+          side: BorderSide(color: faint),
+          shape: const StadiumBorder(),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: accent,
+          shape: const StadiumBorder(),
+        ),
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith(
+            (s) => s.contains(WidgetState.selected) ? accentText : faint),
+        trackColor: WidgetStateProperty.resolveWith((s) =>
+            s.contains(WidgetState.selected) ? accent : overlay),
+        trackOutlineColor: WidgetStateProperty.resolveWith((s) =>
+            s.contains(WidgetState.selected) ? accent : faint),
+      ),
       textTheme: TextTheme(
         headlineSmall: TextStyle(color: text, fontSize: fsTitle),
         titleMedium: TextStyle(color: text, fontSize: fsSection),

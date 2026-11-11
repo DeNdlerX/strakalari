@@ -54,7 +54,7 @@ final header = _headerRow();
     final weeks = c.weeks();
     if (weeks.isEmpty) {
       return ListView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.zero,
         children: [
           header,
           SizedBox(height: t.gap),
@@ -103,7 +103,7 @@ final header = _headerRow();
     if (narrow) {
       // Phone: one scrolling page; the body scrolls as a whole.
       return ListView(
-        padding: const EdgeInsets.all(12),
+        padding: EdgeInsets.zero,
         children: [
           header,
           SizedBox(height: t.gap),
@@ -133,7 +133,7 @@ final header = _headerRow();
       ]));
     }
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

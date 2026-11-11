@@ -124,6 +124,11 @@ void main() {
 
   group('TestCollapsibleDays', () {
     testWidgets('wholeDayExcuseListsLessonsInAFoldedSection', (tester) async {
+      // The Ahem test font is far wider than the real one: a wide surface
+      // keeps the picker and its buttons on one row, as on a desktop.
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       final s = AppState(
         data: {
           'absence': {'M': 1.0, 'ČJ': 1.0},

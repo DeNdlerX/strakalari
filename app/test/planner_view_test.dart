@@ -1,5 +1,6 @@
 import 'package:app/l10n/strings.dart';
 import 'package:app/features/planner/plan_reserve.dart' show daysText;
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -105,6 +106,7 @@ void main() {
 
     testWidgets('year plan renders stats, calendar, budgets, planned',
         (t) async {
+      _setViewport(t);
       final c = _controller();
       await t.pumpWidget(_app(PlannerView(
         controller: c,
@@ -114,14 +116,14 @@ void main() {
         updatedLabel: 'now',
       )));
       expect(find.text(Strings.get('planner_title')), findsWidgets);
-      expect(find.text(Strings.get('section_overview')), findsOneWidget);
+      expect(find.text(Strings.get('section_overview').toUpperCase()), findsOneWidget);
       // Below the fold: ListView builds lazily, so scroll first.
       await t.scrollUntilVisible(
-          find.text(Strings.get('section_budgets')), 300);
-      expect(find.text(Strings.get('section_budgets')), findsOneWidget);
+          find.text(Strings.get('section_budgets').toUpperCase()), 300);
+      expect(find.text(Strings.get('section_budgets').toUpperCase()), findsOneWidget);
       await t.scrollUntilVisible(
-          find.textContaining(Strings.get('section_plan')), 300);
-      expect(find.textContaining(Strings.get('section_plan')), findsOneWidget);
+          find.textContaining(Strings.get('section_plan').toUpperCase()), 300);
+      expect(find.textContaining(Strings.get('section_plan').toUpperCase()), findsOneWidget);
       // Intro carries the reserve note.
       expect(find.textContaining('10'), findsWidgets);
     });
@@ -144,7 +146,7 @@ void main() {
           updatedLabel: 'now',
         )));
         await t.scrollUntilVisible(
-            find.textContaining(Strings.get('section_plan')), 300);
+            find.textContaining(Strings.get('section_plan').toUpperCase()), 300);
         final auto = Strings.format('target_auto', {'n': maximum});
         expect(find.text(auto), findsOneWidget);
         await t.tap(find.text(auto));
@@ -209,6 +211,10 @@ void main() {
     });
 
     testWidgets('planned entry can be unplanned', (t) async {
+      // The entry is for 5 Oct 2026: before that day it can still be undone
+      // (a past day shows the 'passed' badge instead, like planner.py).
+      await withClock(Clock.fixed(DateTime(2026, 9, 20)), () async {
+      _setViewport(t);
       final c = _controller();
       c.planSkip('2026-10-05', 'Omluvte absenci.');
       await t.pumpWidget(_app(PlannerView(
@@ -217,17 +223,36 @@ void main() {
         hasTimetable: true,
         hasData: true,
       )));
-      expect(
-          find.textContaining('05.10.2026'), findsWidgets);
       final unplan = find.text(Strings.get('unplan'));
       await t.scrollUntilVisible(unplan, 300);
+      expect(find.textContaining('05.10.2026'), findsWidgets);
       await t.tap(unplan.first);
       await t.pump();
       expect(c.plannedSkips, isEmpty);
       expect(SnackLog.last, Strings.get('plan_removed'));
     });
+    });
+
+    testWidgets('a planned entry in the past shows the passed badge',
+        (t) async {
+      await withClock(Clock.fixed(DateTime(2026, 11, 11)), () async {
+        _setViewport(t);
+        final c = _controller();
+        c.planSkip('2026-10-05', 'Omluvte absenci.');
+        await t.pumpWidget(_app(PlannerView(
+          controller: c,
+          plan: _plan(),
+          hasTimetable: true,
+          hasData: true,
+        )));
+        await t.scrollUntilVisible(find.text(Strings.get('day_passed')), 300);
+        expect(find.text(Strings.get('day_passed')), findsOneWidget);
+        expect(find.text(Strings.get('unplan')), findsNothing);
+      });
+    });
 
     testWidgets('custom picker taps a day whole and confirms', (t) async {
+      _setViewport(t);
       final c = _controller();
       await t.pumpWidget(_app(PlannerView(
         controller: c,

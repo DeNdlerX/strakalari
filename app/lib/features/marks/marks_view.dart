@@ -46,7 +46,7 @@ class MarksView extends StatelessWidget {
 final hasGrades = c.grades.isNotEmpty;
     if (!hasGrades) {
       return ListView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.zero,
         children: [
           _headerRow(context, false),
           SizedBox(height: t.gap),
@@ -106,7 +106,7 @@ final hasGrades = c.grades.isNotEmpty;
       }
       blocks.add(const SizedBox(height: 24));
       return ListView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.zero,
         children: [
           for (var i = 0; i < blocks.length; i++) ...[
             blocks[i],
@@ -128,7 +128,7 @@ final hasGrades = c.grades.isNotEmpty;
           _subjectCard(context, sortedItems[i], bands),
     ];
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

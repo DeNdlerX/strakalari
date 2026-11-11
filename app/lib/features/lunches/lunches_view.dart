@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 
 import 'package:app/features/lunches/lunches_format.dart';
 import 'package:app/features/lunches/lunches_controller.dart';
+import '../common/app_tokens.dart';
 import '../common/format.dart';
+import '../common/open_url.dart';
+import 'package:app/widgets/app_widgets.dart' as w;
 import 'package:app/widgets/overlays.dart';
 
 /// Obědy: weekly menu with a radio picker + AI/blacklist side panel.
@@ -32,26 +35,40 @@ class LunchesView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = controller;
+    final tok = tokensOf(context);
     if (!c.stravaOn) {
       return ListView(
+        padding: EdgeInsets.zero,
         children: [
-          ListTile(
-              title: Text(Strings.get('lunch_title')),
-              subtitle: Text(updatedLabel)),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(Strings.get('strava_disabled_title')),
-                  Text(Strings.get('strava_disabled_msg')),
-                  TextButton(
-                      onPressed: onOpenSettings,
-                      child: Text(Strings.get('go_to_settings'))),
-                ],
+          w.HeaderRow(
+            heading: Strings.get('lunch_title'),
+            updated: updatedLabel,
+            tok: tok,
+          ),
+          SizedBox(height: tok.gap),
+          w.AppCard(
+            tok: tok,
+            children: [
+              Text(
+                Strings.get('strava_disabled_title'),
+                style: TextStyle(
+                  color: tok.text,
+                  fontSize: tok.fsBody,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
+              Text(
+                Strings.get('strava_disabled_msg'),
+                style: TextStyle(color: tok.muted, fontSize: tok.fsSmall),
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton(
+                  onPressed: onOpenSettings,
+                  child: Text(Strings.get('go_to_settings')),
+                ),
+              ),
+            ],
           ),
         ],
       );
@@ -69,93 +86,176 @@ class LunchesView extends StatelessWidget {
       }
     }
     final sidebarOpen = narrow ? c.lunchToolsOpen : c.sidebarOpen;
-    final menu = <Widget>[
-      Padding(
-        padding: const EdgeInsets.all(12),
-        child: Text(Strings.get('pick_hint')),
-      ),
-      TutorialAnchor(
-        anchorKey: 'lunch_send',
-        child: _sendRow(context),
-      ),
-      if (past.isNotEmpty)
-        TextButton(
-          onPressed: () {
-            final next = !c.showPastLunches;
-            c.showPastLunches = next;
-            c.setShowPastLunchesHook?.call(next);
-          },
-          child: Text(c.showPastLunches
-              ? Strings.get('lunch_hide_past')
-              : Strings.format('lunch_show_past', {'n': past.length})),
+    final menu = <Widget>[];
+    final low = c.lowBalance['days'];
+    if (low != null && low.isNotEmpty) {
+      menu.add(
+        w.AppCard(
+          tok: tok,
+          children: [
+            Row(
+              spacing: 8,
+              children: [
+                Icon(
+                  Icons.account_balance_wallet_outlined,
+                  color: tok.yellow,
+                  size: 20,
+                ),
+                Text(
+                  Strings.get('low_balance_title'),
+                  style: TextStyle(
+                    color: tok.yellow,
+                    fontSize: tok.fsBody,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            Text(
+              Strings.format('low_balance_body', {
+                'days': low.take(10).map(w.czDay).join(', '),
+              }),
+              style: TextStyle(color: tok.muted, fontSize: tok.fsSmall),
+            ),
+          ],
         ),
-      if (c.showPastLunches)
-        for (final day in past) _dayCard(context, day, c.food[day] ?? {}),
-      for (var i = 0; i < upcoming.length; i++)
-        if (i == 0)
-          TutorialAnchor(
-            anchorKey: 'lunch_day',
-            child: _dayCard(context, upcoming[i], c.food[upcoming[i]] ?? {}),
-          )
-        else
-          _dayCard(context, upcoming[i], c.food[upcoming[i]] ?? {}),
-    ];
+      );
+    }
     if (c.food.isEmpty) {
       // Why the last refresh brought no menu (STRAVA_STATUS_KEY).
-      final reason = {
-        'no_login': 'lunch_empty_no_login',
-        'empty': 'lunch_empty_no_menu',
-      }['${c.get('strava_status', '')}'] ??
+      final reason =
+          {
+            'no_login': 'lunch_empty_no_login',
+            'empty': 'lunch_empty_no_menu',
+          }['${c.get('strava_status', '')}'] ??
           'need_credentials';
-      menu.add(Padding(
-        padding: const EdgeInsets.all(12),
-        child: Text(Strings.get('no_data')),
-      ));
-      menu.add(Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Text(Strings.get(reason)),
-      ));
-    }
-    final header = ListTile(
-      title: Text(Strings.get('lunch_title')),
-      subtitle: Text(updatedLabel),
-      trailing: TutorialAnchor(
-        anchorKey: 'lunch_tools',
-        child: IconButton(
-          tooltip: sidebarOpen
-              ? Strings.get('hide_sidebar')
-              : Strings.get('show_sidebar'),
-          icon: const Icon(Icons.tune_outlined),
-          onPressed: () {
-            if (narrow) {
-              final next = !c.lunchToolsOpen;
-              c.lunchToolsOpen = next;
-              c.setLunchToolsHook?.call(next);
-            } else {
-              final next = !c.sidebarOpen;
-              c.sidebarOpen = next;
-              c.setSidebarHook?.call(next);
-            }
-          },
+      menu.add(w.EmptyState(text: Strings.get('no_data'), tok: tok));
+      menu.add(
+        Text(
+          Strings.get(reason),
+          style: TextStyle(color: tok.faint, fontSize: tok.fsSmall),
         ),
+      );
+    }
+    if (past.isNotEmpty) {
+      menu.add(
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: () {
+              final next = !c.showPastLunches;
+              c.showPastLunches = next;
+              c.setShowPastLunchesHook?.call(next);
+            },
+            icon: Icon(
+              c.showPastLunches ? Icons.expand_less : Icons.history,
+              size: 18,
+            ),
+            label: Text(
+              c.showPastLunches
+                  ? Strings.get('lunch_hide_past')
+                  : Strings.format('lunch_show_past', {'n': past.length}),
+            ),
+          ),
+        ),
+      );
+    }
+    String? firstOpen;
+    for (final day in upcoming) {
+      if ((c.food[day] ?? {}).isNotEmpty && _isOpen(day)) {
+        firstOpen = day;
+        break;
+      }
+    }
+    if (c.showPastLunches) {
+      for (final day in past) {
+        menu.add(_dayCard(context, tok, day, c.food[day] ?? {}));
+      }
+    }
+    for (final day in upcoming) {
+      final card = _dayCard(context, tok, day, c.food[day] ?? {});
+      menu.add(
+        day == firstOpen
+            ? TutorialAnchor(anchorKey: 'lunch_day', child: card)
+            : card,
+      );
+    }
+    menu.add(SizedBox(height: tok.pad * 2));
+
+    final toggle = TutorialAnchor(
+      anchorKey: 'lunch_tools',
+      child: IconButton(
+        tooltip: sidebarOpen
+            ? Strings.get('hide_sidebar')
+            : Strings.get('show_sidebar'),
+        iconSize: 22,
+        color: sidebarOpen ? tok.accent : null,
+        icon: const Icon(Icons.tune_outlined),
+        onPressed: () => _setSidebar(!sidebarOpen),
       ),
     );
+    final header = w.HeaderRow(
+      heading: Strings.get('lunch_title'),
+      updated: updatedLabel,
+      tok: tok,
+      actions: [toggle],
+    );
+    final hint = Text(
+      Strings.get('pick_hint'),
+      style: TextStyle(color: tok.faint, fontSize: tok.fsSmall),
+    );
+    final sendRow = TutorialAnchor(
+      anchorKey: 'lunch_send',
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: _sendButton(context),
+      ),
+    );
+    Widget spaced(List<Widget> items) => ListView(
+      padding: EdgeInsets.zero,
+      children: [
+        for (var i = 0; i < items.length; i++) ...[
+          items[i],
+          if (i != items.length - 1) SizedBox(height: tok.gap),
+        ],
+      ],
+    );
     if (narrow && !sidebarOpen) {
-      return ListView(children: [header, ...menu]);
+      // Phone: one scrolling page.
+      return spaced([header, hint, sendRow, ...menu]);
     }
     if (narrow) {
-      return ListView(children: [header, ..._sideChildren(context)]);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: tok.gap,
+        children: [
+          header,
+          Expanded(child: _sidebar(context, tok)),
+        ],
+      );
     }
+    final left = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: tok.gap,
+      children: [
+        hint,
+        sendRow,
+        Expanded(child: spaced(menu)),
+      ],
+    );
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: tok.gap,
       children: [
         header,
         Expanded(
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            spacing: sidebarOpen ? tok.gap : 0,
             children: [
-              Expanded(child: ListView(children: menu)),
+              Expanded(child: left),
               if (sidebarOpen)
-                SizedBox(width: 360, child: _sidebar(context)),
+                SizedBox(width: 360, child: _sidebar(context, tok)),
             ],
           ),
         ),
@@ -163,7 +263,28 @@ class LunchesView extends StatelessWidget {
     );
   }
 
-  Widget _sendRow(BuildContext context) {
+  bool _isOpen(String day) {
+    final f = controller.isOrderOpen;
+    if (f == null) return true;
+    try {
+      return f(day);
+    } catch (_) {
+      return true;
+    }
+  }
+
+  void _setSidebar(bool open) {
+    final c = controller;
+    if (narrow) {
+      c.lunchToolsOpen = open;
+      c.setLunchToolsHook?.call(open);
+    } else {
+      c.sidebarOpen = open;
+      c.setSidebarHook?.call(open);
+    }
+  }
+
+  Widget _sendButton(BuildContext context) {
     final c = controller;
     var pending = 0;
     for (final e in c.orders.entries) {
@@ -172,38 +293,33 @@ class LunchesView extends StatelessWidget {
           !c.lunchIsChange(e.key)) {
         continue;
       }
-      if (c.isOrderOpen != null) {
-        try {
-          if (!c.isOrderOpen!(e.key)) continue;
-        } catch (_) {
-          continue;
-        }
-      }
+      if (!_isOpen(e.key)) continue;
       pending++;
     }
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: FilledButton.icon(
-        onPressed: () async {
-          final payload = {
-            for (final e in c.orders.entries)
-              if (e.value.isNotEmpty &&
-                  c.pendingOrders.contains(e.key) &&
-                  c.lunchIsChange(e.key))
-                e.key: e.value,
-          };
-          if (onSubmit != null) {
-            final ok = await onSubmit!(payload);
-            if (!context.mounted) return;
-            appSnack(context,
-                ok ? Strings.get('orders_sent') : Strings.get('orders_failed'));
-          } else if (payload.isEmpty) {
-            appSnack(context, Strings.get('no_changes'));
-          }
-        },
-        icon: const Icon(Icons.send_outlined),
-        label: Text('${Strings.get('send_orders')}'
-            '${pending > 0 ? ' ($pending)' : ''}'),
+    return ElevatedButton.icon(
+      onPressed: () async {
+        final payload = {
+          for (final e in c.orders.entries)
+            if (e.value.isNotEmpty &&
+                c.pendingOrders.contains(e.key) &&
+                c.lunchIsChange(e.key))
+              e.key: e.value,
+        };
+        if (onSubmit != null) {
+          final ok = await onSubmit!(payload);
+          if (!context.mounted) return;
+          appSnack(
+            context,
+            ok ? Strings.get('orders_sent') : Strings.get('orders_failed'),
+          );
+        } else if (payload.isEmpty) {
+          appSnack(context, Strings.get('no_changes'));
+        }
+      },
+      icon: const Icon(Icons.send_outlined, size: 18),
+      label: Text(
+        '${Strings.get('send_orders')}'
+        '${pending > 0 ? ' ($pending)' : ''}',
       ),
     );
   }
@@ -230,16 +346,13 @@ class LunchesView extends StatelessWidget {
   }
 
   Widget _dayCard(
-      BuildContext context, String day, Map<String, String> meals) {
+    BuildContext context,
+    Tokens tok,
+    String day,
+    Map<String, String> meals,
+  ) {
     final c = controller;
-    var orderOpen = true;
-    if (c.isOrderOpen != null) {
-      try {
-        orderOpen = c.isOrderOpen!(day);
-      } catch (_) {
-        orderOpen = true;
-      }
-    }
+    final orderOpen = _isOpen(day);
     final ordered = c.orders[day] ?? c.webOrders[day];
     final isCancelled = c.cancelledLunches.contains(day);
     final status = dayStatus(day);
@@ -251,10 +364,24 @@ class LunchesView extends StatelessWidget {
     var hidden = 0;
     final rows = <Widget>[];
     if (!orderOpen) {
-      rows.add(Text(Strings.get('lunch_order_closed')));
+      final deadline = c.orderDeadline?.call(day);
+      final detail = deadline == null
+          ? ''
+          : ' (${deadline.day.toString().padLeft(2, '0')}.${deadline.month.toString().padLeft(2, '0')}.${deadline.year} ${deadline.hour.toString().padLeft(2, '0')}:${deadline.minute.toString().padLeft(2, '0')})';
+      rows.add(
+        Text(
+          '${Strings.get('lunch_order_closed')}$detail',
+          style: TextStyle(color: tok.faint, fontSize: tok.fsSmall),
+        ),
+      );
     }
     if (soup.isNotEmpty) {
-      rows.add(Text('${Strings.get('lunch_soup')}: $soup'));
+      rows.add(
+        Text(
+          '${Strings.get('lunch_soup')}: $soup',
+          style: TextStyle(color: tok.muted, fontSize: tok.fsSmall),
+        ),
+      );
     }
     for (final e in meals.entries) {
       if (e.key.contains('&-1&')) continue;
@@ -263,32 +390,52 @@ class LunchesView extends StatelessWidget {
         continue;
       }
       final selected = ordered == e.key && !isCancelled;
-      rows.add(_mealRow(context, day, e.key, e.value, selected,
-          disabled: !orderOpen, sharedSoup: soup));
+      rows.add(
+        _mealRow(
+          context,
+          tok,
+          day,
+          e.key,
+          e.value,
+          selected,
+          disabled: !orderOpen,
+          sharedSoup: soup,
+        ),
+      );
     }
     final noLunchSelected =
         isCancelled || (ordered != null && ordered == deorderId);
-    rows.add(_pickRow(
-      context,
-      selected: noLunchSelected,
-      disabled: !orderOpen,
-      label: Strings.get('no_order_option'),
-      onTap: () {
-        if (!orderOpen) {
-          appSnack(context, Strings.get('lunch_order_closed'));
-          return;
-        }
-        if (deorderId != null) {
-          if (!c.orderLunch(day, deorderId)) {
+    rows.add(
+      _choiceBox(
+        tok,
+        selected: noLunchSelected,
+        disabled: !orderOpen,
+        onTap: () {
+          if (!orderOpen) {
             appSnack(context, Strings.get('lunch_order_closed'));
+            return;
           }
-        } else {
-          c.cancelLunchOrder(day);
-        }
-      },
-    ));
+          if (deorderId != null) {
+            if (!c.orderLunch(day, deorderId)) {
+              appSnack(context, Strings.get('lunch_order_closed'));
+            }
+          } else {
+            c.cancelLunchOrder(day);
+          }
+        },
+        child: Text(
+          Strings.get('no_order_option'),
+          style: TextStyle(color: tok.muted, fontSize: tok.fsSmall),
+        ),
+      ),
+    );
     if (hidden > 0) {
-      rows.add(Text(Strings.format('hidden_meals', {'n': hidden})));
+      rows.add(
+        Text(
+          Strings.format('hidden_meals', {'n': hidden}),
+          style: TextStyle(color: tok.faint, fontSize: tok.fsSmall),
+        ),
+      );
     }
     final parsed = parseCzDate(day);
     final now = nowFor?.call() ?? clock.now();
@@ -297,85 +444,177 @@ class LunchesView extends StatelessWidget {
     final expKey = 'lunch:$day';
     final expanded = c.isDayExpanded(expKey, defaultValue: !isPast);
 
-    return Card(
+    final title = Row(
+      spacing: 8,
+      children: [
+        Flexible(
+          child: Text(
+            '${w.dayName(day)} ${w.czDayYear(day)}',
+            style: TextStyle(
+              color: tok.text,
+              fontSize: tok.fsBody,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        if (status != null)
+          w.Badge(
+            text: status,
+            tok: tok,
+            kind: c.cancelledLunches.contains(day)
+                ? 'warning'
+                : (status == Strings.get('web_ordered') ? 'sent' : 'pending'),
+          ),
+        if (!orderOpen)
+          w.Badge(
+            text: Strings.get('lunch_closed_badge'),
+            tok: tok,
+            kind: 'warning',
+          ),
+      ],
+    );
+    return Container(
+      decoration: BoxDecoration(
+        color: tok.card,
+        borderRadius: BorderRadius.circular(tok.radiusMd),
+        border: Border.all(color: tok.border),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: ExpansionTile(
         key: ValueKey('tile_$day'),
-        title: Row(
-          children: [
-            Expanded(child: Text(day)),
-            if (status != null) Chip(label: Text(status)),
-            if (!orderOpen) Chip(label: Text(Strings.get('lunch_closed_badge'))),
-          ],
-        ),
+        title: title,
+        shape: const Border(),
+        collapsedShape: const Border(),
+        backgroundColor: tok.card,
+        collapsedBackgroundColor: tok.card,
+        iconColor: tok.accent,
+        collapsedIconColor: tok.accent,
+        tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        childrenPadding: EdgeInsets.all(tok.pad),
+        expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
         initiallyExpanded: expanded,
         onExpansionChanged: (v) => c.setDayExpanded(expKey, v),
         children: [
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: rows),
-          ),
+          for (var i = 0; i < rows.length; i++) ...[
+            rows[i],
+            if (i != rows.length - 1) SizedBox(height: tok.gap / 2),
+          ],
         ],
       ),
     );
   }
 
-  Widget _mealRow(BuildContext context, String day, String mid,
-      String name, bool selected,
-      {bool disabled = false, String sharedSoup = ''}) {
+  /// A bordered, tappable pick row with a radio dot (meal / no lunch).
+  Widget _choiceBox(
+    Tokens tok, {
+    required bool selected,
+    required bool disabled,
+    required VoidCallback onTap,
+    required Widget child,
+    String? tooltip,
+    Widget? trailing,
+  }) {
+    final box = Opacity(
+      opacity: disabled ? 0.55 : 1.0,
+      child: Material(
+        color: selected ? tintColor(tok.accent, 0.14) : Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: BorderSide(color: selected ? tok.accent : tok.border),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: disabled ? null : onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
+            child: Row(
+              spacing: 10,
+              children: [
+                w.RadioDot(tok: tok, selected: selected),
+                Expanded(child: child),
+                ?trailing,
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    return tooltip == null ? box : Tooltip(message: tooltip, child: box);
+  }
+
+  Widget _mealRow(
+    BuildContext context,
+    Tokens tok,
+    String day,
+    String mid,
+    String name,
+    bool selected, {
+    bool disabled = false,
+    String sharedSoup = '',
+  }) {
     final (soup, main, allergens) = splitMeal(name);
-    final label =
-        sharedSoup.isNotEmpty && soup == sharedSoup ? main : (soup.isEmpty ? main : '$soup; $main');
-    return Opacity(
-      opacity: disabled ? 0.55 : 1.0,
-      child: ListTile(
-        leading: Icon(selected
-            ? Icons.radio_button_checked
-            : Icons.radio_button_unchecked),
-        title: Text(label.isEmpty ? displayMealName(name) : label),
-        subtitle: allergens.isEmpty
-            ? null
-            : Text('${Strings.get('allergens')}: $allergens'),
-        selected: selected,
-        onTap: disabled
-            ? null
-            : () {
-                if (!controller.orderLunch(day, mid)) {
-                  appSnack(context, Strings.get('lunch_order_closed'));
-                }
-              },
+    final label = sharedSoup.isNotEmpty && soup == sharedSoup
+        ? main
+        : (soup.isEmpty ? main : '$soup; $main');
+    return _choiceBox(
+      tok,
+      selected: selected,
+      disabled: disabled,
+      tooltip: allergens.isEmpty
+          ? null
+          : '${Strings.get('allergens')}: $allergens',
+      onTap: () {
+        if (!controller.orderLunch(day, mid)) {
+          appSnack(context, Strings.get('lunch_order_closed'));
+        }
+      },
+      child: Text(
+        label.isEmpty ? displayMealName(name) : label,
+        style: TextStyle(
+          color: selected ? tok.accent : (disabled ? tok.muted : tok.text),
+          fontSize: tok.fsBody,
+          fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+        ),
       ),
+      trailing: allergens.isEmpty
+          ? null
+          : Text(
+              allergens,
+              style: TextStyle(color: tok.faint, fontSize: tok.fsTiny),
+            ),
     );
   }
 
-  Widget _pickRow(BuildContext context,
-      {required bool selected,
-      required bool disabled,
-      required String label,
-      required VoidCallback onTap}) {
-    return Opacity(
-      opacity: disabled ? 0.55 : 1.0,
-      child: ListTile(
-        leading: Icon(selected
-            ? Icons.radio_button_checked
-            : Icons.radio_button_unchecked),
-        title: Text(label),
-        selected: selected,
-        onTap: disabled ? null : onTap,
+  Widget _sidebar(BuildContext context, Tokens tok) => ListView(
+    padding: EdgeInsets.zero,
+    children: [
+      Row(
+        spacing: 4,
+        children: [
+          Expanded(
+            child: Text(
+              Strings.get('ai_tools'),
+              style: TextStyle(
+                color: tok.text,
+                fontSize: tok.fsBody,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: Strings.get('hide_sidebar'),
+            iconSize: 18,
+            icon: const Icon(Icons.close),
+            onPressed: () => _setSidebar(false),
+          ),
+        ],
       ),
-    );
-  }
-
-  List<Widget> _sideChildren(BuildContext context) => [
-        ListTile(title: Text(Strings.get('ai_tools'))),
-        _aiCard(context),
-        _blacklistCard(context),
-      ];
-
-  Widget _sidebar(BuildContext context) => ListView(
-        children: _sideChildren(context),
-      );
+      SizedBox(height: tok.gap),
+      _aiCard(context, tok),
+      SizedBox(height: tok.gap),
+      _blacklistCard(context, tok),
+    ],
+  );
 
   /// Runs the AI recommendation flow (or snacks why it cannot run).
   /// Port of `LunchView.recommend`.
@@ -393,128 +632,320 @@ class LunchesView extends StatelessWidget {
     await onRecommend?.call();
   }
 
-  Widget _aiCard(BuildContext context) {
+  Widget _aiCard(BuildContext context, Tokens tok) {
     final c = controller;
     final hasKey = (c.get('gemini_api_key') ?? '').toString().isNotEmpty;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    final model = (c.get('gemini_model', '') ?? '').toString();
+    return w.AppCard(
+      tok: tok,
+      children: [
+        Row(
+          spacing: 8,
           children: [
-            Text(Strings.get('ai_section')),
-            TextField(
-              decoration: InputDecoration(
-                  labelText: Strings.get('ai_prefs'),
-                  hintText: Strings.get('ai_prefs_hint')),
-              controller: TextEditingController(text: c.lunchPrefs),
-              maxLines: 2,
-              onChanged: (v) {
-                c.lunchPrefs = v;
-                c.setLunchPrefsHook?.call(v);
-              },
-            ),
-            if (!hasKey) Text(Strings.get('ai_no_key')),
-            if (!hasKey)
-              Row(
-                children: [
-                  TextButton(
-                      onPressed: onOpenSettings,
-                      child: Text(Strings.get('go_to_settings'))),
-                ],
+            Icon(Icons.auto_awesome_outlined, size: 18, color: tok.accent),
+            Expanded(
+              child: Text(
+                Strings.get('ai_section'),
+                style: TextStyle(
+                  color: tok.text,
+                  fontSize: tok.fsBody,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            Wrap(
-              spacing: 8,
-              children: [
-                FilledButton(
-                  onPressed: !hasKey || c.aiRunning
-                      ? null
-                      : () async {
-                          await recommend(context);
-                        },
-                  child: Text(Strings.get('recommend')),
-                ),
-                OutlinedButton(
-                  onPressed: () => c.applyFoodFilter(c.lunchPrefs),
-                  child: Text(Strings.get('apply_filter_long')),
-                ),
-              ],
             ),
-            Text(Strings.get('filter_hint')),
-            if (c.aiRunning) const LinearProgressIndicator(),
-            if (c.lunchHidden.isNotEmpty)
-              Text(Strings.format('hidden_meals', {'n': c.lunchHidden.length})),
+            if (model.isNotEmpty) w.Badge(text: model, tok: tok),
           ],
         ),
-      ),
+        _PrefsField(
+          tok: tok,
+          label: Strings.get('ai_prefs'),
+          hint: Strings.get('ai_prefs_hint'),
+          value: c.lunchPrefs,
+          onChanged: (v) {
+            c.lunchPrefs = v;
+            c.setLunchPrefsHook?.call(v);
+          },
+        ),
+        if (!hasKey) ...[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: 8,
+            children: [
+              Icon(Icons.info_outline, size: 16, color: tok.accent),
+              Expanded(
+                child: Text(
+                  Strings.get('ai_no_key'),
+                  style: TextStyle(color: tok.muted, fontSize: tok.fsSmall),
+                ),
+              ),
+            ],
+          ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => openUrl(aiStudioUrl),
+                icon: const Icon(Icons.open_in_new, size: 18),
+                label: Text(Strings.get('ai_key_link')),
+              ),
+              OutlinedButton(
+                onPressed: onOpenSettings,
+                child: Text(Strings.get('go_to_settings')),
+              ),
+            ],
+          ),
+        ],
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            ElevatedButton.icon(
+              onPressed: !hasKey || c.aiRunning
+                  ? null
+                  : () async {
+                      await recommend(context);
+                    },
+              icon: const Icon(Icons.auto_awesome_outlined, size: 18),
+              label: Text(Strings.get('recommend')),
+            ),
+            OutlinedButton(
+              onPressed: () => c.applyFoodFilter(c.lunchPrefs),
+              child: Text(Strings.get('apply_filter_long')),
+            ),
+          ],
+        ),
+        Text(
+          Strings.get('filter_hint'),
+          style: TextStyle(color: tok.faint, fontSize: tok.fsSmall),
+        ),
+        if (!hasKey)
+          Text(
+            Strings.get('recommend_no_key'),
+            style: TextStyle(color: tok.yellow, fontSize: tok.fsSmall),
+          ),
+        if (c.aiRunning) ...[
+          Row(
+            spacing: 8,
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: tok.accent,
+                ),
+              ),
+              Text(
+                Strings.get('ai_running'),
+                style: TextStyle(color: tok.muted, fontSize: tok.fsSmall),
+              ),
+            ],
+          ),
+          LinearProgressIndicator(
+            color: tok.accent,
+            backgroundColor: tok.overlay,
+          ),
+        ],
+        if (c.lunchHidden.isNotEmpty)
+          Text(
+            Strings.format('hidden_meals', {'n': c.lunchHidden.length}),
+            style: TextStyle(color: tok.faint, fontSize: tok.fsSmall),
+          ),
+      ],
     );
   }
 
-  Widget _blacklistCard(BuildContext context) {
+  Widget _blacklistCard(BuildContext context, Tokens tok) {
     final c = controller;
     final words = c.blacklistWords();
-    final draft = TextEditingController();
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    return w.AppCard(
+      tok: tok,
+      children: [
+        Row(
+          spacing: 8,
           children: [
-            Row(
-              children: [
-                Expanded(child: Text(Strings.get('blacklist_section'))),
-                Chip(label: Text('${words.length}')),
-              ],
-            ),
-            Text(Strings.get('blacklist_hint')),
-            if (words.isEmpty) Text(Strings.get('no_blacklist')),
-            for (final w in words)
-              ListTile(
-                title: Text(w),
-                trailing: IconButton(
-                  tooltip: Strings.get('delete'),
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () => c.removeBlacklistWord(w),
+            Icon(Icons.block_outlined, size: 18, color: tok.muted),
+            Expanded(
+              child: Text(
+                Strings.get('blacklist_section'),
+                style: TextStyle(
+                  color: tok.text,
+                  fontSize: tok.fsBody,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-            Row(
+            ),
+            w.Badge(text: '${words.length}', tok: tok),
+          ],
+        ),
+        Text(
+          Strings.get('blacklist_hint'),
+          style: TextStyle(color: tok.muted, fontSize: tok.fsSmall),
+        ),
+        if (words.isEmpty)
+          Text(
+            Strings.get('no_blacklist'),
+            style: TextStyle(color: tok.faint, fontSize: tok.fsSmall),
+          ),
+        for (final word in words)
+          Container(
+            padding: const EdgeInsets.fromLTRB(10, 2, 4, 2),
+            decoration: BoxDecoration(
+              color: tok.surface,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: tok.border),
+            ),
+            child: Row(
+              spacing: 4,
               children: [
                 Expanded(
-                    child: TextField(
-                        controller: draft,
-                        decoration: InputDecoration(
-                            labelText: Strings.get('add_word')))),
-                FilledButton(
-                  onPressed: () {
-                    if (!c.addBlacklistWord(draft.text)) {
-                      appSnack(
-                          context,
-                          c.blacklistEditError.isNotEmpty
-                              ? c.blacklistEditError
-                              : Strings.get('save_failed'));
-                    } else {
-                      draft.clear();
-                    }
-                  },
-                  child: Text(Strings.get('add')),
+                  child: Text(
+                    word,
+                    style: TextStyle(color: tok.text, fontSize: tok.fsSmall),
+                  ),
+                ),
+                IconButton(
+                  tooltip: Strings.get('delete'),
+                  iconSize: 18,
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => c.removeBlacklistWord(word),
                 ),
               ],
             ),
-          ],
+          ),
+        _BlacklistAdd(
+          tok: tok,
+          onAdd: (text) {
+            if (!c.addBlacklistWord(text)) {
+              appSnack(
+                context,
+                c.blacklistEditError.isNotEmpty
+                    ? c.blacklistEditError
+                    : Strings.get('blacklist_add_failed'),
+              );
+              return false;
+            }
+            return true;
+          },
         ),
-      ),
+      ],
     );
   }
 
   static DateTime? _parseCz(String day) {
-    final m =
-        RegExp(r'^(\d{1,2})\.(\d{1,2})\.(\d{4})$').firstMatch(day);
+    final m = RegExp(r'^(\d{1,2})\.(\d{1,2})\.(\d{4})$').firstMatch(day);
     if (m == null) return null;
     try {
       return DateTime(
-          int.parse(m.group(3)!), int.parse(m.group(2)!), int.parse(m.group(1)!));
+        int.parse(m.group(3)!),
+        int.parse(m.group(2)!),
+        int.parse(m.group(1)!),
+      );
     } catch (_) {
       return null;
     }
+  }
+}
+
+/// Caption above a multi-line box with a hint (Python `labeled_field`);
+/// keeps its own controller so typing survives rebuilds.
+class _PrefsField extends StatefulWidget {
+  final Tokens tok;
+  final String label;
+  final String hint;
+  final String value;
+  final ValueChanged<String> onChanged;
+  const _PrefsField({
+    required this.tok,
+    required this.label,
+    required this.hint,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  State<_PrefsField> createState() => _PrefsFieldState();
+}
+
+class _PrefsFieldState extends State<_PrefsField> {
+  late final TextEditingController _c = TextEditingController(
+    text: widget.value,
+  );
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tok = widget.tok;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: 4,
+      children: [
+        Text(
+          widget.label,
+          style: TextStyle(
+            color: tok.text,
+            fontSize: tok.fsSmall,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        TextField(
+          controller: _c,
+          minLines: 3,
+          maxLines: null,
+          style: TextStyle(color: tok.text, fontSize: tok.fsBody),
+          decoration: InputDecoration(hintText: widget.hint),
+          onChanged: widget.onChanged,
+        ),
+      ],
+    );
+  }
+}
+
+/// The blacklist's "add a word" row.
+class _BlacklistAdd extends StatefulWidget {
+  final Tokens tok;
+  final bool Function(String text) onAdd;
+  const _BlacklistAdd({required this.tok, required this.onAdd});
+
+  @override
+  State<_BlacklistAdd> createState() => _BlacklistAddState();
+}
+
+class _BlacklistAddState extends State<_BlacklistAdd> {
+  final TextEditingController _c = TextEditingController();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  void _add() {
+    if (widget.onAdd(_c.text)) _c.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tok = widget.tok;
+    return Row(
+      spacing: 8,
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _c,
+            style: TextStyle(color: tok.text, fontSize: tok.fsBody),
+            decoration: InputDecoration(hintText: Strings.get('add_word')),
+            onSubmitted: (_) => _add(),
+          ),
+        ),
+        ElevatedButton(onPressed: _add, child: Text(Strings.get('add'))),
+      ],
+    );
   }
 }

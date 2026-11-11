@@ -122,12 +122,12 @@ class SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(top: tok.gap, bottom: tok.gap / 2),
-      child: Text(text,
+      padding: EdgeInsets.zero,
+      child: Text(text.toUpperCase(),
           style: TextStyle(
-              color: tok.text,
-              fontSize: tok.fsSection,
-              fontWeight: FontWeight.w600)),
+              color: tok.faint,
+              fontSize: tok.fsSmall,
+              fontWeight: FontWeight.w700)),
     );
   }
 }
@@ -207,13 +207,17 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AppCard(
-      tok: tok,
-      children: [
-        Text(text,
-            style: TextStyle(color: tok.muted, fontSize: tok.fsBody)),
-        action ?? const SizedBox.shrink(),
-      ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 40),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        spacing: tok.gap,
+        children: [
+          Icon(Icons.inbox_outlined, size: 40, color: tok.faint),
+          Text(text, style: TextStyle(color: tok.faint, fontSize: tok.fsBody)),
+          ?action,
+        ],
+      ),
     );
   }
 }
@@ -234,18 +238,23 @@ class HeaderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      spacing: 8,
       children: [
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: 2,
             children: [
               Text(heading,
                   style: TextStyle(
                       color: tok.text,
                       fontSize: tok.fsTitle,
                       fontWeight: FontWeight.w700)),
-              Text(updated,
-                  style: TextStyle(color: tok.faint, fontSize: tok.fsSmall)),
+              if (updated.isNotEmpty)
+                Text(updated,
+                    style:
+                        TextStyle(color: tok.faint, fontSize: tok.fsSmall)),
             ],
           ),
         ),
@@ -437,35 +446,48 @@ class StatCard extends StatelessWidget {
   final String value;
   final Tokens tok;
   final String kind;
+  final bool singleLine;
   const StatCard(
       {super.key,
       required this.label,
       required this.value,
       required this.tok,
-      this.kind = 'info'});
+      this.kind = 'info',
+      this.singleLine = false});
 
   @override
   Widget build(BuildContext context) {
-    final color = kind == 'info' ? tok.text : statusColor(kind, tok);
+    final color = const {
+      'ok', 'warning', 'critical', 'late', 'cancelled', 'pending', 'sent',
+      'failed'
+    }.contains(kind)
+        ? statusColor(kind, tok)
+        : tok.accent;
     return Expanded(
       child: Container(
-        padding: EdgeInsets.all(tok.pad / 2),
+        padding: EdgeInsets.all(tok.pad),
         decoration: BoxDecoration(
-          color: tok.surface,
-          borderRadius: BorderRadius.circular(tok.radiusSm),
+          color: tok.card,
+          borderRadius: BorderRadius.circular(tok.radiusMd),
           border: Border.all(color: tok.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          spacing: 2,
           children: [
             Text(label,
-                style:
-                    TextStyle(color: tok.muted, fontSize: tok.fsSmall)),
-            Text(value,
-                style: TextStyle(
-                    color: color,
-                    fontSize: tok.fsSection,
-                    fontWeight: FontWeight.w700)),
+                style: TextStyle(color: tok.muted, fontSize: tok.fsBody)),
+            Tooltip(
+              message: singleLine ? value : '',
+              child: Text(value,
+                  maxLines: singleLine ? 1 : null,
+                  overflow: singleLine ? TextOverflow.ellipsis : null,
+                  style: TextStyle(
+                      color: color,
+                      fontSize: tok.fsTitle,
+                      fontWeight: FontWeight.w700)),
+            ),
           ],
         ),
       ),
@@ -515,10 +537,12 @@ class PrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FilledButton(
-      style: FilledButton.styleFrom(
-        backgroundColor: tok.accent,
-        foregroundColor: tok.accentText,
+    return ElevatedButton(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: onPressed == null ? tok.overlay : tok.accent,
+        foregroundColor: onPressed == null ? tok.faint : tok.accentText,
+        disabledBackgroundColor: tok.overlay,
+        disabledForegroundColor: tok.faint,
       ),
       onPressed: onPressed,
       child: Text(label),
@@ -536,8 +560,8 @@ class GhostButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextButton(
-      style: TextButton.styleFrom(foregroundColor: tok.accent),
+    return OutlinedButton(
+      style: OutlinedButton.styleFrom(foregroundColor: tok.text),
       onPressed: onPressed,
       child: Text(label),
     );

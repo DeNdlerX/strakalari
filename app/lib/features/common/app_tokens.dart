@@ -14,6 +14,14 @@ typedef AppTokens = Tokens;
 /// exactly like `theme.tint`.
 Color tintColor(Color color, double alpha) {
   final a = (alpha.clamp(0.0, 1.0) * 255).round().clamp(0, 255);
-  return Color.fromARGB(a, (color.r * 255).round().clamp(0, 255),
-      (color.g * 255).round().clamp(0, 255), (color.b * 255).round().clamp(0, 255));
+  return Color.fromARGB(
+    a,
+    (color.r * 255).round().clamp(0, 255),
+    (color.g * 255).round().clamp(0, 255),
+    (color.b * 255).round().clamp(0, 255),
+  );
 }
+
+/// The token set of the running theme (light or dark).
+Tokens tokensOf(BuildContext context) =>
+    Tokens.of(Theme.of(context).brightness);

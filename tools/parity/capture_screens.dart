@@ -159,8 +159,8 @@ void main() {
                     return MaterialApp.router(
                       debugShowCheckedModeBanner: false,
                       title: Strings.get('app_title'),
-                      theme: appState.tok.toThemeData(),
-                      darkTheme: appState.tok.toThemeData(),
+                      theme: appState.tok.toThemeData(fontFamily: 'Roboto'),
+                      darkTheme: appState.tok.toThemeData(fontFamily: 'Roboto'),
                       themeMode: light ? ThemeMode.light : ThemeMode.dark,
                       locale: Locale(Strings.lang),
                       supportedLocales: const [Locale('cs'), Locale('en')],
@@ -170,6 +170,10 @@ void main() {
                         GlobalCupertinoLocalizations.delegate,
                       ],
                       routerConfig: router,
+                      builder: (context, child) => DefaultTextStyle.merge(
+                        style: const TextStyle(fontFamily: 'Roboto'),
+                        child: child ?? const SizedBox.shrink(),
+                      ),
                     );
                   }),
                 ),
@@ -197,3 +201,4 @@ void main() {
     }
   }
 }
+
