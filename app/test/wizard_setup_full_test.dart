@@ -23,7 +23,7 @@ void main() {
 
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('strakalari_wizard_full_test_');
-    core.setEnvironmentOverride({'STRAKALARI_DATA_DIR': tmp.path});
+    core.setEnvironmentOverride({'STRAKALARI_DATA_DIR': tmp.path, 'STRAKALARI_NO_KEYRING': '1'});
   });
 
   tearDown(() {

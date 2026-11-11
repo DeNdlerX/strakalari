@@ -37,7 +37,7 @@ void main() {
 
   setUp(() {
     dir = Directory.systemTemp.createTempSync('strakalari_latch_');
-    setEnvironmentOverride({'STRAKALARI_DATA_DIR': dir.path});
+    setEnvironmentOverride({'STRAKALARI_DATA_DIR': dir.path, 'STRAKALARI_NO_KEYRING': '1'});
     state = AppState(configData: {'use_strava': true}, data: {})
       ..demoMode = false;
   });

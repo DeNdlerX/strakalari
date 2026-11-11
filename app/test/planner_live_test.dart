@@ -13,7 +13,7 @@ void main() {
 
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('strakalari_planner_live_');
-    setEnvironmentOverride({'STRAKALARI_DATA_DIR': tmp.path});
+    setEnvironmentOverride({'STRAKALARI_DATA_DIR': tmp.path, 'STRAKALARI_NO_KEYRING': '1'});
   });
 
   tearDown(() {

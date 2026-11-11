@@ -16,7 +16,7 @@ void main() {
 
   setUp(() {
     dir = Directory.systemTemp.createTempSync('strakalari_state_');
-    setEnvironmentOverride({'STRAKALARI_DATA_DIR': dir.path});
+    setEnvironmentOverride({'STRAKALARI_DATA_DIR': dir.path, 'STRAKALARI_NO_KEYRING': '1'});
     jobs.clear();
     state = AppState()..spawn = (job, name) => jobs.add(job);
   });
