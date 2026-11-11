@@ -457,7 +457,7 @@ class TodayController extends ChangeNotifier {
     return found;
   }
 
-  /// Dropdown labels: the user's name, `Šablona N` for unnamed ones —
+  /// Dropdown labels: the user's name, `template_n N` (Template N) for unnamed ones —
   /// like `planner._template_labels`.
   List<String> templateLabels(List<TemplateOption> options) => [
         for (var i = 0; i < options.length; i++)

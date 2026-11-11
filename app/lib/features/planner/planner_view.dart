@@ -917,6 +917,7 @@ class _PlanAllDialogState extends State<_PlanAllDialog> {
         kind: 'day',
         signature: '${widget.controller.get('your_signature', '')}');
     final options = [for (final e in named) e.value];
+    final labels = templateLabels(named);
     final listing = widget.days
         .map((d) => PlannerView._cz(d))
         .join(', ');
@@ -931,7 +932,7 @@ class _PlanAllDialogState extends State<_PlanAllDialog> {
               value: picked.clamp(0, options.length - 1),
               items: [
                 for (var i = 0; i < options.length; i++)
-                  DropdownMenuItem(value: i, child: Text('Šablona ${i + 1}')),
+                  DropdownMenuItem(value: i, child: Text(labels[i].value)),
               ],
               onChanged: (v) =>
                   setState(() => picked = v ?? 0),
@@ -1084,6 +1085,7 @@ class _CustomPlanDialogState extends State<CustomPlanDialog> {
         kind: 'day',
         signature: '${widget.controller.get('your_signature', '')}');
     final options = [for (final e in named) e.value];
+    final labels = templateLabels(named);
     final entries = _entries(options[templateIdx.clamp(0, options.length - 1)]);
     final impacts = widget.impactOfEntries?.call(entries) ?? const [];
     final chosen = picked.keys.toList()..sort();
@@ -1113,8 +1115,7 @@ class _CustomPlanDialogState extends State<CustomPlanDialog> {
                 value: templateIdx.clamp(0, options.length - 1),
                 items: [
                   for (var i = 0; i < options.length; i++)
-                    DropdownMenuItem(
-                        value: i, child: Text('Šablona ${i + 1}')),
+                    DropdownMenuItem(value: i, child: Text(labels[i].value)),
                 ],
                 onChanged: (v) =>
                     setState(() => templateIdx = v ?? 0),
