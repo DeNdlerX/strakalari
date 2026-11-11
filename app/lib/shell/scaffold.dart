@@ -176,16 +176,7 @@ class AppScaffold extends ConsumerWidget {
       );
     }
 
-    if (appState.lastSnackMessage.isNotEmpty) {
-      final msg = appState.lastSnackMessage;
-      appState.lastSnackMessage = '';
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(content: Text(msg)));
-      });
-    }
+    popPendingMessages(context, appState, tok, controller);
 
     if (route == 'more' && !narrow) {
       route = 'today';
@@ -200,26 +191,6 @@ class AppScaffold extends ConsumerWidget {
     final lunchCount = appState.pendingLunchCount;
     final lunchLabel = Strings.get('nav_lunches') +
         (lunchCount > 0 ? ' ($lunchCount)' : '');
-
-    if (appState.errorDialogPending) {
-      final err = appState.lastError;
-      appState.acknowledgeError();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!context.mounted) return;
-        final summary = err == null ? '' : '${err['summary'] ?? ''}';
-        final userMessage =
-            err == null ? '' : '${err['user_message'] ?? ''}';
-        showErrorDialog(
-          context,
-          tok: tok,
-          title: Strings.get('error_title'),
-          summary: summary,
-          reportText: appState.errorReportText(),
-          userMessage: userMessage,
-          onClose: () => controller.emit(),
-        );
-      });
-    }
 
     final topBar = _buildTopBar(
       context: context,
@@ -626,5 +597,40 @@ class AppScaffold extends ConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+/// Shows the queued snack and the queued error dialog, once each (port of
+/// `_maybe_show_error` and the snack drain of `Shell.render`). Shared by the
+/// shell and the wizard route, which both call it on every build.
+void popPendingMessages(BuildContext context, AppState appState, Tokens tok,
+    AppStateController controller) {
+  if (appState.lastSnackMessage.isNotEmpty) {
+    final msg = appState.lastSnackMessage;
+    appState.lastSnackMessage = '';
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(msg)));
+    });
+  }
+  if (appState.errorDialogPending) {
+    final err = appState.lastError;
+    appState.acknowledgeError();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!context.mounted) return;
+      final summary = err == null ? '' : '${err['summary'] ?? ''}';
+      final userMessage = err == null ? '' : '${err['user_message'] ?? ''}';
+      showErrorDialog(
+        context,
+        tok: tok,
+        title: Strings.get('error_title'),
+        summary: summary,
+        reportText: appState.errorReportText(),
+        userMessage: userMessage,
+        onClose: () => controller.emit(),
+      );
+    });
   }
 }

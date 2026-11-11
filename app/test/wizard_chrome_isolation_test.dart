@@ -173,4 +173,33 @@ void main() {
     expect(find.byKey(const ValueKey('topbar_status_dot')), findsOneWidget);
     expect(find.byKey(const ValueKey('refresh')), findsOneWidget);
   });
+
+  // Checkpoint B BR-S6: app.py calls `_maybe_show_error()` in its wizard
+  // branch, so a failure queued while the wizard is on screen still pops.
+  testWidgets('The wizard route pops a queued error dialog and snack',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final state = container.read(appStateProvider);
+    await tester.pumpWidget(_buildHarness(container: container));
+    await tester.pumpAndSettle();
+    expect(find.byType(WizardView), findsOneWidget);
+
+    state.lastSnackMessage = 'queued snack';
+    state.reportError('test', StateError('boom'));
+    expect(state.errorDialogPending, isTrue);
+    container.read(appStateProvider.notifier).emit();
+    await tester.pumpAndSettle();
+
+    expect(state.errorDialogPending, isFalse);
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.text('queued snack'), findsOneWidget);
+  });
 }

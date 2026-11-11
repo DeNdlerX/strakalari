@@ -159,6 +159,10 @@ GoRouter buildRouter({String initialLocation = '/today'}) => GoRouter(
               final narrow = (size.width > 0 && size.width < 720) ||
                   (size.height > 0 && size.height < 520);
               final tokens = appState.appTokens;
+              // The wizard also pops the queued error dialog and snack
+              // (app.py calls `_maybe_show_error` in its wizard branch).
+              popPendingMessages(context, appState, tokens,
+                  ref.read(appStateProvider.notifier));
               return Scaffold(
                 body: SafeArea(
                   child: LiveWizardView(tokens: tokens, narrow: narrow),

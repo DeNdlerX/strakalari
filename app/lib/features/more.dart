@@ -46,8 +46,10 @@ class MorePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = tokens ?? AppTokens.of(Theme.of(context).brightness);
     final items = visibleEntries();
+    // No padding of its own: the shell already gives the page its gutters
+    // (views/more.py has none either).
     return ListView(
-      padding: EdgeInsets.all(t.pad),
+      padding: EdgeInsets.zero,
       children: [
         Padding(
           padding: EdgeInsets.only(bottom: t.gap / 2 + 2),
