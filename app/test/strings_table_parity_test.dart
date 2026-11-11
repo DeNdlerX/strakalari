@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -181,6 +182,29 @@ void main() {
         for (final lang in ['cs', 'en']) {
           Strings.lang = lang;
           expect(Strings.get(key), isNot(key), reason: '$lang/$key');
+        }
+      }
+    });
+
+    // Checkpoint B B-S3: the ARB files are generated and not used by the
+    // app (STATUS.md, Deviations); they must stay equal to the `Strings`
+    // tables, which are the source the app reads.
+    test('ARB files equal the Strings tables', () {
+      final saved = Strings.lang;
+      final wasMobile = Strings.isMobile;
+      addTearDown(() {
+        Strings.lang = saved;
+        Strings.isMobile = wasMobile;
+      });
+      Strings.isMobile = false;
+      for (final lang in ['cs', 'en']) {
+        Strings.lang = lang;
+        final arb = jsonDecode(File('lib/l10n/app_$lang.arb').readAsStringSync())
+            as Map<String, dynamic>;
+        final keys = arb.keys.where((k) => !k.startsWith('@')).toList();
+        expect(keys, isNotEmpty);
+        for (final key in keys) {
+          expect(arb[key], Strings.get(key), reason: '$lang/$key');
         }
       }
     });
