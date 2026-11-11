@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 6 (Checkpoint B rework, round 4 done, waiting for re-review) · Next step: **stop for the Checkpoint B re-review** (B-M11, B-M13 and B-S5 are done in round 4; every other finding of re-review 2 was fixed in round 3). After a PASS: phase 7 desktop checks (Sandbox over-install test) and phase 8 phone checks (ask the owner before the first install on the Pixel 7 Pro).
+Current phase: 6 (Checkpoint B re-review 3: FAIL, 2026-11-12) · Next step: **Fix every finding in `reviews/checkpoint-B.md` (blockers first), one commit per finding, then stop for re-review.** The open findings are under *Re-review 3*: BR3-B1, BR3-B2, BR3-M1 … BR3-M3, BR3-S1 … BR3-S4. After a PASS: phase 7 desktop checks (Sandbox over-install test) and phase 8 phone checks (ask the owner before the first install on the Pixel 7 Pro).
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -800,6 +800,7 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
   - **Tests changed for the new look, not weakened:** section headings are upper-case now (the finders upper-case the expected text); screens that are taller or wider than the 800x600 test surface use a larger surface (the Ahem test font is far wider than the real one); `Chyba` appears twice on the Activity screen exactly as in Python.
   - **B-M13**: the test map lines for items 17, 19, 21, 30, 38, 40, 50, 51, 53, 56, 67, 79 (unchanged, it was already complete), 81 and 87 and `TestNarrowShell` name the real Dart tests. Every Python test in those files has a same-named Dart test (checked by a script that compares the camel-cased names) except the Flet-only ones, which are under *Dropped*.
   - **Screenshots:** `build/parity-screens/{flutter,flet}/` were re-captured (80 and 76 images) and compared by eye on Today, Planner, Lunches, Activity and Settings (1280 and 390, light and dark). Known differences: the Flet captures show an "update available" button and a next-run time that the demo data in the Flutter capture does not produce; Absences, Marks, Timetable, More and the wizard were not compared again in this round; the wake-up card and the wizard card widths are still unchecked.
+- 2026-11-12 · Checkpoint B re-review 3: **FAIL** (all re-review 2 findings fixed except B-M11 in part; new: 2 blockers BR3-B1 Planner grid / day ranges off by a day after the clock change, BR3-B2 *Copy log* not redacted; 3 must-fix incl. a red app suite; 4 should-fix) — [docs/flutter-migration/reviews/checkpoint-B.md](docs/flutter-migration/reviews/checkpoint-B.md#re-review-3-2026-11-12)
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 
