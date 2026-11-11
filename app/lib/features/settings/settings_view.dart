@@ -2,6 +2,7 @@ import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
 
 import 'package:app/features/settings/settings_controller.dart';
+import 'package:app/features/settings/wakeup_card.dart';
 import 'package:app/widgets/overlays.dart';
 
 const List<String> kNotificationEvents = [
@@ -806,39 +807,7 @@ class SettingsView extends StatelessWidget {
         ),
       ];
     }
-    return [
-      Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            children: [
-              Text(Strings.get('wakeup_title')),
-              SwitchListTile(
-                title: Text(Strings.get('wakeup_enable')),
-                value: c.get('wakeup_enabled', false) == true,
-                onChanged: (v) =>
-                    c.save({'wakeup_enabled': v}),
-              ),
-              AutosaveField(
-                controller: c,
-                label: Strings.get('wakeup_minutes'),
-                draftKey: 'rule:wakeup_min',
-                configKey: 'wakeup_minutes_before',
-                fallback: '${c.get('wakeup_minutes_before', 60)}',
-                parse: (raw) {
-                  final v =
-                      double.tryParse(raw.replaceAll(',', '.'));
-                  if (v == null) {
-                    throw FormatException('bad number');
-                  }
-                  return v.toInt().clamp(5, 240);
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    ];
+    return [WakeupCard(controller: c)];
   }
 
   // -- templates -----------------------------------------------------------------------

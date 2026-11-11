@@ -1,6 +1,5 @@
 import 'package:app/l10n/strings.dart';
 import 'package:app/features/planner/plan_reserve.dart' show daysText;
-import 'package:app/features/common/format.dart' show daysText;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

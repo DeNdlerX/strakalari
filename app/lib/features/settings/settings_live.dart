@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../controllers/app_state.dart';
+import '../../platform/android/android_channel.dart';
 import '../../widgets/safety_dialog.dart';
 import 'settings_controller.dart';
 import 'settings_view.dart';
@@ -19,6 +20,7 @@ bool Function(bool wanted)? liveSetAutostart;
 SettingsController settingsControllerFor(
   AppState s, {
   FutureOr<String> Function(String key)? confirmAutoMode,
+  WakeupPhone? wakeupPhone,
 }) {
   final cfg = Map<String, dynamic>.of(s.config.data);
   final abs = s.absence();
@@ -63,6 +65,7 @@ SettingsController settingsControllerFor(
     isAndroid: Platform.isAndroid,
     wakeupAvailable: s.wakeupAvailable,
   );
+  if (s.wakeupAvailable) c.wakeupPhone = wakeupPhone ?? _channelPhone(s);
   c.drafts.addAll(s.drafts);
   c.settingsSection = s.settingsSection;
   c.settingsOpen = s.settingsOpen;
@@ -70,6 +73,26 @@ SettingsController settingsControllerFor(
   c.lastTest = Map<String, dynamic>.of(s.lastTest);
   c.updateChannel = s.updateChannel;
   return c;
+}
+
+/// The wake-up card's phone side, backed by the platform channel. The two
+/// permission flags are answered asynchronously, so they start as "allowed"
+/// and the live screen refreshes them (see `_LiveSettingsViewState`).
+WakeupPhone _channelPhone(AppState s, {bool notif = true, bool exact = true}) {
+  const channel = AndroidChannel();
+  return WakeupPhone(
+    notificationsEnabled: notif,
+    exactAlarmsAllowed: exact,
+    nextAlarm: () => s.nextWakeupAlarm(),
+    skippedDays: () => s.skippedWakeupDays(),
+    openSystemAlarm: (h, m, message, {int? weekday}) =>
+        channel.openSystemAlarm(h, m, message: message, weekday: weekday),
+    requestNotificationPermission: () =>
+        unawaited(channel.requestNotificationPermission()),
+    openNotificationSettings: () =>
+        unawaited(channel.openNotificationSettings()),
+    openExactAlarmSettings: () => unawaited(channel.openExactAlarmSettings()),
+  );
 }
 
 /// Live settings screen wired to [appStateProvider].
@@ -86,6 +109,8 @@ class _LiveSettingsViewState extends ConsumerState<LiveSettingsView> {
   /// Survives rebuilds (a new controller is built every time) so a cancelled
   /// switch to auto re-keys the mode pickers and they show the saved mode.
   int _modeRevision = 0;
+  bool _notifOn = true;
+  bool _exactOn = true;
 
   @override
   void initState() {
@@ -94,6 +119,19 @@ class _LiveSettingsViewState extends ConsumerState<LiveSettingsView> {
       if (!mounted) return;
       ref.read(appStateProvider).tutorialOffer('settings');
     });
+    _loadPermissions();
+  }
+
+  Future<void> _loadPermissions() async {
+    if (!ref.read(appStateProvider).wakeupAvailable) return;
+    const channel = AndroidChannel();
+    final notif = await channel.notificationsEnabled();
+    final exact = await channel.exactAlarmsAllowed();
+    if (!mounted) return;
+    setState(() {
+      _notifOn = notif;
+      _exactOn = exact;
+    });
   }
 
   @override
@@ -101,6 +139,9 @@ class _LiveSettingsViewState extends ConsumerState<LiveSettingsView> {
     final s = ref.watch(appStateProvider);
     final controller = settingsControllerFor(
       s,
+      wakeupPhone: s.wakeupAvailable
+          ? _channelPhone(s, notif: _notifOn, exact: _exactOn)
+          : null,
       confirmAutoMode: (key) {
         final completer = Completer<String>();
         final unsigned =

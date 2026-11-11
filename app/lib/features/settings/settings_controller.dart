@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:strakalari_core/strakalari_core.dart' as core;
+
 /// Settings state. Port of the settings-related AppState surface used by
 /// views/settings/*: navigation, drafts, quiet saves, calendar ops,
 /// automation rules, autostart handling and credential gating.
@@ -40,6 +42,9 @@ class SettingsController {
   /// Phone-only flags.
   final bool isAndroid;
   final bool wakeupAvailable;
+
+  /// Phone-side facts and actions the wake-up card needs (Android only).
+  WakeupPhone? wakeupPhone;
 
   String settingsSection = 'accounts';
   bool settingsOpen = false;
@@ -479,4 +484,31 @@ class SettingsController {
   bool needsSetup() => !hasAnyCredentials();
 
   bool stravaEnabledFlag() => get('use_strava', true) == true;
+}
+
+
+/// What the wake-up card asks the phone (port of the `android` calls and the
+/// `AppState` alarm queries used by `automation.py::_wakeup`). The live
+/// screen wires it to the platform channel; tests pass fakes.
+class WakeupPhone {
+  bool notificationsEnabled;
+  bool exactAlarmsAllowed;
+  final core.WakeupAlarm? Function() nextAlarm;
+  final List<(DateTime, core.WakeupAlarm?)> Function() skippedDays;
+  final Future<bool> Function(int hour, int minute, String message,
+      {int? weekday}) openSystemAlarm;
+  final void Function() requestNotificationPermission;
+  final void Function() openNotificationSettings;
+  final void Function() openExactAlarmSettings;
+
+  WakeupPhone({
+    this.notificationsEnabled = true,
+    this.exactAlarmsAllowed = true,
+    required this.nextAlarm,
+    required this.skippedDays,
+    required this.openSystemAlarm,
+    required this.requestNotificationPermission,
+    required this.openNotificationSettings,
+    required this.openExactAlarmSettings,
+  });
 }
