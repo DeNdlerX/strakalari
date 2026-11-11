@@ -88,5 +88,46 @@ void main() {
       expect(Strings.hasKey('planner_title'), isTrue);
       expect(Strings.allKeys.length, greaterThanOrEqualTo(790));
     });
+  
+    // Checkpoint B BR-M3: Python format specs must not be printed raw.
+    test('format fills every placeholder of every key, both languages', () {
+      final saved = Strings.lang;
+      addTearDown(() => Strings.lang = saved);
+      final placeholder = RegExp(r'\{(\w+)(?::([^}]*))?\}');
+      for (final lang in ['cs', 'en']) {
+        Strings.lang = lang;
+        for (final key in Strings.allKeys) {
+          final args = <String, Object?>{};
+          for (final m in placeholder.allMatches(Strings.get(key))) {
+            args[m.group(1)!] = m.group(2) == 'g' ? 12.5 : 'x';
+          }
+          final out = Strings.format(key, args);
+          expect(out.contains('{'), isFalse, reason: '$lang/$key -> $out');
+        }
+      }
+    });
+
+    test('format applies {name:g} like Python and rejects other specs', () {
+      final saved = Strings.lang;
+      addTearDown(() => Strings.lang = saved);
+      Strings.lang = 'cs';
+      expect(Strings.format('plan_buffer_note', {'reserve': 10.0}),
+          contains(' 10 %'));
+      expect(Strings.format('plan_buffer_note', {'reserve': 12.5}),
+          contains('12.5'));
+      expect(() => Strings.format('plan_buffer_note', {'reserve': 'x'}),
+          throwsFormatException);
+    });
+
+    test('no hardcoded "Šablona" literal remains under lib', () {
+      for (final entity in Directory('lib').listSync(recursive: true)) {
+        if (entity is! File || !entity.path.endsWith('.dart')) continue;
+        if (entity.path.replaceAll(r'\', '/').endsWith('lib/l10n/strings.dart')) {
+          continue;
+        }
+        expect(entity.readAsStringSync().contains("Šablona"), isFalse,
+            reason: entity.path);
+      }
+    });
   });
 }

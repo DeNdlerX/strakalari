@@ -5,6 +5,8 @@
 // MOBILE_STRINGS variants `S()` picks inside the Android/iOS app.
 // Notification labels live under `notif_<event>` keys.
 
+import '../features/common/format.dart' show gFormat;
+
 /// Language-independent string lookup (no [BuildContext] needed, so core
 /// logic and plain unit tests can use it; widgets should prefer it too
 /// until gen-l10n wiring lands in phase 6).
@@ -1673,13 +1675,21 @@ class Strings {
     return _active[key] ?? _cs[key] ?? _en[key] ?? key;
   }
 
-  /// `S('...').format(**args)` equivalent: replaces `{name}` placeholders.
+  /// `S('...').format(**args)` equivalent: replaces `{name}` placeholders
+  /// and the `{name:g}` spec (Python's general number format, used by
+  /// `{reserve:g}` / `{limit:g}`). Any other spec throws, so a new format
+  /// spec in the tables is noticed instead of printed raw.
   static String format(String key, [Map<String, Object?> args = const {}]) {
-    var text = get(key);
-    args.forEach((name, value) {
-      text = text.replaceAll('{$name}', '${value ?? ''}');
+    return get(key).replaceAllMapped(RegExp(r'\{(\w+)(?::([^}]*))?\}'), (m) {
+      final name = m.group(1)!;
+      final spec = m.group(2);
+      if (!args.containsKey(name)) return m.group(0)!;
+      final value = args[name];
+      if (spec == null) return '${value ?? ''}';
+      if (spec == 'g' && value is num) return gFormat(value);
+      throw FormatException(
+          'Unsupported format spec "{$name:$spec}" in string "$key"');
     });
-    return text;
   }
 
   /// Whether [key] exists in the string tables.
