@@ -233,6 +233,7 @@ void main() {
         started
             ? 'startedSendNeverClaimsExcuseSent'
             : 'refusedSendShowsFailureNotSent', (tester) async {
+      _wideSurface(tester);
       await withClock(Clock.fixed(DateTime(2026, 9, 20, 12, 0)), () async {
         final s = AppState(
           configData: {
