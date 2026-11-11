@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 6 · Next step: Fix every finding in `reviews/checkpoint-B.md` (blockers first), one commit per finding, then stop for re-review. Open now: the new BR-* findings in its "Re-review (2026-11-10)" section (start with BR-M1, BR-M2, BR-M6, BR-M8) and the original B-M11 … B-M14, B-S1, B-S2, B-S3, B-S5, B-S6.
+Current phase: 6 · Next step: Continue `reviews/checkpoint-B.md` fixes, one commit per finding, then stop for re-review. Done this session: BR-M6, BR-M1, BR-M2, BR-M8 row 1 (dry-run send-path tests). Still open, in this order: rest of BR-M8 (11 rows of its table), BR-M3, BR-M4, BR-M5, BR-M7, then B-M11 … B-M14, B-S1, B-S2, B-S3, B-S5, B-S6, BR-S1 … BR-S6, and the STATUS.md claims in B-M13.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -413,7 +413,7 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
 79. `tests/test_timetable_cache_merge.py` (9):
     - 5 `TestMergeTimetableDays` cases → `cache_test.dart`: `keepsUnscrapedDaysAndFreshWins`, `presentButEmptyDayOverwrites`, `prunesOutOfWindowOldDaysKeepsGarbage`, `noWindowStartKeepsEverything`, `emptyInputs`
     - `test_excuse_single_dry_run_fills_only`, `test_excuse_absence_dry_run_sends_nothing` → `automation_test.dart`: `excuseSingleDryRunFillsOnly`, `excuseAbsenceDryRunSendsNothing`
-    - `test_submit_excuse_dry_run_leaves_pending`, `test_submit_day_excuse_dry_run_leaves_pending` → **Deferred (phase 5 — `AppState.submit_excuse` / `submit_day_excuse`)**
+    - `test_submit_excuse_dry_run_leaves_pending`, `test_submit_day_excuse_dry_run_leaves_pending` → `app/test/dry_run_send_test.dart`: `submitExcuseDryRunLeavesPending`, `submitDayExcuseDryRunLeavesPending`
 80. `tests/test_timetable_week_nav.py` (4) → `app/test/phase6_features_test.dart` (`week switch emits once and clears stable view`, `week switch noop emits nothing`) + `app/test/timetable_live_test.dart` (`timetableControllerFor maps AppState and delegates week/view toggles`)
 81. `tests/test_timetable_week_switch.py` (3) → **Deferred (phase 5/6 — `AppState` timetable week switch fetch)**
 82. `tests/test_tls_bundle.py` (7) → **Dropped (frozen CA bundle `strakalari/core/tls.py` does not exist in Flutter; Dart uses OS trust store per PLAN §3.2)**
