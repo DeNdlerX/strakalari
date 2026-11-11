@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart';
 import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
 
@@ -226,7 +227,7 @@ class ActivityView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final now = nowFor?.call() ?? DateTime.now();
+    final now = nowFor?.call() ?? clock.now();
     final blocks = <Widget>[
       _hero(context, now),
       _stats(now),

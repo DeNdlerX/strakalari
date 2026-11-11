@@ -34,6 +34,7 @@
 // the window/tray mechanics and the schedule bookkeeping. Calling
 // [DesktopTrayController.initialize] is safe anywhere (tests,
 // unsupported platforms): every OS call is guarded.
+import 'package:clock/clock.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -329,7 +330,7 @@ class DesktopBackgroundLoop {
       // Re-read the live interval (settings are edited in the window).
       final interval = _intervalMinutes;
       final last = _lastRun;
-      final now = DateTime.now();
+      final now = clock.now();
       final due = last == null || now.difference(last).inSeconds >= interval * 60;
       if (!due || _running) return;
       await _runJobs();
@@ -354,8 +355,8 @@ class DesktopBackgroundLoop {
       _reportFailure('update', e);
     } finally {
       _lastRun = ok
-          ? DateTime.now()
-          : DateTime.now().subtract(
+          ? clock.now()
+          : clock.now().subtract(
               Duration(seconds: (_intervalMinutes * 60).round() - 300));
       _running = false;
     }

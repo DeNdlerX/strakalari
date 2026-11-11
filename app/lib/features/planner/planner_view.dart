@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart';
 import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
@@ -1023,7 +1024,7 @@ class _CustomPlanDialogState extends State<CustomPlanDialog> {
   @override
   void initState() {
     super.initState();
-    month = widget.initialMonth ?? DateTime.now();
+    month = widget.initialMonth ?? clock.now();
     if (widget.preselect != null) {
       _tapDay(widget.preselect!);
     }
@@ -1242,9 +1243,9 @@ class _CustomPlanDialogState extends State<CustomPlanDialog> {
           borderRadius: BorderRadius.circular(8),
           border: free
               ? Border.all(color: Colors.grey)
-              : day.year == DateTime.now().year &&
-                      day.month == DateTime.now().month &&
-                      day.day == DateTime.now().day
+              : day.year == clock.now().year &&
+                      day.month == clock.now().month &&
+                      day.day == clock.now().day
                   ? Border.all(
                       color: Theme.of(context).colorScheme.onSurface)
                   : null,

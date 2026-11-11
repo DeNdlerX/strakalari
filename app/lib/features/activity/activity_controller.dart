@@ -1,3 +1,5 @@
+import 'package:clock/clock.dart';
+
 /// Activity state. Port of state_activity.ActivityMixin (UI-owned parts).
 ///
 /// Plain-Dart controller; background work is injected so widget tests
@@ -67,7 +69,7 @@ class ActivityController {
 
   // -- log (ring buffer, 300 lines) -------------------------------------------
   String _stamp() {
-    final now = DateTime.now();
+    final now = clock.now();
     return '${now.hour.toString().padLeft(2, '0')}:'
         '${now.minute.toString().padLeft(2, '0')}:'
         '${now.second.toString().padLeft(2, '0')}';
@@ -103,7 +105,7 @@ class ActivityController {
     }
     final now = monotonicClock != null
         ? monotonicClock!()
-        : DateTime.now().millisecondsSinceEpoch / 1000.0;
+        : clock.now().millisecondsSinceEpoch / 1000.0;
     if (now - _lastLogEmit >= 1.0) {
       _lastLogEmit = now;
       _emit();
@@ -142,7 +144,7 @@ class ActivityController {
               60.0;
       final due = schedulerLastRun!
           .add(Duration(seconds: (interval * 60).round()));
-      final n = now ?? DateTime.now();
+      final n = now ?? clock.now();
       if (due.isBefore(n)) return '—';
       return '${due.day.toString().padLeft(2, '0')}.'
           '${due.month.toString().padLeft(2, '0')}. '
@@ -209,7 +211,7 @@ class ActivityController {
         ? logLines.sublist(logLines.length - 60)
         : List.of(logLines);
     final report = {
-      'at': DateTime.now().toIso8601String(),
+      'at': clock.now().toIso8601String(),
       'operation': operation,
       'summary': summary,
       'traceback': traceback,

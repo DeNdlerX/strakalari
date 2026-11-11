@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
@@ -130,7 +131,7 @@ TimetableController();
   DateTime resolveCurrent(
       Map<DateTime, Map<DateTime, List<Map<String, Object?>>>> weeks,
       {DateTime? today}) {
-    final now = today ?? DateTime.now();
+    final now = today ?? clock.now();
     final day = DateTime(now.year, now.month, now.day);
     final thisMon = weekMonday(day);
     if (timetableMondayIso != null) {

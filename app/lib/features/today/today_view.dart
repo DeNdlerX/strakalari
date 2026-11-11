@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart';
 import '../../l10n/strings.dart';
 import 'package:flutter/material.dart';
 
@@ -35,7 +36,7 @@ class TodayView extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: controller,
-      builder: (context, _) => _body(context, now ?? DateTime.now()),
+      builder: (context, _) => _body(context, now ?? clock.now()),
     );
   }
 
@@ -181,7 +182,7 @@ final day = parseCzDate(dayIso);
         ? dayIso
         : '${dayName(day, Strings.lang)} ${czDayYear(day)}';
     final wholeDay = c.dayFullyAbsent(dayIso,
-        today: DateTime.now());
+        today: clock.now());
     final perLesson = c.excuseDayPerLesson;
     final dayKind = wholeDay && !perLesson ? 'day' : 'short';
     final options = c.templateOptions(dayKind);

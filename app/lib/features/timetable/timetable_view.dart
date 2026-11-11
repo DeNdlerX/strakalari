@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
@@ -41,7 +42,7 @@ class TimetableView extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: controller,
-      builder: (context, _) => _body(context, now ?? DateTime.now()),
+      builder: (context, _) => _body(context, now ?? clock.now()),
     );
   }
 

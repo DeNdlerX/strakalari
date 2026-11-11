@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../l10n/strings.dart';
@@ -579,7 +580,7 @@ class WizardController extends ChangeNotifier {
   }
 
   String _testTimestamp() {
-    final now = DateTime.now();
+    final now = clock.now();
     return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
   }
 

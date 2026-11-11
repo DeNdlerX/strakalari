@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart';
 import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
 
@@ -55,7 +56,7 @@ class LunchesView extends StatelessWidget {
         ],
       );
     }
-    final now = (nowFor?.call() ?? DateTime.now());
+    final now = (nowFor?.call() ?? clock.now());
     final today = DateTime(now.year, now.month, now.day);
     final past = <String>[];
     final upcoming = <String>[];
@@ -290,7 +291,7 @@ class LunchesView extends StatelessWidget {
       rows.add(Text(Strings.format('hidden_meals', {'n': hidden})));
     }
     final parsed = parseCzDate(day);
-    final now = nowFor?.call() ?? DateTime.now();
+    final now = nowFor?.call() ?? clock.now();
     final today = DateTime(now.year, now.month, now.day);
     final isPast = parsed != null && parsed.isBefore(today);
     final expKey = 'lunch:$day';
