@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 import 'package:app/features/settings/settings_controller.dart';
 import 'package:app/features/settings/wakeup_card.dart';
+import 'package:app/features/common/app_tokens.dart';
+import 'package:app/widgets/app_widgets.dart' as w;
 import 'package:app/widgets/overlays.dart';
 
 const List<String> kNotificationEvents = [
@@ -119,19 +121,46 @@ class _AutosaveFieldState extends State<AutosaveField> {
     }
   }
 
+  bool _hidden = true;
+
   @override
   Widget build(BuildContext context) {
-    return TextField(
-      key: Key('auto:${widget.draftKey}'),
-      controller: text,
-      focusNode: focus,
-      decoration: InputDecoration(
-          labelText: widget.label, hintText: widget.hint.isEmpty ? null : widget.hint),
-      obscureText: widget.password,
-      maxLines: widget.multiline ? 3 : 1,
-      onChanged: (v) =>
-          widget.controller.setDraft(widget.draftKey, v),
-      onSubmitted: (_) => _commit(),
+    final tok = tokensOf(context);
+    // Python `labeled_field`: a fixed caption above the box, the label as
+    // the placeholder (a floating label reads as "empty" even when filled).
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: 4,
+      children: [
+        Text(widget.label,
+            style: TextStyle(
+                color: tok.text,
+                fontSize: tok.fsSmall,
+                fontWeight: FontWeight.w700)),
+        TextField(
+          key: Key('auto:${widget.draftKey}'),
+          controller: text,
+          focusNode: focus,
+          style: TextStyle(color: tok.text, fontSize: tok.fsBody),
+          decoration: InputDecoration(
+            hintText: widget.hint.isEmpty ? widget.label : widget.hint,
+            suffixIcon: widget.password
+                ? IconButton(
+                    tooltip: '',
+                    icon: Icon(_hidden
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined),
+                    onPressed: () => setState(() => _hidden = !_hidden),
+                  )
+                : null,
+          ),
+          obscureText: widget.password && _hidden,
+          minLines: widget.multiline ? 3 : 1,
+          maxLines: widget.multiline ? null : 1,
+          onChanged: (v) => widget.controller.setDraft(widget.draftKey, v),
+          onSubmitted: (_) => _commit(),
+        ),
+      ],
     );
   }
 }
@@ -187,11 +216,12 @@ class _TemplateEditorState extends State<TemplateEditor> {
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         child: Column(
+              spacing: 20,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(Strings.get(widget.titleKey)),
+            _CardTitle(Strings.get(widget.titleKey)),
             for (var i = 0; i < values.length; i++)
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -245,6 +275,50 @@ class _TemplateEditorState extends State<TemplateEditor> {
   }
 }
 
+/// A muted hint line under a field (Python `hint_text`).
+class _Hint extends StatelessWidget {
+  final String text;
+  const _Hint(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    final tok = tokensOf(context);
+    return Text(text, style: TextStyle(color: tok.faint, fontSize: tok.fsSmall));
+  }
+}
+
+/// A bold card caption (Python `txt(..., bold=True)`).
+class _CardTitle extends StatelessWidget {
+  final String text;
+  const _CardTitle(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    final tok = tokensOf(context);
+    return Text(text,
+        style: TextStyle(
+            color: tok.text,
+            fontSize: tok.fsBody,
+            fontWeight: FontWeight.w700));
+  }
+}
+
+/// Section icons of the side navigation (Python `SECTION_ICONS`).
+const Map<String, IconData> _sectionIcons = {
+  'accounts': Icons.person_outline,
+  'limits': Icons.percent,
+  'calendar': Icons.calendar_month_outlined,
+  'alarm': Icons.alarm,
+  'templates': Icons.description_outlined,
+  'rules': Icons.bolt_outlined,
+  'browser': Icons.sync_outlined,
+  'appearance': Icons.palette_outlined,
+  'ai': Icons.auto_awesome_outlined,
+  'advanced': Icons.tune,
+  'notifications': Icons.notifications_outlined,
+  'diagnostics': Icons.bug_report_outlined,
+};
+
 /// Settings screen: grouped side nav + one section at a time.
 /// Port of views/settings/*.
 class SettingsView extends StatelessWidget {
@@ -261,60 +335,80 @@ class SettingsView extends StatelessWidget {
     this.onChanged,
   });
 
+  Widget _spaced(Tokens tok, List<Widget> items) => ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            items[i],
+            if (i != items.length - 1) SizedBox(height: tok.gap),
+          ],
+          SizedBox(height: tok.pad * 2),
+        ],
+      );
+
   @override
   Widget build(BuildContext context) {
+    final tok = tokensOf(context);
     final here = controller.sectionsHere(platform: platform);
     var section = controller.settingsSection;
     if (!here.any((s) => s.$1 == section)) section = 'accounts';
-    final labelKey = here.firstWhere((s) => s.$1 == section,
-        orElse: () => here.first).$2;
+    final labelKey =
+        here.firstWhere((s) => s.$1 == section, orElse: () => here.first).$2;
     if (narrow && !controller.settingsOpen) {
-      return ListView(
-        children: [
-          ListTile(title: Text(Strings.get('settings_title'))),
-          _nav(context, here),
-        ],
-      );
+      return _spaced(tok, [
+        w.HeaderRow(
+            heading: Strings.get('settings_title'), updated: '', tok: tok),
+        _nav(context, tok, here),
+      ]);
     }
     final body = _section(context, section);
     if (narrow) {
-      return ListView(
-        children: [
-          Row(
-            children: [
-              IconButton(
-                tooltip: Strings.get('settings_title'),
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () {
-                  controller.closeSettingsSection();
-                  onChanged?.call();
-                },
-              ),
-              Expanded(child: Text(Strings.get(labelKey))),
-            ],
-          ),
-          ...body,
-        ],
-      );
+      return _spaced(tok, [
+        Row(
+          spacing: 4,
+          children: [
+            IconButton(
+              tooltip: Strings.get('settings_title'),
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () {
+                controller.closeSettingsSection();
+                onChanged?.call();
+              },
+            ),
+            Expanded(
+              child: Text(Strings.get(labelKey),
+                  style: TextStyle(
+                      color: tok.text,
+                      fontSize: tok.fsTitle,
+                      fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+        ...body,
+      ]);
     }
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: tok.gap,
       children: [
-        ListTile(title: Text(Strings.get('settings_title'))),
+        w.HeaderRow(
+            heading: Strings.get('settings_title'), updated: '', tok: tok),
         Expanded(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: 10,
             children: [
               SizedBox(
                   width: 210,
-                  child: SingleChildScrollView(child: _nav(context, here))),
-              const VerticalDivider(width: 1),
+                  child: SingleChildScrollView(
+                      child: _nav(context, tok, here))),
+              VerticalDivider(width: 1, color: tok.border),
               Expanded(
-                child: ListView(
-                  children: [
-                    ListTile(title: Text(Strings.get(labelKey))),
-                    ...body,
-                  ],
-                ),
+                child: _spaced(tok, [
+                  w.HeaderRow(
+                      heading: Strings.get(labelKey), updated: '', tok: tok),
+                  ...body,
+                ]),
               ),
             ],
           ),
@@ -323,29 +417,55 @@ class SettingsView extends StatelessWidget {
     );
   }
 
-  Widget _nav(
-      BuildContext context, List<(String, String)> here) {
+  Widget _nav(BuildContext context, Tokens tok, List<(String, String)> here) {
     final labels = {for (final s in here) s.$1: s.$2};
+    final vpad = narrow ? 14.0 : 8.0; // finger-sized rows on a phone
     final items = <Widget>[];
     for (final group in SettingsController.navGroups) {
       final ids = group.$2.where(labels.containsKey).toList();
       if (ids.isEmpty) continue;
       if (items.isNotEmpty) items.add(const SizedBox(height: 8));
       items.add(Padding(
-        padding: const EdgeInsets.only(left: 10),
-        child: Text(Strings.get(group.$1)),
+        padding: const EdgeInsets.only(left: 10, bottom: 2),
+        child: w.SectionHeader(Strings.get(group.$1), tok: tok),
       ));
       for (final id in ids) {
-        final active =
-            controller.settingsSection == id && !narrow;
-        items.add(ListTile(
-          title: Text(Strings.get(labels[id]!)),
-          selected: active,
-          onTap: () {
-            controller.setSettingsSection(id);
-            onChanged?.call();
-          },
+        final active = controller.settingsSection == id && !narrow;
+        items.add(Tooltip(
+          message: Strings.get(labels[id]!),
+          child: Material(
+            color: active ? tintColor(tok.accent, 0.16) : Colors.transparent,
+            borderRadius: BorderRadius.circular(tok.radiusSm),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(tok.radiusSm),
+              onTap: () {
+                controller.setSettingsSection(id);
+                onChanged?.call();
+              },
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(10, vpad, 10, vpad),
+                child: Row(
+                  spacing: 10,
+                  children: [
+                    Icon(_sectionIcons[id] ?? Icons.circle_outlined,
+                        size: 18, color: active ? tok.accent : tok.muted),
+                    Expanded(
+                      child: Text(Strings.get(labels[id]!),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              color: active ? tok.text : tok.muted,
+                              fontSize: tok.fsBody,
+                              fontWeight:
+                                  active ? FontWeight.w600 : FontWeight.w400)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ));
+        items.add(const SizedBox(height: 2));
       }
     }
     return Column(
@@ -429,18 +549,19 @@ class SettingsView extends StatelessWidget {
     return [
       Card(
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           child: Column(
+              spacing: 20,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(Strings.get('account_bakalari')),
+              _CardTitle(Strings.get('account_bakalari')),
               AutosaveField(
                   controller: c,
                   label: Strings.get('bakalari_url'),
                   draftKey: 'acc:bakalari_url',
                   configKey: 'bakalari_url',
                   fallback: '${c.get('bakalari_url', '')}'),
-              Text(Strings.get('bakalari_url_hint')),
+              _Hint(Strings.get('bakalari_url_hint')),
               AutosaveField(
                   controller: c,
                   label:
@@ -459,7 +580,7 @@ class SettingsView extends StatelessWidget {
                       ? Strings.get('password_saved_hint')
                       : Strings.get('secret_empty')),
               const Divider(),
-              Text(Strings.get('account_strava')),
+              _CardTitle(Strings.get('account_strava')),
               AutosaveField(
                   controller: c,
                   label: Strings.get('strava_url'),
@@ -489,8 +610,10 @@ class SettingsView extends StatelessWidget {
                   draftKey: 'acc:strava_canteen_id',
                   configKey: 'strava_canteen_id',
                   fallback: '${c.get('strava_canteen_id', '')}'),
-              Text(Strings.get('canteen_id_hint')),
+              _Hint(Strings.get('canteen_id_hint')),
               SwitchListTile(
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
                 title: Text(Strings.get('use_strava')),
                 value: c.get('use_strava', true) == true,
                 onChanged: (v) =>
@@ -544,8 +667,9 @@ class SettingsView extends StatelessWidget {
     return [
       Card(
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           child: Column(
+              spacing: 20,
             children: [
               AutosaveField(
                 controller: c,
@@ -575,7 +699,7 @@ class SettingsView extends StatelessWidget {
                   return v.clamp(0.0, 99.9);
                 },
               ),
-              Text(Strings.get('reserve_hint')),
+              _Hint(Strings.get('reserve_hint')),
               for (final subject in subjects)
                 AutosaveField(
                   key: Key('lim:subj:$subject'),
@@ -600,7 +724,7 @@ class SettingsView extends StatelessWidget {
                     c.saveQuiet({'subject_limits': current});
                   },
                 ),
-              Text(Strings.get('limit_subject_hint')),
+              _Hint(Strings.get('limit_subject_hint')),
             ],
           ),
         ),
@@ -616,8 +740,9 @@ class SettingsView extends StatelessWidget {
     return [
       Card(
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           child: Column(
+              spacing: 20,
             children: [
               DropdownButtonFormField<String>(
                 decoration:
@@ -666,11 +791,12 @@ class SettingsView extends StatelessWidget {
       ),
       Card(
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           child: Column(
+              spacing: 20,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(Strings.get('cal_free_days')),
+              _CardTitle(Strings.get('cal_free_days')),
               AutosaveField(
                   controller: c,
                   label: Strings.get('cal_date'),
@@ -718,11 +844,12 @@ class SettingsView extends StatelessWidget {
       ),
       Card(
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           child: Column(
+              spacing: 20,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (days.isEmpty) Text(Strings.get('cal_no_days')),
+              if (days.isEmpty) _Hint(Strings.get('cal_no_days')),
               // Consecutive days with the same label form one grouped
               // row with one delete button (like the Python timeline).
               for (final group in _groupDays(days))
@@ -796,11 +923,12 @@ class SettingsView extends StatelessWidget {
       return [
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(16),
             child: Column(
+              spacing: 20,
               children: [
-                Text(Strings.get('wakeup_title')),
-                Text(Strings.get('wakeup_unavailable')),
+                _CardTitle(Strings.get('wakeup_title')),
+                _Hint(Strings.get('wakeup_unavailable')),
               ],
             ),
           ),
@@ -852,11 +980,14 @@ class SettingsView extends StatelessWidget {
     return [
       Card(
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           child: Column(
+              spacing: 20,
             children: [
-              Text(Strings.get('automation_disclaimer')),
+              _Hint(Strings.get('automation_disclaimer')),
               SwitchListTile(
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
                 key: const Key('rule:pause'),
                 title: Text(Strings.get('automation_pause')),
                 value: c.automationPaused(),
@@ -865,7 +996,7 @@ class SettingsView extends StatelessWidget {
                   onChanged?.call();
                 },
               ),
-              Text(Strings.get('automation_pause_hint')),
+              _Hint(Strings.get('automation_pause_hint')),
               KeyedSubtree(
                 key: ValueKey('tree:rule:excuse_mode:${c.get('excuse_mode', 'confirm')}:${c.modeRevision}'),
                 child: DropdownButtonFormField<String>(
@@ -901,7 +1032,7 @@ class SettingsView extends StatelessWidget {
                   },
                 ),
               ),
-              Text(Strings.get('automation_modes_hint')),
+              _Hint(Strings.get('automation_modes_hint')),
               AutosaveField(
                 key: const Key('rule:interval'),
                 controller: c,
@@ -1000,16 +1131,19 @@ class SettingsView extends StatelessWidget {
       return [
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(16),
             child: Column(
+              spacing: 20,
               children: [
                 SwitchListTile(
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
                   title: Text(Strings.get('run_in_background')),
                   value: c.get('run_in_background', true) == true,
                   onChanged: (v) =>
                       c.saveQuiet({'run_in_background': v}),
                 ),
-                Text(Strings.get('run_in_background_hint')),
+                _Hint(Strings.get('run_in_background_hint')),
               ],
             ),
           ),
@@ -1020,10 +1154,11 @@ class SettingsView extends StatelessWidget {
       return [
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(16),
             child: Column(
+              spacing: 20,
               children: [
-                Text(Strings.get('autostart_store_managed')),
+                _Hint(Strings.get('autostart_store_managed')),
                 OutlinedButton(
                     onPressed: () {},
                     child:
@@ -1044,6 +1179,8 @@ class SettingsView extends StatelessWidget {
               return Column(
                 children: [
                   SwitchListTile(
+                    controlAffinity: ListTileControlAffinity.leading,
+                    contentPadding: EdgeInsets.zero,
                     key: const Key('browser:autostart'),
                     title: Text(Strings.get('autostart')),
                     value: on,
@@ -1058,6 +1195,8 @@ class SettingsView extends StatelessWidget {
                     },
                   ),
                   SwitchListTile(
+                    controlAffinity: ListTileControlAffinity.leading,
+                    contentPadding: EdgeInsets.zero,
                     title: Text(Strings.get('minimize_to_tray')),
                     value: c.get('minimize_to_tray', true) == true,
                     onChanged: (v) =>
@@ -1078,8 +1217,9 @@ class SettingsView extends StatelessWidget {
     return [
       Card(
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           child: Column(
+              spacing: 20,
             children: [
               DropdownButtonFormField<String>(
                 decoration: InputDecoration(
@@ -1113,6 +1253,8 @@ class SettingsView extends StatelessWidget {
                 },
               ),
               SwitchListTile(
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
                 title: Text(
                     "${Strings.get('density')} (${Strings.get('density_compact')})"),
                 value: c.get('compact_density', false) == true,
@@ -1125,13 +1267,16 @@ class SettingsView extends StatelessWidget {
       ),
       Card(
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           child: Column(
+              spacing: 20,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(Strings.get('tutorials')),
-              Text(Strings.get('tutorials_hint')),
+              _CardTitle(Strings.get('tutorials')),
+              _Hint(Strings.get('tutorials_hint')),
               SwitchListTile(
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
                 title: Text(Strings.get('tutorials_toggle')),
                 value: c.get('tutorials_enabled', true) == true,
                 onChanged: (v) =>
@@ -1163,8 +1308,9 @@ class SettingsView extends StatelessWidget {
     return [
       Card(
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           child: Column(
+              spacing: 20,
             children: [
               AutosaveField(
                   controller: c,
@@ -1175,7 +1321,7 @@ class SettingsView extends StatelessWidget {
                   hint: hasKey
                       ? Strings.get('key_saved_hint')
                       : Strings.get('secret_empty')),
-              Text(Strings.get('ai_key_steps')),
+              _Hint(Strings.get('ai_key_steps')),
               AutosaveField(
                   controller: c,
                   label: Strings.get('gemini_model'),
@@ -1183,23 +1329,26 @@ class SettingsView extends StatelessWidget {
                   configKey: 'gemini_model',
                   fallback:
                       '${c.get('gemini_model', 'gemini-3.8-flash')}'),
-              Text(Strings.get('ai_model_hint')),
+              _Hint(Strings.get('ai_model_hint')),
             ],
           ),
         ),
       ),
       Card(
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           child: Column(
+              spacing: 20,
             children: [
               SwitchListTile(
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
                 title: Text(Strings.get('ai_auto_enable')),
                 value: c.get('gemini_auto_enabled', false) == true,
                 onChanged: (v) =>
                     c.saveQuiet({'gemini_auto_enabled': v}),
               ),
-              Text(Strings.get('ai_auto_hint')),
+              _Hint(Strings.get('ai_auto_hint')),
               AutosaveField(
                   controller: c,
                   label: Strings.get('ai_prompt'),
@@ -1279,8 +1428,9 @@ class SettingsView extends StatelessWidget {
     return [
       Card(
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           child: Column(
+              spacing: 20,
             children: [
               AutosaveField(
                   controller: c,
@@ -1326,11 +1476,14 @@ class SettingsView extends StatelessWidget {
     return [
       Card(
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           child: Column(
+              spacing: 20,
             children: [
               for (final event in kNotificationEvents)
                 SwitchListTile(
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
                   key: Key('notif:$event'),
                   title: Text(event),
                   value: (prefs[event] ?? true) == true,
@@ -1377,12 +1530,13 @@ class SettingsView extends StatelessWidget {
     return [
       Card(
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           child: Column(
+              spacing: 20,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (problems.isNotEmpty) ...[
-                Text(Strings.get('config_problems')),
+                _CardTitle(Strings.get('config_problems')),
                 for (final p in problems)
                   Text('• $p',
                       style: const TextStyle(color: Colors.red)),
@@ -1414,7 +1568,7 @@ class SettingsView extends StatelessWidget {
                   onChanged?.call();
                 },
               ),
-              Text(Strings.get('update_channel_hint')),
+              _Hint(Strings.get('update_channel_hint')),
               Text(
                   '${Strings.get('cache_info')} ${c.get('cache_info', '')}'),
               OutlinedButton(

@@ -29,6 +29,11 @@ Widget _app(SettingsController c,
 Future<void> _openSection(
     WidgetTester t, SettingsController c, String section,
     {String platform = ''}) async {
+  // Sections are taller than the default 800x600 test surface (the lazy
+  // list would not build, or reach, their lower fields).
+  t.view.physicalSize = const Size(800, 4000);
+  t.view.devicePixelRatio = 1.0;
+  addTearDown(t.view.reset);
   c.settingsSection = section;
   await t.pumpWidget(
       _app(c, narrow: true, platform: platform));

@@ -189,6 +189,8 @@ class Tokens {
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: surface,
         indicatorColor: accent.withValues(alpha: 0.2),
+        labelTextStyle: WidgetStatePropertyAll(TextStyle(
+            fontFamily: fontFamily, fontSize: fsSmall, color: text)),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: overlay,
@@ -196,6 +198,7 @@ class Tokens {
       ),
       dialogTheme: DialogThemeData(backgroundColor: card),
       // Flet look: flat bordered cards, outlined filled inputs, pill buttons.
+      dividerTheme: DividerThemeData(color: border, space: 1, thickness: 1),
       cardTheme: CardThemeData(
         color: card,
         elevation: 0,
