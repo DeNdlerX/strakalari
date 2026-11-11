@@ -11,6 +11,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:meta/meta.dart';
+
 import '../lunches/lunch_cutoff.dart' as lunch_cutoff;
 import '../planning/grades.dart' as grades;
 import '../status_notification.dart' as status_notification;
@@ -514,7 +516,9 @@ class ConfigManager {
   Set<String> _touched = {};
   bool _unreadable = false;
 
-  /// Optional test seam (simulates disk / lock failures in unit tests).
+  /// Test seam (simulates disk / lock failures in unit tests). Skips the
+  /// lock and the "unreadable at start" guard, so production code never sets it.
+  @visibleForTesting
   void Function()? saveOverride;
 
   factory ConfigManager([String configPath = './config.json',
