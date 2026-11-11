@@ -36,6 +36,9 @@ TodayController todayControllerFor(AppState s, {DateTime? now}) {
         if (s.lastSnackMessage.isNotEmpty) {
           c.lastMessage = s.lastSnackMessage;
         }
+        if (!ok && s.sendingExcuses.contains(request.key)) {
+          c.lastMessage = Strings.get('already_running');
+        }
         return ok;
       }
       final existing = s
@@ -51,6 +54,9 @@ TodayController todayControllerFor(AppState s, {DateTime? now}) {
       final ok = s.submitExcuse(existing, job?.customText ?? '');
       if (s.lastSnackMessage.isNotEmpty) {
         c.lastMessage = s.lastSnackMessage;
+      }
+      if (!ok && s.sendingExcuses.contains(request.key)) {
+        c.lastMessage = Strings.get('already_running');
       }
       return ok;
     },

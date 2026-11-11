@@ -218,6 +218,68 @@ void main() {
       ]);
     });
   });
+
+  for (final started in [true, false]) {
+    testWidgets(
+        started
+            ? 'startedSendNeverClaimsExcuseSent'
+            : 'refusedSendShowsFailureNotSent', (tester) async {
+      await withClock(Clock.fixed(DateTime(2026, 9, 20, 12, 0)), () async {
+        final s = AppState(
+          configData: {
+            'your_signature': 'Jan Novák',
+            'bakalari_url': 'https://b.example.cz',
+            'bakalari_username': 'u',
+            'bakalari_password': 'p',
+          },
+          data: {
+            'timetable': {
+              '18.09.2026': [
+                {
+                  'subject': 'Matematika',
+                  'teacher': 'T',
+                  'time': '1 (8:00 - 8:45)',
+                  'absenceType': 'Absent',
+                },
+                {
+                  'subject': 'Fyzika',
+                  'teacher': 'T',
+                  'time': '2 (8:55 - 9:40)',
+                  'absenceType': 'Absent',
+                },
+              ],
+            },
+            'sent_excuses_from': '2026-09-01',
+          },
+        )..demoMode = false;
+        // A worker that never reports back: the send has only started.
+        s.submitDayExcuseOverride = (dayIso, template, perLesson) => started;
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              appStateProvider.overrideWith(() => FixedAppStateController(s)),
+            ],
+            child: MaterialApp(
+              home: Scaffold(
+                body: LiveTodayView(
+                  tokens: AppTokens.dark(),
+                  now: DateTime(2026, 9, 20, 12, 0),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.tap(find.text('Omluvit celý den'));
+        await tester.pumpAndSettle();
+
+        expect(find.text(Strings.get('excuse_sent')), findsNothing);
+        expect(find.text(Strings.get('excuse_failed')),
+            started ? findsNothing : findsOneWidget);
+      });
+    });
+  }
 }
 
 class FixedAppStateController extends AppStateController {

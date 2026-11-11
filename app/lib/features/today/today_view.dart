@@ -214,9 +214,10 @@ final day = parseCzDate(dayIso);
         return;
       }
       final ok = await c.send(request);
-      if (context.mounted) {
-        _snack(context,
-            ok ? Strings.get('excuse_sent') : c.lastMessageOr(Strings.get('excuse_failed')));
+      // The worker reports the outcome (sent / dry run / failed) itself;
+      // a started send says nothing here, like today.py `_send`.
+      if (!ok && context.mounted) {
+        _snack(context, c.lastMessageOr(Strings.get('excuse_failed')));
       }
     }
 
@@ -332,9 +333,10 @@ final options = c.templateOptions(task.kind);
         return;
       }
       final ok = await c.send(request);
-      if (context.mounted) {
-        _snack(context,
-            ok ? Strings.get('excuse_sent') : c.lastMessageOr(Strings.get('excuse_failed')));
+      // The worker reports the outcome (sent / dry run / failed) itself;
+      // a started send says nothing here, like today.py `_send`.
+      if (!ok && context.mounted) {
+        _snack(context, c.lastMessageOr(Strings.get('excuse_failed')));
       }
     }
 
@@ -614,8 +616,7 @@ if (field.text.trim().isEmpty) {
     final ok = await c.saveSignatureAndSend(field.text);
     if (context.mounted) {
       Navigator.of(context).pop();
-      _snack(context,
-          ok ? Strings.get('excuse_sent') : c.lastMessageOr(Strings.get('save_failed')));
+      if (!ok) _snack(context, c.lastMessageOr(Strings.get('save_failed')));
     }
   }
 

@@ -606,10 +606,8 @@ class TodayController extends ChangeNotifier {
     notifyListeners();
     try {
       final ok = await onSend(request);
-      if (!ok && !sendingKeys.contains(request.key)) {
-        // Already settled by a concurrent markSent.
-      }
-      if (!ok) {
+      if (!ok && lastMessage == Strings.get('excuse_sending')) {
+        // onSend gave no reason of its own.
         lastMessage = Strings.get('excuse_failed');
       }
       return ok;
