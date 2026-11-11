@@ -689,7 +689,7 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
   5. Screenshots parity (`build/parity-screens/`): produce Flet shots
      first (`tools/demo_data.py screenshots`), then Flutter shots?
   6. Beta release (Checkpoint D): cut from the branch only on your go.
-- **B-S5 (owner decision):** the error dialog has a *Share* button (`share_plus`) that the Python app does not have; PLAN §3.3 lists "Share log on the phone". Parity says remove it. Kept for now; remove it, or keep it as an intended phone feature?
+- **B-S5 (decided by owner):** the error dialog's *Share* button (`share_plus`) stays as an intended phone feature (PLAN §3.3 "Share log on the phone"). Listed under Deviations; no change needed.
 - App version stays the flutter-create template `1.0.0+1` (resolved 2026-11-07:
   CI stamps the real version from the tag at build time).
 - (Resolved 2026-11-07: PLAN.md rows 7–8 and REVIEW_PROMPT.md are the owner's
