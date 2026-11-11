@@ -22,7 +22,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:strakalari_core/strakalari_core.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
-import '../features/common/app_tokens.dart' show AppTokens;
 import '../l10n/strings.dart';
 import '../shell/theme.dart';
 import '../tutorial/tours.dart';
@@ -294,8 +293,8 @@ class AppState {
   /// Active design tokens. Port of `self.tok: Tokens`.
   late Tokens tok;
 
-  /// Active feature tokens for views.
-  late AppTokens appTokens;
+  /// Same table as [tok]; the feature views read it under this name.
+  Tokens get appTokens => tok;
 
   /// Test seam for environment variable lookup.
   Map<String, String>? envOverride;
@@ -316,12 +315,6 @@ class AppState {
       t = t.copyWith(pad: 10, gap: 8);
     }
     tok = t;
-
-    var at = mode == 'light' ? AppTokens.light() : AppTokens.dark();
-    if (compact) {
-      at = at.copyWith(pad: 10, gap: 8);
-    }
-    appTokens = at;
 
     try {
       final lang = '${config.get('language', 'cs')}';

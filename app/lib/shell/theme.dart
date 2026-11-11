@@ -74,6 +74,21 @@ class Tokens {
     this.fsTiny = 11,
   });
 
+  /// The dark set (theme.py `DARK`).
+  factory Tokens.dark() => darkTokens;
+
+  /// The light set (theme.py `LIGHT`).
+  factory Tokens.light() => lightTokens;
+
+  /// The set for [brightness].
+  factory Tokens.of(Brightness brightness) =>
+      brightness == Brightness.light ? lightTokens : darkTokens;
+
+  Brightness get brightness =>
+      mode == 'light' ? Brightness.light : Brightness.dark;
+
+  bool get isDark => brightness == Brightness.dark;
+
   /// Returns a copy of this token set with the given fields replaced.
   /// Port of Python's `dataclasses.replace(tok, ...)`.
   Tokens copyWith({
