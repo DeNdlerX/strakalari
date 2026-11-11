@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 6 · Next step: Fix every finding in `reviews/checkpoint-B.md` (blockers first), one commit per finding, then stop for re-review. Open now (see its "Re-review 2 (2026-11-11)" section), in this order: BR-M2 (reopened: the fix does not reach the live Settings screen), the other 11 rows of BR-M8, BR-M3, BR-M4, BR-M5, BR-M7, B-M11 … B-M14 (including the STATUS.md claims in B-M13), then B-S1, B-S2, B-S3, B-S5, B-S6, BR-S1 … BR-S6, BR2-S1. Do not stop for re-review until all of them are fixed or asked under Questions.
+Current phase: 6 (Checkpoint B rework, round 3) · Next step: finish the rest of `reviews/checkpoint-B.md` — **BR-M7** (the screenshot tools: build the real `MyApp` theme/locale, demo folder per language and theme, Flet wizard capture, no hardcoded home path) and **B-M11** (the visible differences; the Activity automation card with the pause switch is done, everything else in the list at the top of "Status of the original findings" in the review is still open: Today excuse card, section headers, Planner tiles/semester grid, Lunches, rest of Activity, Settings fields, phone double gutters), then **B-M13** for whatever those add; then stop for re-review. Everything else in the review's re-review-2 list is fixed (see the rework log below). B-S5 is a question for the owner (see Questions).
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -21,12 +21,12 @@ breakpoints, rail ↔ bar + More, landscape side rail), theme tokens,
 ARB strings (794 keys + 13 notif_*), shared widgets, error dialog with
 Copy log/Share, tutorial tours, platform seams. Live `AppState` → core
 wiring and all AppState test suites green.
-Phase 6 (screens) is complete: all 10 screens wired into the router with
-live views + controllers (wizard, today, timetable, absences, marks,
-planner, lunches, activity, settings, more); 241 tests passing (1 skipped);
-live `AppState` wiring and deferred phase-5/6 tests ported & verified;
-10 Flet vs Flutter parity screenshots captured in build/parity-screens/.
-⛔ Checkpoint B: UI review reached (pending reviewer sign-off).
+Phase 6 (screens) is NOT finished: all 10 screens are wired to live state, but
+Checkpoint B failed three reviews; the screens still differ visibly from the Flet
+app (review item B-M11), the screenshot tools are not yet trustworthy (BR-M7) and the
+parity screenshots have not been re-captured. App suite: 467 passed, 1 skipped
+(APK scan needs `STRAKALARI_APK`); core: 764 passed, 2 skipped.
+⛔ Checkpoint B: UI review — rework in progress, not ready for sign-off.
 Phase 7 (desktop) is in progress, unreviewed: tray + hide-to-tray, autostart,
 single-instance loopback-TCP, notifications, desktop keystores, Inno
 (AppId kept) + MSIX adaptations, CI release jobs written in code;
@@ -464,7 +464,19 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
 - `tests/test_frozen_ssl.py` (4) — tests `sys._MEIPASS` PyInstaller CA bundle setup in `strakalari/core/tls.py`, which is absent in Flutter (PLAN §3.2).
 - `tests/test_imports_resolve.py` (1) — Python AST check for `from ...` relative imports across `.py` files; Dart imports are statically verified by `dart analyze` and `flutter analyze`.
 
+- Flet-only UI tests (Checkpoint B, BR-M8), real Python names:
+  - `tests/test_mobile.py::test_refresh_ticks_repaint_only_the_topbar` — counts Flet repaints of one control; a Flutter rebuild has no such notion. The behaviour it protects (a progress tick must not rebuild the whole page) is covered by `workerTickEmitsProgressNotOnChanged` in `app_state_excuses_and_planner_test.dart`.
+  - `tests/test_open_url.py::test_click_handlers_are_coroutine_functions`, `::test_helper_itself_is_coroutine` — protect against a Flet handler that forgot `await`; Dart futures need no such handler shape.
+  - `tests/test_ui_views.py` Flet container reuse and stale-reply cases (lines 131, 147, 162, 288, 319) — Flet control identity and RPC replies; replaced by `scroll_keeps_offset_test.dart`, which checks the behaviour they protect (a scrolled screen keeps its offset when the state changes).
+
 ## Deviations from Python (each needs reviewer sign-off)
+
+- Test seams in production code (BR-N1, B-S2): `ConfigManager.saveOverride` (now `@visibleForTesting`, core depends on `package:meta`), `AppState.geminiTransport` (the AI key test; Python tests monkeypatch `gemini.test_api_key`), `AppState.createApp`, `excuseTasksOverride`, `submitDayExcuseOverride`, `wakeupAvailableOverride`.
+- ARB files (B-S3): `app/lib/l10n/app_cs.arb` / `app_en.arb` are generated and kept equal to the `Strings` tables by `strings_table_parity_test.dart`; the app reads `Strings` (background code has no `BuildContext`), so there is no `l10n.yaml` / `gen-l10n` wiring (PLAN §3.2 says ARB + gen-l10n).
+- `AppTokens` is a `typedef` of `Tokens` (BR-S3): one token table.
+- `openUrl` falls back to the platform default (`rundll32` / `open` / `xdg-open`), like Python's `webbrowser.open`; Android has no fallback (returns false).
+- `Strings.format` supports `{name:g}` only; any other format spec throws.
+- The wizard card width follows the `ResponsiveRow` columns of `wizard.py` (9/12 from 768 px, 7/12 from 992, 6/12 from 1200, 5/12 from 1400); not yet visually compared (BR-M7).
 
 - Phase 1 port adaptations (behavior identical for installed builds):
   - `helpers.dart` + `secret_store.dart` landed in one commit: they import
@@ -677,6 +689,7 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
   5. Screenshots parity (`build/parity-screens/`): produce Flet shots
      first (`tools/demo_data.py screenshots`), then Flutter shots?
   6. Beta release (Checkpoint D): cut from the branch only on your go.
+- **B-S5 (owner decision):** the error dialog has a *Share* button (`share_plus`) that the Python app does not have; PLAN §3.3 lists "Share log on the phone". Parity says remove it. Kept for now; remove it, or keep it as an intended phone feature?
 - App version stays the flutter-create template `1.0.0+1` (resolved 2026-11-07:
   CI stamps the real version from the tag at build time).
 - (Resolved 2026-11-07: PLAN.md rows 7–8 and REVIEW_PROMPT.md are the owner's
@@ -744,28 +757,37 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
   - **B-M3** (`53dae96`): render first-run setup wizard outside app chrome (standalone top-level `/wizard` route with no rail, bottom bar or top bar refresh controls), enforce setupPending isolation in `AppScaffold`, keep wizard active across mid-wizard credential saves, and add `app/test/wizard_chrome_isolation_test.dart`.
   - **B-M4** (`968a09a`): catch view rendering errors in `ViewErrorBoundary` wrapped around views in `AppScaffold`, report to `AppState.reportError` with route tag, render error card matching Python, and add `app/test/error_boundary_test.dart`.
   - **B-M5** (`019ec5f`): wire tutorial `begin(route)` in scaffold, floating bubble layer (`tutorialLayer`), 18 UI anchors across all views, delete duplicate tutorial controller in `overlays.dart`, and port deferred tutorial tests in `app/test/tutorial_test.dart` (28 tests).
-  - **B-M6** (`faa1a77`): delete duplicated feature business logic in `app/lib/features/` (`common/schedule_logic.dart`, `common/lesson_model.dart`, `marks/grades_logic.dart`, `lunches/lunch_filter.dart`), re-point today, timetable, marks, and lunches controllers and views directly to `strakalari_core` and `AppState`, add `MarkRow.text` in `strakalari_core`, add `app/lib/features/lunches/lunches_format.dart` for Strava display parsing, remove obsolete `convertStableBaseline`, and update `lunches_filter_test.dart` to test canonical `core.prefsBanKeywords`, `core.isFoodBanned`, and `AppState.applyFoodFilter`.
-  - **B-M7**: port ~150 deferred UI test cases into `app/test/` across 13 suites (total 405 app tests passing green):
+  - **B-M6** (`bea1935`): delete duplicated feature business logic in `app/lib/features/` (`common/schedule_logic.dart`, `common/lesson_model.dart`, `marks/grades_logic.dart`, `lunches/lunch_filter.dart`), re-point today, timetable, marks, and lunches controllers and views directly to `strakalari_core` and `AppState`, add `MarkRow.text` in `strakalari_core`, add `app/lib/features/lunches/lunches_format.dart` for Strava display parsing, remove obsolete `convertStableBaseline`, and update `lunches_filter_test.dart` to test canonical `core.prefsBanKeywords`, `core.isFoodBanned`, and `AppState.applyFoodFilter`.
+  - **B-M7**: port ~150 deferred UI test cases into `app/test/` across 13 suites (total at that time 405 app tests; see the rework log for the later counts):
     - `excuse_day_scope_test.dart`: `test_day_card_switch_sends_lessons_separately` (8/8)
     - `early_leave_test.dart`: full port of `test_early_leave.py` (`TestSoonDetection`, `TestSoonStatus`, `TestSoonTemplates`) (13/13)
     - `timetable_week_switch_test.dart`: full port of `test_timetable_week_switch.py` (3/3)
     - `stable_change_signals_test.dart`: UI cases from `test_stable_change_signals.py` (3/3)
-    - `open_url_test.dart`: runtime cases for `openUrl` via `app/lib/features/common/open_url.dart` (3/3)
+    - `open_url_test.dart`: `test_open_url.py` runtime cases, including the fallback to the platform default (rework round 3)
     - `settings_refresh_interactive_test.dart`: full port of `test_settings_refresh_interactive.py` (4/4)
     - `marks_view_test.dart`: full port of `test_marks_view.py` (15/15)
     - `planner_dialog_test.dart`: full port of `test_planner_dialog.py` (6/6)
     - `plan_picker_test.dart`: full port of `test_plan_picker.py` (12/12)
-    - `wakeup_ui_test.dart`: UI cases across `TestTimetableViews`, `TestCollapsibleDays`, `TestWakeupUI` (12/12)
-    - `mobile_narrow_shell_test.dart`: full port of `TestNarrowShell` from `test_mobile.py` (10/10)
+    - `wakeup_ui_test.dart`: the timetable-view and collapsible-day cases of `test_wakeup_and_widget.py` plus 5 `TestWakeupUI` basics; the other `TestWakeupUI` cases are in `wakeup_settings_card_test.dart` (rework round 3)
+    - `mobile_narrow_shell_test.dart`: `TestNarrowShell` from `test_mobile.py` (10 cases; `test_every_screen_builds` now runs at 390x844 and checks `lastError`)
     - `ui_views_test.dart`: full port of remaining `test_ui_views.py` cases (19/19)
-    - `wizard_setup_full_test.dart`: full port of remaining `test_wizard_setup.py` cases (36/36)
+    - `wizard_setup_full_test.dart`: the `test_wizard_setup.py` cases (the AI connection test is in `app_state_refresh_test.dart`; `test_scheduler_skips_refresh_while_setup_pending` is Deferred to phase 7)
     - Fixed view and controller logic for parity: normalized marks bands in `MarksLogic.setMarksBands`, used canonical `core.entriesForSelection` in planner custom dialog, exposed `expandedDays` reactive state in `LunchesController`, added `PopScope` hierarchy in `Scaffold`, and made wizard nav buttons responsive via `LayoutBuilder`.
-    - Documented dropped Flet-specific framework tests: Flet container reuse (`test_scrollable_reuses_container_across_rebuilds`, `test_scrollable_row_and_type_mismatch`, `test_timetable_build_reuses_body_across_renders`), Flet RPC monkeypatching (`test_stale_method_reply_does_not_raise`), Flet scroll offset restoration (`test_restore_scroll_only_touches_scrollers_of_current_render`), and AST reflection tests (`test_open_url_ast_inspection`, `test_open_url_controls_are_safe`).
+    - The dropped Flet-only tests are listed under *Dropped* with their real names.
   - **B-M8**: print Python-equivalent warning messages in `AppState.save` on failure ("Warning: could not save config: {exc}"), invalid update ("Warning: ignoring invalid config update {key!r}: {err}" formatted with `core.pyRepr`), and listener failure ("Warning: config listener failed: {exc}"), verified with `app/test/app_state_save_warnings_test.dart`.
   - **B-M9**: settings and app preferences parity: implemented `refreshTokens()` in `AppState` (invoked at end of constructor and in `save()`), reading forced theme `STRAKALARI_THEME` (`'light'` / `'dark'`), updating `tok` (`Tokens`) and `appTokens` (`AppTokens`), applying `compact_density` (`pad: 10, gap: 8`), and initializing `core.setLanguage` and `Strings.lang` at startup without requiring a save. Added `copyWith` on `Tokens` and `AppTokens`, updated `main.dart`, `scaffold.dart`, `router.dart`, `tutorial_ui.dart`, and `error_boundary.dart` to use active `appState.tok` / `appTokens`, verified with `app/test/app_state_theme_and_prefs_test.dart` (10/10 passed).
   - **B-M10**: More page and Android Back navigation parity: implemented `openMoreRoute` (routing `alarm` to Settings with `settingsSection = 'alarm'` and `settingsOpen = true`, and `settings` with `settingsOpen = false`), wired `isAndroid: mobilePlatform() == 'android'` into `MorePage`, restyled `MorePage` (bold `fsTitle` heading, `tok.card` tiles with accent leading icons, `fsSection` titles, faint trailing chevrons, and `tok.gap / 2 + 2` spacing), implemented phone Back hierarchy via `subpageOpen`, `closeSubpage`, and `wrapPop` with `PopScope` on phone layouts only (closing open settings sections, selected marks subjects, and open lunch tools before stepping up from More screens to More, and any screen to Today), and verified with `app/test/more_page_test.dart` and `app/test/mobile_narrow_shell_test.dart` (425 app tests passing).
 - 2026-11-10 · Checkpoint B re-review: **FAIL** (all 5 blockers fixed; open: 4 original must-fix B-M11 … B-M14 + 8 new must-fix BR-M1 … BR-M8, 11 should-fix) — [docs/flutter-migration/reviews/checkpoint-B.md](docs/flutter-migration/reviews/checkpoint-B.md#re-review-2026-11-10)
 - 2026-11-11 · Checkpoint B re-review 2: **FAIL** (BR-M1, BR-M6 and BR-M8 row 1 fixed; BR-M2 reopened; open: 10 must-fix, 12 should-fix incl. new BR2-S1; note BR2-N1 for Checkpoint C) — [docs/flutter-migration/reviews/checkpoint-B.md](docs/flutter-migration/reviews/checkpoint-B.md#re-review-2-2026-11-11)
+- 2026-11-11 · Checkpoint B rework, round 3 (after re-review 2). Fixed, one commit each:
+  - **BR-M2** (`2ed116f`): the mode-picker revision lives in `_LiveSettingsViewState`, not in the throw-away `SettingsController`; 4 tests against `LiveSettingsView` (both pickers, cancel and dry run) fail without the fix.
+  - **BR-M8** (rows 2–4, 6, 7, 9–11, 13 by `a0e3834`, `5e0cec9`, `27dd19f`, `f34464b`): `TestHistoryCoverage` (3), the three planned-skip persistence cases, `test_ai_connection_test_path` (new seam `AppState.geminiTransport`), the `open_url` fallback (the inverted test is replaced by the real one), `test_phone_timetable_grid_scrolls_sideways` (also `phoneCellWidth` now truncates like Python's `int()`), `test_every_screen_builds` at 390x844 with `lastError`, `TestI18nKeys` + dead-key audit, a scroll-offset test, and the wake-up card. Row 5 (`test_scheduler_skips_refresh_while_setup_pending`) is **Deferred (phase 7)**: the window scheduler (`app.py:_register_jobs`) is not ported yet (BR-N2); Checkpoint C checks it. Rows 8, 12, 13's Flet-only cases are under *Dropped*.
+  - **Wake-up card** (part of BR-M8 row 9): the Settings alarm card was a stub; it now has everything `_wakeup` has (hint, notification/exact-alarm warnings with their buttons, next alarm, skip, open Clock, weekly note, restore buttons) in `settings/wakeup_card.dart`, wired to the platform channel in `settings_live.dart` (permission flags are read once when the screen opens). The minutes field used `clamp(5, 240)`; Python's `clamp_wakeup_minutes` is 1–720, now used. Unverified on a phone.
+  - **BR-M3** (`2652330`): `Strings.format` handles `{name:g}`; test formats every key in both languages. **BR-M4** (`950c3e1`): target dropdown computes `already`/`maximum` from the term; 2 widget tests. **BR-M5** (`d8ab9ad`): both plan dialogs use `templateLabels`; a test forbids `Šablona` literals under `lib`.
+  - **B-M12** (`41efef2`): every `DateTime.now()` in `app/lib` is `clock.now()` (a test guards it; only the single-instance token seed keeps the wall clock). **B-M14** (`e6f2979`): `dialogWidth` is `int(max(240, min(preferred, width - 64)))`; both error dialogs use it (326 px at 390 px).
+  - **B-S1, BR-S4** (`4a13fa1`): dialog widths 520/380/440 for the planner custom range, the lesson detail and the signature dialog; the signature and safety dialogs are modal. **B-S2** (`2947ec0`), **B-S3** (`d9743a3`), **B-S6 + BR-S2** (`ade6e4a`), **BR-S1** (`8cbaa0b`), **BR-S3** (`bcf9a43`), **BR-S5 + BR-S6** (`03c0ee4`), **BR2-S1** (`5aecdb0`): see the review and *Deviations*. **B-S5** is a question (below).
+  - **B-M11 (part)** (`de91d39`): Activity now has the automation card with the *Pozastavit automatizaci* switch, the two current modes and *Upravit pravidla* (test in `activity_live_test.dart`).
+  - **Not done:** BR-M7 (screenshot tools), the rest of B-M11, and a fresh screenshot comparison. B-M13: the stale claims listed in the review are corrected here (header, B-M7 bullets, Dropped, `faa1a77` → `bea1935`); the long test map below still says "Deferred (phase 5/6)" for items 17, 19, 21, 30, 40, 50, 51, 53, 56, 67, 79, 81, 87. Those subjects are ported (files named in the rework entries above and in the Checkpoint B notes), but the map lines themselves were not rewritten.
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 
@@ -802,12 +824,12 @@ Unsure / needs a second pair of eyes:
 - Gemini `localFallbackRecommendation` keyword lists ported line by
   line (Czech stems); only covered via parity fixtures + fakes.
 
-### ⛔ Checkpoint B: UI review (phases 5–6, complete, pending reviewer sign-off)
+### ⛔ Checkpoint B: UI review (phases 5–6, FAILED three reviews, rework in progress)
 
-Phases 5 and 6 are complete. Shell (router, adaptive scaffold, theme tokens, ARB
-localization, error dialogs, tutorial tours) and all screens (wizard, today,
-timetable, absences, marks, planner, lunches, activity, settings, more) are
-fully implemented and wired to live `AppState` and `strakalari_core`.
+The shell and all ten screens exist and are wired to live `AppState` and
+`strakalari_core`, but they are not yet at visual parity with the Flet app (B-M11)
+and the screenshot tools are not yet reliable (BR-M7). Read the rework log above
+for the current state; the list below is the original round-1 description.
 
 What was done:
 - Live Riverpod `AppState` bridges for all screen controllers (`todayControllerFor`,
@@ -822,13 +844,13 @@ What was done:
   - `settings.dart`: configuration mutation, save hooks, language and auto-schedule preferences.
   - `update.dart`: update cache retrieval and dismissals.
 - Deferred Phase 5/6 AppState and UI test suites ported & 100% green:
-  - `app/test/app_state_lunches_test.dart` (25 tests covering `test_lunches.py`, `test_lunch_matching.py`).
+  - `app/test/app_state_lunches_test.dart` (lunch AppState cases).
   - `app/test/app_state_excuses_and_planner_test.dart` (30 tests covering `test_excuse_ignore_list.py`, `test_planned_skips.py`, `test_error_report.py`, `test_cancel_responsive.py`, `test_news.py`, `test_ui_state.py`, `test_update.py`, `test_automation_safety.py`, `test_settings_refresh_interactive.py`).
   - `app/test/phase6_features_test.dart` (15 tests covering `test_early_leave.py`, `test_timetable_week_nav.py`, `test_marks_view.py`, `test_wizard_setup.py`, `test_year_planner.py`).
-  - `app/test/screenshot_parity_test.dart` (10 tests capturing parity screenshots).
-  - Total app tests: 242 passed, 1 skipped. Core tests: 764 passed, 2 skipped.
+  - (`screenshot_parity_test.dart` was removed in B-B3; the capture tools replace it.)
+  - (Round 1 count; now app 467 passed + 1 skipped, core 764 passed + 2 skipped.)
   - `dart analyze` and `flutter analyze`: zero issues found across both packages.
-- Parity screenshots:
+- Parity screenshots (NOT yet valid, see BR-M7):
   - Standalone capture tools established under `tools/parity/`:
     - `tools/parity/capture_screens.dart`: captures whole Flutter app (router + AppScaffold + live views, real Roboto and MaterialIcons fonts loaded from SDK cache, light/dark themes, cs/en languages, 1280x800 and 390x844 viewports, 80 screen images total).
     - `tools/parity/capture_flet.py`: automates Flet reference capture via Playwright driving `demo_data.py serve` across all routes, both themes, both languages, both viewports into `build/parity-screens/flet/`.
