@@ -80,6 +80,24 @@ void main() {
       await pending;
     });
 
+    // Checkpoint B B-M14: components.dialog_width(page, 560) on a phone.
+    testWidgets('error dialog is 326 px wide on a 390 px page', (t) async {
+      t.view.physicalSize = const Size(390, 844);
+      t.view.devicePixelRatio = 1.0;
+      addTearDown(t.view.resetPhysicalSize);
+      addTearDown(t.view.resetDevicePixelRatio);
+      await t.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: ErrorDialog(title: 'T', summary: 's', reportText: 'r'))));
+      final box = t.widget<SizedBox>(find
+          .descendant(
+              of: find.byType(AlertDialog),
+              matching: find.byWidgetPredicate(
+                  (w) => w is SizedBox && w.width == 326))
+          .first);
+      expect(box.width, 326);
+    });
+
     test('snack log records', () {
       SnackLog.clear();
       SnackLog.record('hi');

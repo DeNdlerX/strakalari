@@ -13,6 +13,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../l10n/strings.dart';
 import '../shell/theme.dart';
+import 'app_widgets.dart' show dialogWidth;
 
 /// Shows the error popup. Returns after dismissal; [onClose] runs after
 /// the dialog closes. Never throws.
@@ -34,7 +35,6 @@ Future<void> showErrorDialog(
       context: context,
       barrierDismissible: true,
       builder: (dialogContext) {
-        final width = MediaQuery.sizeOf(dialogContext).width;
         return StatefulBuilder(
           builder: (stateContext, setState) {
             Future<void> copy() async {
@@ -77,7 +77,7 @@ Future<void> showErrorDialog(
                         color: Colors.grey, fontSize: tok.fsSmall)),
                 Container(
                   height: 220,
-                  width: (width - 128).clamp(280, 560).toDouble(),
+                  width: dialogWidth(dialogContext, 560),
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     border: Border.all(color: Colors.grey),
@@ -109,7 +109,7 @@ Future<void> showErrorDialog(
                 ],
               ),
               content: SizedBox(
-                width: (width - 128).clamp(280, 560).toDouble(),
+                width: dialogWidth(dialogContext, 560),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,

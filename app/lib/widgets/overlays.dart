@@ -1,6 +1,7 @@
 import '../l10n/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'app_widgets.dart' show dialogWidth;
 
 export '../tutorial/tours.dart';
 export '../tutorial/tutorial_ui.dart';
@@ -127,7 +128,7 @@ class _ErrorDialogState extends State<ErrorDialog> {
         ],
       ),
       content: SizedBox(
-        width: 560,
+        width: dialogWidth(context, 560),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -105,7 +105,10 @@ String lessonKind(String status) {
 /// Dialog width clamped to the screen. Port of `dialog_width()`.
 double dialogWidth(BuildContext context, double preferred) {
   final w = MediaQuery.sizeOf(context).width;
-  return w <= 0 ? preferred : (w - 64).clamp(280, preferred).toDouble();
+  if (w <= 0) return preferred;
+  // Python: int(max(240, min(preferred, width - 64))).
+  final fit = w - 64 < preferred ? w - 64 : preferred;
+  return (fit < 240 ? 240 : fit).truncateToDouble();
 }
 
 // -- text --------------------------------------------------------------------
