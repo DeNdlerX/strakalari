@@ -519,7 +519,7 @@ class PlannerView extends StatelessWidget {
                   '${Strings.get('section_plan')} (${picks.length})',
                   style: Theme.of(context).textTheme.titleMedium),
             ),
-            _targetDropdown(),
+            _targetDropdown(term),
             if (picks.isNotEmpty)
               FilledButton(
                 onPressed: () => showPlanAllDialog(
@@ -569,18 +569,22 @@ class PlannerView extends StatelessWidget {
     );
   }
 
-  Widget _targetDropdown() {
-    final already = 0;
-    final maximum = already + 0;
+  Widget _targetDropdown(TermPlanData term) {
+    // Port of `_target_dropdown` (planner.py): the capacity on top of what
+    // is already planned in the rest of the term.
+    final remaining = term.remainingDays.toSet();
+    final already = term.plannedDates.where(remaining.contains).length;
+    final maximum = already + term.capacity;
     final current = controller.plannerTargetDays();
     final top = [maximum, current, 1].reduce((a, b) => a > b ? a : b);
+    final limit = top > 60 ? 60 : top;
     return DropdownButton<int>(
-      value: current <= top ? current : 0,
+      value: current <= limit ? current : 0,
       items: [
         DropdownMenuItem(
             value: 0,
             child: Text(Strings.format('target_auto', {'n': maximum}))),
-        for (var i = 1; i <= (top > 60 ? 60 : top); i++)
+        for (var i = 1; i <= limit; i++)
           DropdownMenuItem(value: i, child: Text(daysText(i))),
       ],
       onChanged: (v) {

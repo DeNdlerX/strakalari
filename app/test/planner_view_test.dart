@@ -1,4 +1,6 @@
 import 'package:app/l10n/strings.dart';
+import 'package:app/features/planner/plan_reserve.dart' show daysText;
+import 'package:app/features/common/format.dart' show daysText;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -19,7 +21,7 @@ PlannerController _controller([Map<String, dynamic>? config]) {
   return c;
 }
 
-YearPlanData _plan() {
+YearPlanData _plan([Set<DateTime> planned = const {}]) {
   final term = TermPlanData(
     key: 'sem1',
     start: DateTime(2026, 9, 1),
@@ -28,6 +30,7 @@ YearPlanData _plan() {
     hasData: true,
     active: true,
     remainingDays: [DateTime(2026, 10, 5)],
+    plannedDates: planned,
     budgets: const [
       BudgetRowData(
           name: 'Matematika',
@@ -123,6 +126,34 @@ void main() {
       // Intro carries the reserve note.
       expect(find.textContaining('10'), findsWidgets);
     });
+
+    // Checkpoint B BR-M4: planner.py `_target_dropdown`.
+    for (final planned in [
+      <DateTime>{},
+      {DateTime(2026, 10, 5)},
+    ]) {
+      testWidgets('target dropdown offers the capacity (${planned.length} planned)',
+          (t) async {
+        _setViewport(t);
+        final maximum = 5 + planned.length;
+        final c = _controller();
+        await t.pumpWidget(_app(PlannerView(
+          controller: c,
+          plan: _plan(planned),
+          hasTimetable: true,
+          hasData: true,
+          updatedLabel: 'now',
+        )));
+        await t.scrollUntilVisible(
+            find.textContaining(Strings.get('section_plan')), 300);
+        final auto = Strings.format('target_auto', {'n': maximum});
+        expect(find.text(auto), findsOneWidget);
+        await t.tap(find.text(auto));
+        await t.pumpAndSettle();
+        expect(find.text(daysText(maximum)), findsWidgets);
+        expect(find.text(daysText(maximum + 1)), findsNothing);
+      });
+    }
 
     testWidgets('plan dialog confirm plans the day', (t) async {
       _setViewport(t);
