@@ -158,8 +158,10 @@ void main() {
       expect(rail.selectedIndex, 0); // redirected to today
     });
 
+    // test_mobile.py::test_every_screen_builds: phone page 390x844, no
+    // `report_error` for any of the 9 routes.
     testWidgets('everyScreenBuilds', (tester) async {
-      setViewport(tester, 1280, 800);
+      setViewport(tester, 390, 844);
       for (final route in [
         '/today',
         '/timetable',
@@ -180,6 +182,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
+        expect(state.lastError, isNull, reason: route);
         container.dispose();
       }
     });

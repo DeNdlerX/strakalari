@@ -89,6 +89,96 @@ void main() {
     expect(find.textContaining('Chemie'), findsWidgets);
     expect(s.tutorial?.$1, 'timetable');
   });
+
+  // tests/test_mobile.py::test_phone_timetable_grid_scrolls_sideways
+  testWidgets('phoneTimetableGridScrollsSideways', (tester) async {
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.view.devicePixelRatio = 1.0;
+    // The test engine's block font (Ahem) is far wider than the real one, so
+    // the period-time labels wrap and report a RenderFlex overflow that the
+    // shipped fonts do not have. Only that message is ignored.
+    final previous = FlutterError.onError;
+    FlutterError.onError = (details) {
+      if (details.exceptionAsString().contains('overflowed')) return;
+      previous?.call(details);
+    };
+    addTearDown(() => FlutterError.onError = previous);
+    final s = AppState(
+      configData: {
+        'tutorials_done': ['intro'],
+      },
+      data: {
+        'timetable': {
+          '12.10.2026': [
+            for (var p = 1; p <= 8; p++)
+              {'subject': 'Predmet$p', 'time': '$p (8:00 - 8:45)'},
+          ],
+        },
+      },
+    );
+    Future<void> pumpAt(double width) async {
+      tester.view.physicalSize = Size(width, 844);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => FixedAppStateController(s)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: LiveTimetableView(
+                  tokens: AppTokens.dark(),
+                  narrow: true,
+                  now: DateTime(2026, 10, 12, 10, 0),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    double headerCellWidth() => tester
+        .getSize(find
+            .ancestor(of: find.text('1.'), matching: find.byType(SizedBox))
+            .first)
+        .width;
+
+    await pumpAt(390);
+    expect(
+        find.byWidgetPredicate((w) =>
+            w is SingleChildScrollView && w.scrollDirection == Axis.horizontal),
+        findsWidgets);
+    final narrowRow = tester.getSize(find.byWidgetPredicate((w) =>
+            w is SingleChildScrollView &&
+            w.scrollDirection == Axis.horizontal).first);
+    // Eight 92 px cells never fit a 390 px page, so the grid scrolls.
+    final scrollable = tester.state<ScrollableState>(find
+        .descendant(
+            of: find.byWidgetPredicate((w) =>
+                w is SingleChildScrollView &&
+                w.scrollDirection == Axis.horizontal).first,
+            matching: find.byType(Scrollable))
+        .first);
+    expect(scrollable.position.maxScrollExtent, greaterThan(0));
+    expect(narrowRow.width, lessThan(390));
+    expect(headerCellWidth(), 92); // PHONE_CELL_MIN_W
+
+    // Landscape (915 px): cells stretch to fill the width instead.
+    await pumpAt(915);
+    final wide = tester.state<ScrollableState>(find
+        .descendant(
+            of: find.byWidgetPredicate((w) =>
+                w is SingleChildScrollView &&
+                w.scrollDirection == Axis.horizontal).first,
+            matching: find.byType(Scrollable))
+        .first);
+    expect(wide.position.maxScrollExtent, 0);
+    expect(headerCellWidth(), greaterThan(92));
+  });
 }
 
 class FixedAppStateController extends AppStateController {

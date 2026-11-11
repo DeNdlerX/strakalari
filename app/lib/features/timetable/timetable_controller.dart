@@ -351,9 +351,11 @@ TimetableController();
     const rowPad = 2.0;
     final free =
         (pageWidth > 0 ? pageWidth : 390.0) - chrome - gutter - gap - 2 * rowPad;
-    final per = periods > 0
-        ? (free - gap * (periods - 1)) / periods
-        : free;
+    // Python: `max(PHONE_CELL_MIN_W, int(...))` (int() truncates).
+    final per = (periods > 0
+            ? (free - gap * (periods - 1)) / periods
+            : free)
+        .truncateToDouble();
     return per < 92.0 ? 92.0 : per;
   }
 
