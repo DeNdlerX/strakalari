@@ -3,6 +3,9 @@ import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
 
 import 'package:app/features/activity/activity_controller.dart';
+import 'package:app/features/common/app_tokens.dart';
+import 'package:app/features/common/open_url.dart' as open_url;
+import 'package:app/widgets/app_widgets.dart' as w;
 import 'package:app/widgets/overlays.dart';
 
 /// Time helpers (port of activity._ago/_clock/_duration/_run_when).
@@ -69,8 +72,11 @@ final _logWarn =
 
 /// error | warning | ok | '' — drives the line color.
 String logTone(String message) {
-  if (message.trim() == 'refresh_finished_log' ||
-      message.trim() == 'connection_ok') {
+  final text = message.trim();
+  if (text == 'refresh_finished_log' ||
+      text == 'connection_ok' ||
+      text == Strings.get('refresh_finished_log') ||
+      text == Strings.get('connection_ok')) {
     return 'ok';
   }
   if (_logError.hasMatch(message)) return 'error';
@@ -199,6 +205,36 @@ String _daysLabel(List<String> days, [int limit = 4]) {
       : shown;
 }
 
+/// Width from which the two columns sit side by side (Python `WIDE_MIN_WIDTH`).
+const double activityWideMinWidth = 1120;
+const double _panelWidth = 380;
+const double _logHeight = 320;
+const int _historyRows = 10;
+const int _auditGroups = 12;
+
+const _auditBadge = {
+  'sent': 'sent',
+  'dry_run': 'pending',
+  'covered': 'ok',
+  'skipped': 'warning',
+  'unconfirmed': 'warning',
+  'failed': 'failed',
+};
+const _scopes = [
+  ('all', 'refresh_all'),
+  ('bakalari', 'scope_bakalari'),
+  ('strava', 'scope_strava'),
+];
+
+/// '14:30' today, '25. 9. 14:30' on other days (Python `_clock`).
+String clockText(DateTime when, DateTime now) {
+  final hm =
+      '${when.hour.toString().padLeft(2, '0')}:${when.minute.toString().padLeft(2, '0')}';
+  final sameDay =
+      when.year == now.year && when.month == now.month && when.day == now.day;
+  return sameDay ? hm : '${when.day}. ${when.month}. $hm';
+}
+
 /// Aktivita: status hero, stat tiles, run timeline, live log,
 /// automation card and automation history. Port of views/activity.py.
 class ActivityView extends StatelessWidget {
@@ -228,333 +264,748 @@ class ActivityView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final now = nowFor?.call() ?? clock.now();
+    final tok = tokensOf(context);
+    final c = controller;
+    final wide = MediaQuery.sizeOf(context).width >= activityWideMinWidth;
     final blocks = <Widget>[
-      _hero(context, now),
-      _stats(now),
-      _historyCard(now),
-      _logCard(context),
-      _automationCard(context),
-      _auditCard(now),
+      w.HeaderRow(
+        heading: Strings.get('activity_title'),
+        updated: updatedLabel,
+        tok: tok,
+        actions: [
+          if (appVersion.isNotEmpty)
+            Text('${Strings.get('app_version')} $appVersion',
+                style: TextStyle(color: tok.faint, fontSize: tok.fsSmall)),
+          IconButton(
+            iconSize: 18,
+            color: tok.muted,
+            tooltip: c.updateCheckRunning
+                ? Strings.get('checking_updates')
+                : Strings.get('check_updates'),
+            icon: const Icon(Icons.system_update_alt),
+            onPressed: c.updateCheckRunning
+                ? null
+                : () => c.startUpdateCheck(force: true),
+          ),
+        ],
+      ),
+      ?_updateBanner(context, tok),
+      _hero(context, tok, now, wide),
+      _stats(tok, now),
     ];
+    final history = _historyCard(tok, now);
+    final log = _logCard(context, tok);
+    final automation = _automationCard(context, tok);
+    final auditCard = _auditCard(tok, now);
+    Widget stack(List<Widget> items) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          spacing: tok.gap,
+          children: items,
+        );
+    if (wide) {
+      blocks.add(Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: tok.gap,
+        children: [
+          Expanded(child: stack([history, log])),
+          SizedBox(width: _panelWidth, child: stack([automation, auditCard])),
+        ],
+      ));
+    } else {
+      blocks.addAll([history, automation, auditCard, log]);
+    }
     return ListView(
+      padding: EdgeInsets.zero,
       children: [
-        ListTile(
-          title: Text(Strings.get('activity_title')),
-          subtitle: Text(updatedLabel),
-        ),
-        ...blocks,
+        for (var i = 0; i < blocks.length; i++) ...[
+          blocks[i],
+          if (i != blocks.length - 1) SizedBox(height: tok.gap),
+        ],
+        SizedBox(height: tok.pad * 2),
       ],
     );
   }
 
-  Widget _hero(BuildContext context, DateTime now) {
-    final c = controller;
-    final kind = c.statusKind();
-    final sending = c.sendingLabel;
-    String headline;
-    if (kind == 'working') {
-      headline = c.refreshRunning ? Strings.get('refreshing') : sending;
-    } else if (kind == 'error') {
-      headline = Strings.get('status_error');
-    } else if (kind == 'ok') {
-      headline = Strings.get('status_ok');
-    } else {
-      headline = Strings.get('status_idle');
-    }
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
+  // -- small pieces ------------------------------------------------------------
+
+  Widget _iconDisc(IconData icon, Color color, Tokens tok,
+      {double size = 32, double iconSize = 18}) {
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: tintColor(color, 0.14),
+        borderRadius: BorderRadius.circular(size / 2),
+      ),
+      child: Icon(icon, size: iconSize, color: color),
+    );
+  }
+
+  Widget _panelHead(String title, Tokens tok, IconData icon,
+      [List<Widget> extra = const []]) {
+    return Row(
+      spacing: 6,
+      children: [
+        Icon(icon, size: 16, color: tok.faint),
+        w.SectionHeader(title, tok: tok),
+        ...extra,
+      ],
+    );
+  }
+
+  Widget _small(Tokens tok, String text,
+      {Color? color, bool bold = false, double? size}) {
+    return Text(text,
+        style: TextStyle(
+            color: color ?? tok.muted,
+            fontSize: size ?? tok.fsSmall,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.w400));
+  }
+
+  // -- update banner -------------------------------------------------------------
+
+  Widget? _updateBanner(BuildContext context, Tokens tok) {
+    final info = controller.updateBanner;
+    if (info == null) return null;
+    final latest = '${info['version'] ?? '?'}';
+    final desc = Strings.format('update_desc',
+        {'cur': appVersion.isEmpty ? '?' : appVersion, 'v': latest});
+    final lead = <Widget>[
+      Icon(Icons.new_releases_outlined, color: tok.accent, size: 22),
+      Expanded(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 2,
           children: [
-            Row(
-              children: [
-                if (kind == 'working')
-                  const SizedBox(
-                      width: 26,
-                      height: 26,
-                      child: CircularProgressIndicator(strokeWidth: 3)),
-                Expanded(child: Text(headline)),
-                if (c.refreshRunning)
-                  TextButton(
-                      onPressed: c.cancelRefresh,
-                      child: Text(Strings.get('cancel_refresh')))
-                else
-                  FilledButton(
-                    onPressed: sending.isNotEmpty
-                        ? null
-                        : () => c.startRefresh(),
-                    child: Text(Strings.get('refresh_data')),
-                  ),
-              ],
-            ),
-            if (kind == 'working')
-              const LinearProgressIndicator(),
+            Text(Strings.format('update_available', {'v': latest}),
+                style: TextStyle(
+                    color: tok.text,
+                    fontSize: tok.fsBody,
+                    fontWeight: FontWeight.w700)),
+            _small(tok, desc),
           ],
         ),
+      ),
+    ];
+    final buttons = <Widget>[
+      ElevatedButton.icon(
+        onPressed: () {
+          final url = '${info['url'] ?? ''}';
+          if (url.isEmpty) return;
+          final seam = openUrl;
+          if (seam != null) {
+            seam(url);
+          } else {
+            open_url.openUrl(url);
+          }
+        },
+        icon: const Icon(Icons.download, size: 18),
+        label: Text(Strings.get('download_update')),
+      ),
+      OutlinedButton(
+        onPressed: controller.dismissUpdate,
+        child: Text(Strings.get('update_dismiss')),
+      ),
+    ];
+    final Widget content = narrow
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            spacing: 10,
+            children: [
+              Row(
+                  spacing: 10,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: lead),
+              Wrap(spacing: 8, runSpacing: 8, children: buttons),
+            ],
+          )
+        : Row(
+            spacing: 10,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [...lead, ...buttons]);
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: tok.pad, vertical: 10),
+      decoration: BoxDecoration(
+        color: tintColor(tok.accent, 0.10),
+        borderRadius: BorderRadius.circular(tok.radiusMd),
+        border: Border.all(color: tintColor(tok.accent, 0.5)),
+      ),
+      child: content,
+    );
+  }
+
+  // -- status hero -----------------------------------------------------------------
+
+  Widget _hero(BuildContext context, Tokens tok, DateTime now, bool wide) {
+    final c = controller;
+    final kind = c.statusKind();
+    final sending =
+        c.sendingLabel.isEmpty ? '' : Strings.get(c.sendingLabel);
+    final last = c.runs.isEmpty ? null : c.runs.last;
+    final lines = <Widget>[];
+    final String headline;
+    final Color color;
+    final Widget disc;
+    if (kind == 'working') {
+      headline = c.refreshRunning ? Strings.get('refreshing') : sending;
+      color = tok.accent;
+      disc = Container(
+        width: 52,
+        height: 52,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+            color: tintColor(color, 0.14),
+            borderRadius: BorderRadius.circular(26)),
+        child: SizedBox(
+            width: 26,
+            height: 26,
+            child: CircularProgressIndicator(strokeWidth: 3, color: color)),
+      );
+      if (c.refreshRunning && c.currentStep.isNotEmpty) {
+        lines.add(_small(tok, c.currentStep));
+      }
+      lines.add(_small(tok, Strings.get('activity_working_hint'),
+          color: tok.faint));
+    } else if (kind == 'error') {
+      headline = Strings.get('status_error');
+      color = tok.red;
+      disc = _iconDisc(Icons.error_outline_rounded, color, tok,
+          size: 52, iconSize: 28);
+      if (last != null && last['ok'] != true) {
+        final key = last['cancelled'] == true
+            ? 'activity_last_cancelled'
+            : 'activity_last_failed';
+        lines.add(
+            _small(tok, Strings.format(key, {'when': runWhen(last, now)})));
+      }
+      var detail = '${(last ?? const {})['detail'] ?? ''}';
+      if (detail.isEmpty && c.lastError != null) {
+        detail = '${c.lastError!['summary'] ?? ''}';
+      }
+      if (detail.isNotEmpty) lines.add(_small(tok, detail, color: tok.red));
+    } else if (kind == 'ok') {
+      headline = Strings.get('status_ok');
+      color = tok.green;
+      disc = _iconDisc(Icons.check_circle_outline_rounded, color, tok,
+          size: 52, iconSize: 28);
+      lines.add(_small(
+          tok,
+          Strings.format(
+              'activity_last_ok', {'when': runWhen(last ?? const {}, now)})));
+      final detail = '${(last ?? const {})['detail'] ?? ''}';
+      if (detail.isNotEmpty) lines.add(_small(tok, detail, color: tok.faint));
+    } else {
+      headline = Strings.get('status_idle');
+      color = tok.muted;
+      disc = _iconDisc(Icons.schedule_rounded, color, tok,
+          size: 52, iconSize: 28);
+      if (last != null && last['cancelled'] == true) {
+        lines.add(_small(
+            tok,
+            Strings.format(
+                'activity_last_cancelled', {'when': runWhen(last, now)})));
+      } else {
+        lines.add(_small(tok, Strings.get('no_runs_yet')));
+      }
+    }
+    if (kind == 'error' && c.errorReportText().isNotEmpty) {
+      lines.add(Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: () => showErrorDialog(
+              context,
+              title: Strings.get('error_title'),
+              summary: '${c.lastError?['summary'] ?? ''}',
+              reportText: c.errorReportText(),
+              userMessage: '${c.lastError?['user_message'] ?? ''}',
+            ),
+            icon: const Icon(Icons.bug_report_outlined, size: 18),
+            label: Text(Strings.get('error_details')),
+          ),
+        ),
+      ));
+    }
+    final titleRow = <Widget>[
+      Text(headline,
+          style: TextStyle(
+              color: tok.text,
+              fontSize: tok.fsTitle,
+              fontWeight: FontWeight.w700)),
+      if (c.automationPaused())
+        w.Badge(
+            text: Strings.get('automation_paused_banner'),
+            tok: tok,
+            kind: 'warning'),
+    ];
+    final actions = <Widget>[];
+    if (c.refreshRunning) {
+      actions.add(OutlinedButton.icon(
+        onPressed: c.cancelRefresh,
+        icon: const Icon(Icons.stop_circle_outlined, size: 18),
+        label: Text(Strings.get('cancel_refresh')),
+      ));
+    } else {
+      final scope = c.draft('activity:scope', 'all');
+      actions.add(Tooltip(
+        message: Strings.get('refresh_scope'),
+        child: SegmentedButton<String>(
+          showSelectedIcon: false,
+          segments: [
+            for (final (key, label) in _scopes)
+              ButtonSegment(value: key, label: Text(Strings.get(label))),
+          ],
+          selected: {_scopes.any((s) => s.$1 == scope) ? scope : 'all'},
+          onSelectionChanged: (v) =>
+              c.setDraft('activity:scope', v.isEmpty ? 'all' : v.first),
+        ),
+      ));
+      actions.add(ElevatedButton.icon(
+        onPressed: sending.isNotEmpty
+            ? null
+            : () {
+                if (!c.startRefresh(c.draft('activity:scope', 'all'))) {
+                  appSnack(context, Strings.get('already_running'));
+                }
+              },
+        icon: const Icon(Icons.refresh, size: 18),
+        label: Text(Strings.get('refresh_data')),
+      ));
+    }
+    final text = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      spacing: 3,
+      children: [
+        Wrap(
+            spacing: 10,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: titleRow),
+        ...lines,
+      ],
+    );
+    final actionRow = Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: actions);
+    return Container(
+      padding: EdgeInsets.all(tok.pad),
+      decoration: BoxDecoration(
+        color: tintColor(color, 0.07),
+        borderRadius: BorderRadius.circular(tok.radiusMd),
+        border: Border.all(color: tintColor(color, 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 12,
+        children: [
+          Row(
+            spacing: 14,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [disc, Expanded(child: text), if (wide) actionRow],
+          ),
+          if (!wide)
+            Align(alignment: Alignment.centerRight, child: actionRow),
+          if (kind == 'working')
+            LinearProgressIndicator(color: tok.accent, backgroundColor: tok.overlay),
+        ],
       ),
     );
   }
 
-  Widget _stats(DateTime now) {
+  // -- stat tiles ------------------------------------------------------------------
+
+  Widget _stats(Tokens tok, DateTime now) {
     final c = controller;
     final last = c.runs.isEmpty ? null : c.runs.last;
+    var lastValue = '—';
+    var lastKind = 'info';
+    if (last != null) {
+      lastValue = runWhen(last, now);
+      lastKind = const {'ok': 'ok', 'cancelled': 'cancelled'}[runKind(last)] ??
+          'failed';
+    }
     final total = c.runs.length;
     final good = c.runs.where((r) => r['ok'] == true).length;
+    var success = '—';
+    var successKind = 'info';
+    if (total > 0) {
+      success = '$good/$total';
+      successKind = good == total ? 'ok' : (good > 0 ? 'warning' : 'failed');
+    }
     final weekAgo = now.subtract(const Duration(days: 7));
     final sent = audit
         .where((i) =>
             i['outcome'] == 'sent' &&
-            (runTime({'at': i['ts']}) ?? DateTime(1970))
-                .isAfter(weekAgo))
+            (runTime({'at': i['ts']}) ?? DateTime(1970)).isAfter(weekAgo))
         .length;
-    return Wrap(
-      spacing: 8,
-      children: [
-        _tile(Strings.get('last_run'),
-            last == null ? '—' : runWhen(last, now)),
-        _tile(Strings.get('next_run'), c.nextRunLabel(now: now)),
-        _tile(Strings.get('stat_success'),
-            total == 0 ? '—' : '$good/$total'),
-        _tile(Strings.get('stat_sent_week'), '$sent'),
-      ],
-    );
+    final cards = <Widget>[
+      w.StatCard(
+          label: Strings.get('last_run'),
+          value: lastValue,
+          tok: tok,
+          kind: lastKind),
+      w.StatCard(
+          label: Strings.get('next_run'),
+          value: c.nextRunLabel(now: now),
+          tok: tok),
+      w.StatCard(
+          label: Strings.get('stat_success'),
+          value: success,
+          tok: tok,
+          kind: successKind),
+      w.StatCard(
+          label: Strings.get('stat_sent_week'),
+          value: '$sent',
+          tok: tok,
+          kind: sent > 0 ? 'ok' : 'info'),
+    ];
+    if (!narrow) {
+      return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: tok.gap,
+          children: cards);
+    }
+    final half = tok.gap / 2;
+    return Column(spacing: half, children: [
+      for (var i = 0; i < cards.length; i += 2)
+        Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: half,
+            children: cards.sublist(i, i + 2)),
+    ]);
   }
 
-  Widget _tile(String label, String value) => Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [Text(label), Text(value)]),
-        ),
-      );
+  // -- run timeline ------------------------------------------------------------------
 
-  Widget _historyCard(DateTime now) {
+  String _scopeLabel(String scope) {
+    for (final (key, label) in _scopes) {
+      if (key == scope) return Strings.get(label);
+    }
+    return Strings.get('refresh_all');
+  }
+
+  Widget _historyCard(Tokens tok, DateTime now) {
     final c = controller;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    final rows = <Widget>[
+      _panelHead(Strings.get('run_history'), tok, Icons.history),
+      if (c.runs.isEmpty)
+        Text(Strings.get('no_runs_yet'),
+            style: TextStyle(color: tok.faint, fontSize: tok.fsSmall)),
+    ];
+    for (final run in c.runs.reversed.take(_historyRows)) {
+      final kind = runKind(run);
+      final (icon, color, label, badgeKind) = switch (kind) {
+        'ok' => (Icons.check_rounded, tok.green, Strings.get('run_done'), 'sent'),
+        'cancelled' => (
+            Icons.block_rounded,
+            tok.muted,
+            Strings.get('run_cancelled'),
+            'cancelled'
+          ),
+        _ => (Icons.close_rounded, tok.red, Strings.get('run_failed'), 'failed'),
+      };
+      final meta = <String>[_scopeLabel('${run['scope'] ?? 'all'}')];
+      final took =
+          run['seconds'] != null ? durationText(run['seconds']) : '';
+      if (took.isNotEmpty) {
+        meta.add(Strings.format('run_took', {'d': took}));
+      }
+      final detail = '${run['detail'] ?? ''}';
+      rows.add(Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          spacing: 10,
           children: [
-            Text(Strings.get('run_history')),
-            if (c.runs.isEmpty) Text(Strings.get('no_runs_yet')),
-            for (final run in c.runs.reversed.take(10))
-              ListTile(
-                title: Text(
-                    '${run['scope'] ?? 'all'} · ${runWhen(run, now)}'),
-                subtitle: (run['detail'] ?? '').toString().isEmpty
-                    ? null
-                    : Text('${run['detail']}'),
-                trailing: Text(runKind(run)),
+            _iconDisc(icon, color, tok, size: 28, iconSize: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: 1,
+                children: [
+                  _small(tok, meta.join(' · '), color: tok.text, bold: true),
+                  if (detail.isNotEmpty)
+                    _small(tok, detail,
+                        size: tok.fsTiny,
+                        color: badgeKind == 'failed' ? tok.red : tok.muted),
+                ],
               ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _logCard(BuildContext context) {
-    final c = controller;
-    final lines =
-        c.logLines.length > 150 ? c.logLines.sublist(c.logLines.length - 150) : c.logLines;
-    final errors = countLogErrors(lines);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Expanded(child: Text(Strings.get('live_log'))),
-                if (errors > 0)
-                  Chip(label: Text(Strings.format('log_errors', {'n': errors}))),
-                IconButton(
-                  tooltip: Strings.get('log_copy_tooltip'),
-                  icon: const Icon(Icons.content_copy_outlined),
-                  onPressed: () async {
-                    if (c.logLines.isEmpty) {
-                      appSnack(context, Strings.get('no_log_yet'));
-                      return;
-                    }
-                    final ok = await copyAppText(c.logLines.join('\n'));
-                    if (context.mounted) {
-                      appSnack(
-                          context,
-                          ok
-                              ? Strings.get('error_copied')
-                              : Strings.get('error_copy_failed'));
-                    }
-                  },
-                ),
-                IconButton(
-                  tooltip: Strings.get('clear_log'),
-                  icon: const Icon(Icons.delete_sweep_outlined),
-                  onPressed: c.clearLog,
-                ),
-              ],
             ),
-            if (lines.isEmpty)
-              Text(Strings.get('no_log_yet'))
-            else
-              Container(
-                height: (64 + 19 * lines.length).clamp(64, 320).toDouble(),
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: ListView(
-                  children: [
-                    for (final line in lines) _logRow(line),
-                  ],
-                ),
-              ),
+            _small(tok, runWhen(run, now), size: tok.fsTiny, color: tok.faint),
+            w.Badge(text: label, tok: tok, kind: badgeKind),
           ],
         ),
-      ),
-    );
+      ));
+    }
+    return w.AppCard(tok: tok, children: rows);
   }
 
-  Widget _logRow(String line) {
+  // -- live log ----------------------------------------------------------------------
+
+  Widget _logCard(BuildContext context, Tokens tok) {
+    final c = controller;
+    final lines = c.logLines.length > 150
+        ? c.logLines.sublist(c.logLines.length - 150)
+        : c.logLines;
+    final errors = countLogErrors(lines);
+    final head = _panelHead(Strings.get('live_log'), tok, Icons.terminal, [
+      if (errors > 0)
+        w.Badge(
+            text: Strings.format('log_errors', {'n': errors}),
+            tok: tok,
+            kind: 'failed'),
+      const Spacer(),
+      IconButton(
+        tooltip: Strings.get('log_copy_tooltip'),
+        iconSize: 18,
+        color: tok.muted,
+        icon: const Icon(Icons.content_copy_outlined),
+        onPressed: () async {
+          if (c.logLines.isEmpty) {
+            appSnack(context, Strings.get('no_log_yet'));
+            return;
+          }
+          final ok = await copyAppText(c.logLines.join('\n'));
+          if (context.mounted) {
+            appSnack(
+                context,
+                ok
+                    ? Strings.get('error_copied')
+                    : Strings.get('error_copy_failed'));
+          }
+        },
+      ),
+      IconButton(
+        tooltip: Strings.get('clear_log'),
+        iconSize: 18,
+        color: tok.muted,
+        icon: const Icon(Icons.delete_sweep_outlined),
+        onPressed: c.clearLog,
+      ),
+    ]);
+    final Widget screen = lines.isEmpty
+        ? Center(
+            child: Text(Strings.get('no_log_yet'),
+                style: TextStyle(color: tok.faint, fontSize: tok.fsSmall)))
+        : ListView(
+            reverse: false,
+            children: [
+              for (final line in lines) ...[
+                _logRow(tok, line),
+                const SizedBox(height: 2),
+              ],
+            ],
+          );
+    final height = (18 + 19 * lines.length).clamp(64, _logHeight).toDouble();
+    return w.AppCard(tok: tok, children: [
+      head,
+      Container(
+        height: height,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: tok.surface,
+          borderRadius: BorderRadius.circular(tok.radiusSm),
+          border: Border.all(color: tok.border),
+        ),
+        child: screen,
+      ),
+    ]);
+  }
+
+  Widget _logRow(Tokens tok, String line) {
     final (stamp, message) = splitLog(line);
     final tone = logTone(message);
-    final color = tone == 'error'
-        ? Colors.red
-        : tone == 'warning'
-            ? Colors.orange
-            : tone == 'ok'
-                ? Colors.green
-                : Colors.grey;
+    final color = switch (tone) {
+      'error' => tok.red,
+      'warning' => tok.yellow,
+      'ok' => tok.green,
+      _ => tok.muted,
+    };
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
+      spacing: 6,
       children: [
         SizedBox(
             width: 58,
             child: Text(stamp,
-                style:
-                    const TextStyle(fontFamily: 'Consolas', fontSize: 12))),
+                style: TextStyle(
+                    fontFamily: 'Consolas',
+                    fontSize: tok.fsTiny,
+                    color: tok.faint))),
         Expanded(
             child: SelectableText(message,
                 style: TextStyle(
                     fontFamily: 'Consolas',
-                    fontSize: 12,
+                    fontSize: tok.fsSmall,
                     color: color))),
       ],
     );
   }
 
-  Widget _modeRow(String label, String key) {
+  // -- automation (right panel) ----------------------------------------------------------
+
+  Widget _modeRow(Tokens tok, String label, String key) {
     final c = controller;
-    final mode = '${c.config[key] ?? 'confirm'}'.isEmpty
-        ? 'confirm'
-        : '${c.config[key] ?? 'confirm'}';
-    final color = {'auto': Colors.green, 'dry_run': Colors.amber}[mode];
+    var mode = '${c.config[key] ?? 'confirm'}';
+    if (mode.isEmpty) mode = 'confirm';
+    final color = switch (mode) {
+      'auto' => tok.green,
+      'dry_run' => tok.yellow,
+      _ => tok.text,
+    };
     final text = Strings.get(
         {'auto': 'mode_auto', 'dry_run': 'mode_dry_run'}[mode] ??
             'mode_confirm');
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      spacing: 8,
       children: [
-        Expanded(child: Text(label)),
-        const SizedBox(width: 8),
-        Text(text, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+        Expanded(child: _small(tok, label)),
+        _small(tok, text, color: color, bold: true),
       ],
     );
   }
 
   /// The automation card: pause switch plus the current modes. Port of
   /// `_automation_card` (views/activity.py).
-  Widget _automationCard(BuildContext context) {
+  Widget _automationCard(BuildContext context, Tokens tok) {
     final c = controller;
     final paused = c.automationPaused();
-    return Card(
+    return KeyedSubtree(
       key: const Key('activity:automation'),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(children: [
-              const Icon(Icons.bolt_outlined, size: 18),
-              const SizedBox(width: 8),
-              Text(Strings.get('automation_card'),
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-            ]),
-            const SizedBox(height: 8),
-            if (paused)
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.amber.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(children: [
-                  const Icon(Icons.pause_circle_outline,
-                      size: 18, color: Colors.amber),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(Strings.get('automation_paused_banner'),
-                        style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.amber,
-                            fontWeight: FontWeight.bold)),
-                  ),
-                ]),
-              )
-            else
-              Text(Strings.get('automation_running'),
-                  style: const TextStyle(fontSize: 12)),
-            SwitchListTile(
-              key: const Key('activity:pause'),
-              contentPadding: EdgeInsets.zero,
-              title: Text(Strings.get('automation_pause')),
-              value: paused,
-              onChanged: c.setAutomationPaused,
+      child: w.AppCard(tok: tok, children: [
+        _panelHead(Strings.get('automation_card'), tok, Icons.bolt_outlined),
+        if (paused)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: tintColor(tok.yellow, 0.12),
+              borderRadius: BorderRadius.circular(tok.radiusSm),
             ),
-            Text(Strings.get('automation_pause_hint'),
-                style: const TextStyle(fontSize: 12)),
-            const Divider(),
-            _modeRow(Strings.get('excuse_mode_label'), 'excuse_mode'),
-            _modeRow(Strings.get('order_mode_label'), 'strava_order_mode'),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                icon: const Icon(Icons.tune),
-                label: Text(Strings.get('automation_edit')),
-                onPressed: c.editRules,
+            child: Row(spacing: 8, children: [
+              Icon(Icons.pause_circle_outline, size: 18, color: tok.yellow),
+              Expanded(
+                child: _small(tok, Strings.get('automation_paused_banner'),
+                    color: tok.yellow, bold: true),
               ),
-            ),
-          ],
+            ]),
+          )
+        else
+          _small(tok, Strings.get('automation_running')),
+        Row(spacing: 4, children: [
+          Switch(
+            key: const Key('activity:pause'),
+            value: paused,
+            onChanged: c.setAutomationPaused,
+          ),
+          Expanded(
+            child: Text(Strings.get('automation_pause'),
+                style: TextStyle(color: tok.text, fontSize: tok.fsBody)),
+          ),
+        ]),
+        Text(Strings.get('automation_pause_hint'),
+            style: TextStyle(color: tok.faint, fontSize: tok.fsSmall)),
+        Divider(color: tok.border, height: 1, thickness: 1),
+        _modeRow(tok, Strings.get('excuse_mode_label'), 'excuse_mode'),
+        _modeRow(tok, Strings.get('order_mode_label'), 'strava_order_mode'),
+        Align(
+          alignment: Alignment.centerRight,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.tune, size: 18),
+            label: Text(Strings.get('automation_edit')),
+            onPressed: c.editRules,
+          ),
         ),
+      ]),
+    );
+  }
+
+  Widget _auditRow(Tokens tok, List<Map<String, dynamic>> group, DateTime now) {
+    final first = group.first;
+    final kind = '${first['kind'] ?? 'excuse'}';
+    final outcome = '${first['outcome'] ?? 'failed'}';
+    final badgeKind = _auditBadge[outcome] ?? 'failed';
+    final color = statusColor(badgeKind, tok);
+    final subs = auditRowSubs(group, foodNames);
+    final when = runTime({'at': first['ts']});
+    final source = '${first['source'] ?? 'manual'}';
+    final meta = [
+      if (when != null) clockText(when, now),
+      Strings.get('audit_source_$source'),
+    ].where((p) => p.isNotEmpty).join(' · ');
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        spacing: 10,
+        children: [
+          _iconDisc(
+              kind == 'lunch'
+                  ? Icons.restaurant_outlined
+                  : Icons.description_outlined,
+              color,
+              tok,
+              size: 30,
+              iconSize: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 1,
+              children: [
+                _small(tok, auditRowTitle(group), color: tok.text, bold: true),
+                for (final p in subs)
+                  if (p.isNotEmpty) _small(tok, p, size: tok.fsTiny),
+                _small(tok, meta, size: tok.fsTiny, color: tok.faint),
+              ],
+            ),
+          ),
+          w.Badge(
+              text: Strings.get('audit_$outcome'), tok: tok, kind: badgeKind),
+        ],
       ),
     );
   }
 
-  Widget _auditCard(DateTime now) {
-    final groups = groupAudit(audit);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(Strings.get('automation_history')),
-            if (auditError.isNotEmpty) Text(auditError),
-            if (groups.isEmpty && auditError.isEmpty)
-              Text(Strings.get('automation_history_empty')),
-            for (final g in groups.take(12))
-              ListTile(
-                title: Text(auditRowTitle(g)),
-                subtitle: Text(auditRowSubs(g, foodNames).join(' · ')),
-                trailing: Text(Strings.get('audit_${g.first['outcome'] ?? 'failed'}')),
-              ),
-          ],
-        ),
+  Widget _auditCard(Tokens tok, DateTime now) {
+    final c = controller;
+    final wanted = c.draft('activity:audit', 'all');
+    var items = audit;
+    if (wanted == 'excuse' || wanted == 'lunch') {
+      items = [
+        for (final i in audit)
+          if (i['kind'] == wanted) i
+      ];
+    }
+    final groups = groupAudit(items);
+    return w.AppCard(tok: tok, children: [
+      _panelHead(Strings.get('automation_history'), tok,
+          Icons.fact_check_outlined),
+      SegmentedButton<String>(
+        showSelectedIcon: false,
+        expandedInsets: EdgeInsets.zero,
+        segments: [
+          ButtonSegment(
+              value: 'all', label: Text(Strings.get('audit_filter_all'))),
+          ButtonSegment(
+              value: 'excuse',
+              label: Text(Strings.get('audit_filter_excuse'))),
+          ButtonSegment(
+              value: 'lunch', label: Text(Strings.get('audit_filter_lunch'))),
+        ],
+        selected: {
+          const ['all', 'excuse', 'lunch'].contains(wanted) ? wanted : 'all'
+        },
+        onSelectionChanged: (v) =>
+            c.setDraft('activity:audit', v.isEmpty ? 'all' : v.first),
       ),
-    );
+      if (auditError.isNotEmpty)
+        _small(tok, '${Strings.get('automation_history')}: $auditError',
+            color: tok.red),
+      if (groups.isEmpty && auditError.isEmpty)
+        Text(Strings.get('automation_history_empty'),
+            style: TextStyle(color: tok.faint, fontSize: tok.fsSmall)),
+      for (final g in groups.take(_auditGroups)) _auditRow(tok, g, now),
+    ]);
   }
 }

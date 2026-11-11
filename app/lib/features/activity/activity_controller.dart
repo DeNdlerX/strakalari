@@ -39,6 +39,27 @@ class ActivityController {
   void Function()? clearLogHook;
   void Function()? dismissUpdateHook;
 
+  /// Drafts (kept across the snapshot's rebuilds) and the update check.
+  String Function(String key, String fallback)? draftHook;
+  void Function(String key, String value)? setDraftHook;
+  bool Function(bool force)? startUpdateCheckHook;
+  final Map<String, String> _drafts = {};
+
+  String draft(String key, [String fallback = '']) =>
+      draftHook?.call(key, fallback) ?? _drafts[key] ?? fallback;
+
+  void setDraft(String key, String value) {
+    if (setDraftHook != null) {
+      setDraftHook!(key, value);
+    } else {
+      _drafts[key] = value;
+    }
+    _emit();
+  }
+
+  bool startUpdateCheck({bool force = false}) =>
+      startUpdateCheckHook?.call(force) ?? false;
+
   /// Automation card: pause state, the switch, and "Upravit pravidla".
   bool Function()? automationPausedHook;
   bool Function(bool paused)? setAutomationPausedHook;

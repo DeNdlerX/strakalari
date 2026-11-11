@@ -32,6 +32,12 @@ ActivityController activityControllerFor(AppState s) {
   c.updateCheckRunning = s.updateCheckRunning;
   c.lastError = s.lastError;
   c.errorDialogPending = s.errorDialogPending;
+  c.draftHook = s.draft;
+  c.setDraftHook = (k, v) {
+    s.setDraft(k, v);
+    s.onChanged();
+  };
+  c.startUpdateCheckHook = (force) => s.startUpdateCheck(force);
   c.cancelRefreshHook = s.cancelRefresh;
   c.clearLogHook = s.clearLog;
   c.dismissUpdateHook = s.dismissUpdate;

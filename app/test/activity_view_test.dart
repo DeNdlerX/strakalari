@@ -8,6 +8,14 @@ import 'package:app/widgets/overlays.dart';
 
 ActivityController _controller() => ActivityController({});
 
+/// The Ahem test font is far wider than the real one; a tall, wide surface
+/// builds the whole screen and keeps its rows on one line.
+void _surface(WidgetTester t) {
+  t.view.physicalSize = const Size(1600, 2400);
+  t.view.devicePixelRatio = 1.0;
+  addTearDown(t.view.reset);
+}
+
 Widget _app(Widget child) {
   SnackLog.clear();
   return MaterialApp(home: Scaffold(body: child));
@@ -104,6 +112,7 @@ void main() {
     });
 
     testWidgets('hero shows working then error states', (t) async {
+      _surface(t);
       final c = _controller();
       await t.pumpWidget(_app(ActivityView(controller: c)));
       expect(find.text(Strings.get('status_idle')), findsOneWidget);
@@ -116,11 +125,14 @@ void main() {
       c.runs.add(
           {'ok': false, 'finished': 'x', 'started': 'x', 'detail': 'boom'});
       await t.pumpWidget(_app(ActivityView(controller: c)));
-      expect(find.text(Strings.get('status_error')), findsOneWidget);
-      expect(find.text('boom'), findsOneWidget);
+      // The headline and the failed run's badge are both 'Chyba' (as in
+      // activity.py: `status_error` and `run_failed` share the text).
+      expect(find.text(Strings.get('status_error')), findsNWidgets(2));
+      expect(find.text('boom'), findsWidgets);
     });
 
     testWidgets('log card shows error badge and clears', (t) async {
+      _surface(t);
       final c = _controller()
         ..logLines = [
           '[10:00:05] Refresh failed: TimeoutError: boom',
@@ -134,13 +146,14 @@ void main() {
     });
 
     testWidgets('run timeline lists runs, newest last', (t) async {
+      _surface(t);
       final c = _controller()
         ..runs = [
           {'ok': true, 'scope': 'all', 'at': '2026-09-26T10:00:00'},
           {'ok': false, 'scope': 'strava', 'detail': 'boom'},
         ];
       await t.pumpWidget(_app(ActivityView(controller: c)));
-      expect(find.text(Strings.get('run_history')), findsOneWidget);
+      expect(find.text(Strings.get('run_history').toUpperCase()), findsOneWidget);
       expect(find.textContaining('boom'), findsOneWidget);
     });
   });

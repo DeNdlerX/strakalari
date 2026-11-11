@@ -262,6 +262,18 @@ class Tokens {
           shape: const StadiumBorder(),
         ),
       ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith((s) =>
+              s.contains(WidgetState.selected)
+                  ? accent.withValues(alpha: 0.2)
+                  : Colors.transparent),
+          foregroundColor: WidgetStatePropertyAll(text),
+          side: WidgetStatePropertyAll(BorderSide(color: faint)),
+          textStyle: WidgetStatePropertyAll(
+              TextStyle(fontFamily: fontFamily, fontSize: fsBody)),
+        ),
+      ),
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith(
             (s) => s.contains(WidgetState.selected) ? accentText : faint),
