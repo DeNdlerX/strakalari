@@ -151,12 +151,11 @@ final header = _headerRow();
 
   int _isoWeek(DateTime day) {
     // ISO week number (Monday-based; Thursday decides the week).
-    final thursday =
-        DateTime(day.year, day.month, day.day).add(Duration(days: 4 - day.weekday));
+    final thursday = core.addDays(
+        DateTime(day.year, day.month, day.day), 4 - day.weekday);
     final jan4 = DateTime(thursday.year, 1, 4);
-    final week1Monday =
-        DateTime(jan4.year, jan4.month, jan4.day).subtract(Duration(days: jan4.weekday - 1));
-    return thursday.difference(week1Monday).inDays ~/ 7 + 1;
+    final week1Monday = core.addDays(jan4, -(jan4.weekday - 1));
+    return core.daysBetween(week1Monday, thursday) ~/ 7 + 1;
   }
 
   Widget _headerRow() {
