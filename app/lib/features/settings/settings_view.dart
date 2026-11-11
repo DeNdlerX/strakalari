@@ -898,7 +898,7 @@ class SettingsView extends StatelessWidget {
               ),
               Text(Strings.get('automation_pause_hint')),
               KeyedSubtree(
-                key: ValueKey('tree:rule:excuse_mode:${c.get('excuse_mode', 'confirm')}'),
+                key: ValueKey('tree:rule:excuse_mode:${c.get('excuse_mode', 'confirm')}:${c.modeRevision}'),
                 child: DropdownButtonFormField<String>(
                   key: const Key('rule:excuse_mode'),
                   decoration: InputDecoration(
@@ -915,7 +915,7 @@ class SettingsView extends StatelessWidget {
                 ),
               ),
               KeyedSubtree(
-                key: ValueKey('tree:rule:order_mode:${c.get('strava_order_mode', 'confirm')}'),
+                key: ValueKey('tree:rule:order_mode:${c.get('strava_order_mode', 'confirm')}:${c.modeRevision}'),
                 child: DropdownButtonFormField<String>(
                   key: const Key('rule:order_mode'),
                   decoration: InputDecoration(

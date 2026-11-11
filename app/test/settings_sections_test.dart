@@ -198,6 +198,41 @@ void main() {
         expect(c2.get('excuse_mode'), 'auto');
       });
 
+      for (final answer in ['cancel', 'dry_run']) {
+        testWidgets('mode picker shows the saved mode after "$answer"',
+            (t) async {
+          final c = SettingsController(
+            {'excuse_mode': 'confirm'},
+            confirmAutoMode: (_) => answer,
+          );
+          c.settingsSection = 'rules';
+          c.settingsOpen = true;
+          SnackLog.clear();
+          // Like the live screen: every change rebuilds the view.
+          await t.pumpWidget(MaterialApp(
+              home: Scaffold(
+                  body: StatefulBuilder(
+                      builder: (context, setState) => SettingsView(
+                          controller: c,
+                          narrow: true,
+                          onChanged: () => setState(() {}))))));
+          final dd = find.byKey(const Key('rule:excuse_mode'));
+          await t.tap(dd);
+          await t.pumpAndSettle();
+          await t.tap(find.text(Strings.get('mode_auto')).last);
+          await t.pumpAndSettle();
+          final shown = answer == 'cancel' ? 'mode_confirm' : 'mode_dry_run';
+          expect(
+              find.descendant(
+                  of: dd, matching: find.text(Strings.get(shown))),
+              findsOneWidget);
+          expect(
+              find.descendant(
+                  of: dd, matching: find.text(Strings.get('mode_auto'))),
+              findsNothing);
+        });
+      }
+
       test('other modes save without asking', () async {
         var asked = false;
         final c = SettingsController(

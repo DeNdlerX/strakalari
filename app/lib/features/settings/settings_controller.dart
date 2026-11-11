@@ -247,6 +247,20 @@ class SettingsController {
   /// other modes save without asking (port of `_commit_guarded`).
   /// Returns 'saved' | 'unchanged' | 'cancelled'.
   Future<String> commitMode(String key, String value, String fallback) async {
+    try {
+      return await _commitMode(key, value, fallback);
+    } finally {
+      // Every answer rebuilds the picker from the saved value, so a
+      // cancelled switch to auto shows the old mode again (python
+      // `_set(previous)`).
+      modeRevision++;
+    }
+  }
+
+  /// Bumped by every [commitMode]; keys the mode pickers.
+  int modeRevision = 0;
+
+  Future<String> _commitMode(String key, String value, String fallback) async {
     value = value.isEmpty ? fallback : value;
     final previous = '${get(key, fallback) ?? fallback}';
     if (value != 'auto' || previous == 'auto') {
