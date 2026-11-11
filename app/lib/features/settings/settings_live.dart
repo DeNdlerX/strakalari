@@ -83,6 +83,10 @@ class LiveSettingsView extends ConsumerStatefulWidget {
 }
 
 class _LiveSettingsViewState extends ConsumerState<LiveSettingsView> {
+  /// Survives rebuilds (a new controller is built every time) so a cancelled
+  /// switch to auto re-keys the mode pickers and they show the saved mode.
+  int _modeRevision = 0;
+
   @override
   void initState() {
     super.initState();
@@ -112,6 +116,7 @@ class _LiveSettingsViewState extends ConsumerState<LiveSettingsView> {
         return completer.future;
       },
     );
+    controller.modeRevision = _modeRevision;
     final platform = Platform.isAndroid
         ? 'android'
         : (Platform.isIOS ? 'ios' : '');
@@ -119,7 +124,10 @@ class _LiveSettingsViewState extends ConsumerState<LiveSettingsView> {
       controller: controller,
       narrow: widget.narrow,
       platform: platform,
-      onChanged: () => ref.read(appStateProvider.notifier).emit(),
+      onChanged: () {
+        _modeRevision = controller.modeRevision;
+        ref.read(appStateProvider.notifier).emit();
+      },
     );
   }
 }

@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:strakalari_core/strakalari_core.dart';
 
 import 'package:app/controllers/app_state.dart';
+import 'package:app/l10n/strings.dart';
 import 'package:app/features/settings/settings_live.dart';
 import 'package:app/features/settings/settings_view.dart';
 import 'package:app/tutorial/tours.dart';
@@ -91,6 +92,57 @@ void main() {
     expect(find.byType(SettingsView), findsOneWidget);
     expect(s.tutorial?.$1, 'settings');
   });
+
+  // Checkpoint B BR-M2: the real screen builds a new SettingsController on
+  // every rebuild, so the cancel/dry-run answer must reach the dropdown there.
+  for (final entry in {
+    'excuse_mode': 'rule:excuse_mode',
+    'strava_order_mode': 'rule:order_mode',
+  }.entries) {
+    for (final answer in ['cancel', 'dry_run']) {
+      testWidgets(
+          'live screen: ${entry.key} picker shows the saved mode after $answer',
+          (tester) async {
+        final s = AppState(configData: {
+          entry.key: 'confirm',
+          'your_signature': 'Novak',
+          'tutorials_enabled': false,
+        });
+        s.setSettingsSection('rules');
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              appStateProvider
+                  .overrideWith(() => _SeededAppStateController(s)),
+            ],
+            child: const MaterialApp(
+              home: Scaffold(body: LiveSettingsView()),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final dd = find.byKey(Key(entry.value));
+        await tester.ensureVisible(dd);
+        await tester.tap(dd);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(Strings.get('mode_auto')).last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(Strings.get(
+            answer == 'cancel' ? 'cancel' : 'auto_confirm_dry')));
+        await tester.pumpAndSettle();
+        final saved = answer == 'cancel' ? 'confirm' : 'dry_run';
+        expect(s.get(entry.key), saved);
+        expect(
+            find.descendant(
+                of: dd, matching: find.text(Strings.get('mode_$saved'))),
+            findsOneWidget);
+        expect(
+            find.descendant(
+                of: dd, matching: find.text(Strings.get('mode_auto'))),
+            findsNothing);
+      });
+    }
+  }
 }
 
 class _SeededAppStateController extends AppStateController {
