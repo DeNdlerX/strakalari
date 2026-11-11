@@ -24,7 +24,7 @@ wiring and all AppState test suites green.
 Phase 6 (screens) is NOT finished: all 10 screens are wired to live state, but
 Checkpoint B failed three reviews; the screens still differ visibly from the Flet
 app (review item B-M11), the screenshot tools are not yet trustworthy (BR-M7) and the
-parity screenshots have not been re-captured. App suite: 467 passed, 1 skipped
+parity screenshots have not been re-captured. App suite: 468 passed, 1 skipped
 (APK scan needs `STRAKALARI_APK`); core: 764 passed, 2 skipped.
 ⛔ Checkpoint B: UI review — rework in progress, not ready for sign-off.
 Phase 7 (desktop) is in progress, unreviewed: tray + hide-to-tray, autostart,
@@ -849,7 +849,7 @@ What was done:
   - `app/test/app_state_excuses_and_planner_test.dart` (30 tests covering `test_excuse_ignore_list.py`, `test_planned_skips.py`, `test_error_report.py`, `test_cancel_responsive.py`, `test_news.py`, `test_ui_state.py`, `test_update.py`, `test_automation_safety.py`, `test_settings_refresh_interactive.py`).
   - `app/test/phase6_features_test.dart` (15 tests covering `test_early_leave.py`, `test_timetable_week_nav.py`, `test_marks_view.py`, `test_wizard_setup.py`, `test_year_planner.py`).
   - (`screenshot_parity_test.dart` was removed in B-B3; the capture tools replace it.)
-  - (Round 1 count; now app 467 passed + 1 skipped, core 764 passed + 2 skipped.)
+  - (Round 1 count; now app 468 passed + 1 skipped, core 764 passed + 2 skipped.)
   - `dart analyze` and `flutter analyze`: zero issues found across both packages.
 - Parity screenshots (NOT yet valid, see BR-M7):
   - Standalone capture tools established under `tools/parity/`:

@@ -458,7 +458,8 @@ class ActivityView extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label),
+        Expanded(child: Text(label)),
+        const SizedBox(width: 8),
         Text(text, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
       ],
     );
