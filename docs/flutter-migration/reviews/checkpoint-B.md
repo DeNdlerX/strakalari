@@ -828,3 +828,122 @@ branch's own tools.
 | BR-M2 | throwaway widget test: config stays `confirm`, the field still shows *Automaticky* after cancel |
 
 **Not verified in this re-review:** the phase 7–9 code (Checkpoints C and D).
+
+---
+
+## Re-review 2 (2026-11-11)
+
+Reviewed at `c3521aa`, commits `8ca2a1b..c3521aa` (5 commits since the re-review commit
+`4ff7600`: BR-M6, BR-M1, BR-M2, the first row of BR-M8, and a STATUS.md update). STATUS.md's
+Next step says the rework stopped part-way again: every other open finding was not attempted.
+
+### Verdict: **FAIL**
+
+Three of the four fixes hold: the app tests now each get their own throwaway data folder
+(BR-M6), the Today screen no longer says "Omluvenka odeslána" when a send has only started
+(BR-M1), and the two dry-run send-path tests are ported (BR-M8 row 1). The fourth, BR-M2,
+works only inside its own test: on the real Settings screen, cancelling *Automaticky* still
+leaves the dropdown showing *Automaticky* (proved below). Everything else from the re-review is
+still open.
+
+Open: 0 blockers; must-fix B-M11, B-M12, B-M13, B-M14, **BR-M2 (reopened)**, BR-M3, BR-M4,
+BR-M5, BR-M7, BR-M8 (11 of its 12 rows); should-fix B-S1, B-S2, B-S3, B-S5, B-S6, BR-S1 …
+BR-S6 and the new BR2-S1; notes below.
+
+Fix order: BR-M2 first, then the rest of BR-M8, BR-M3, BR-M4, BR-M5, BR-M7, B-M11 … B-M14,
+then every should-fix item. One commit per finding, named `Checkpoint B <ID>: …`. **Do not
+stop for re-review before every finding is fixed** (or answered under *Questions* in
+STATUS.md): this is the second partial rework, and each partial round costs a full review.
+
+### Status of the findings worked on in this round
+
+| ID | State | Checked how |
+|---|---|---|
+| BR-M6 | **fixed** (data folder) | `app/test/flutter_test_config.dart:13-33` gives every test a fresh `STRAKALARI_DATA_DIR` under the system temp folder plus `STRAKALARI_NO_KEYRING=1`, like `tests/conftest.py:5-16`; `test_data_dir_isolation_test.dart` checks it; the three stray files in `~/flutter/3.44.8/bin/cache/artifacts/engine/windows-x64/` are gone, and my full `flutter test` run left nothing new there. No test uses `setUpAll`, so nothing runs before the isolation. Leftover: BR2-S1 |
+| BR-M1 | **fixed** | `today_view.dart:217-222, 336-341` snack only on `!ok` (`c.lastMessageOr(excuse_failed)`), `:619` only on a failed signature save, like `today.py:214-231, 295-311`; `today_live.dart:39-41, 58-60` show `already_running` when the key is in `sendingExcuses`; `today_controller.dart:609-612` falls back to `excuse_failed` only when `onSend` gave no reason. No `excuse_sent` is left in the Today code (the only use is the worker, `controllers/excuses.dart:541`, = `state_excuses.py:480`). Tests `startedSendNeverClaimsExcuseSent` / `refusedSendShowsFailureNotSent` (`today_live_test.dart:222-282`). The requested dry-run case is not a widget test, but `dry_run_send_test.dart` asserts the worker's only message is `excuse_dry_run` and the view says nothing on a started send, so together they cover it: accepted |
+| BR-M2 | **not fixed (reopened)** | see below |
+| BR-M8 row 1 | **fixed** | `dry_run_send_test.dart` ports `TestDryRunNeverMarksExcused` (`tests/test_timetable_cache_merge.py:83, 91`) through the real `submitExcuse` / `submitDayExcuse` and worker with a dry-run app (`_dry_worker`, `:46-62`); it asserts `excuseLog` stays empty (Python's check) and also that the message is `excuse_dry_run`. STATUS item 79 updated. The other 11 rows of the BR-M8 table are open |
+
+### BR-M2 reopened: the fix does not reach the real Settings screen
+
+- Dart: `app/lib/features/settings/settings_controller.dart:249-261` (`modeRevision`),
+  `settings_view.dart:901, 918` (the keys), `settings_live.dart:96-121` (`build`)
+- Python: `strakalari/flet_ui/views/settings/automation.py:51-79` (`_set(previous)` writes the
+  old value back into the control)
+- Test: `app/test/settings_sections_test.dart:201-234`
+
+`modeRevision` lives on the `SettingsController`, but the live screen builds a **new**
+`SettingsController` on every rebuild (`settingsControllerFor(s, …)` inside
+`_LiveSettingsViewState.build`), so on the real screen `modeRevision` is always 0. After
+*Zrušit* nothing is saved, the key stays `tree:rule:excuse_mode:confirm:0`, Flutter keeps the
+old `DropdownButtonFormField` state, and the dropdown keeps showing *Automaticky* while the
+saved mode is *Potvrzovat*. The new test passes only because it keeps one controller alive
+in a `StatefulBuilder`, which the real screen never does.
+
+Proved with a throwaway widget test against `LiveSettingsView` with `appStateProvider`
+(written to `app/test/`, run once, deleted): config `excuse_mode: confirm`, signature set,
+pick *Automaticky*, then
+- *Zrušit* → config `confirm`, dropdown shows *Automaticky* (wrong);
+- *Nejdříve nanečisto* → config `dry_run`, dropdown shows *Jen nanečisto* (right, because the
+  saved value changed the key).
+
+Correct: keep the revision where it survives a rebuild (for example a counter on `AppState`
+or in `_LiveSettingsViewState`, handed to `settingsControllerFor`), or make the picker a
+controlled `DropdownButton` whose `value` is always the saved config. Then rewrite the two
+tests against `LiveSettingsView` + `appStateProvider` (the harness in
+`settings_live_test.dart`), not a hand-held `SettingsController`: after *Zrušit* the
+dropdown shows `mode_confirm`, after *Nejdříve nanečisto* `mode_dry_run`, for both
+`excuse_mode` and `strava_order_mode`.
+
+### New finding: should-fix
+
+- **BR2-S1** 22 app test files still call `setEnvironmentOverride({'STRAKALARI_DATA_DIR':
+  …})` in their own `setUp` (for example `settings_live_test.dart:18`,
+  `today_live_test.dart:19`, `mobile_narrow_shell_test.dart:31`, `tutorial_test.dart:35, 83`).
+  That runs after the `flutter_test_config.dart` `setUp` and **replaces** the whole
+  environment map, so those tests run without `STRAKALARI_NO_KEYRING=1` (and without the rest
+  of the process environment). Harmless today, because the app never sets `keyStoreBackend`
+  and the core then refuses to use any key store (see BR2-N1), but BR-M6 asked for "every
+  test", like `conftest.py`. Correct: delete the per-file data-folder overrides (the shared
+  config already gives each test its own folder; use `getUserDataDir()` where a test needs
+  the path), or add `'STRAKALARI_NO_KEYRING': '1'` to each of them.
+
+### Notes
+
+- **BR2-N1 (for Checkpoint C)** `DesktopKeyStore`
+  (`app/lib/platform/desktop/keystore_desktop.dart:58`) is never assigned to
+  `keyStoreBackend` anywhere in `app/lib` (grep finds no `keyStoreBackend =`). On a desktop
+  install the Flutter app would therefore fail with `KeyStoreUnavailable` instead of reading
+  the Python app's Fernet key from the OS credential store, so it could not decrypt the saved
+  passwords after an update. This is phase 7 work and fails closed (no data loss), but
+  Checkpoint C must check that the key store is wired at start-up and that the over-install
+  test reads the Python key.
+- The earlier notes (B-N1 … B-N4, BR-N1 … BR-N4) are unchanged and still apply.
+
+### What I verified in this re-review, and how
+
+Flutter 3.44.8 / Dart 3.12.2, Windows 11 (Europe/Prague), `STRAKALARI_NO_KEYRING=1` for the
+core and Python runs; the app suite ran without it on purpose, to check that
+`flutter_test_config.dart` sets it. Demo data only; no server was contacted. One throwaway
+probe (BR-M2) was written to `app/test/`, run once and deleted; `git status` was clean before
+this commit.
+
+| Check | Result |
+|---|---|
+| `dart analyze` / `dart test` (core) | clean / 764 passed, 2 skipped (Linux-only `flock` probe, POSIX permission bits) |
+| `flutter analyze` / `flutter test` (app) | clean / 432 passed, 1 skipped (APK scan needs `STRAKALARI_APK`); 432 = 425 + the 7 new tests |
+| Python suite | 1643 passed |
+| `tools/parity/dump.py` + `git diff --exit-code` on `test/parity/` | clean |
+| Each fix | read the commit against the Python lines named in the finding (table above); BR-M2 probed on the live screen |
+| Test parity | the 2 new dry-run tests match `TestDryRunNeverMarksExcused` case for case; the rest of the BR-M8 table is unchanged (no other port in this round) |
+| Test integrity | `git diff 4ff7600..HEAD -- app/test packages/strakalari_core/test`: only added lines, no `skip:`, no loosened `expect`, no `try`/`catch` around assertions (the one `on FileSystemException {}` is the temp-folder clean-up in `flutter_test_config.dart`) |
+| Scope | no new feature, config key or UI change beyond the findings |
+| §3.5 | the added Dart has no `RegExp`, `~/`, `%`, `round`, `weekday`, `DateTime.now()`, `DateTime.parse` or `jsonEncode` |
+| Fail loudly | no new `catch` in send, order or save code |
+| Architecture | no tracked file in `packages/strakalari_core` imports Flutter; no `pubspec.yaml`, lockfile or CI change in this round |
+| Hygiene | no personal data in the 5 commits (`git ls-files` shows only the known parity fixture `test/parity/config.json`); no new test host; no upstream for `flutter-migration`; all 5 commits by DeNdlerX, none with `Co-Authored-By` / `Claude-Session` |
+| `main` ported | `main` = `0ffdcff`, an ancestor of `HEAD`; `strakalari/`, `tests/`, `config.example.json` unchanged against `main` |
+
+**Not verified in this re-review:** the screenshots (nothing changed in the screens or the
+capture tools since the re-review, so B-M11 and BR-M7 stand as written), and the phase 7–9
+code (Checkpoints C and D).
