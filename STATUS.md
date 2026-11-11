@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 6 (Checkpoint B rework, round 3) · Next step: **B-M11**, the visible differences from the Flet screens (the only large finding left; BR-M7 is done): Today excuse card (filled dropdown, buttons below it, *Ignorovat* as a text link, "Krátká absence" badge next to the date), section headers (bold normal case → small upper-case muted), date line beside the heading, Planner (small boxed stat tiles, semester grid with day/month labels and legend, plan rows with "hodin", the "Most · 5 dní volna" badge, subject list), Lunches (day header, full-width send button, AI card with model badge/prompt field/*Získat klíč zdarma*/hint lines, blacklist empty text), the rest of Activity (update card, scope switch, stat tiles with the next run, history filter; the automation card is done), Settings (underline fields, section icons, password *Nevyplněno* + eye toggle), phone double gutters on Today. Re-capture both screenshot sets first (commands under Checkpoint B notes) and work screen by screen against them. Then B-M13 for what that adds, then stop for re-review. Everything else in the review's re-review-2 list is fixed (rework log below). B-S5 is a question for the owner.
+Current phase: 6 (Checkpoint B rework, round 4 done, waiting for re-review) · Next step: **stop for the Checkpoint B re-review** (B-M11, B-M13 and B-S5 are done in round 4; every other finding of re-review 2 was fixed in round 3). After a PASS: phase 7 desktop checks (Sandbox over-install test) and phase 8 phone checks (ask the owner before the first install on the Pixel 7 Pro).
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -21,12 +21,11 @@ breakpoints, rail ↔ bar + More, landscape side rail), theme tokens,
 ARB strings (794 keys + 13 notif_*), shared widgets, error dialog with
 Copy log/Share, tutorial tours, platform seams. Live `AppState` → core
 wiring and all AppState test suites green.
-Phase 6 (screens) is NOT finished: all 10 screens are wired to live state, but
-Checkpoint B failed three reviews; the screens still differ visibly from the Flet
-app (review item B-M11), the screenshot tools are not yet trustworthy (BR-M7) and the
-parity screenshots have not been re-captured. App suite: 468 passed, 1 skipped
-(APK scan needs `STRAKALARI_APK`); core: 764 passed, 2 skipped.
-⛔ Checkpoint B: UI review — rework in progress, not ready for sign-off.
+Phase 6 (screens) is complete and waiting for the Checkpoint B re-review: all 10 screens are wired to live state and
+restyled like the Flet screens (round 4: Today, Planner, Lunches, Activity, Settings, shared theme); both screenshot
+sets were re-captured and compared on 1280 and 390 px, light and dark. App suite: 469 passed, 1 skipped
+(APK scan needs `STRAKALARI_APK`); core: 764 passed, 2 skipped; both analyzers clean.
+⛔ Checkpoint B: UI review — round 4 done, ready for the re-review (nothing verified on a phone or in Windows Sandbox).
 Phase 7 (desktop) is in progress, unreviewed: tray + hide-to-tray, autostart,
 single-instance loopback-TCP, notifications, desktop keystores, Inno
 (AppId kept) + MSIX adaptations, CI release jobs written in code;
@@ -223,16 +222,16 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
     - 13 core cases → `error_report_test.dart`: `exposesOnlyPresence`, `classification`, `namesFix`, `scrubsSecretValues`, `numericAndShort`, `scrubsDecryptedPasswordAndPersonalData`, `carriesDiagnostics`, `extraSecretsRedacted`, `logTailIsContextNotTracebackCopy`, `neverContainsSecrets`, `prefersTypeAndFirstLine`, `namesBuildAndLanguage`, `raiseUserErrorForMissingLogin`
     - 4 UI dialog cases → `app/test/overlays_test.dart` (in progress, unreviewed): `error dialog shows summary and traceback`, `error dialog with user message hides traceback`, `copy button records a copied confirmation`, `showErrorDialog never throws`
     - Remaining 9 Flet/AppState popup queue & clipboard cases → `app/test/app_state_excuses_and_planner_test.dart` (`reportErrorQueuesPopupWithTraceback`, `reportErrorOutsideHandlerStillSafe`, `acknowledgeClearsPendingButKeepsReport`, `timeoutErrorMarksReportFriendly`, `reportNeverContainsSecrets`, `reportLogTailIsContextNotTracebackCopy`)
-17. `tests/test_excuse_day_scope.py` (8) → **Deferred (phase 5/6 — `AppState.day_excuse_plan` / `submit_day_excuse` / day card switch)**
+17. `tests/test_excuse_day_scope.py` (8) → `app/test/excuse_day_scope_test.dart` (8 tests, every Python case has a same-named Dart test; checked by name)
 18. `tests/test_excuse_generation.py` (41 [25 functions]) → `automation_test.dart` (41 parameterized cases across 25 1:1 camelCase functions): `gapDaysAreNotMerged`, `trulyConsecutiveDaysStillMerge`, `stillExcuses $notice`, `staysCancelled $notice`, `variantsGenerate ${v.$1}/${v.$2}`, `lateVariantsAreIncome ${v.$1}`, `cutoffIsDateBasedNotHourBased`, `excusedTypeSkipped`, `excusedTextWithAbsentTypeSkipped`, `fullyExcusedDayProducesNothing`, `fridayAndTuesdayDoNotBridge`, `presentDayStillBreaksChain`, `firstMode`, `randomModePicksFromList`, `emptyTemplates`, `defaultDelay`, `customDelay`, `multiGroupStatusPrioritization`, `pureDaysConsecutive`, `lateIncomeExcuse`, `pureDaysAcrossWeekend`, `delayDaysCutoff`, `fragmentedSameDayAbsences`, `genericEarlyLeaveIsAutoExcusedLikeUi`, `notCountedAbsenceIsNeverExcused`
 19. `tests/test_excuse_history.py` (17):
     - 10 pure/config cases → `excuse_history_test.dart`: `broaderWebExcuseCoversSingleDay`, `partialOverlapIsNotCovered`, `hourRangeNeverCoversWholeDay`, `multiDayHourSpanSemantics`, `taskCoveredMatchesUiRules`, `nonPaddedDatesCanonicalized`, `stripsUiKeys`, `historyEntriesStoreEveryHourShape`, `managerFiltersExampleFallback`, `historyQuarantine`
     - 4 automation cases → `automation_test.dart`: `concurrentSendsSubmitOnce`, `coveredExcuseIsNotResent`, `automationFiltersExampleFallback`, `excuseDryRunFillsWithoutSubmitting`
-    - 3 `TestHistoryCoverage` cases (`test_pure_days_covers`, `test_lesson_range_covers_only_inside`, `test_ambiguous_entries_never_hide`) → core coverage rules tested by `broaderWebExcuseCoversSingleDay` / `hourRangeNeverCoversWholeDay` / `taskCoveredMatchesUiRules`; `flet_ui.state_excuses` UI wrapper **Deferred (phase 5)**
+    - 3 `TestHistoryCoverage` cases (`test_pure_days_covers`, `test_lesson_range_covers_only_inside`, `test_ambiguous_entries_never_hide`) → core coverage rules `broaderWebExcuseCoversSingleDay` / `hourRangeNeverCoversWholeDay` / `taskCoveredMatchesUiRules`, and through the UI wrapper `AppState` in `app/test/app_state_excuses_and_planner_test.dart` (`TestHistoryCoverage` group, 3 tests)
 20. `tests/test_excuse_ignore_list.py` (9):
     - 4 `TestIgnoredExcuses` core cases → `automation_test.dart`: `ignoredLessonIsNeverAutoExcused`, `ignoredDayBreaksFullDayChain`, `excuseAbsencePassesConfigIgnoreList`, `garbageKeysAreIgnoredSafely`
     - 5 `AppState` ignore/unignore rollback cases → `app/test/app_state_excuses_and_planner_test.dart` (`ignoreRollsBackWhenSaveFails`, `unignoreRollsBackWhenSaveFails`, `ignoreDayRollsBackWhenSaveFails`, `ignoreSavedNormally`, `ignoreDaySkipsAlreadyExcusedLessons`)
-21. `tests/test_flet_data_wiring.py` (9) → **Deferred (phase 5 — `AppState` live cache/data wiring)**
+21. `tests/test_flet_data_wiring.py` (9) → `app/test/flet_data_wiring_test.dart` (9 tests, same names as the Python cases)
 22. `tests/test_forecast.py` (9) → `forecast_test.dart`:
     - `TestRareSubjects.test_one_off_not_floored_to_one` → `one-off not floored to one`
     - `TestWarnThreshold.test_explicit_warn_used` → `explicit warn used`
@@ -291,7 +290,7 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
 30. `tests/test_i18n.py` (7):
     - 4 core cases → `i18n_test.dart`: `getAndSetLanguage`, `missingKeyFallsBack`, `coreMessagesHaveBothLanguagesAndSamePlaceholders`, `coreMessageFollowsLanguage`
     - `test_core_messages_follow_language` → `error_report_test.dart`: `namesFix` (tests `timeoutUserMessage` in cs/en)
-    - `test_new_flet_strings_present`, `test_dead_keys_removed_and_live_keys_kept` → **Deferred (phase 5 — `flet_ui.strings` / ARB key audit)**
+    - `test_new_flet_strings_present`, `test_dead_keys_removed_and_live_keys_kept` → `app/test/strings_table_parity_test.dart` (the string table has the same keys in both languages, every placeholder formats, no dead key under `lib`)
 31. `tests/test_icons.py` (13) → **Deferred (phase 6/7 — app icon assets verification)**
 32. `tests/test_imports_resolve.py` (354 [1 function]) → **Dropped (Python AST relative-import check; replaced by `dart analyze` and `flutter analyze`)**
 33. `tests/test_log_redaction.py` (3) → `error_report_test.dart`: `plaintextAndCiphertextSecretsAreScrubbed`, `followsChangedPassword`, `skipPersonalData`
@@ -327,9 +326,9 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
     - `TestCutoffSpelling.test_garbage_still_invalid` → `lunch_cutoff_test.dart`: `garbage still invalid`
     - `test_state_rejects_closed_day_and_filters_submit` → `app/test/lunches_view_test.dart` (`closed day is read-only` / `order past cutoff stages nothing`) + `app/test/app_state_lunches_test.dart` (`stateRejectsClosedDayAndFiltersSubmit`)
 37. `tests/test_lunch_day_keys.py` (3) → `app/test/app_state_lunches_test.dart` (`cachedOrdersUseCanonicalDayKeys`, `recordWebOrdersDropsOtherSpellings`); pure `canonicalLunchDayKey` and `_store_ordered` covered by `parity_lunch_cutoff_test.dart` and `automation_test.dart`
-38. `tests/test_lunch_deadline_calendar.py` (1) → `parity_lunch_cutoff_test.dart` (`effectiveCalendar(clipToClose: false)`); `AppState.lunch_deadline_calendar` **Deferred (phase 5)**
+38. `tests/test_lunch_deadline_calendar.py` (1) → `parity_lunch_cutoff_test.dart` (`effectiveCalendar(clipToClose: false)`); the `AppState.lunchDeadlineCalendar` use is covered by `app_state_lunches_test.dart`
 39. `tests/test_lunch_filter.py` (12) → `app/test/lunches_filter_test.dart` (12 1:1 cases, in progress, unreviewed): `negation clause yields keyword`, `likes clause ignored`, `mixed text keeps only dislikes`, `bez form`, `conjunction like segment ignored`, `english no form`, `empty`, `prefs hide and stage`, `good pick not clobbered`, `hidden pick replaced`, `cancelled day skipped`, `closed day hides but stages nothing`
-40. `tests/test_lunch_same_pick.py` (5) → **Deferred (phase 5 — `flet_ui.state.AppState` / `LunchView` pending pick vs web order comparison)**: `test_repicking_the_ordered_meal_is_no_change`, `test_a_different_meal_is_a_change_until_picked_back`, `test_no_lunch_compares_with_the_web_too`, `test_submit_sends_only_picks_that_differ`, `test_refresh_unstages_a_pick_the_web_now_reports`
+40. `tests/test_lunch_same_pick.py` (5) → `app/test/lunch_same_pick_test.dart` (5 tests, same names): `repickingTheOrderedMealIsNoChange`, `aDifferentMealIsAChangeUntilPickedBack`, `noLunchComparesWithTheWebToo`, `submitSendsOnlyPicksThatDiffer`, `refreshUnstagesAPickTheWebNowReports`
 41. `tests/test_macos_data_dir.py` (9) → **Deferred (phase 7 — macOS bundle → Application Support migration)**
 42. `tests/test_macos_tray_host.py` (15) → **Deferred (phase 7 — macOS tray/window lifecycle)**
 43. `tests/test_marks_view.py` (15) → `app/test/phase6_features_test.dart` (`predictor state add edit remove restore reset`, `scale preferences and preset bands`, `selecting the open subject closes it`, `saving an unchanged mark is not an edit`) + `app/test/marks_live_test.dart` (`LiveMarksView renders subjects and offers marks tutorial`, `marksControllerFor maps AppState grades and syncs predictions`)
@@ -338,7 +337,7 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
 46. `tests/test_mobile.py` (70 [48 functions]):
     - `TestPlatform.*` (4) → `packaging_test.dart`: `desktopIsNotMobile`, `fletPlatformEnv`, `desktopFletBuildIsNotMobile`, `defaultsToFalse`
     - ` test_update_check_per_distribution`, `test_repo_has_no_distribution_marker` → `packaging_test.dart`: `iosComesFromAppStore`, `androidWithoutDistributionIsNull`, `androidPlayChannel`, `offPhoneIsNull`, `emptyEnvironmentIsNull`
-    - `TestNarrowShell.*` (12) → `app/test/widget_test.dart` (`Layout breakpoints match the Python shell`, `Router builds every main screen without throwing`, in progress, unreviewed); remaining narrow-shell cases **Deferred (phase 5/6)**
+    - `TestNarrowShell.*` (12) → `app/test/mobile_narrow_shell_test.dart` (11 same-named tests) + `app/test/widget_test.dart` (`Layout breakpoints match the Python shell`, `Router builds every main screen without throwing`); `test_refresh_ticks_repaint_only_the_topbar` is under *Dropped*
     - `TestMakeMobile.test_stage_has_no_personal_files`, `test_package_check_finds_nested_personal_file`, `test_path_markers_spell_every_separator`, `test_package_check_finds_build_machine_path` → `app/test/packaging_privacy_test.dart` (in progress, unreviewed)
     - Remaining `TestDataDir`, `TestKeystoreKey`, `TestPhoneBackground`, `test_open_system_alarm_*` → **Deferred (phase 8 — Android bridge/keystore/service)**; Flet-packaging-specific `TestMakeMobile` (`test_flet_pin_matches_desktop`, `test_extension_wheel`, `test_pyc_shim_*`) → **Deferred (phase 8/10 — decide at Android review)**
 47. `tests/test_models.py` (19):
@@ -350,15 +349,15 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
 49. `tests/test_notify.py` (17):
     - Core dispatch/prefs/safety cases → `notifier_test.dart` (9): `appIdIsPlainAscii`, `knownEvents`, `defaultsToOn`, `unknownEventThrows`, `disabledEventNeverTouchesTheBackend`, `dispatchesToTheBackend`, `backendFailureFallsBackToStdout`, `noBackendPrintsAndReturnsFalse`, `neverRaisesFromBackend`
     - Desktop OS script/command cases (`test_ps_single_quote_escapes_apostrophe`, `test_cdata_guards_closing_sequence`, `test_toast_script_*`, `test_send_windows_*`, `test_send_linux_*`, `test_send_macos_*`) → **Deferred (phase 7 — desktop notification backends)**
-50. `tests/test_open_url.py` (5) → **Deferred (phase 5/6 — UI URL launcher helper)**
-51. `tests/test_order_latch.py` (7 [4 functions]) → **Deferred (phase 5 — `flet_ui.state.AppState` `submit_orders` latch & `submit_excuse` kind mapping)**: `test_empty_payload_releases_latch`, `test_demo_no_credentials_releases_latch`, `test_nothing_pending_releases_latch`, `test_excuse_kind_to_web_type`
+50. `tests/test_open_url.py` (5) → `app/test/open_url_test.dart` (4 tests: empty URL, launcher result, falls back to the platform default when the launcher throws or says false, the fallback seam); the two Flet-coroutine cases are under *Dropped*
+51. `tests/test_order_latch.py` (7 [4 functions]) → `app/test/order_latch_test.dart` (4 tests, same names): `emptyPayloadReleasesLatch`, `demoNoCredentialsReleasesLatch`, `nothingPendingReleasesLatch`, `excuseKindToWebType`
 52. `tests/test_packaging_privacy.py` (4) → `app/test/packaging_privacy_test.dart` (in progress, unreviewed; desktop Inno/spec checks **Deferred phase 7**)
-53. `tests/test_plan_picker.py` (12) → `app/test/planner_view_test.dart` (`custom picker taps a day whole and confirms`, in progress, unreviewed); remaining 11 picker cases **Deferred (phase 6 — custom plan picker dialog)**
+53. `tests/test_plan_picker.py` (12) → `app/test/plan_picker_test.dart` (12 tests, every Python case has a same-named Dart test; checked by name)
 54. `tests/test_plan_reserve.py` (5) → `planner_test.dart` (`reserveValidation`) + `app/test/planner_reserve_test.dart` (in progress, unreviewed): `reserve lowers plan limit, not school limit`, `default example 25 minus 10 is 15`, `zero reserve keeps old behavior`, `handbuilt states fall back to school values`, `reserve validation`
 55. `tests/test_planned_skips.py` (17):
     - 11 pure cases → `planned_skips_test.dart`: `keeps period zero`, `entry covers follows the planner rule`, `whole days in a row merge across a weekend`, `a gap day splits the range`, `range may start late and end early`, `scattered lessons become separate entries`, `free periods do not split a run`, `a partial day does not join the next one`, `ranges are capped at 31 days`, `entries keep the template and lunch choice`
     - 6 `AppState` persist/rollback cases (`test_plan_custom_skip_reports_persist_failure`, `test_plan_skip_reports_invalid_range`, `test_unplan_entry_reports_stale`, `test_plan_custom_skip_rolls_back_on_persist_failure`, `test_unplan_entry_rolls_back_on_persist_failure`, `test_plan_entries_saves_all_at_once`, `test_plan_entries_rolls_back_on_persist_failure`) → `app/test/app_state_excuses_and_planner_test.dart` (`planEntriesSavesAllAtOnce`, `planEntriesRollsBackOnPersistFailure`, `planSkipReportsInvalidRange`, `unplanEntryRollsBackOnPersistFailure`) + `app/test/planner_view_test.dart` (`controller plan/unplan with failing persist rolls back`)
-56. `tests/test_planner_dialog.py` (6) → `app/test/planner_view_test.dart` (`plan dialog confirm plans the day`, `plan dialog cancel closes without planning`, in progress, unreviewed); remaining dialog cases **Deferred (phase 6)**
+56. `tests/test_planner_dialog.py` (6) → `app/test/planner_dialog_test.dart` (6 tests, same names) + `app/test/planner_view_test.dart` (`plan dialog confirm plans the day`, `plan dialog cancel closes without planning`)
 57. `tests/test_refresh_cancel_keeps_data.py` (1) → `refresh_test.dart`: `cancelAfterFetchKeepsFetchedData`
 58. `tests/test_refresh_pipeline.py` (9) → `refresh_test.dart`:
     - `test_web_excuses_sync_before_auto_excuse` → `webExcusesSyncBeforeAutoExcuse`
@@ -389,7 +388,7 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
     - `test_sent_excuses_tristate` → `bakalari_data_test.dart`: `emptyOutboxIsARealEmptyList` / `anotherFolderIsUnknownNotEmpty`
 65. `tests/test_session_lock.py` (6) → `session_lock_test.dart` (`isExclusiveWithinProcess`, `blocksOtherProcess`, `keepsOtherProcessEdits`, `ownEditWinsOnSameKey`, `guardedJobSkipsWhileSessionHeld`, `guardedWorkRecordsFailedRunWhileHeld`) + `refresh_test.dart` (`lockIsExclusiveWithinProcess`, `configSaveKeepsOtherProcessEdits`, `configSaveOwnEditWinsOnSameKey`)
 66. `tests/test_settings_quiet_save.py` (6) → `app/test/settings_quietsave_test.dart` (6 cases, in progress, unreviewed)
-67. `tests/test_settings_refresh_interactive.py` (4 [3 functions]) → **Deferred (phase 5/6 — `AppState` interactive settings during refresh)**
+67. `tests/test_settings_refresh_interactive.py` (4 [3 functions]) → `app/test/settings_refresh_interactive_test.dart` (4 tests, same names)
 68. `tests/test_settings_sections.py` (16 [13 functions]) → `app/test/settings_sections_test.dart` (15 cases covering the 13 functions, in progress, unreviewed)
 69. `tests/test_shutdown.py` (23) → **Deferred (phase 7 — desktop shutdown / process cleanup; Flet-view orphan sweepers decide at phase 7 review)**
 70. `tests/test_single_instance.py` (22) → **Deferred (phase 7 — desktop single-instance loopback TCP tests)**
@@ -415,7 +414,7 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
     - `test_excuse_single_dry_run_fills_only`, `test_excuse_absence_dry_run_sends_nothing` → `automation_test.dart`: `excuseSingleDryRunFillsOnly`, `excuseAbsenceDryRunSendsNothing`
     - `test_submit_excuse_dry_run_leaves_pending`, `test_submit_day_excuse_dry_run_leaves_pending` → `app/test/dry_run_send_test.dart`: `submitExcuseDryRunLeavesPending`, `submitDayExcuseDryRunLeavesPending`
 80. `tests/test_timetable_week_nav.py` (4) → `app/test/phase6_features_test.dart` (`week switch emits once and clears stable view`, `week switch noop emits nothing`) + `app/test/timetable_live_test.dart` (`timetableControllerFor maps AppState and delegates week/view toggles`)
-81. `tests/test_timetable_week_switch.py` (3) → **Deferred (phase 5/6 — `AppState` timetable week switch fetch)**
+81. `tests/test_timetable_week_switch.py` (3) → `app/test/timetable_week_switch_test.dart` (3 tests, same names)
 82. `tests/test_tls_bundle.py` (7) → **Dropped (frozen CA bundle `strakalari/core/tls.py` does not exist in Flutter; Dart uses OS trust store per PLAN §3.2)**
 83. `tests/test_tray_language.py` (1) → **Deferred (phase 7 — desktop tray language)**
 84. `tests/test_tray_ui_command.py` (4) → **Deferred (phase 7 — desktop tray UI command & refresh)**
@@ -433,7 +432,8 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
     - `test_settings_nav_groups_cover_every_section` → `app/test/settings_sections_test.dart` (`nav groups cover every section`, in progress, unreviewed)
     - `test_lunch_meal_name_split`, `test_lunch_menu_hides_past_days_until_asked` → `app/test/lunches_filter_test.dart` (`split meal`) / `app/test/lunches_view_test.dart` (`menu hides past days until asked`, in progress, unreviewed)
     - `test_activity_groups_and_translates_automation_history`, `test_activity_time_helpers`, `test_activity_log_counts_a_traceback_as_one_error` → `app/test/activity_view_test.dart` (in progress, unreviewed)
-    - Remaining 15 timetable/scroll/today view cases → **Deferred (phase 5/6)**
+    - `test_table_view_structure`, `test_timetable_list_view_builds`, `test_timetable_stable_view_builds`, `test_grid_subject_uses_short_name_only_when_needed`, `test_focus_period_marks_current_then_next_lesson`, `test_lesson_look_encodes_state_in_the_cell`, `test_today_picks_text_not_name`, `test_day_name_follows_app_language`, `test_lessons_text_czech_plurals`, `test_activity_stacks_columns_in_narrow_windows` → `app/test/ui_views_test.dart` (same names)
+    - the Flet container-reuse and stale-reply cases → *Dropped* (see the list above)
 88. `tests/test_unconfirmed_excuses.py` (16):
     - 5 `TestHelpers` cases → `excuse_history_test.dart`: `sidecarSitsNextToHistory`, `overlapBlocksEvenAPartialResend`, `wholeDayBlocksItsLessons`, `resolve`, `submitBeforeTheOutboxRangeStaysOpen`
     - 9 `TestSendPath` + `TestOutboxSettles` cases → `automation_test.dart`: `uncertainSubmitIsRecordedNotFailed`, `unconfirmedBlocksTheNextSend`, `certainFailureIsRetryable`, `sidecarWriteFailureFallsBackToHistory`, `autoCountsANewUnconfirmedAsAFailure`, `foundInOutboxIsConfirmed`, `absentFromOutboxAfterGraceIsReleased`, `freshSubmitIsKept`, `failedReadSettlesNothing`
@@ -689,7 +689,7 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
   5. Screenshots parity (`build/parity-screens/`): produce Flet shots
      first (`tools/demo_data.py screenshots`), then Flutter shots?
   6. Beta release (Checkpoint D): cut from the branch only on your go.
-- **B-S5 (decided by owner):** the error dialog's *Share* button (`share_plus`) stays as an intended phone feature (PLAN §3.3 "Share log on the phone"). Listed under Deviations; no change needed.
+- **B-S5 (decided by the owner, 2026-11-11):** the error dialog's *Share* button (`share_plus`) stays as an intended phone feature (PLAN §3.3 "Share log on the phone"). It is listed under Deviations; no change was needed.
 - App version stays the flutter-create template `1.0.0+1` (resolved 2026-11-07:
   CI stamps the real version from the tag at build time).
 - (Resolved 2026-11-07: PLAN.md rows 7–8 and REVIEW_PROMPT.md are the owner's
@@ -788,7 +788,18 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
   - **B-S1, BR-S4** (`4a13fa1`): dialog widths 520/380/440 for the planner custom range, the lesson detail and the signature dialog; the signature and safety dialogs are modal. **B-S2** (`2947ec0`), **B-S3** (`d9743a3`), **B-S6 + BR-S2** (`ade6e4a`), **BR-S1** (`8cbaa0b`), **BR-S3** (`bcf9a43`), **BR-S5 + BR-S6** (`03c0ee4`), **BR2-S1** (`5aecdb0`): see the review and *Deviations*. **B-S5** is a question (below).
   - **B-M11 (part)** (`de91d39`): Activity now has the automation card with the *Pozastavit automatizaci* switch, the two current modes and *Upravit pravidla* (test in `activity_live_test.dart`).
   - **BR-M7** (`tools/parity/capture_screens.dart`, `capture_flet.py`, new `serve_wizard.py`): the Flutter capture now builds what `MyApp` builds (real theme, locale, delegates, no debug banner), writes a demo folder per language **and theme** before `AppState` exists, takes the font folder from `FLUTTER_ROOT`/`~`, and captures the wizard on a fresh folder; the Flet side captures the wizard through `serve_wizard.py` (`demo_data.py serve` skips the wizard, and `tools/demo_data.py` is Python, which stays read-only). Checked on one image (`today-cs-light-1280`: light page, white cards, accent blue, no ribbon). The full 80+68 image sets were NOT re-captured this session. Commands: `cd app; STRAKALARI_PYTHON=<venv python> flutter test ../tools/parity/capture_screens.dart` and `python tools/parity/capture_flet.py` (needs Playwright + Chromium); output in `build/parity-screens/{flutter,flet}/` (not committed).
-  - **Not done:** the rest of B-M11 and a fresh screenshot comparison. B-M13: the stale claims listed in the review are corrected here (header, B-M7 bullets, Dropped, `faa1a77` → `bea1935`); the long test map below still says "Deferred (phase 5/6)" for items 17, 19, 21, 30, 40, 50, 51, 53, 56, 67, 79, 81, 87. Those subjects are ported (files named in the rework entries above and in the Checkpoint B notes), but the map lines themselves were not rewritten.
+  - **Not done in round 3 (done in round 4, below):** the rest of B-M11 and a fresh screenshot comparison. B-M13: the stale claims listed in the review are corrected here (header, B-M7 bullets, Dropped, `faa1a77` → `bea1935`); the long test map below still says "Deferred (phase 5/6)" for items 17, 19, 21, 30, 40, 50, 51, 53, 56, 67, 79, 81, 87. Those subjects are ported (files named in the rework entries above and in the Checkpoint B notes), but the map lines themselves were not rewritten.
+
+- 2026-11-11 · Checkpoint B rework, round 4 (visual parity, **B-M11** and **B-M13**). One commit per screen:
+  - **Shared look** (`shell/theme.dart`, `widgets/app_widgets.dart`): flat bordered cards, outlined filled inputs with the accent focus border, stadium buttons (filled accent / outlined / text), leading-style switch colours, segmented buttons, divider and rail indicator colours, tap targets shrink-wrapped, `Tokens.toThemeData({fontFamily})` (only the screenshot tool passes a family: the test engine has no platform font). `SectionHeader` is small, upper-case, faint and bold; `HeaderRow` has the date line under the title; `StatCard` is the Flet tile (card colour, accent/status value, one line with a tooltip for the tightest subject); `EmptyState` is the inbox icon + text. `tokensOf(context)` gives a view the running token set.
+  - **Today** (`today_view.dart`): the excuse cards use `HeaderRow`/`SectionHeader`/`KindBadge`/`Badge`; dropdown + *Omluvit* + *Ignorovat* on one row (stacked on a phone or in a narrow card), the "Krátká absence" badge next to the date, the *Každou hodinu zvlášť* switch with its tooltip, the status badge in the running-lesson heading. The double gutters are gone on Today, Absences, Marks and Timetable (the shell already pads the content).
+  - **Planner** (`planner_view.dart`, `planner_live.dart`): full port of `planner.build`: header with the two buttons, term switcher, stat tiles, warnings with real subject names, the semester grid (Mon–Fri columns, month labels, day labels, legend, hint, tooltips, today outline, the phone calendar with numbered days), recommended plan rows with tag badges and the "hours from the budget" line, the budget bars and legend, planned rows (cost, over/reserve badges, *day passed* badge) and the footer. The view had shown *Unplan* on rows in the past; it now shows the badge like Python (the old test only passed because it ran against today's date; it now fixes the clock and a new test covers the past case).
+  - **Lunches** (`lunches_view.dart`): day cards with the day name and status badges, radio rows with allergens, the closed note with the deadline, the low-balance card, the past-days button, the side panel (AI card with model badge, preference field that keeps its own controller, *Získat klíč zdarma*, hints, progress; blacklist card with word rows and its own add field).
+  - **Activity** (`activity_view.dart`): update banner, status hero (icon disc, scope picker, refresh/cancel, error details), four stat tiles, run history rows, live log, the right column (automation card, history filter), narrow stacking at 1120 px.
+  - **Settings** (`settings_view.dart`): grouped nav with section icons and the active pill, captioned fields (label above, placeholder inside, eye toggle on passwords), card spacing, hint and title texts, switches with the switch on the left.
+  - **Tests changed for the new look, not weakened:** section headings are upper-case now (the finders upper-case the expected text); screens that are taller or wider than the 800x600 test surface use a larger surface (the Ahem test font is far wider than the real one); `Chyba` appears twice on the Activity screen exactly as in Python.
+  - **B-M13**: the test map lines for items 17, 19, 21, 30, 38, 40, 50, 51, 53, 56, 67, 79 (unchanged, it was already complete), 81 and 87 and `TestNarrowShell` name the real Dart tests. Every Python test in those files has a same-named Dart test (checked by a script that compares the camel-cased names) except the Flet-only ones, which are under *Dropped*.
+  - **Screenshots:** `build/parity-screens/{flutter,flet}/` were re-captured (80 and 76 images) and compared by eye on Today, Planner, Lunches, Activity and Settings (1280 and 390, light and dark). Known differences: the Flet captures show an "update available" button and a next-run time that the demo data in the Flutter capture does not produce; Absences, Marks, Timetable, More and the wizard were not compared again in this round; the wake-up card and the wizard card widths are still unchecked.
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 
@@ -825,12 +836,13 @@ Unsure / needs a second pair of eyes:
 - Gemini `localFallbackRecommendation` keyword lists ported line by
   line (Czech stems); only covered via parity fixtures + fakes.
 
-### ⛔ Checkpoint B: UI review (phases 5–6, FAILED three reviews, rework in progress)
+### ⛔ Checkpoint B: UI review (phases 5–6, FAILED three reviews, round 4 done, waiting for the re-review)
 
 The shell and all ten screens exist and are wired to live `AppState` and
-`strakalari_core`, but they are not yet at visual parity with the Flet app (B-M11)
-and the screenshot tools are not yet reliable (BR-M7). Read the rework log above
-for the current state; the list below is the original round-1 description.
+`strakalari_core`. Round 4 restyled Today, Planner, Lunches, Activity and Settings
+like the Flet screens (B-M11) and the screenshot tools were fixed and re-run (BR-M7).
+Read the rework log above for the current state; the list below is the original
+round-1 description.
 
 What was done:
 - Live Riverpod `AppState` bridges for all screen controllers (`todayControllerFor`,
@@ -856,14 +868,14 @@ What was done:
     - `tools/parity/capture_screens.dart`: captures whole Flutter app (router + AppScaffold + live views, real Roboto and MaterialIcons fonts loaded from SDK cache, light/dark themes, cs/en languages, 1280x800 and 390x844 viewports, 80 screen images total).
     - `tools/parity/capture_flet.py`: automates Flet reference capture via Playwright driving `demo_data.py serve` across all routes, both themes, both languages, both viewports into `build/parity-screens/flet/`.
     - Removed `screenshot_parity_test.dart` from `app/test/` so default test suites run pure unit/widget assertions.
-    - Remaining visual differences (top bar, rail width, table styling, wizard isolation) documented in Checkpoint B review findings and being addressed sequentially.
+    - Remaining visual differences after round 4 are listed in the round-4 entry of the rework log.
 - Windows desktop compilation:
   - `flutter build windows --debug` succeeded (`Strakalari.exe` generated cleanly).
 
 How to verify:
 - `cd packages/strakalari_core && dart analyze && dart test` (764 passed, 2 skipped).
-- `cd app && flutter analyze && flutter test` (425 passed, 1 skipped).
-- Inspect side-by-side screenshots in `build/parity-screens/flet/` vs `build/parity-screens/flutter/`.
+- `cd app && flutter analyze && flutter test` (469 passed, 1 skipped).
+- Re-capture and compare: `cd app; STRAKALARI_PYTHON=<venv python> flutter test ../tools/parity/capture_screens.dart` and `python tools/parity/capture_flet.py` (needs Playwright + Chromium), then look at `build/parity-screens/flet/` vs `build/parity-screens/flutter/`.
 - Test app startup on demo data dir: `python tools/demo_data.py generate build/parity-screens/demo-cs` and run debug executable.
 
 Unsure / needs a second pair of eyes:
