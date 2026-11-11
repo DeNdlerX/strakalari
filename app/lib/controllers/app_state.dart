@@ -256,6 +256,10 @@ class AppState {
     String language,
   }) recommendLunchesFn = recommendLunches;
 
+  /// Gemini transport seam for the key test (Python tests monkeypatch
+  /// `gemini.test_api_key`; null = the real HTTPS transport).
+  GeminiTransport? geminiTransport;
+
   /// Optional test seam for `isLunchOrderOpen`.
   bool Function(String day, [DateTime? now])? isLunchOrderOpenOverride;
 

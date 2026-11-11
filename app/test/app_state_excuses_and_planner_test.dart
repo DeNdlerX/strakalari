@@ -73,6 +73,54 @@ void main() {
     } catch (_) {}
   });
 
+  // tests/test_excuse_history.py::TestHistoryCoverage (the UI coverage wrapper)
+  group('TestHistoryCoverage', () {
+    test('pureDaysCovers', () {
+      final task = {'date': '2026-09-07', 'period': 2};
+      final history = [
+        {
+          'type': 'pure days',
+          'starting_day': '07.09.2026',
+          'ending_day': '08.09.2026'
+        }
+      ];
+      expect(taskCoveredByHistory(task, history), isTrue);
+    });
+
+    test('lessonRangeCoversOnlyInside', () {
+      final history = [
+        {
+          'type': 'days and hours',
+          'starting_day': '07.09.2026',
+          'ending_day': '07.09.2026',
+          'starting_lesson': 1,
+          'ending_lesson': 2
+        }
+      ];
+      expect(taskCoveredByHistory({'date': '2026-09-07', 'period': 2}, history),
+          isTrue);
+      expect(taskCoveredByHistory({'date': '2026-09-07', 'period': 3}, history),
+          isFalse);
+      expect(taskCoveredByHistory({'date': '2026-09-08', 'period': 1}, history),
+          isFalse);
+    });
+
+    test('ambiguousEntriesNeverHide', () {
+      final task = {'date': '2026-09-07', 'period': 1};
+      expect(
+          taskCoveredByHistory(task, [
+            {'type': 'days and hours'}
+          ]),
+          isFalse);
+      expect(
+          taskCoveredByHistory(task, [
+            {'nonsense': true}
+          ]),
+          isFalse);
+      expect(taskCoveredByHistory({'date': '', 'period': 1}, []), isFalse);
+    });
+  });
+
   group('test_excuse_ignore_list (AppState)', () {
     test('ignoreRollsBackWhenSaveFails', () {
       final state = AppState();
@@ -230,6 +278,67 @@ void main() {
           () => throw const FileSystemException('disk full');
       expect(state.unplanEntry(entry), isFalse);
       expect(state.plannedSkips.length, 1);
+    });
+
+    // tests/test_planned_skips.py::test_plan_custom_skip_reports_persist_failure
+    test('planCustomSkipReportsPersistFailure', () {
+      final days = <String, Object?>{};
+      for (var week = 0; week < 3; week++) {
+        for (final add in [0, 1]) {
+          final day = addDays(DateTime(2026, 9, 7), week * 7 + add);
+          days[fmtDay(day)] = [
+            {
+              'subject': 'Matematika',
+              'time': '1 (8:00 - 8:45)',
+              'room': 'U12',
+              'teacher': 'Novak'
+            },
+          ];
+        }
+      }
+      final state = AppState(data: {
+        'absence': {'Matematika': 5.0},
+        'timetable': days,
+      });
+      state.demoMode = false;
+      state.config.saveOverride =
+          () => throw const FileSystemException('disk full');
+      expect(
+          state.planCustomSkip('2026-09-15', '2026-09-15', null, null, 'tpl'),
+          isFalse);
+      // Memory rolls back to match disk: nothing planned, nothing to unplan.
+      expect(state.plannedSkips, isEmpty);
+      expect(
+          state.unplanEntry({
+            'start_date': '2026-09-15',
+            'end_date': '2026-09-15',
+            'template': 'tpl'
+          }),
+          isFalse);
+    });
+
+    // tests/test_planned_skips.py::test_unplan_entry_reports_stale
+    test('unplanEntryReportsStale', () {
+      final state = AppState();
+      expect(state.planSkip('2026-09-08', 'template'), isTrue);
+      final entry = Map<String, Object?>.of(state.plannedSkips.last);
+      expect(state.unplanEntry(entry), isTrue);
+      expect(state.unplanEntry(entry), isFalse); // already gone: no toast
+    });
+
+    // tests/test_planned_skips.py::test_plan_custom_skip_rolls_back_on_persist_failure
+    test('planCustomSkipRollsBackOnPersistFailure', () {
+      final state = AppState();
+      state.config.saveOverride =
+          () => throw const FileSystemException('disk full');
+      final ok = state.planCustomSkip(
+          '2030-10-05', '2030-10-05', null, null, 'tpl',
+          cancelLunch: true);
+      expect(ok, isFalse);
+      expect(state.plannedSkips, isEmpty);
+      expect(state.cancelledLunches, isEmpty);
+      expect(state.orders, isEmpty);
+      expect(state.pendingOrders, isEmpty);
     });
   });
 

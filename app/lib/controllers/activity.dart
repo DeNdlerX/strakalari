@@ -563,7 +563,10 @@ extension ActivityLogic on AppState {
         }
         addLog(Strings.format('test_ai_key_log', {'model': model}));
         (ok, message) =
-            await testApiKey(key, model: model, language: language);
+            await testApiKey(key,
+                model: model,
+                language: language,
+                transport: geminiTransport);
       } else {
         addLog(Strings.format('test_login_log', {'service': service}));
         final app = createApp(

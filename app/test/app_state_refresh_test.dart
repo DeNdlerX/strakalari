@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:app/controllers/app_state.dart';
@@ -51,5 +52,20 @@ void main() {
     expect(state.startUpdateCheck(), isTrue);
     expect(state.startUpdateCheck(), isFalse);
     expect(jobs, hasLength(1));
+  });
+
+  // tests/test_wizard_setup.py::test_ai_connection_test_path
+  test('aiConnectionTestPath', () async {
+    state.geminiTransport = (uri,
+        {required headers, body, required timeout}) async {
+      expect(headers['x-goog-api-key'], 'AIza-test');
+      return GeminiHttpResponse(200, utf8.encode('{"name":"models/x"}'));
+    };
+    expect(state.testConnection('ai', {'gemini_api_key': 'AIza-test'}), isTrue);
+    expect(state.testing, 'ai');
+    await jobs.single();
+    expect(state.lastTest['service'], 'ai');
+    expect(state.lastTest['ok'], isTrue);
+    expect(state.testing, '');
   });
 }
