@@ -129,5 +129,60 @@ void main() {
             reason: entity.path);
       }
     });
+
+    // tests/test_i18n.py::TestI18nKeys::test_new_flet_strings_present
+    test('newFletStringsPresent', () {
+      final saved = Strings.lang;
+      addTearDown(() => Strings.lang = saved);
+      for (final key in [
+        'excuse_sending',
+        'excuse_failed',
+        'need_credentials',
+        'send_orders',
+        'orders_sending',
+        'orders_sent',
+        'orders_failed',
+      ]) {
+        expect(Strings.allKeys, contains(key));
+        for (final lang in ['cs', 'en']) {
+          Strings.lang = lang;
+          expect(Strings.get(key), isNot(key), reason: '$lang/$key');
+          expect(Strings.get(key), isNotEmpty);
+        }
+      }
+    });
+
+    // tests/test_i18n.py::test_dead_keys_removed_and_live_keys_kept
+    test('deadKeysRemovedAndLiveKeysKept', () {
+      const deadKeys = [
+        'apply_filter', 'cal_preset_days', 'cal_use_preset', 'cancel_order',
+        'change', 'col_pct', 'col_state', 'current_task', 'demo_data',
+        'density_comfort', 'empty_lesson', 'ends_at', 'excuse_one_click',
+        'leave_blank_keeps', 'leave_blank_keeps_key', 'password_kept',
+        'lesson_detail', 'lunch_will_cancel', 'notes_count',
+        'notif_section_hint', 'order', 'order_cancelled', 'orders_partial',
+        'refresh_cancelled', 'refresh_finished', 'save', 'saves_instantly',
+        'school_done', 'stale', 'status', 'status_working',
+        'today_subtitle', 'holidays', 'school_year_end', 'limit_pct',
+        'best_days', 'no_suggestions', 'plan_safe_note', 'tightest',
+        'budget_left',
+      ];
+      for (final key in deadKeys) {
+        expect(Strings.allKeys, isNot(contains(key)),
+            reason: 'dead key still present: $key');
+      }
+      final saved = Strings.lang;
+      addTearDown(() => Strings.lang = saved);
+      for (final key in [
+        'need_credentials', 'already_running', 'bakalari_skipped_log',
+        'update_open_releases', 'wiz_finishing_refresh', 'theme',
+        'blacklist_broken_log',
+      ]) {
+        for (final lang in ['cs', 'en']) {
+          Strings.lang = lang;
+          expect(Strings.get(key), isNot(key), reason: '$lang/$key');
+        }
+      }
+    });
   });
 }
