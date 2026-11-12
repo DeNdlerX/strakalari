@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/rendering.dart';
@@ -92,6 +93,13 @@ void main() {
               (tester) async {
             tester.view.physicalSize = Size(width.toDouble(), height.toDouble());
             tester.view.devicePixelRatio = 1.0;
+            // `flutter test` runs as Android. The 1280 px images stand for
+            // the Windows build (compact desktop density, like the Flet
+            // desktop capture); the 390 px ones stay a phone. Reset at the
+            // end of the body: the test binding checks it before tear-down.
+            debugDefaultTargetPlatformOverride =
+                width >= 720 ? TargetPlatform.windows : null;
+            try {
             addTearDown(() {
               tester.view.resetPhysicalSize();
               tester.view.resetDevicePixelRatio();
@@ -195,6 +203,9 @@ void main() {
               final dest = File('${outDir.path}/$screen-$lang-$theme-$width.png');
               dest.writeAsBytesSync(bytes);
             });
+            } finally {
+              debugDefaultTargetPlatformOverride = null;
+            }
           });
         }
       }
