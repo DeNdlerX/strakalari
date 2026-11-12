@@ -24,4 +24,16 @@ void main() {
     expect(text, contains('if (!releaseSigningFound)'));
     expect(text, contains('throw GradleException('));
   });
+
+  test('aRebootNoLongerAsksToOpenTheApp', () {
+    // C-N3 (owner): the headless entry restarts the refresh by itself,
+    // so BootReceiver only re-arms the wake-up alarms and the widget.
+    final file = File(
+        'android/app/src/main/java/io/github/dendlerx/strakalari/android/BootReceiver.java');
+    if (!file.existsSync()) return;
+    final code = file.readAsStringSync().split('public class BootReceiver').last;
+    expect(code, isNot(contains('Notifications.show')));
+    expect(code, contains('AlarmReceiver.scheduleNext(context)'));
+    expect(code, contains('TimetableWidgetProvider.refreshAll(context)'));
+  });
 }
