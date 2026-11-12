@@ -375,7 +375,8 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
     - 3 `flet_ui.app`/`tray` cases (`test_register_jobs_seeds_from_fresh_cache`, `test_register_jobs_empty_cache_refreshes_on_start`, `test_tray_startup_seed`) → **Deferred (phase 5/7 — UI/tray scheduler registration)**
 61. `tests/test_scheduler_retry.py` (7):
     - 2 core `PeriodicRunner` cases → `scheduler_test.dart`: `intervalProviderIsPolled`, `jobFailedCountsAsFailureButReported`
-    - 5 window/tray cases (`test_window_job_raises_when_refresh_failed`, `test_window_job_ignores_cancelled_run_in_any_language`, `test_window_job_stops_waiting_on_shutdown`, `test_window_job_gives_up_on_a_hung_refresh`, `test_tray_interval_follows_config_file`) → **Deferred (phase 5/7 — `flet_ui.app` / `tray` job wrappers)**
+    - 4 window-job cases → `app/test/scheduler_retry_test.dart` (`AppState.scheduledRefreshJob`): `windowJobRaisesWhenRefreshFailed`, `windowJobIgnoresCancelledRunInAnyLanguage`, `windowJobStopsWaitingOnShutdown`, `windowJobGivesUpOnAHungRefresh`
+    - `test_tray_interval_follows_config_file` → **Deferred (phase 7 — one-process loop reads the interval from the live `AppState`, not a separate tray process's config file; decide at review)**
 62. `tests/test_school_calendar.py` (20):
     - 15 preset/calendar cases → `school_presets_test.dart`: `expandsAllRangesAndSingles`, `closes`, ` overrideModel`, `customPresetOnlyUserDays`, `userWinsThenPreset`, `canonicalDefaultsHaveCalendarKeys`, `pruneOrphanForced`, `fileIsPickedUp`, `invalidFileIsIgnored`, `cannotReplaceShippedOne`, `shippedPresetsAreValid`, `shipsItsPercentTable`, `resolutionOrder`, `presetBandsValidated`
     - `test_no_migration_legacy_holidays_ignored`, `test_fresh_config_assumes_no_school` → `parity_school_presets_test.dart` + `config_test.dart` (`legacyKeysAreIgnored`)
@@ -673,7 +674,10 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
 
 ## Questions for the owner / reviewer
 
-- Phase 8 (2026-11-12): the APK build failed until core library desugaring was enabled (`flutter_local_notifications` requires it); `flutter build apk --debug --flavor phonetest` now succeeds. The phone already has a Flet `.test` app (0.2.2, signed with the upload key, data unknown): a debug build cannot update it; waiting on the owner whether to uninstall it (erases its data) or update it in place with a release-signed build.
+- Phase 8 (2026-11-12): the APK build failed until core library desugaring was enabled (`flutter_local_notifications` requires it). The owner agreed to wipe the old Flet `.test` app; the Flutter `.test` debug build is installed on the Pixel 7 Pro with demo data (local demo server over `adb reverse`, dry run, Strava off).
+- Start-up wiring was missing (found on the phone, 2026-11-12): `main.dart` never called the phase 7/8 platform code. The phone hung on the splash (no data dir → `AppState` failed → the error card re-threw forever); on Windows there was no tray, single instance, OS key store, toasts or automatic refresh. Now wired in `app/lib/platform/startup.dart` (port of `main.py`, `run()`, `run_mobile()` and the platform half of `main(page)`). Please review it as new code.
+- Android key race (Flutter-only): the UI and a headless wake-up are two isolates in one process and each created its own password key (the second write won). Now only the first creates `secret.key.wrapped`, the other adopts it (exclusive create). Seen fixed on the phone.
+- One-process deviations to sign off: the tray icon is always shown (Python's in-window tray appeared on the first hide) and its menu has Pause like the `--minimized` tray; `test_tray_interval_follows_config_file` has no direct twin.
 
 - Phase 7: the MSIX package probably needs the VC++ runtime too (the Inno installer now ships it app-local; `tools/make_msix.py --app-dir` stages only the Release folder). Untested.
 - Phase 7: the over-install test seeded the key as `secret.key`; reading a Python-keyring entry from Credential Manager after the upgrade is still untested in Sandbox.
