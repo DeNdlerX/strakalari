@@ -130,6 +130,17 @@ int mainPort() => portBase();
 /// and normally only binds [mainPort].
 int uiPort() => portBase() + 1;
 
+/// `chmod 600`: another OS user must not read the token (Python creates
+/// it with mode 0o600). Windows: the per-user data dir's ACL does that.
+void _ownerOnly(String path) {
+  if (Platform.isWindows) return;
+  try {
+    Process.runSync('chmod', ['600', path]);
+  } catch (_) {
+    // Best effort, like Python's os.chmod fallback.
+  }
+}
+
 /// This user's handshake token (32 hex chars), created on first use.
 ///
 /// Lives in the per-user data dir, so another OS user cannot read it.
@@ -156,6 +167,7 @@ Future<List<int>> instanceToken(String dataDir) async {
     try {
       final token = _randomToken();
       await file.create(exclusive: true);
+      _ownerOnly(path); // Python: os.open(..., 0o600)
       await file.writeAsBytes(token, flush: true);
       return token;
     } on PathExistsException {
@@ -168,6 +180,8 @@ Future<List<int>> instanceToken(String dataDir) async {
   try {
     final token = _randomToken();
     final tmp = File('$path.tmp-$pid');
+    await tmp.create();
+    _ownerOnly(tmp.path);
     await tmp.writeAsBytes(token, flush: true);
     await tmp.rename(path);
     return token;
