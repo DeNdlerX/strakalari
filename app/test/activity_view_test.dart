@@ -1,5 +1,6 @@
 import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:app/features/activity/activity_controller.dart';
@@ -129,6 +130,55 @@ void main() {
       // activity.py: `status_error` and `run_failed` share the text).
       expect(find.text(Strings.get('status_error')), findsNWidgets(2));
       expect(find.text('boom'), findsWidgets);
+    });
+
+    // tests/test_error_report.py::test_activity_log_copy_redacts_secrets
+    test('activityLogCopyRedactsSecrets', () {
+      final c = ActivityController({'bakalari_password': 'hunter2-hunter2'})
+        ..logLines = [
+          '[10:00] login with hunter2-hunter2 failed',
+          '[10:01] ok',
+        ];
+      final body = redactedLogTail(c, 200);
+      expect(body, isNot(contains('hunter2-hunter2')));
+      expect(body, contains('***'));
+      expect(body, contains('ok'));
+    });
+
+    test('redacted log tail keeps only the last lines', () {
+      final c = _controller()
+        ..logLines = [for (var i = 0; i < 250; i++) 'line $i'];
+      final lines = redactedLogTail(c).split('\n');
+      expect(lines, hasLength(200));
+      expect(lines.first, 'line 50');
+      expect(lines.last, 'line 249');
+    });
+
+    testWidgets('copy log button copies the redacted log only', (t) async {
+      _surface(t);
+      String? copied;
+      t.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      });
+      addTearDown(() => t.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null));
+      final c = ActivityController({'bakalari_password': 'hunter2-hunter2'})
+        ..logLines = [
+          '[10:00] login with hunter2-hunter2 failed',
+          '[10:01] ok',
+        ];
+      await t.pumpWidget(_app(ActivityView(controller: c)));
+      await t.tap(find.byTooltip(Strings.get('log_copy_tooltip')));
+      await t.pump();
+      expect(copied, isNotNull);
+      expect(copied, isNot(contains('hunter2-hunter2')));
+      expect(copied, contains('***'));
+      expect(copied, contains('[10:01] ok'));
+      expect(SnackLog.last, Strings.get('error_copied'));
     });
 
     testWidgets('log card shows error badge and clears', (t) async {

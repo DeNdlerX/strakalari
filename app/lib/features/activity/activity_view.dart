@@ -9,6 +9,15 @@ import 'package:app/features/common/open_url.dart' as open_url;
 import 'package:app/widgets/app_widgets.dart' as w;
 import 'package:app/widgets/overlays.dart';
 
+/// Log tail with known secret values scrubbed: the only form logs may be
+/// copied in. Port of `activity.redacted_log_tail`.
+String redactedLogTail(ActivityController c, [int limit = 200]) {
+  final lines = c.logLines.length > limit
+      ? c.logLines.sublist(c.logLines.length - limit)
+      : c.logLines;
+  return [for (final line in lines) core.redactText(line, c.config)].join('\n');
+}
+
 /// Time helpers (port of activity._ago/_clock/_duration/_run_when).
 String agoText(DateTime? when, DateTime now) {
   if (when == null) return '—';
@@ -769,7 +778,16 @@ class ActivityView extends StatelessWidget {
             appSnack(context, Strings.get('no_log_yet'));
             return;
           }
-          final ok = await copyAppText(c.logLines.join('\n'));
+          String body;
+          try {
+            body = redactedLogTail(c);
+          } catch (_) {
+            // Fail closed: never fall back to copying raw logs that may
+            // still hold secrets.
+            appSnack(context, Strings.get('error_copy_failed'));
+            return;
+          }
+          final ok = await copyAppText(body);
           if (context.mounted) {
             appSnack(
                 context,
