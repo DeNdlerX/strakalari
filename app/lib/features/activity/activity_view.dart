@@ -1,5 +1,6 @@
 import 'package:clock/clock.dart';
 import 'package:app/l10n/strings.dart';
+import 'package:strakalari_core/strakalari_core.dart' as core;
 import 'package:flutter/material.dart';
 
 import 'package:app/features/activity/activity_controller.dart';
@@ -636,7 +637,7 @@ class ActivityView extends StatelessWidget {
       success = '$good/$total';
       successKind = good == total ? 'ok' : (good > 0 ? 'warning' : 'failed');
     }
-    final weekAgo = now.subtract(const Duration(days: 7));
+    final weekAgo = core.addDays(now, -7);
     final sent = audit
         .where((i) =>
             i['outcome'] == 'sent' &&

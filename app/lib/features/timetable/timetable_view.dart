@@ -89,7 +89,7 @@ final header = _headerRow();
     } else {
       current = c.resolveCurrent(weeks, today: now);
       weekDays = weeks[current] ?? {};
-      final fri = current.add(const Duration(days: 4));
+      final fri = core.addDays(current, 4);
       final weekNo = _isoWeek(current);
       navLabel = '${Strings.get('week')} $weekNo · '
           '${current.day.toString().padLeft(2, '0')}.${current.month.toString().padLeft(2, '0')}. – '

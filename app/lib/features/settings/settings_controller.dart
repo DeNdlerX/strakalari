@@ -391,9 +391,7 @@ class SettingsController {
     final label = draft('cal:range_label', '').trim();
     final days = userFreeDays();
     var added = 0;
-    for (var d = start;
-        !d.isAfter(end);
-        d = d.add(const Duration(days: 1))) {
+    for (var d = start; !d.isAfter(end); d = core.addDays(d, 1)) {
       final key =
           '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
       if (days.any((x) => x['date'] == key)) continue;

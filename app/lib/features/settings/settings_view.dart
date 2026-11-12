@@ -1,5 +1,6 @@
 import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
+import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import 'package:app/features/settings/settings_controller.dart';
 import 'package:app/features/settings/wakeup_card.dart';
@@ -852,7 +853,7 @@ class SettingsView extends StatelessWidget {
               if (days.isEmpty) _Hint(Strings.get('cal_no_days')),
               // Consecutive days with the same label form one grouped
               // row with one delete button (like the Python timeline).
-              for (final group in _groupDays(days))
+              for (final group in groupDays(days))
                 ListTile(
                   title: Text(group.$1),
                   subtitle: group.$2.isEmpty ? null : Text(group.$2),
@@ -875,7 +876,8 @@ class SettingsView extends StatelessWidget {
 
   /// Groups consecutive free days with the same label into
   /// (title, label, [dateKeys]) ranges.
-  static List<(String, String, List<String>)> _groupDays(
+  @visibleForTesting
+  static List<(String, String, List<String>)> groupDays(
       List<Map<String, String>> days) {
     final parsed = <(DateTime, String, String)>[];
     final fmt = RegExp(r'^(\d{1,2})\.(\d{1,2})\.(\d{4})$');
@@ -897,7 +899,7 @@ class SettingsView extends StatelessWidget {
     for (final p in parsed) {
       final last = current == null || current.isEmpty ? null : current.last;
       if (last != null &&
-          p.$1.difference(last.$1).inDays == 1 &&
+          core.daysBetween(last.$1, p.$1) == 1 &&
           p.$3 == last.$3) {
         current!.add(p);
       } else {

@@ -765,7 +765,7 @@ class TodayController extends ChangeNotifier {
     }
     // Evening / weekend / holiday: the next school day's first lesson.
     for (var ahead = 1; ahead <= 7; ahead++) {
-      final day = today.add(Duration(days: ahead));
+      final day = core.addDays(today, ahead);
       final key = dayKey(day);
       final rows = [
         for (final item in (timetable[key] ?? const []))
@@ -809,8 +809,8 @@ class TodayController extends ChangeNotifier {
       return (changes: const [], notes: const []);
     }
     final today = DateTime(now.year, now.month, now.day);
-    final monday = today.subtract(Duration(days: today.weekday - 1));
-    final sunday = monday.add(const Duration(days: 6));
+    final monday = core.addDays(today, -(today.weekday - 1));
+    final sunday = core.addDays(monday, 6);
 
     int orderOf(Map<String, Object?> item) {
       final rawLesson = item['lesson'] as Map<Object?, Object?>?;
@@ -908,7 +908,7 @@ class TodayController extends ChangeNotifier {
   String? plannerTip(DateTime now) {
     if (demoMode) return null;
     final today = DateTime(now.year, now.month, now.day);
-    final limit = today.add(const Duration(days: 14));
+    final limit = core.addDays(today, 14);
     final upcoming = plannerRecommended
         .where((d) => !d.isBefore(today) && !d.isAfter(limit))
         .toList()

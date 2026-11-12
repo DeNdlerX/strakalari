@@ -263,25 +263,6 @@ Map<String, dynamic>? normalizePlannedEntry(Map<String, dynamic> raw) {
   };
 }
 
-/// ISO days covered by [entry] (whole days when no periods set).
-List<DateTime> entryDays(Map<String, dynamic> entry) {
-  DateTime start;
-  DateTime end;
-  try {
-    start = DateTime.parse('${entry['start_date']}');
-    end = DateTime.parse('${entry['end_date']}');
-  } catch (_) {
-    return [];
-  }
-  final out = <DateTime>[];
-  for (var d = start;
-      !d.isAfter(end);
-      d = d.add(const Duration(days: 1))) {
-    out.add(DateTime(d.year, d.month, d.day));
-  }
-  return out;
-}
-
 String entryStartIso(Map<String, dynamic> entry) =>
     '${entry['start_date'] ?? ''}';
 

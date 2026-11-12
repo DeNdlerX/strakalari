@@ -550,12 +550,13 @@ class PlannerView extends StatelessWidget {
     for (final row in term.planned) {
       if (row.over) overDays.addAll(row.days.map(_d));
     }
-    final firstMonday = _d(
-      term.start,
-    ).subtract(Duration(days: term.start.weekday - 1));
+    final firstMonday = core.addDays(
+      _d(term.start),
+      -(term.start.weekday - 1),
+    );
     final names = [
       for (var i = 0; i < 5; i++)
-        w.dayName(firstMonday.add(Duration(days: i)), true),
+        w.dayName(core.addDays(firstMonday, i), true),
     ];
     Widget strip;
     if (narrow) {
@@ -580,7 +581,7 @@ class PlannerView extends StatelessWidget {
       var monday = firstMonday;
       while (!monday.isAfter(term.close)) {
         final week = [
-          for (var i = 0; i < 5; i++) monday.add(Duration(days: i)),
+          for (var i = 0; i < 5; i++) core.addDays(monday, i),
         ];
         final inTerm = [
           for (final d in week)
@@ -624,7 +625,7 @@ class PlannerView extends StatelessWidget {
             ],
           ),
         );
-        monday = monday.add(const Duration(days: 7));
+        monday = core.addDays(monday, 7);
       }
       strip = Column(spacing: 4, children: rows);
     } else {
@@ -633,7 +634,7 @@ class PlannerView extends StatelessWidget {
       int? lastMonth;
       while (!monday.isAfter(term.close)) {
         final week = [
-          for (var i = 0; i < 5; i++) monday.add(Duration(days: i)),
+          for (var i = 0; i < 5; i++) core.addDays(monday, i),
         ];
         final inTerm = [
           for (final d in week)
@@ -675,7 +676,7 @@ class PlannerView extends StatelessWidget {
             ),
           ),
         );
-        monday = monday.add(const Duration(days: 7));
+        monday = core.addDays(monday, 7);
       }
       strip = Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1898,11 +1899,11 @@ class _CustomPlanDialogState extends State<CustomPlanDialog> {
 
   Widget _calendarGrid() {
     final first = DateTime(month.year, month.month, 1);
-    var monday = first.subtract(Duration(days: first.weekday - 1));
+    var monday = core.addDays(first, -(first.weekday - 1));
     final rows = <Widget>[];
     final end = monthAdd(month, 1);
     while (monday.isBefore(end)) {
-      final week = [for (var i = 0; i < 5; i++) monday.add(Duration(days: i))];
+      final week = [for (var i = 0; i < 5; i++) core.addDays(monday, i)];
       if (week.any((d) => d.month == month.month)) {
         rows.add(
           Row(
@@ -1917,7 +1918,7 @@ class _CustomPlanDialogState extends State<CustomPlanDialog> {
           ),
         );
       }
-      monday = monday.add(const Duration(days: 7));
+      monday = core.addDays(monday, 7);
     }
     return Column(children: rows);
   }

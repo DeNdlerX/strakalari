@@ -1,3 +1,5 @@
+import 'package:strakalari_core/strakalari_core.dart' show entryDays;
+
 import 'plan_reserve.dart';
 
 /// Planner state. Port of state_planner.PlannerMixin (UI-owned parts).

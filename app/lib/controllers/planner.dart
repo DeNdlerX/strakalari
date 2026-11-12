@@ -293,7 +293,7 @@ extension PlannerLogic on AppState {
     } catch (_) {
       // Fall through to tomorrow.
     }
-    return today.add(const Duration(days: 1));
+    return addDays(today, 1);
   }
 
   /// Whole days off per term the plan aims for (0 = as many as fit).
