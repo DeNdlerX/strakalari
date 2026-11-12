@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 6 (Checkpoint B rework round 5 done, waiting for re-review 4) · Next step: **Stop: a reviewer re-checks Checkpoint B (all re-review 3 findings are fixed, see the round 5 entry in the rework log).** After a PASS: phase 7 desktop checks (Sandbox over-install test) and phase 8 phone checks (ask the owner before the first install on the Pixel 7 Pro).
+Current phase: 6 (Checkpoint B re-review 4: PASS WITH FIXES, 2026-11-12) · Next step: **Fix every finding in `reviews/checkpoint-B.md` (blockers first), one commit per finding, then stop for re-review.** The open findings are under *Re-review 4*: BR4-S1 … BR4-S4 (all should-fix). After a PASS: phase 7 desktop checks (Sandbox over-install test) and phase 8 phone checks (ask the owner before the first install on the Pixel 7 Pro).
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -812,6 +812,7 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
   - **BR3-S1**: `gFormat` is Python's `format(x, 'g')`; `gformat_test.dart` compares 38 values against a table printed by Python. **BR3-S2**: one half-even helper (core `roundHalfEvenToInt`, now public; the app copy is gone), `tintColor` and the budget shares use it; one weekday-name table (`format.dart`; `app_widgets.dayName` and the planner dialog use it). **BR3-S3**: `capture_flet.py` sets `STRAKALARI_NO_KEYRING` and `DEMO_NO_UPDATE_BANNER`. **BR3-S4**: `save` / `saveQuiet` in `SettingsController` print `Warning: could not save settings: …` on a thrown error (test); the "value is in memory before the save worked" part is the same as Python's `save_quiet` and was left alone.
   - **Screenshots:** both sets re-captured (80 Flutter, 76 Flet) and Absences and Marks (cs dark 1280) compared by eye: they match. The Flet wizard capture caught only the start-up logo (timing in `capture_flet.py`, not a difference in the app), so the wizard changes are checked by `wizard_look_test.dart` against the Python lines, not by a screenshot. Timetable and the phone layouts were not compared by eye this round.
   - Checks: core `dart analyze` clean, `dart test` 764 passed / 2 skipped; app `flutter analyze` clean, `flutter test` 498 passed / 1 skipped.
+- 2026-11-12 · Checkpoint B re-review 4: **PASS WITH FIXES** (all re-review 3 findings fixed; 0 blockers, 0 must-fix; 4 should-fix BR4-S1 … BR4-S4: card outlines, the Flet capture saving the start-up logo, the Flutter capture's control size at 1280 px, STATUS wording) — [docs/flutter-migration/reviews/checkpoint-B.md](docs/flutter-migration/reviews/checkpoint-B.md#re-review-4-2026-11-12)
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 

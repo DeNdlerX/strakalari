@@ -1216,3 +1216,122 @@ throwaway probe (`app/test/zz_reviewer_probe_test.dart`) was run once and delete
 
 **Not verified in this re-review:** the phase 7–9 code (Checkpoints C and D), phones and
 Windows Sandbox.
+
+## Re-review 4 (2026-11-12)
+
+Reviewed at `919cf6c`, commits `2877222..919cf6c` (12 commits since the re-review 3 commit
+`3e443d0`: rework round 5, one commit per finding).
+
+### Verdict: **PASS WITH FIXES**
+
+Every finding of re-review 3 is fixed in the code, not only marked fixed: the Planner grid
+and the day ranges are right across the clock change, *Copy log* copies only the scrubbed
+log, the app suite is green and no longer depends on today's date, and the listed screen
+differences are gone in my screenshots. No blocker and no must-fix is open. Four should-fix
+items are left (BR4-S1 … BR4-S4): a few cards without their thin outline, and three about the
+screenshot tools and STATUS.md wording.
+
+Fix order: BR4-S1, BR4-S2, BR4-S3, BR4-S4. One commit per finding, named
+`Checkpoint B <ID>: …`, then stop for re-review.
+
+### Status of the re-review 3 findings
+
+| ID | State | Checked how |
+|---|---|---|
+| BR3-B1 | **fixed** | Read `2877222` line by line: every site named in the finding uses `core.addDays` / `core.daysBetween` (`planner_view.dart:553-559, 584, 628, 637, 679, 1881-1900`, `settings_controller.dart:398`, `settings_view.dart:902`, `today_controller.dart:768, 812-813, 911`, `controllers/planner.dart:296`, `activity_view.dart:649`, `timetable_view.dart:92`); `plan_reserve.entryDays` is deleted and `planner_controller.dart` imports the core's. `addDays` keeps the time of day (`helpers.dart:39-44`), so `weekAgo` = Python `now - timedelta(days=7)` (`activity.py:363`). My greps for `Duration(days`, `.inDays`, `hours: 24`, `86400`, `…PerDay` under `app/lib`: none. `calendar_days_dst_test.dart` (guard, `entryDays` and `addDayRange` for 23.10.–30.10.2026 and 26.3.–2.4.2027, grouping, the grid on 12 Nov 2026 wide and phone, the custom dialog's October) passes on this PC (Europe/Prague). Screenshot `planner-cs-dark-1280`: today is outlined in the *Čt* row in both apps and every recommended day sits in the same cell |
+| BR3-B2 | **fixed** | `activity_view.dart:12-19` `redactedLogTail` = `activity.py:437-442` (last 200 lines, `core.redactText(line, config)` per line; `c.config` is `s.config.data`, `activity_live.dart:17`); the button (`:781-790`) fails closed with `error_copy_failed` like `activity.py:476-487`. Tests: `activityLogCopyRedactsSecrets` = `test_error_report.py:104-117` assertion by assertion, plus the 200-line cut and the real button against a mocked clipboard |
+| BR3-M1 | **fixed** | `wakeup_ui_test.dart:127-192` injects the two tasks, pins the clock, and asserts the four Python checks (`test_wakeup_and_widget.py:411-429`): exactly one tile, collapsed, title, the tile open after `setDayExpanded`. My `flutter test` today: 498 passed, 0 failed |
+| BR3-M2 | **fixed** | Each row of the table read in the diff and seen in my screenshots: Absences percentage right of a 140 px track (`Meter` = `components.py:244-281`, `.1f`), date line, coloured stat values; Marks date line, full-width tiles (two per line on a phone), *Auto* icon (`marks.py:165`); wizard card at the top, chosen language filled, current dot yellow; Timetable 4 px gaps. Leftover outline and spacing: BR4-S1 |
+| BR3-M3 | **fixed** | `app_state_error_and_quiet_test.dart` read against `test_error_report.py:122-135, 364-385, 446-454` and `test_settings_quiet_save.py:17-29`: same inputs and assertions, against `AppState` / `AppScaffold`. The two Flet-only cases are under *Dropped* with valid reasons. The bug the port found (`UserError: …` prefix in `user_message`) is fixed in `controllers/activity.dart:44-45` (= Python `str(exc)`, which has no type name). Map wording: BR4-S4 |
+| BR3-S1 | **fixed** | `format.dart:107-125`; I ran all 38 rows of `gformat_test.dart` through Python `format(x, 'g')` myself: 0 mismatches |
+| BR3-S2 | **fixed** | one `roundHalfEvenToInt` (core, public), used by `tintColor` and the budget shares; one weekday table (`format.dart:15-54`), `app_widgets.dayName` and the plan dialog delegate to it |
+| BR3-S3 | **fixed** | `capture_flet.py:9-15, 51, 95`. The tool has another problem: BR4-S2 |
+| BR3-S4 | **fixed** | `settings_controller.dart:101-105, 119-123` print `Warning: could not save settings: …`; test added. Leaving the in-memory value as Python's `save_quiet` does: accepted |
+
+### New findings: should-fix
+
+- **BR4-S1 Cards without the outline, Absences rows too close.**
+  Dart: `app/lib/features/absences/absences_view.dart:186-190` (`_card`),
+  `app/lib/features/wizard/wizard_view.dart:87-90`, and the same private helper in
+  `app/lib/features/marks/marks_view.dart:1624-1628` and
+  `app/lib/features/timetable/timetable_view.dart:1130-1134`.
+  Python: `strakalari/flet_ui/components.py:134-152` (`card`: `border=border_all(1, tok.border)`),
+  `views/absences.py:99-102` (row spacing `tok.gap // 2`, on a phone `tok.gap // 2 + 2`).
+  These four `Card(...)` calls pass their own `shape: RoundedRectangleBorder(borderRadius: …)`,
+  which replaces the themed shape (`shell/theme.dart:202-212`) and so drops its 1 px
+  `tok.border` side. In my zoomed crops of `absences-cs-dark-1280` the Flet rows have the
+  outline and about 7 px between them; the Flutter rows have no outline and about 2 px. The
+  wizard card has no outline at 1280 and 390, light and dark. Correct: drop the `shape:`
+  override (or add `side: BorderSide(color: t.border)`) in all four, and give the Absences
+  list the Python spacing; add a widget test that the card's shape has a 1 px `tok.border`
+  side.
+- **BR4-S2 `capture_flet.py` saves the start-up logo instead of the screen.**
+  `tools/parity/capture_flet.py:65, 111` wait a fixed `time.sleep(5)` after `page.goto`.
+  In the set Hermes left in `build/parity-screens/flet/` **15 of 76 images are only the logo**
+  (five of the eight wizard images, `today-cs-light-1280`, and the light 390 px Today,
+  Timetable, Absences, Marks and Planner in both languages). STATUS.md mentions only the
+  wizard and says "both sets re-captured (80 Flutter, 76 Flet)". Correct: after `goto`, poll
+  `page.screenshot()` until the page is no longer almost all white (up to about 120 s), then
+  continue; fail the run if it never renders, and retry a screenshot that times out. (For
+  this review I wrapped `Page.goto` that way in a throwaway script: cs dark, cs light and en
+  dark re-captured cleanly, 58 images with no logo; the en light pass then died on a
+  Playwright `Page.screenshot` timeout, so its Flet images are still the old ones.)
+- **BR4-S3 The Flutter capture uses phone-sized controls at 1280 px.**
+  `tools/parity/capture_screens.dart` never sets the target platform, so `flutter test`
+  runs it as Android: buttons and segmented controls are about 40 px high in every 1280 px
+  image where the Flet desktop capture has 32 px (compare *Obnovit data* or the wizard's
+  *Pokračovat*). The Windows build uses the compact desktop density, so this is most likely
+  the tool and not the app, but the captures cannot show it. Correct: set
+  `debugDefaultTargetPlatformOverride = TargetPlatform.windows` for the 1280 px images
+  (reset it afterwards) and keep Android for 390 px; if the 1280 px buttons are then still
+  taller than Flet's, report it under *Questions* instead of changing the theme.
+- **BR4-S4 STATUS.md wording.** Test map item 16 (`STATUS.md:221-224`) says "Remaining 9
+  cases" and then names 11 tests, and still calls the four `overlays_test.dart` cases "in
+  progress, unreviewed"; the Checkpoint B notes (`STATUS.md:873`) still give the round-1
+  test-file summary. Write the real counts (which Python case each Dart test covers, 25
+  ported + 1 dropped = 26) and drop the stale words. Also correct the round 5 screenshot
+  sentence once BR4-S2 is fixed.
+
+### Notes
+
+- **BR4-N1** The guard in `calendar_days_dst_test.dart` looks for `Duration(days` on one
+  line; a call broken over two lines would slip through. Harmless today (my greps found none).
+- **BR4-N2** `agoText` (`activity_view.dart:22-24`) measures elapsed seconds with
+  `difference`, which is right for elapsed time (Python subtracts naive datetimes, so the
+  two differ by an hour only for a run that spans a clock change). No change needed.
+- **BR4-N3** Screens differ in my captures only by what the capture times explain (the
+  *next lesson* card at 11:29 vs 11:41) and by BR4-S1 / BR4-S3. The accepted items of BR3-N1
+  still stand.
+- **BR4-N4 (for Checkpoint C)** Still open and carried over: BR3-N2 (single-instance token
+  from `Random.secure()`), BR-N2 (window scheduler; `test_scheduler_skips_refresh_while_setup_pending`
+  is Deferred), BR2-N1 (desktop key store not wired), BR-N3, BR-N4. The phase 7–9 code on
+  the branch is unreviewed.
+
+### What I verified in this re-review, and how
+
+Flutter 3.44.8 / Dart 3.12.2, Windows 11 (Europe/Prague), 12 Nov 2026. Demo data only,
+nothing contacted except 127.0.0.1. No tracked file was changed besides this review and
+STATUS.md (`git status` was clean before this commit); the untracked
+`build/parity-screens/flet/` images were overwritten by my re-capture.
+
+| Check | Result |
+|---|---|
+| `dart analyze` / `dart test` (core) | clean / 764 passed, 2 skipped |
+| `flutter analyze` / `flutter test` (app) | clean / 498 passed, 1 skipped (APK scan needs `STRAKALARI_APK`) |
+| Python suite | 1643 passed |
+| `tools/parity/dump.py` + `git diff --exit-code` on `test/parity/` | clean |
+| Each re-review 3 finding | the fixing commit read against the Python lines named in the finding (table above) |
+| Test parity | the five new ports and the folded-section test read side by side with Python; every Dart test name in map item 16 exists (scripted) |
+| Test integrity | `git diff 3e443d0..HEAD -- app/test packages/strakalari_core/test`: the only removed assertions are the two weak ones of BR3-M1, replaced by stronger ones; no `skip:`, no `try`/`catch` around `expect`; the two new `isNotNull` are a clipboard value followed by content checks, and the no-op handler Python also has |
+| Scope | no config key, string or feature added; `strings.dart` and both ARB files untouched; all 18 tutorial anchors still present |
+| §3.5 | new `RegExp` only in `gFormat` (anchored, no Python pattern to match); `~/` once on a non-negative gap; `weekday - 1` = Python `weekday()`; no `DateTime.now()`, `DateTime.parse`, `jsonEncode` added |
+| Fail loudly | one new `catch (_)` (copy log, fails closed like Python); the two settings saves now print |
+| Architecture | no `package:flutter` in the core; no build_runner; no pubspec or lockfile change; Flutter 3.44.8 pinned in `dart.yml` |
+| Hygiene | 12 commits, all by DeNdlerX, none with `Co-Authored-By` / `Claude-Session`; no personal-data file names; no host added; no upstream for `flutter-migration` |
+| `main` ported | `main` = `0ffdcff`, an ancestor of `HEAD`; `strakalari/`, `tests/`, `config.example.json` unchanged against `main` |
+| Screenshots | Flutter set from 11:29 (after the last UI commit, 80 images, none blank); Flet set re-captured by me with a wait for the first render (58 of 76, see BR4-S2). Read as side-by-side sheets: Planner, Absences, Marks, Timetable, wizard at 1280 (cs dark); Today at 1280 (cs light); wizard, Absences, Timetable, Today at 390 (cs dark); Planner, Marks at 390 (cs dark and cs light); the wizard at 390 in en light; zoomed crops of the Absences and Marks card edges |
+
+**Not verified in this re-review:** the phase 7–9 code (Checkpoints C and D), phones and
+Windows Sandbox. Lunches, Activity, Settings and More were not looked at again (their code
+did not change in this round apart from the Activity copy button), and no en light pair
+except the phone wizard.
