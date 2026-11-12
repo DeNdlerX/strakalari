@@ -75,7 +75,7 @@ Future<StartupContext> prepareStartup(List<String> args) async {
   if (args.contains('--forget-secrets')) {
     exit(forgetKey(getUserDataDir()) ? 0 : 1);
   }
-  final minimized = args.contains('--minimized');
+  final minimized = launchMinimized(args);
   SingleInstance? guard;
   try {
     final (status, held) = await ensureSinglePrimary(
@@ -89,6 +89,11 @@ Future<StartupContext> prepareStartup(List<String> args) async {
   }
   return StartupContext(minimized: minimized, guard: guard);
 }
+
+/// `main.py`'s routing: `--minimized` (autostart) starts in the tray, any
+/// other launch opens the window. One process here, so "the tray" means
+/// the window starts hidden.
+bool launchMinimized(List<String> args) => args.contains('--minimized');
 
 /// Starts the scheduler and the platform services once the UI's state
 /// exists. Never throws.
@@ -157,7 +162,7 @@ Future<void> startPlatformServices(
     iconPath: Platform.isWindows
         ? 'assets/tray-icon.ico'
         : 'assets/tray-icon.png',
-    strings: _trayStrings(),
+    strings: trayStrings(),
     onRefreshNow: () async => state.startRefresh('all'),
     isPaused: () => automationPaused(state.config.data),
     onTogglePause: () async =>
@@ -171,14 +176,16 @@ Future<void> startPlatformServices(
   );
   await tray.initialize(minimized: ctx.minimized);
   // The tray re-reads the labels when the language changes.
-  state.configListeners.add(() => unawaited(tray.updateMenu(strings: _trayStrings())));
+  state.configListeners.add(() => unawaited(tray.updateMenu(strings: trayStrings())));
   // A second launch restores this window.
   ctx.guard?.setOnShow(() => unawaited(tray.showWindow()));
   ctx.guard?.onQuit = () => unawaited(tray.quit());
   installDesktopNotifier();
 }
 
-TrayStrings _trayStrings() => TrayStrings(
+/// The tray menu in the configured language (Python's tray applied
+/// `config.language` itself, `_apply_language`; here `AppState` did).
+TrayStrings trayStrings() => TrayStrings(
       open: Strings.get('tray_open'),
       refreshNow: Strings.get('tray_refresh'),
       pause: Strings.get('tray_pause'),
