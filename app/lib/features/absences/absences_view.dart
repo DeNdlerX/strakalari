@@ -98,10 +98,13 @@ final header = w.HeaderRow(
         padding: EdgeInsets.zero,
         children: [
           header,
-          SizedBox(height: t.gap / 2 + 2),
+          SizedBox(height: (t.gap ~/ 2) + 2.0),
           stats,
-          SizedBox(height: t.gap / 2 + 2),
-          ...rows,
+          // `absences.py`: every block and row `tok.gap // 2 + 2` apart.
+          for (final row in rows) ...[
+            SizedBox(height: (t.gap ~/ 2) + 2.0),
+            row,
+          ],
           const SizedBox(height: 24),
         ],
       );
@@ -118,7 +121,11 @@ final header = w.HeaderRow(
           Expanded(
             child: ListView(
               children: [
-                ...rows,
+                // `absences.py`: rows `tok.gap // 2` apart.
+                for (var i = 0; i < rows.length; i++) ...[
+                  if (i > 0) SizedBox(height: (t.gap ~/ 2).toDouble()),
+                  rows[i],
+                ],
                 const SizedBox(height: 24),
               ],
             ),
@@ -185,8 +192,10 @@ const badgeLabels = {
     final t = tokens;
     return Card(
       color: t.card,
+      // `components.card`: a 1 px outline in the border colour.
       shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(t.radiusMd)),
+          borderRadius: BorderRadius.circular(t.radiusMd),
+          side: BorderSide(color: t.border)),
       child: Padding(padding: EdgeInsets.all(t.pad), child: child),
     );
   }

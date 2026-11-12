@@ -1129,8 +1129,10 @@ final detail = c.detail(lesson, day);
     final t = tokens;
     return Card(
       color: t.card,
+      // `components.card`: a 1 px outline in the border colour.
       shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(t.radiusMd)),
+          borderRadius: BorderRadius.circular(t.radiusMd),
+          side: BorderSide(color: t.border)),
       child: Padding(padding: EdgeInsets.all(t.pad), child: child),
     );
   }
