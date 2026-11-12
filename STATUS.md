@@ -673,6 +673,8 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
 
 ## Questions for the owner / reviewer
 
+- Phase 8 (2026-11-12): the APK build failed until core library desugaring was enabled (`flutter_local_notifications` requires it); `flutter build apk --debug --flavor phonetest` now succeeds. The phone already has a Flet `.test` app (0.2.2, signed with the upload key, data unknown): a debug build cannot update it; waiting on the owner whether to uninstall it (erases its data) or update it in place with a release-signed build.
+
 - Phase 7: the MSIX package probably needs the VC++ runtime too (the Inno installer now ships it app-local; `tools/make_msix.py --app-dir` stages only the Release folder). Untested.
 - Phase 7: the over-install test seeded the key as `secret.key`; reading a Python-keyring entry from Credential Manager after the upgrade is still untested in Sandbox.
 
