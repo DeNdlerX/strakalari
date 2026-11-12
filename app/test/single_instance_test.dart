@@ -186,6 +186,37 @@ void main() {
     });
   });
 
+  // From tests/test_macos_tray_host.py (the rest of that file is the
+  // macOS two-process tray host, see Dropped).
+  group('TestQuitSignal', () {
+    test('quitFiresHandler', () async {
+      final port = await _freePort();
+      final fired = Completer<void>();
+      final primary = SingleInstance(port: port, onQuit: fired.complete);
+      try {
+        expect(await primary.acquire(token), isTrue);
+        expect(await SingleInstance(port: port).signal(token, kind: 'quit'), isTrue);
+        expect(await _waitFor(fired), isTrue);
+      } finally {
+        await primary.close();
+      }
+    });
+
+    test('quitWithoutHandlerIsNotAcknowledged', () async {
+      // The sender must know nobody closed the window, and kill instead.
+      final port = await _freePort();
+      final shown = Completer<void>();
+      final primary = SingleInstance(port: port, onShow: shown.complete);
+      try {
+        expect(await primary.acquire(token), isTrue);
+        expect(await SingleInstance(port: port).signal(token, kind: 'quit'), isFalse);
+        expect(await _waitFor(shown, const Duration(milliseconds: 300)), isFalse);
+      } finally {
+        await primary.close();
+      }
+    });
+  });
+
   group('TestPerUserIsolation', () {
     test('tokenIsPrivateAndStable', () async {
       final file = File('${dataDir.path}${Platform.pathSeparator}$instanceTokenFile');

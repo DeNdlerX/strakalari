@@ -602,6 +602,34 @@ void main() {
       expect(cache['last_updated'], '01.01.2000 00:00:00');
     });
 
+    test('trayRefreshPreservesBaselineAndStrava', () async {
+      // Port of tests/test_tray_ui_command.py: a refresh with Strava off
+      // (and no new stable baseline) keeps the cached menu, orders and
+      // baseline. In Flutter the tray's "Refresh now" is the window's own
+      // refresh, i.e. this pipeline.
+      saveDataCache({
+        'timetable': {'d': <Object?>[]},
+        'absence': {'M': 1.0},
+        'strava_meals': {
+          '1.1.2026': {'a&1&0': 'X'}
+        },
+        'strava_ordered': {'1.1.2026': 'a&1&0'},
+        'stable_baseline': {
+          'Mon-1': ['Mat']
+        },
+      }, replace: true);
+      final app = FakeApp([])..stravaEnable = false;
+      final result = await runRefresh(app, refreshConfig());
+      expect(result.ok, isTrue);
+      final cache = loadDataCache();
+      expect(cache['strava_meals'], {
+        '1.1.2026': {'a&1&0': 'X'}
+      });
+      expect(cache['stable_baseline'], {
+        'Mon-1': ['Mat']
+      });
+    });
+
     test('emptyMenuKeepsCachedMenu', () async {
       saveDataCache({
         'strava_meals': {
