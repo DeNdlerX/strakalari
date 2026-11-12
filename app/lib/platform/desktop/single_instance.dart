@@ -35,8 +35,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 /// Loopback address the guard binds and signals on.
 const String singleInstanceHost = '127.0.0.1';
@@ -66,14 +68,43 @@ const Duration _signalRetryPause = Duration(milliseconds: 200);
 // so a dev launch never just wakes the installed app and exits.
 const bool _isReleaseBuild = bool.fromEnvironment('dart.vm.product');
 
-String _osUser() {
-  final env = Platform.environment;
-  final user = env['LOGNAME'] ?? env['USER'] ?? env['LNAME'] ?? env['USERNAME'] ?? '';
-  final home = env['HOME'] ?? env['USERPROFILE'] ?? '';
-  final raw = '$user|$home';
-  // `os.path.normcase`: lowercase + forward slashes on Windows.
-  if (Platform.isWindows) return raw.toLowerCase().replaceAll('/', r'\');
-  return raw;
+String _osUser() => osUserIdentity();
+
+/// `f"{getpass.getuser()}|{os.path.normcase(os.path.expanduser('~'))}"`.
+///
+/// `getuser()` takes the first set one of LOGNAME, USER, LNAME, USERNAME
+/// and keeps its case; `expanduser('~')` is USERPROFILE (else HOMEDRIVE +
+/// HOMEPATH) on Windows, HOME elsewhere; only the home part is
+/// `normcase`d (lower case, backslashes) on Windows. [env] and [windows]
+/// are test seams.
+@visibleForTesting
+String osUserIdentity({Map<String, String>? env, bool? windows}) {
+  final e = env ?? Platform.environment;
+  final isWindows = windows ?? Platform.isWindows;
+  var user = '';
+  for (final name in ['LOGNAME', 'USER', 'LNAME', 'USERNAME']) {
+    final value = e[name];
+    if (value != null && value.isNotEmpty) {
+      user = value;
+      break;
+    }
+  }
+  String home;
+  if (isWindows) {
+    final profile = e['USERPROFILE'];
+    if (profile != null && profile.isNotEmpty) {
+      home = profile;
+    } else if (e['HOMEPATH'] != null) {
+      home = '${e['HOMEDRIVE'] ?? ''}${e['HOMEPATH']}';
+    } else {
+      home = '~';
+    }
+    home = home.toLowerCase().replaceAll('/', r'\');
+  } else {
+    final value = e['HOME'];
+    home = (value == null || value.isEmpty) ? '~' : value;
+  }
+  return '$user|$home';
 }
 
 /// Per-user slot (0..299) from the identity hash (matches Python).
@@ -147,25 +178,33 @@ Future<List<int>> instanceToken(String dataDir) async {
   }
 }
 
-bool _validToken(List<int> raw) {
+/// `len(raw) == 32 and all(c in b"0123456789abcdef" for c in raw)`.
+@visibleForTesting
+bool validInstanceToken(List<int> raw) {
   if (raw.length != 32) return false;
   for (final byte in raw) {
-    final c = byte | 0x20; // fold A-Z to a-z
     final isDigit = byte >= 0x30 && byte <= 0x39;
-    final isHex = c >= 0x61 && c <= 0x66;
+    final isHex = byte >= 0x61 && byte <= 0x66; // lower case only
     if (!isDigit && !isHex) return false;
   }
   return true;
 }
 
-List<int> _randomToken() {
-  // 16 random bytes as 32 hex chars (matches `secrets.token_hex(16)`).
-  final random = DateTime.now().microsecondsSinceEpoch;
-  final salted = '$random|$pid|${_osUser()}';
-  final first = sha256.convert(utf8.encode(salted)).toString();
-  final second = sha256.convert(utf8.encode('$first|$random')).toString();
-  return ascii.encode((first + second).substring(0, 32));
+bool _validToken(List<int> raw) => validInstanceToken(raw);
+
+final Random _secure = Random.secure();
+
+/// `secrets.token_hex(16)`: 16 random bytes from the OS as 32 hex chars.
+@visibleForTesting
+List<int> randomInstanceToken() {
+  final hex = StringBuffer();
+  for (var i = 0; i < 16; i++) {
+    hex.write(_secure.nextInt(256).toRadixString(16).padLeft(2, '0'));
+  }
+  return ascii.encode(hex.toString());
 }
+
+List<int> _randomToken() => randomInstanceToken();
 
 extension on List<int> {
   List<int> trimAscii() {
