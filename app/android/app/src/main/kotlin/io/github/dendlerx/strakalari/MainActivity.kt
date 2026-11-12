@@ -11,10 +11,14 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         val attached = StrakalariChannel()
         attached.attach(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
+        // The notification permission prompt needs the screen (Python asks
+        // through the activity too, core/android.py).
+        attached.setActivity(this)
         channel = attached
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        channel?.setActivity(null)
         channel?.detach()
         channel = null
         super.cleanUpFlutterEngine(flutterEngine)

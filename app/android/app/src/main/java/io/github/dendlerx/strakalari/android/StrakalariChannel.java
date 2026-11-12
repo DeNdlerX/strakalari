@@ -116,6 +116,15 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
 
     // -- ActivityAware: only the permission prompt needs the screen --------
 
+    /**
+     * The screen for the permission prompt. {@code MainActivity} attaches
+     * this channel by hand (not through the plugin registry), so the
+     * {@link ActivityAware} callbacks below never run for it.
+     */
+    public void setActivity(@Nullable android.app.Activity screen) {
+        activity = screen;
+    }
+
     @Override
     public void onAttachedToActivity(@NonNull ActivityPluginBinding binding) {
         activity = binding.getActivity();
