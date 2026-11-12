@@ -343,27 +343,33 @@ class Meter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final v = valuePct.clamp(0.0, 100.0) / 100.0;
-    return SizedBox(
-      width: width,
-      child: Row(
-        spacing: 8,
-        children: [
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: v,
-                minHeight: 8,
-                backgroundColor: tok.overlay,
-                valueColor:
-                    AlwaysStoppedAnimation<Color>(statusColor(kind, tok)),
-              ),
+    // Port of `components.meter`: a fixed-width track and a fixed-width,
+    // right-aligned label ("100.0 %" fits), so the track stays put
+    // whatever the number's width.
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      spacing: 8,
+      children: [
+        SizedBox(
+          width: width,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: v,
+              minHeight: 8,
+              backgroundColor: tok.overlay,
+              valueColor:
+                  AlwaysStoppedAnimation<Color>(statusColor(kind, tok)),
             ),
           ),
-          Text('${valuePct.toStringAsFixed(0)} %',
+        ),
+        SizedBox(
+          width: tok.fsSmall * 4.5,
+          child: Text('${valuePct.toStringAsFixed(1)} %',
+              textAlign: TextAlign.end,
               style: TextStyle(color: tok.muted, fontSize: tok.fsSmall)),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

@@ -2,6 +2,7 @@ import '../../l10n/strings.dart';
 import 'package:flutter/material.dart';
 
 import '../../tutorial/tutorial_ui.dart';
+import '../../widgets/app_widgets.dart' as w;
 import '../common/app_tokens.dart';
 import 'absences_controller.dart';
 
@@ -35,15 +36,10 @@ class AbsencesView extends StatelessWidget {
   Widget _body() {
     final c = controller;
     final t = tokens;
-final header = Row(
-      children: [
-        Expanded(
-            child: Text(Strings.get('absence_title'),
-                style: TextStyle(
-                    color: t.text,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold))),
-      ],
+final header = w.HeaderRow(
+      heading: Strings.get('absence_title'),
+      updated: c.updatedLabel,
+      tok: t,
     );
     if (c.subjects.isEmpty) {
       return ListView(
@@ -69,15 +65,20 @@ final header = Row(
       child: Row(
         spacing: t.gap,
         children: [
-          Expanded(
-              child: _statCard(Strings.get('avg_absence'),
-                  '${c.average.toStringAsFixed(1)} %', 'ok')),
-          Expanded(
-              child: _statCard(Strings.get('warn_subjects'),
-                  '${c.warnCount}', c.warnCount > 0 ? 'warning' : 'ok')),
-          Expanded(
-              child: _statCard(Strings.get('crit_subjects'),
-                  '${c.critCount}', c.critCount > 0 ? 'critical' : 'ok')),
+          w.StatCard(
+              label: Strings.get('avg_absence'),
+              value: '${c.average.toStringAsFixed(1)} %',
+              tok: t),
+          w.StatCard(
+              label: Strings.get('warn_subjects'),
+              value: '${c.warnCount}',
+              tok: t,
+              kind: c.warnCount > 0 ? 'warning' : 'ok'),
+          w.StatCard(
+              label: Strings.get('crit_subjects'),
+              value: '${c.critCount}',
+              tok: t,
+              kind: c.critCount > 0 ? 'critical' : 'ok'),
         ],
       ),
     );
@@ -127,33 +128,6 @@ final header = Row(
     );
   }
 
-  Widget _statCard(String label, String value, String kind) {
-    final t = tokens;
-    final color = statusColor(kind, t);
-    return Card(
-      color: t.card,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(t.radiusMd)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label,
-                style: TextStyle(
-                    color: t.muted, fontSize: t.fsSmall)),
-            const SizedBox(height: 2),
-            Text(value,
-                style: TextStyle(
-                    color: kind == 'ok' ? t.text : color,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold)),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _row(SubjectAbsence subject) {
     final c = controller;
     final t = tokens;
@@ -178,7 +152,8 @@ const badgeLabels = {
     final gauge = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _meter(subject.currentPct, subject.status),
+        w.Meter(
+            valuePct: subject.currentPct, tok: t, kind: subject.status),
         const SizedBox(width: 8),
         // Fixed slot for the badge, so a shorter label doesn't shift
         // the meter sideways.
@@ -186,9 +161,10 @@ const badgeLabels = {
           width: t.fsTiny * 8,
           child: Align(
             alignment: Alignment.centerRight,
-            child: _badge(
-                Strings.get(badgeLabels[subject.status] ?? 'state_ok'),
-                subject.status),
+            child: w.Badge(
+                text: Strings.get(badgeLabels[subject.status] ?? 'state_ok'),
+                tok: t,
+                kind: subject.status),
           ),
         ),
       ],
@@ -203,42 +179,6 @@ const badgeLabels = {
             children: [Expanded(child: info), gauge],
           );
     return _card(body);
-  }
-
-  Widget _meter(double pct, String status) {
-    final t = tokens;
-    final color = statusColor(status, t);
-    final ratio = (pct / 100).clamp(0.0, 1.0);
-    return SizedBox(
-      width: 120,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(4),
-        child: LinearProgressIndicator(
-          value: ratio,
-          minHeight: 8,
-          backgroundColor: t.overlay,
-          valueColor: AlwaysStoppedAnimation<Color>(color),
-        ),
-      ),
-    );
-  }
-
-  Widget _badge(String label, String kind) {
-    final t = tokens;
-    final color = statusColor(kind, t);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: tintColor(color, 0.12),
-        borderRadius: BorderRadius.circular(t.radiusSm),
-        border: Border.all(color: tintColor(color, 0.45)),
-      ),
-      child: Text(label,
-          style: TextStyle(
-              color: color,
-              fontSize: t.fsSmall,
-              fontWeight: FontWeight.w600)),
-    );
   }
 
   Widget _card(Widget child) {
