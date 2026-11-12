@@ -3,17 +3,17 @@
 // Started without the screen by `RefreshReceiver` (alarm time, reboot, app
 // update) in a headless `FlutterEngine`. Two rules keep it safe:
 //
-// 1. **Never two refreshes at once in one process.** A file lock cannot
-//    separate two isolates of the *same* process (PLAN.md §3.4 pitfall:
-//    POSIX locks are per process). So when the UI isolate is alive — it
-//    registers its port under [uiIsolatePortName] at startup, see
-//    [registerUiRefreshPort] — the job is handed to it and this isolate
-//    exits. Only when no UI isolate answers does this isolate run the
-//    refresh itself (then it is alone in the process and the session lock
-//    excludes the desktop builds).
+// 1. **Never two refreshes at once in one process.** When the UI isolate
+//    is alive — it registers its port under [uiIsolatePortName] at
+//    startup, see [registerUiRefreshPort] — the job is handed to it and
+//    this isolate exits once the UI acknowledged it. A UI that does not
+//    acknowledge is gone (closed screen, live process): its mapping is
+//    dropped and this isolate runs the job itself, under the session lock
+//    (`flock`, per open file, so it also excludes another isolate).
 // 2. **Fail loudly, never silently.** Every failure is printed (logcat tag
-//    `strakalari` via stdout) and the wake is still re-armed, so one bad
-//    run never stops the schedule. `backgroundDone` is always reported so
+//    `strakalari` via stdout) and every path but "background running off"
+//    ends with the next wake armed (here, or by the UI that took the
+//    job), so one bad run never stops the schedule. `backgroundDone` is always reported so
 //    the native side releases the wakelock and drops the engine.
 //
 // What one wake does (mirrors the Python scheduler + phone wiring):
@@ -43,20 +43,23 @@ import 'android_notifications.dart';
 /// Name the UI isolate's refresh port is registered under.
 const String uiIsolatePortName = 'strakalari_ui_refresh';
 
-/// How long the background isolate waits for the UI isolate's answer
-/// before running the refresh itself.
-const Duration uiHandoffTimeout = Duration(seconds: 30);
+/// How long the background isolate waits for the UI isolate's
+/// acknowledgement before it treats the UI as gone.
+const Duration uiHandoffAck = Duration(seconds: 5);
 
-/// Registers the UI isolate's refresh port (call once at UI startup, and
-/// listen for `{'op': 'refresh', 'reply': SendPort}` messages by running
-/// the due refresh and replying `'done'`).
+/// Registers the UI isolate's refresh port (call once at UI startup).
+///
+/// A hand-off message is `{'op': 'refresh', 'reply': SendPort}`. The UI
+/// answers `'taken'` at once and only then does [onHandOff] (its own
+/// scheduler runs the due job), so a living UI never makes the headless
+/// side wait and a dead one is noticed within [uiHandoffAck].
 ///
 /// Also persists the background callback handle for headless runs after a
 /// reboot. Returns the subscription so the app can cancel it.
 Future<StreamSubscription<dynamic>> registerUiRefreshPort(
   ReceivePort port, {
   AndroidChannel channel = const AndroidChannel(),
-  Future<void> Function()? onRefresh,
+  Future<void> Function()? onHandOff,
 }) async {
   IsolateNameServer.removePortNameMapping(uiIsolatePortName);
   IsolateNameServer.registerPortWithName(port.sendPort, uiIsolatePortName);
@@ -66,27 +69,29 @@ Future<StreamSubscription<dynamic>> registerUiRefreshPort(
     if (handle != null) {
       await channel.registerBackgroundCallback(handle);
     }
-  } on Object {
-    // Best effort: without a stored handle a reboot cannot start headless
-    // runs until the app is opened once (the old behavior).
+  } on Object catch (e) {
+    // Without a stored handle a reboot cannot start headless runs until
+    // the app is opened once (the old behavior).
+    // ignore: avoid_print
+    print('Warning: could not store the background entry ($e).');
   }
   return port.listen((dynamic message) async {
-    // The actual refresh-on-message wiring lives with the UI startup (the
-    // app's scheduler owns the jobs); this keeps the port anchor here.
     if (message is! Map || message['reply'] is! SendPort) return;
-    final reply = message['reply'] as SendPort;
-    if (onRefresh == null) {
-      reply.send('deferred');
-      return;
-    }
+    (message['reply'] as SendPort).send('taken');
+    if (onHandOff == null) return;
     try {
-      await onRefresh();
+      await onHandOff();
     } on Object catch (e) {
       // ignore: avoid_print
-      print('Warning: background refresh in the UI isolate failed ($e).');
+      print('Warning: background hand-off in the UI isolate failed ($e).');
     }
-    reply.send('done');
   });
+}
+
+/// The UI isolate is being torn down: a later wake must not hand off to
+/// its dead port.
+void unregisterUiRefreshPort() {
+  IsolateNameServer.removePortNameMapping(uiIsolatePortName);
 }
 
 /// The headless entry (`RefreshReceiver` boots the engine with the stored
@@ -139,7 +144,7 @@ Future<void> _runHeadless(AndroidChannel channel) async {
     print('Info: background running off; headless wake ($reason) ignored.');
     return;
   }
-  if (await _handOffToUi(channel, reason)) return;
+  if (await handOffToUi(reason)) return;
   await _runInline(channel, reason, dataDir);
 }
 
@@ -170,23 +175,31 @@ bool backgroundSwitchOn(Object? value) {
 }
 
 /// Hands the job to the live UI isolate. True when it took the job.
-Future<bool> _handOffToUi(AndroidChannel channel, String reason) async {
+///
+/// The engine destroys the UI isolate when the screen is closed while the
+/// process (and the name mapping) lives on, and sending to a dead port
+/// neither throws nor answers. So no acknowledgement within [ackTimeout]
+/// means the UI is gone: the stale mapping is removed and this isolate
+/// runs the job itself (the session lock is `flock`, which also separates
+/// two isolates of one process).
+@visibleForTesting
+Future<bool> handOffToUi(String reason, {Duration ackTimeout = uiHandoffAck}) async {
   final ui = IsolateNameServer.lookupPortByName(uiIsolatePortName);
   if (ui == null) return false;
   final reply = ReceivePort();
   try {
     ui.send({'op': 'refresh', 'reason': reason, 'reply': reply.sendPort});
-    final answer = await reply.first.timeout(uiHandoffTimeout);
-    return answer == 'done';
+    final answer = await reply.first.timeout(ackTimeout);
+    return answer == 'taken';
   } on TimeoutException {
-    // The UI isolate is alive but did not answer: do NOT run inline (two
-    // refreshes at once in one process). The next armed wake retries.
+    IsolateNameServer.removePortNameMapping(uiIsolatePortName);
     // ignore: avoid_print
-    print('Warning: UI isolate did not take the background refresh; '
-        'leaving it to the next wake.');
-    return true;
-  } on Object {
-    return false; // dead port: run inline below
+    print('Info: the app screen is gone; running the background job here.');
+    return false;
+  } on Object catch (e) {
+    // ignore: avoid_print
+    print('Warning: background hand-off failed ($e); running it here.');
+    return false;
   } finally {
     reply.close();
   }

@@ -118,19 +118,36 @@ Future<void> startPlatformServices(
   if (Platform.isAndroid) {
     AppLifecycleListener(onStateChange: (s) {
       visible = s == AppLifecycleState.resumed;
+      // The engine drops this isolate: no hand-off to its port any more.
+      if (s == AppLifecycleState.detached) unregisterUiRefreshPort();
       if (s == AppLifecycleState.resumed) {
         // Back from the system's settings or after a while away.
         state.syncAndroidState();
         state.onChanged();
       }
     });
-    try {
-      await registerUiRefreshPort(ReceivePort(), onRefresh: loop.runNow);
-    } catch (_) {}
     final phone = _PhoneBackground(state, loop, const AndroidChannel());
     container.listen(appStateProvider, (_, _) => phone.notifier.poke());
     phone.start();
     loop.start();
+    try {
+      // A wake while this isolate lives: its runner does the due job on
+      // its next 5 s tick (Python: the alarm only wakes the CPU for the
+      // running scheduler). Keep the CPU up for that tick; the job then
+      // holds its own lock. Not due: arm the wake for the due time.
+      await registerUiRefreshPort(ReceivePort(), onHandOff: () async {
+        final now = clock.now();
+        if (now.isBefore(nextDue(loop.lastRun, loop.intervalMinutes, now))) {
+          await phone.scheduleWake();
+        }
+        await androidKeepAwake(
+            () => Future<void>.delayed(const Duration(seconds: 15)),
+            minutes: 1);
+      });
+    } on Object catch (e) {
+      // ignore: avoid_print
+      print('Warning: background hand-off port failed ($e).');
+    }
     return;
   }
   loop.start();
