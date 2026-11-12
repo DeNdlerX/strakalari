@@ -8,11 +8,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:strakalari_core/strakalari_core.dart' show notifierBackend;
+import 'package:strakalari_core/strakalari_core.dart' show getUserDataDir, notifierBackend;
 
 import 'controllers/app_state.dart';
 import 'l10n/strings.dart';
 import 'platform/android/background.dart' as android_bg;
+import 'platform/desktop/console_log.dart';
 import 'platform/notifications.dart';
 import 'platform/startup.dart';
 import 'shell/router.dart';
@@ -29,6 +30,16 @@ Future<void> backgroundMain() => android_bg.androidBackgroundEntry();
 final _router = buildRouter();
 
 Future<void> main(List<String> args) async {
+  // `ensure_stdio`: the Windows release build has no console, so prints
+  // and uncaught errors go to console.log in the data folder.
+  if (windowedBuild) {
+    final log = openConsoleLog(getUserDataDir());
+    if (log != null) return runWithConsoleLog(log, () => _main(args));
+  }
+  return _main(args);
+}
+
+Future<void> _main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   // Data dir, key store, single instance (may exit this process).
   final ctx = await prepareStartup(args);
