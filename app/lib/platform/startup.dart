@@ -97,11 +97,8 @@ Future<void> startPlatformServices(
   var stopping = false;
   var visible = true;
 
-  double interval() {
-    final raw = state.get('check_interval_minutes', 60);
-    final value = raw is num ? raw.toDouble() : double.tryParse('$raw');
-    return (value == null || value == 0) ? 60.0 : value;
-  }
+  double interval() =>
+      checkIntervalMinutes(state.get('check_interval_minutes', 60));
 
   Map<String, Object?>? prefs() {
     final raw = state.get('notifications', {});
@@ -191,7 +188,8 @@ TrayStrings _trayStrings() => TrayStrings(
 /// Background running is possible here (Android) and switched on.
 bool _phoneBackgroundOn(AppState state) {
   try {
-    return Platform.isAndroid && state.get('run_in_background', true) != false;
+    return Platform.isAndroid &&
+        backgroundSwitchOn(state.get('run_in_background', true));
   } catch (_) {
     return false;
   }
@@ -221,9 +219,9 @@ class _PhoneBackground {
   int? _interval;
 
   int _intervalMinutes() {
-    final raw = state.get('check_interval_minutes', 60);
-    final value = raw is num ? raw.toDouble() : double.tryParse('$raw');
-    final n = (value == null || value == 0) ? 60 : value.toInt();
+    // `max(1, int(float(get(...) or 60)))`.
+    final n =
+        checkIntervalMinutes(state.get('check_interval_minutes', 60)).toInt();
     return n < 1 ? 1 : n;
   }
 

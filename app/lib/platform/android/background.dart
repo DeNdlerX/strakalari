@@ -16,9 +16,13 @@
 //    run never stops the schedule. `backgroundDone` is always reported so
 //    the native side releases the wakelock and drops the engine.
 //
-// What one run does (mirrors the Python scheduler + phone wiring):
-// key warm-up → session lock → one `runRefresh` → event notifications →
-// status notification + widget + alarm queue sync → re-arm the next wake.
+// What one wake does (mirrors the Python scheduler + phone wiring):
+// `run_in_background` off → cancel the wake and stop. Otherwise hand the
+// job to a live UI isolate, or: key warm-up → the UI's `AppState` →
+// one due tick of core's `PeriodicRunner` (refresh job with its gates,
+// the worker's notifications, session lock and run record) → status
+// notification + widget + alarm queue → the next wake. Not due (reboot,
+// app update) → only the wake for the due time.
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
@@ -29,6 +33,8 @@ import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:strakalari_core/strakalari_core.dart';
 
+import '../../controllers/app_state.dart';
+import '../../l10n/strings.dart';
 import 'android_channel.dart';
 import 'android_keystore.dart';
 import 'android_notifications.dart';
@@ -113,8 +119,64 @@ Future<void> backgroundMain() => androidBackgroundEntry();
 
 Future<void> _runHeadless(AndroidChannel channel) async {
   final reason = await channel.takeHeadlessReason();
+  final dataDir = await _phoneDataDir();
+  // `run_in_background` off: Python stops the service and cancels the
+  // wake (`_setup_phone_background` → `stop_background`). A reboot, an
+  // app update or an old alarm must not start automation behind the
+  // user's back, nor arm a new wake.
+  Map<String, Object?> cfg;
+  try {
+    cfg = ConfigManager('$dataDir/config.json').data;
+  } on Object catch (e) {
+    // ignore: avoid_print
+    print('Warning: headless run could not read the config ($e); not running.');
+    return;
+  }
+  if (!backgroundSwitchOn(cfg['run_in_background'] ?? true)) {
+    await channel.cancelWake();
+    // ignore: avoid_print
+    print('Info: background running off; headless wake ($reason) ignored.');
+    return;
+  }
   if (await _handOffToUi(channel, reason)) return;
-  await _runInline(channel, reason);
+  await _runInline(channel, reason, dataDir);
+}
+
+/// The phone's data folder, set as `STRAKALARI_DATA_DIR` for core.
+Future<String> _phoneDataDir() async {
+  final support = await getApplicationSupportDirectory();
+  final dataDir = '${support.path}/data';
+  await Directory(dataDir).create(recursive: true);
+  // PLAN.md rule 2: the phone keeps its data in
+  // `getApplicationSupportDirectory()/data` (what Flet set as
+  // `FLET_APP_STORAGE_DATA`). The override is merged over the real
+  // environment so nothing else loses its variables.
+  setEnvironmentOverride({
+    ...Platform.environment,
+    'STRAKALARI_DATA_DIR': dataDir,
+  });
+  return dataDir;
+}
+
+/// Python `bool(value)` for the `run_in_background` switch.
+bool backgroundSwitchOn(Object? value) {
+  if (value == null || value == false) return false;
+  if (value is num) return value != 0;
+  if (value is String) return value.isNotEmpty;
+  if (value is Iterable) return value.isNotEmpty;
+  if (value is Map) return value.isNotEmpty;
+  return true;
+}
+
+/// Python `float(get("check_interval_minutes", 60) or 60)` (the runner's
+/// interval; core clamps it to at least 1). A string Python's `float()`
+/// would reject falls back to 60 instead of raising.
+double checkIntervalMinutes(Object? raw) {
+  if (raw == null || raw == false || raw == 0 || raw == '') return 60.0;
+  if (raw == true) return 1.0;
+  if (raw is num) return raw.toDouble();
+  final parsed = double.tryParse('$raw'.trim());
+  return (parsed == null || parsed == 0) ? 60.0 : parsed;
 }
 
 /// Hands the job to the live UI isolate. True when it took the job.
@@ -172,21 +234,9 @@ class _ChannelWakeupBridge implements WakeupPhoneBridge {
   }
 }
 
-Future<void> _runInline(AndroidChannel channel, String reason) async {
+Future<void> _runInline(AndroidChannel channel, String reason, String dataDir) async {
   // ignore: avoid_print
   print('Info: headless background run ($reason).');
-  final support = await getApplicationSupportDirectory();
-  final dataDir = '${support.path}/data';
-  await Directory(dataDir).create(recursive: true);
-  // PLAN.md rule 2: the phone keeps its data in
-  // `getApplicationSupportDirectory()/data` (what Flet set as
-  // `FLET_APP_STORAGE_DATA`). The override is merged over the real
-  // environment so nothing else loses its variables.
-  setEnvironmentOverride({
-    ...Platform.environment,
-    'STRAKALARI_DATA_DIR': dataDir,
-  });
-
   try {
     await warmAndroidKeystore(dataDir, channel: channel);
   } on KeyStoreMissing {
@@ -196,126 +246,119 @@ Future<void> _runInline(AndroidChannel channel, String reason) async {
     // ignore: avoid_print
     print('Warning: Keystore warm-up failed (${e.runtimeType}: $e).');
   }
-  installAndroidBridges(channel);
-
-  final ran = await withSessionLockAsync((held) async {
-    if (!held) {
-      // Another process (a desktop build) holds the session: skip, keep
-      // the schedule by re-arming below.
-      // ignore: avoid_print
-      print('Info: background refresh skipped (session locked elsewhere).');
-      return false;
-    }
-    final app = Strakalari(configFile: '$dataDir/config.json');
-    try {
-      final result = await runRefresh(app, app.configData);
-      for (final news in result.news) {
-        try {
-          final prefs = app.configData['notifications'];
-          notify(news.$1, news.$2,
-              prefs is Map ? prefs.cast<String, Object?>() : null);
-        } on Object {
-          // A notification must never break the run.
-        }
-      }
-      final cfg = Map<String, Object?>.of(app.configData);
-      await _syncPhone(cfg, channel, pendingExcuses: result.excusesFailed);
-      return true;
-    } finally {
-      app.close();
-    }
-  });
-  await _rearm(channel, ran);
+  installAndroidBridges(channel, languageOf: () => Strings.lang);
+  // The same state the UI builds: its language (core + strings), the
+  // refresh worker with its session lock, notifications and run record.
+  final state = AppState();
+  await runHeadlessTick(state, channel);
 }
 
-/// Pushes the status notification (the widget data and the alarm queue go
-/// through core's `syncAndroid`). Best effort each, like Python.
-Future<void> _syncPhone(
-  Map<String, Object?> cfg,
+/// One scheduler tick without the screen: what Python's `_register_jobs`
+/// runner and `_setup_phone_background` do when the wake fires.
+///
+/// The runner is core's [PeriodicRunner] with the UI's two jobs and its
+/// result hook; its first run is anchored to the last successful refresh
+/// (`_startup_seed`). Not due yet (a reboot, an app update): only the
+/// wake for the due time is armed. Due: one run (the refresh job keeps
+/// its gates: setup not finished, a refresh running, no login), then the
+/// status notification, widget and alarms, and the next wake from the
+/// runner's own timer (a failed run comes back in ~5 minutes).
+/// Returns `'off'`, `'not due'` or `'ran'`.
+@visibleForTesting
+Future<String> runHeadlessTick(
+  AppState state,
   AndroidChannel channel, {
-  int pendingExcuses = 0,
+  Job? refreshJob,
+  Duration updateWait = const Duration(seconds: 60),
 }) async {
-  final now = clock.now();
-  final cache = loadDataCache();
-  Map<String, Object?> mapOf(Object? value) =>
-      value is Map ? Map<String, Object?>.from(value) : {};
-  final timetable = mapOf(cache['timetable']);
-
-  syncAndroid(
-    timetable.isEmpty ? null : timetable,
-    config: cfg,
-    stableBaseline: _stableBaseline(),
-    now: now,
-  );
-
+  if (!backgroundSwitchOn(state.get('run_in_background', true))) {
+    await channel.cancelWake();
+    return 'off';
+  }
+  final interval = checkIntervalMinutes(state.get('check_interval_minutes', 60));
+  DateTime? seed;
   try {
-    final age = cacheAge(cache);
-    final inputs = StatusInputs(
-      timetable: timetable,
-      food: mapOf(cache['strava_meals']),
-      webOrders: mapOf(cache['strava_ordered']),
-      config: cfg,
-      stableBaseline: _stableBaseline(),
-      pendingExcuses: pendingExcuses,
-      lastUpdated: age == null ? null : now.subtract(age),
+    seed = startupSeed(state.data);
+  } on Object {
+    seed = null;
+  }
+  final runner = PeriodicRunner(
+    intervalMinutes: interval,
+    lastRun: seed,
+    onResult: (result) {
+      // Scheduler heartbeat, then the failure report (`_on_result`).
+      state.schedulerLastRun = clock.now();
+      if (!result.ok && !result.reported) {
+        state.scheduledJobFailed(result.name, result.error);
+      }
+    },
+  );
+  if (seed != null) state.schedulerLastRun = seed;
+  runner.addJob('refresh', refreshJob ?? () => state.scheduledRefreshJob());
+  runner.addJob(
+      'update',
+      () => state.startUpdateCheck()
+          ? 'update check started'
+          : 'update check busy');
+
+  final now = clock.now();
+  var outcome = 'not due';
+  if (!now.isBefore(nextDue(runner.lastRun, runner.intervalMinutes, now))) {
+    await runner.runAllOnce();
+    outcome = 'ran';
+    // The update check runs on its own; let it finish before the
+    // engine goes away (bounded).
+    final deadline = clock.now().add(updateWait);
+    while (state.updateCheckRunning && clock.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+    _postStatus(state, channel, interval);
+    // Also after a skipped or failed run: a new day redraws the widget.
+    state.syncAndroidState();
+  }
+  await _scheduleWake(channel, runner);
+  return outcome;
+}
+
+/// Posts the overview notification like the UI's `StatusNotifier`.
+void _postStatus(AppState state, AndroidChannel channel, double interval) {
+  try {
+    final minutes = interval.toInt() < 1 ? 1 : interval.toInt();
+    final notifier = StatusNotifier(
+      state.backgroundStatusInputs,
+      (_) => true,
+      () => (
+        Strings.get('bg_notif_title'),
+        Strings.format('bg_notif_text', {'n': minutes}),
+      ),
     );
-    final lang = getLanguage() == 'en' ? 'en' : 'cs';
-    final content =
-        buildStatus(inputs, now: now, fallback: ('Strakaláři', ''), lang: lang);
-    await channel.updateBackgroundNotification(
+    final content = notifier.current();
+    if (content == null) return;
+    unawaited(channel.updateBackgroundNotification(
       title: content.title,
       text: content.text,
       sub: content.sub,
       rows: content.rowsJson(),
-    );
+    ));
   } on Object catch (e) {
     // ignore: avoid_print
     print('Warning: status sync failed (${e.runtimeType}: $e)');
   }
 }
 
-/// The stable baseline in record-key form, or null when unavailable
-/// (the widget and the alarms then use the cached weeks only).
-Map<(int, int), Object?>? _stableBaseline() {
+/// `_schedule_phone_wake`: the alarm for the runner's next due run.
+Future<void> _scheduleWake(AndroidChannel channel, PeriodicRunner runner) async {
   try {
-    final cache = loadDataCache();
-    final raw = cache['stable_baseline'];
-    if (raw is! Map) return null;
-    return {
-      for (final entry in raw.entries)
-        (
-          int.parse('${entry.key}'.split('|').first),
-          int.parse('${entry.key}'.split('|').last)
-        ): entry.value,
-    };
-  } on Object {
-    return null;
-  }
-}
-
-/// Arms the next wake (even when this run was skipped or failed, so one
-/// bad run never stops the schedule). Mirrors the UI wiring: the next due
-/// refresh plus a few seconds.
-Future<void> _rearm(AndroidChannel channel, bool ran) async {
-  try {
-    final now = clock.now();
-    Map<String, Object?> cfg;
-    try {
-      final support = await getApplicationSupportDirectory();
-      cfg = ConfigManager('${support.path}/data/config.json').data;
-    } on Object {
-      cfg = <String, Object?>{};
+    final due = nextDue(runner.lastRun, runner.intervalMinutes, clock.now());
+    // A little after due: the runner must see it as due.
+    if (await channel.scheduleWake(due.add(const Duration(seconds: 10)))) {
+      // ignore: avoid_print
+      print('Info: next background check at '
+          '${due.hour.toString().padLeft(2, '0')}:'
+          '${due.minute.toString().padLeft(2, '0')}.');
     }
-    final raw = cfg['check_interval_minutes'];
-    final interval = raw is num ? raw.toDouble() : 60.0;
-    // This run just covered `now` (skipped runs: the other holder did).
-    final due = nextDue(now, interval, now).add(const Duration(seconds: 10));
-    await channel.scheduleWake(due);
-    // ignore: avoid_print
-    print('Info: background run ${ran ? 'done' : 'skipped'}; '
-        'next wake ${due.toIso8601String()}.');
   } on Object catch (e) {
     // ignore: avoid_print
-    print('Warning: could not re-arm the wake (${e.runtimeType}: $e)');
+    print('Warning: could not schedule the next wake-up ($e)');
   }
 }
