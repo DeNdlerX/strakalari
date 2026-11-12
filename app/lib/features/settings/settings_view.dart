@@ -5,6 +5,8 @@ import 'package:strakalari_core/strakalari_core.dart' as core;
 import 'package:app/features/settings/settings_controller.dart';
 import 'package:app/features/settings/wakeup_card.dart';
 import 'package:app/features/common/app_tokens.dart';
+import 'package:app/features/common/open_url.dart';
+import 'package:app/platform/scheduler_jobs.dart' show checkIntervalMinutes;
 import 'package:app/widgets/app_widgets.dart' as w;
 import 'package:app/widgets/overlays.dart';
 
@@ -277,6 +279,132 @@ class _TemplateEditorState extends State<TemplateEditor> {
 }
 
 /// A muted hint line under a field (Python `hint_text`).
+/// Port of `_background_overview` (settings/automation.py): a switch per
+/// line of the phone's background notification and a preview that follows
+/// them in place (no page re-render), its rows with the icons the
+/// notification draws (StatusViews.java).
+class BackgroundOverview extends StatefulWidget {
+  const BackgroundOverview({super.key, required this.controller});
+  final SettingsController controller;
+
+  @override
+  State<BackgroundOverview> createState() => _BackgroundOverviewState();
+}
+
+class _BackgroundOverviewState extends State<BackgroundOverview> {
+  static const Map<String, IconData> _icons = {
+    'next_lesson': Icons.schedule,
+    'lunch': Icons.restaurant,
+    'lunch_orders': Icons.shopping_cart_outlined,
+    'excuses': Icons.mail_outline,
+    'wakeup': Icons.alarm,
+  };
+
+  SettingsController get c => widget.controller;
+
+  core.StatusContent? _content() {
+    final inputs = c.backgroundStatusInputs;
+    if (inputs == null) return null;
+    try {
+      final n = checkIntervalMinutes(c.get('check_interval_minutes', 60)).toInt();
+      return core.buildStatus(inputs(),
+          fallback: (
+            Strings.get('bg_notif_title'),
+            Strings.format('bg_notif_text', {'n': n < 1 ? 1 : n}),
+          ));
+    } catch (e) {
+      // The switches still work.
+      // ignore: avoid_print
+      print('Warning: notification preview failed (${e.runtimeType}: $e)');
+      return null;
+    }
+  }
+
+  void _toggle(String item, bool on) {
+    final items = core.withItem(Map<String, Object?>.of(c.config), item, on);
+    if (!c.saveQuiet({'background_notification_items': items})) {
+      setState(() {}); // the switch shows the stored state again
+      return;
+    }
+    setState(() {}); // the preview follows in place
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tok = tokensOf(context);
+    final picked = core.selectedItems(Map<String, Object?>.of(c.config)).toSet();
+    final content = _content();
+    final head = [Strings.get('app_title'), content?.sub ?? '']
+        .where((s) => s.isNotEmpty)
+        .join(' · ');
+    final body = <Widget>[];
+    if (content != null && content.rows.isNotEmpty) {
+      for (final row in content.rows) {
+        body.add(Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 8,
+          children: [
+            Icon(_icons[row.kind], size: 16, color: tok.muted),
+            Expanded(child: Text(row.line, style: TextStyle(fontSize: tok.fsSmall))),
+          ],
+        ));
+      }
+    } else if (content != null) {
+      // The plain "running in the background".
+      body.add(Text(content.title, style: const TextStyle(fontWeight: FontWeight.bold)));
+      if (content.text.isNotEmpty) {
+        body.add(Text(content.text, style: TextStyle(fontSize: tok.fsSmall, color: tok.muted)));
+      }
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: tok.gap,
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 12,
+              children: [
+                Text(Strings.get('bg_overview_title'),
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                _Hint(Strings.get('bg_overview_hint')),
+                for (final item in core.items)
+                  SwitchListTile(
+                    key: Key('bg:item:$item'),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(Strings.get('bg_item_$item')),
+                    value: picked.contains(item),
+                    onChanged: (v) => _toggle(item, v),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              key: const Key('bg:preview'),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 4,
+              children: [
+                Text(Strings.get('bg_preview'),
+                    style: TextStyle(
+                        fontSize: tok.fsSmall, fontWeight: FontWeight.bold, color: tok.muted)),
+                Text(head, style: TextStyle(fontSize: tok.fsTiny, color: tok.faint)),
+                ...body,
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _Hint extends StatelessWidget {
   final String text;
   const _Hint(this.text);
@@ -1150,9 +1278,14 @@ class SettingsView extends StatelessWidget {
             ),
           ),
         ),
+        // `_background_overview`: what the background notification shows.
+        BackgroundOverview(controller: c),
       ];
     }
     if (c.storeManaged) {
+      // StartupTask is owned by Windows (Settings > Apps > Startup); the
+      // HKCU Run toggle has no effect inside the MSIX container. The tray
+      // switch stays, like Python's form card (autostart, tray).
       return [
         Card(
           child: Padding(
@@ -1161,10 +1294,19 @@ class SettingsView extends StatelessWidget {
               spacing: 20,
               children: [
                 _Hint(Strings.get('autostart_store_managed')),
-                OutlinedButton(
-                    onPressed: () {},
-                    child:
+                OutlinedButton.icon(
+                    key: const Key('browser:startup-settings'),
+                    onPressed: () => openUrl('ms-settings:startupapps'),
+                    icon: const Icon(Icons.open_in_new),
+                    label:
                         Text(Strings.get('autostart_open_settings'))),
+                SwitchListTile(
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(Strings.get('minimize_to_tray')),
+                  value: c.get('minimize_to_tray', true) == true,
+                  onChanged: (v) => c.saveQuiet({'minimize_to_tray': v}),
+                ),
               ],
             ),
           ),

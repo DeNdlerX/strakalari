@@ -66,6 +66,7 @@ SettingsController settingsControllerFor(
     wakeupAvailable: s.wakeupAvailable,
   );
   if (s.wakeupAvailable) c.wakeupPhone = wakeupPhone ?? _channelPhone(s);
+  c.backgroundStatusInputs = s.backgroundStatusInputs;
   c.drafts.addAll(s.drafts);
   c.settingsSection = s.settingsSection;
   c.settingsOpen = s.settingsOpen;

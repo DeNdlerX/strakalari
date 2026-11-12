@@ -46,6 +46,10 @@ class SettingsController {
   /// Phone-side facts and actions the wake-up card needs (Android only).
   WakeupPhone? wakeupPhone;
 
+  /// What the background notification's preview is built from (Android
+  /// only; `AppState.backgroundStatusInputs`).
+  core.StatusInputs Function()? backgroundStatusInputs;
+
   String settingsSection = 'accounts';
   bool settingsOpen = false;
   String testing = '';
