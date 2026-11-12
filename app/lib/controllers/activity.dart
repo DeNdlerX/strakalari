@@ -248,6 +248,64 @@ extension ActivityLogic on AppState {
     }
   }
 
+  /// The scheduler's refresh job. Port of `_refresh_job` + `_run_refresh`
+  /// in `flet_ui/app.py` (`_register_jobs`): skips while setup is pending,
+  /// a refresh runs or no login exists; otherwise starts a refresh and
+  /// waits for its outcome (bounded by [maxWait]), so a failed run gets
+  /// the scheduler's early retry. [stopped] ends the wait at shutdown.
+  Future<String> scheduledRefreshJob({
+    Duration maxWait = const Duration(minutes: 30),
+    bool Function()? stopped,
+  }) async {
+    schedulerLastRun = clock.now();
+    if (setupPending) return 'skipped (setup not finished)';
+    if (refreshRunning) return 'skipped (a refresh is already running)';
+    if (demoMode && !_hasCredentials()) {
+      return 'skipped (no credentials configured)';
+    }
+    final before = runs.isEmpty ? null : runs.last;
+    if (!startRefresh('all')) {
+      // Another refresh is running: fresh data is on its way.
+      return 'refresh busy';
+    }
+    final deadline = clock.now().add(maxWait);
+    while (refreshRunning) {
+      if (stopped?.call() ?? false) return 'refresh still running at shutdown';
+      if (!clock.now().isBefore(deadline)) {
+        throw StateError(
+            'refresh still running after ${maxWait.inMinutes} min');
+      }
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
+    final last = runs.isEmpty ? null : runs.last;
+    if (last != null && !identical(last, before) && last['ok'] != true) {
+      if (last['cancelled'] != true) {
+        // The worker already logged and notified the failure.
+        throw JobFailed('${last['detail'] ?? 'refresh failed'}');
+      }
+    }
+    return 'refresh finished';
+  }
+
+  /// The scheduler's result hook for a failed job. Port of `_on_result`
+  /// in `_register_jobs` (the heartbeat half lives in the job itself).
+  void scheduledJobFailed(String name, Object error) {
+    if (error is JobFailed) return; // already reported by the worker
+    logLine(Strings.format('job_failed_log', {'name': name}));
+    // The cause (last line) belongs in the live log, so a copied log /
+    // error report shows why, not just which job.
+    final cause = '$error'.trim().split('\n');
+    if (cause.isNotEmpty && cause.last.isNotEmpty) {
+      final line = cause.last;
+      logLine(line.length > 300 ? line.substring(0, 300) : line);
+    }
+    try {
+      final prefs = get('notifications', {});
+      notify('refresh_failed', Strings.format('job_failed', {'name': name}),
+          prefs is Map ? prefs.cast<String, Object?>() : null);
+    } catch (_) {}
+  }
+
   /// Starts a refresh run. Returns false when busy. Phase 7 performs
   /// the fetch; until then flags + log match the original.
   /// Port of `start_refresh()`.

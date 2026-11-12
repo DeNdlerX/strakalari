@@ -88,6 +88,29 @@ Future<Uint8List> _channelWrap(AndroidChannel channel, Uint8List key) async {
   }
 }
 
+/// Adopts the wrapped key another isolate just created (it may still be
+/// writing it). Null when it cannot be read within a few seconds.
+Future<Uint8List?> _adoptWrapped(
+    AndroidChannel channel, String wrappedPath) async {
+  for (var i = 0; i < 30; i++) {
+    final wrapped = _readTrimmed(wrappedPath);
+    if (wrapped != null && wrapped.isNotEmpty) {
+      try {
+        final blob = base64.decode(ascii.decode(wrapped));
+        final key = await _channelUnwrap(channel, Uint8List.fromList(blob));
+        if (Fernet.isValidKeyBytes(key)) {
+          androidKeystoreBridge = WarmedAndroidKeystore(key, wrapped);
+          return key;
+        }
+      } on FormatException {
+        // Half written: read again below.
+      }
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+  }
+  return null;
+}
+
 Future<Uint8List> _channelUnwrap(
     AndroidChannel channel, Uint8List blob) async {
   try {
@@ -168,7 +191,19 @@ Future<Uint8List> warmAndroidKeystore(
     if (!_bytesEqual(await _channelUnwrap(channel, blob), key)) {
       throw const FormatException('the wrapped key does not read back');
     }
-    File(wrappedPath).writeAsBytesSync(ascii.encode(base64.encode(blob)));
+    // The UI and a headless wake-up are two isolates in one process (a
+    // file lock does not separate them): only the first may create the
+    // wrapped key, the other adopts it, or one of them would encrypt
+    // with a key that is then overwritten.
+    final target = File(wrappedPath);
+    try {
+      target.createSync(exclusive: true);
+    } on FileSystemException {
+      final winner = await _adoptWrapped(channel, wrappedPath);
+      if (winner != null) return winner;
+      rethrow; // unreadable: the plain-file fallback below
+    }
+    target.writeAsBytesSync(ascii.encode(base64.encode(blob)), flush: true);
   } on Object {
     // ignore: avoid_print
     print('Warning: Android Keystore unavailable; keeping $keyFile.');

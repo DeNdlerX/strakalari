@@ -49,6 +49,7 @@ const Duration uiHandoffTimeout = Duration(seconds: 30);
 Future<StreamSubscription<dynamic>> registerUiRefreshPort(
   ReceivePort port, {
   AndroidChannel channel = const AndroidChannel(),
+  Future<void> Function()? onRefresh,
 }) async {
   IsolateNameServer.removePortNameMapping(uiIsolatePortName);
   IsolateNameServer.registerPortWithName(port.sendPort, uiIsolatePortName);
@@ -65,9 +66,19 @@ Future<StreamSubscription<dynamic>> registerUiRefreshPort(
   return port.listen((dynamic message) async {
     // The actual refresh-on-message wiring lives with the UI startup (the
     // app's scheduler owns the jobs); this keeps the port anchor here.
-    if (message is Map && message['reply'] is SendPort) {
-      (message['reply'] as SendPort).send('deferred');
+    if (message is! Map || message['reply'] is! SendPort) return;
+    final reply = message['reply'] as SendPort;
+    if (onRefresh == null) {
+      reply.send('deferred');
+      return;
     }
+    try {
+      await onRefresh();
+    } on Object catch (e) {
+      // ignore: avoid_print
+      print('Warning: background refresh in the UI isolate failed ($e).');
+    }
+    reply.send('done');
   });
 }
 
@@ -129,6 +140,13 @@ Future<bool> _handOffToUi(AndroidChannel channel, String reason) async {
   }
 }
 
+/// Core's phone seams (notifications, widget + alarm queue) over
+/// [channel]. Both the UI isolate and a headless run call this.
+void installAndroidBridges(AndroidChannel channel, {String Function()? languageOf}) {
+  notifierBackend = AndroidNotifications(channel, languageOf);
+  wakeupPhoneBridge = _ChannelWakeupBridge(channel);
+}
+
 /// `WakeupPhoneBridge` over the background isolate's channel.
 ///
 /// Core's bridge is synchronous while the channel is async, so the calls
@@ -178,8 +196,7 @@ Future<void> _runInline(AndroidChannel channel, String reason) async {
     // ignore: avoid_print
     print('Warning: Keystore warm-up failed (${e.runtimeType}: $e).');
   }
-  notifierBackend = AndroidNotifications(channel);
-  wakeupPhoneBridge = _ChannelWakeupBridge(channel);
+  installAndroidBridges(channel);
 
   final ran = await withSessionLockAsync((held) async {
     if (!held) {

@@ -184,9 +184,10 @@ class DesktopTrayController with WindowListener, TrayListener {
             } catch (_) {}
           },
         ),
-        MenuItem(
+        MenuItem.checkbox(
           key: 'pause',
           label: paused ? _strings.resume : _strings.pause,
+          checked: paused,
           onClick: (_) async {
             try {
               await onTogglePause?.call();
@@ -270,6 +271,9 @@ class DesktopBackgroundLoop {
     this.prefsProvider,
     this.updateChannelProvider,
     this.pausedProvider,
+    this.updateJob,
+    this.onFailure,
+    this.afterRun,
   });
 
   final Future<String> Function() refreshJob;
@@ -278,6 +282,21 @@ class DesktopBackgroundLoop {
   final Map<String, Object?>? Function()? prefsProvider;
   final String Function()? updateChannelProvider;
   final bool Function()? pausedProvider;
+
+  /// The app's update job (Python: `state.start_update_check()`); when
+  /// null, [runUpdateJob] asks core directly.
+  final Future<String> Function()? updateJob;
+
+  /// The app's failed-job hook (Python: `_on_result`); when null, one
+  /// toast per failed job.
+  final void Function(String name, Object error)? onFailure;
+
+  /// Called after every run of the jobs (Python: the phone's chained
+  /// `_on_result`: re-sync the background, re-arm the wake alarm).
+  final void Function()? afterRun;
+
+  /// When the jobs last ran (the anchor of the next due run).
+  DateTime? get lastRun => _lastRun;
 
   Timer? _timer;
   DateTime? _lastRun;
@@ -349,7 +368,7 @@ class DesktopBackgroundLoop {
       _reportFailure('refresh', e);
     }
     try {
-      await runUpdateJob();
+      await (updateJob ?? runUpdateJob)();
     } catch (e) {
       ok = false;
       _reportFailure('update', e);
@@ -360,6 +379,9 @@ class DesktopBackgroundLoop {
               Duration(seconds: (_intervalMinutes * 60).round() - 300));
       _running = false;
     }
+    try {
+      afterRun?.call();
+    } catch (_) {}
   }
 
   /// Announces a new release once (GitHub asked at most once a day —
@@ -378,6 +400,13 @@ class DesktopBackgroundLoop {
   }
 
   void _reportFailure(String name, Object error) {
+    final hook = onFailure;
+    if (hook != null) {
+      try {
+        hook(name, error);
+      } catch (_) {}
+      return;
+    }
     try {
       notify('refresh_failed', 'job failed: $name',
           prefsProvider?.call());

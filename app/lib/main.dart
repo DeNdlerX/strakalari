@@ -8,11 +8,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:strakalari_core/strakalari_core.dart' show notifierBackend;
 
 import 'controllers/app_state.dart';
 import 'l10n/strings.dart';
 import 'platform/android/background.dart' as android_bg;
 import 'platform/notifications.dart';
+import 'platform/startup.dart';
 import 'shell/router.dart';
 import 'widgets/error_boundary.dart';
 
@@ -26,11 +28,16 @@ Future<void> backgroundMain() => android_bg.androidBackgroundEntry();
 
 final _router = buildRouter();
 
-void main() {
+Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-  ensureNotifierBackend();
+  // Data dir, key store, single instance (may exit this process).
+  final ctx = await prepareStartup(args);
+  if (notifierBackend == null) ensureNotifierBackend(); // tests, iOS
   installErrorWidgetBuilder();
-  runApp(const ProviderScope(child: MyApp()));
+  final container = ProviderContainer();
+  runApp(UncontrolledProviderScope(container: container, child: const MyApp()));
+  // Scheduler, tray, phone background (Python: `main(page)` after render).
+  await startPlatformServices(container, ctx);
 }
 
 /// Root widget. Kept under the template name so the phase-0 smoke test

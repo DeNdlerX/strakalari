@@ -80,7 +80,14 @@ class _ViewErrorCardState extends ConsumerState<ViewErrorCard> {
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(appStateProvider);
+    final AppState state;
+    try {
+      state = ref.watch(appStateProvider);
+    } catch (_) {
+      // The app state itself failed to load: this card would throw again
+      // and be replaced by another card, forever. A plain leaf ends it.
+      return ErrorWidget(widget.details.exception);
+    }
     final tok = state.tok;
     return Center(
       child: Card(
