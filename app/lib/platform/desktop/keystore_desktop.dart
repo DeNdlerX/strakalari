@@ -11,11 +11,9 @@
 //
 // Layout per backend (mirrors the keyring backends in
 // `.venv/Lib/site-packages/keyring/backends/`, no keyring dependency):
-// * Windows (`Windows.py`): `CredRead(TargetName=service)` first, and
-//   when the stored `UserName` differs, the compound name
-//   `<username>@<service>`. Blobs decode UTF-16 first, then UTF-8
-//   (`DecodingCredential.value`); writes are UTF-16LE. `UserName` is
-//   the entry name, persist is `CRED_PERSIST_ENTERPRISE`.
+// * Windows (`Windows.py`): `WinVaultKeyring` ported line by line in
+//   `win_credentials.dart` (service target, compound `<user>@<service>`
+//   re-save on collisions, delete only where `UserName` matches).
 // * macOS (`macOS/__init__.py`): generic-password item, service
 //   `Strakalari` (`kSecService`), account = entry (`kSecAccount`).
 //   Reached through the `security` CLI (same Keychain, same item),
@@ -35,14 +33,11 @@
 //   documented fallback), exactly like Python.
 //
 // macOS/Linux parts are written but UNVERIFIED (no Mac/Linux run here).
-import 'dart:convert';
-import 'dart:ffi';
 import 'dart:io';
-import 'dart:typed_data';
 
-import 'package:ffi/ffi.dart';
 import 'package:strakalari_core/strakalari_core.dart';
-import 'package:win32/win32.dart';
+
+import 'win_credentials.dart';
 
 /// Linux Secret Service application attribute keyring always sets.
 const String _linuxApplication = 'Python keyring library';
@@ -51,19 +46,24 @@ const String _linuxApplication = 'Python keyring library';
 String _linuxLabel(String service, String username) =>
     "Password for '$username' on '$service'";
 
-/// Compound Windows target keyring falls back to on collisions.
-String _compoundTarget(String username, String service) => '$username@$service';
-
 /// The desktop OS credential store, reading Python keyring's entries.
 class DesktopKeyStore implements KeyStore {
   /// When false, CLI backends are treated as absent (tests).
   final bool allowCliBackends;
 
-  const DesktopKeyStore({this.allowCliBackends = true});
+  /// The Credential Manager calls (a fake table in tests).
+  final WinCredApi? windowsApi;
+
+  const DesktopKeyStore({this.allowCliBackends = true, this.windowsApi});
+
+  /// Windows when [windowsApi] is given (tests) or the host is Windows.
+  bool get _isWindows => windowsApi != null || Platform.isWindows;
+
+  WinCredApi get _win => windowsApi ?? Win32CredApi();
 
   @override
   String? getPassword(String service, String account) {
-    if (Platform.isWindows) return _getWindows(service, account);
+    if (_isWindows) return _getWindows(_win, service, account);
     if (Platform.isMacOS) return _getMacos(service, account, allowCli: allowCliBackends);
     if (Platform.isLinux) return _getLinux(service, account, allowCli: allowCliBackends);
     throw KeyStoreMissing('No credential store backend on this OS.');
@@ -71,8 +71,8 @@ class DesktopKeyStore implements KeyStore {
 
   @override
   void setPassword(String service, String account, String password) {
-    if (Platform.isWindows) {
-      _setWindows(service, account, password);
+    if (_isWindows) {
+      _setWindows(_win, service, account, password);
       return;
     }
     if (Platform.isMacOS) {
@@ -88,8 +88,8 @@ class DesktopKeyStore implements KeyStore {
 
   @override
   void deletePassword(String service, String account) {
-    if (Platform.isWindows) {
-      _deleteWindows(service, account);
+    if (_isWindows) {
+      _deleteWindows(_win, service, account);
       return;
     }
     if (Platform.isMacOS) {
@@ -105,149 +105,33 @@ class DesktopKeyStore implements KeyStore {
 }
 
 // -- Windows -------------------------------------------------------------
+// keyring's `WinVaultKeyring`, ported in `win_credentials.dart`.
 
-String? _readCredentialBlob(Pointer<CREDENTIAL> cred) {
-  final size = cred.ref.CredentialBlobSize;
-  if (size == 0) return null;
-  final bytes = cred.ref.CredentialBlob.asTypedList(size);
-  // `DecodingCredential.value`: UTF-16 first, then UTF-8.
+String? _getWindows(WinCredApi api, String service, String account) {
   try {
-    final units = Uint16List.sublistView(bytes, 0, size & ~1);
-    var text = String.fromCharCodes(units);
-    // Strip one trailing NUL the API may include.
-    if (text.endsWith('\x00')) {
-      text = text.substring(0, text.length - 1);
-    }
-    // A lone-surrogate failure means "not UTF-16": fall through.
-    if (!_hasLoneSurrogates(text)) return text;
-  } catch (_) {}
-  try {
-    return utf8.decode(bytes);
-  } catch (_) {
-    return null;
-  }
-}
-
-bool _hasLoneSurrogates(String text) {
-  for (var i = 0; i < text.length; i++) {
-    final unit = text.codeUnitAt(i);
-    if (unit >= 0xd800 && unit <= 0xdfff) {
-      final high = unit <= 0xdbff;
-      final next = i + 1 < text.length ? text.codeUnitAt(i + 1) : -1;
-      if (high && next >= 0xdc00 && next <= 0xdfff) {
-        i++;
-        continue;
-      }
-      return true;
-    }
-  }
-  return false;
-}
-
-String? _credReadTarget(String target) {
-  return using((Arena arena) {
-    final name = target.toNativeUtf16(allocator: arena);
-    final out = arena<Pointer<CREDENTIAL>>();
-    final ok = CredRead(name, CRED_TYPE_GENERIC, 0, out);
-    if (ok == 0) return null;
-    try {
-      final cred = out.value;
-      final user = cred.ref.UserName.toDartString();
-      final value = _readCredentialBlob(cred);
-      if (value == null) return null;
-      return '$user\x00$value';
-    } finally {
-      CredFree(out.value);
-    }
-  });
-}
-
-String? _getWindows(String service, String account) {
-  try {
-    final direct = _credReadTarget(service);
-    if (direct != null) {
-      final sep = direct.indexOf('\x00');
-      final user = direct.substring(0, sep);
-      final value = direct.substring(sep + 1);
-      // First attempt under the service name — unless it belongs to
-      // a different user, in which case the compound name holds ours.
-      if (user.isEmpty || user == account) return value;
-    }
-    final compound = _credReadTarget(_compoundTarget(account, service));
-    if (compound == null) {
-      // Distinguish "no entry" (missing → file fallback) from
-      // "the store refused" (unavailable → wizard re-prompt).
-      final error = GetLastError();
-      if (error != 0 && error != 1168 /* ERROR_NOT_FOUND */) {
-        throw KeyStoreUnavailable(
-          'Credential Manager did not answer (Win32 error $error).',
-        );
-      }
-      return null;
-    }
-    return compound.substring(compound.indexOf('\x00') + 1);
-  } on KeyStoreMissing {
-    rethrow;
-  } on KeyStoreUnavailable {
-    rethrow;
+    return WinVaultKeyring(api).getPassword(service, account);
   } catch (e) {
+    // Any refusal (not "not found", which is null) must never lead to a
+    // new key: core turns this into KeyStoreUnavailable.
     throw KeyStoreUnavailable('Credential Manager did not answer ($e).');
   }
 }
 
-void _setWindows(String service, String account, String password) {
+void _setWindows(WinCredApi api, String service, String account, String password) {
   try {
-    final ok = using((Arena arena) {
-      final blob = password.codeUnits;
-      final blobPtr = arena<Uint16>(blob.length);
-      blobPtr.asTypedList(blob.length).setAll(0, blob);
-      final cred = arena<CREDENTIAL>();
-      cred.ref.Type = CRED_TYPE_GENERIC;
-      cred.ref.TargetName = service.toNativeUtf16(allocator: arena);
-      cred.ref.Comment = nullptr.cast();
-      cred.ref.CredentialBlobSize = blob.length * 2;
-      cred.ref.CredentialBlob = blobPtr.cast();
-      cred.ref.Persist = CRED_PERSIST_ENTERPRISE;
-      cred.ref.AttributeCount = 0;
-      cred.ref.Attributes = nullptr.cast();
-      cred.ref.TargetAlias = nullptr.cast();
-      cred.ref.UserName = account.toNativeUtf16(allocator: arena);
-      return CredWrite(cred, 0) != 0;
-    });
-    if (!ok) {
-      throw KeyStoreUnavailable(
-        'Credential Manager refused the write (Win32 error ${GetLastError()}).',
-      );
-    }
-    // Read back: only a round trip counts (mirrors `_to_store`).
-    if (_getWindows(service, account) != password) {
-      throw KeyStoreUnavailable(
-        'Credential Manager did not return the stored key.',
-      );
-    }
-  } on KeyStoreUnavailable {
-    rethrow;
+    WinVaultKeyring(api).setPassword(service, account, password);
   } catch (e) {
-    throw KeyStoreUnavailable('Credential Manager did not answer ($e).');
+    throw KeyStoreUnavailable('Credential Manager refused the write ($e).');
   }
 }
 
-void _deleteWindows(String service, String account) {
+void _deleteWindows(WinCredApi api, String service, String account) {
   try {
-    using((Arena arena) {
-      CredDelete(
-        service.toNativeUtf16(allocator: arena),
-        CRED_TYPE_GENERIC,
-        0,
-      );
-      CredDelete(
-        _compoundTarget(account, service).toNativeUtf16(allocator: arena),
-        CRED_TYPE_GENERIC,
-        0,
-      );
-    });
-  } catch (_) {
-    // Missing entries are silent (matches `delete_password`).
+    // False (nothing held this entry) is keyring's PasswordDeleteError,
+    // which `forget_key` treats as nothing left behind: silent.
+    WinVaultKeyring(api).deletePassword(service, account);
+  } catch (e) {
+    throw KeyStoreUnavailable('Credential Manager did not delete the key ($e).');
   }
 }
 
