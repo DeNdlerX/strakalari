@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:strakalari_core/strakalari_core.dart';
 
+import '../features/common/format.dart' as fmt;
 import '../l10n/strings.dart';
 import '../shell/theme.dart';
 
@@ -33,53 +34,10 @@ String lessonsText(int n) {
   return Strings.format('lessons_many', {'n': n});
 }
 
-const List<String> czechDayNames = [
-  'Pondělí',
-  'Úterý',
-  'Středa',
-  'Čtvrtek',
-  'Pátek',
-  'Sobota',
-  'Neděle',
-];
-const List<String> englishDayNames = [
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-  'Sunday',
-];
-const List<String> czechDayNamesShort = [
-  'Po',
-  'Út',
-  'St',
-  'Čt',
-  'Pá',
-  'So',
-  'Ne',
-];
-const List<String> englishDayNamesShort = [
-  'Mon',
-  'Tue',
-  'Wed',
-  'Thu',
-  'Fri',
-  'Sat',
-  'Sun',
-];
-
 /// Weekday name in the app language (never the OS locale).
 /// Port of `day_name()` (Python Monday=0 == Dart Monday=1 minus one).
-String dayName(Object? value, [bool short = false]) {
-  final day = value is DateTime ? value : parseCzDate('$value');
-  if (day == null) return '${value ?? '?'}';
-  final idx = day.weekday - 1;
-  final en = Strings.lang == 'en';
-  if (short) return (en ? englishDayNamesShort : czechDayNamesShort)[idx];
-  return (en ? englishDayNames : czechDayNames)[idx];
-}
+String dayName(Object? value, [bool short = false]) =>
+    fmt.dayName(value, Strings.lang, short: short);
 
 /// Maps a normalized lesson status to a badge kind. Port of
 /// `lesson_kind()`.

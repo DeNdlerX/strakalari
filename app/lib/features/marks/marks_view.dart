@@ -1142,7 +1142,7 @@ Widget tile(String label, String value, String kind) {
               children: [
                 const Spacer(),
                 Container(
-                  height: roundHalfEven(64 * clamped).toDouble(),
+                  height: roundHalfEvenToInt(64 * clamped).toDouble(),
                   decoration: BoxDecoration(
                       color: color,
                       borderRadius:

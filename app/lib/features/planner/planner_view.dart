@@ -1061,7 +1061,8 @@ class PlannerView extends StatelessWidget {
     final parts = <Widget>[];
     var used = 0;
     for (final (hours, color) in segments) {
-      final share = ((hours < 0 ? 0.0 : hours) / total * 1000).round();
+      final share =
+          core.roundHalfEvenToInt((hours < 0 ? 0.0 : hours) / total * 1000);
       if (share <= 0) continue;
       used += share;
       parts.add(
@@ -1415,28 +1416,6 @@ class PlannerView extends StatelessWidget {
 
   static String _iso(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
-  static String _weekdayLong(int weekday) {
-    const cs = [
-      'Pondělí',
-      'Úterý',
-      'Středa',
-      'Čtvrtek',
-      'Pátek',
-      'Sobota',
-      'Neděle',
-    ];
-    const en = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-    return (Strings.lang == 'en' ? en : cs)[weekday - 1];
-  }
 }
 
 /// Single-day plan dialog: template picker + lunch toggle + impact preview.
@@ -1493,7 +1472,7 @@ class _PlanDayDialogState extends State<PlanDayDialog> {
         const [];
     return AlertDialog(
       title: Text(
-        "${Strings.get('plan_skip')}: ${PlannerView._weekdayLong(widget.day.weekday)} ${PlannerView._cz(widget.day)}",
+        "${Strings.get('plan_skip')}: ${w.dayName(widget.day)} ${PlannerView._cz(widget.day)}",
       ),
       content: SingleChildScrollView(
         child: Column(

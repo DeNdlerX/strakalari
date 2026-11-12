@@ -17,7 +17,7 @@ int _halfUp(double value) {
 }
 
 /// Python `round()` on a non-negative value: halves go to even.
-int _roundHalfEvenToInt(double value) {
+int roundHalfEvenToInt(double value) {
   final floored = value.floor();
   final frac = value - floored;
   if (frac == 0.5) return floored.isEven ? floored : floored + 1;
@@ -143,7 +143,7 @@ Map<String, int> weeklyHoursPerSubject(
     final scaled = <String, int>{};
     for (final entry in counts.entries) {
       // Python round(): halves go to even.
-      final n = _roundHalfEvenToInt(entry.value * factor);
+      final n = roundHalfEvenToInt(entry.value * factor);
       if (n > 0) scaled[entry.key] = n;
     }
     return scaled;
@@ -238,9 +238,9 @@ SubjectState forecastSubject({
   final limit = limitPct.toDouble();
   final weekly = weeklyHours < 1 ? 1 : weeklyHours;
   // Python round(): halves go to even.
-  final totalHours = _roundHalfEvenToInt(weekly * schoolDaysTotal / 5) < 1
+  final totalHours = roundHalfEvenToInt(weekly * schoolDaysTotal / 5) < 1
       ? 1
-      : _roundHalfEvenToInt(weekly * schoolDaysTotal / 5);
+      : roundHalfEvenToInt(weekly * schoolDaysTotal / 5);
   double? taught;
   if (taughtHours is num) {
     taught = taughtHours.toDouble();
@@ -252,7 +252,7 @@ SubjectState forecastSubject({
     taughtSoFar = (taught.isNaN || taught < 0.0) ? 0.0 : taught;
   } else {
     final estimate =
-        _roundHalfEvenToInt(weekly * (schoolDaysTotal - schoolDaysLeft) / 5);
+        roundHalfEvenToInt(weekly * (schoolDaysTotal - schoolDaysLeft) / 5);
     taughtSoFar = (estimate < 1 ? 1 : estimate).toDouble();
   }
   final alreadyMissed =
