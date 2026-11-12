@@ -1335,3 +1335,55 @@ STATUS.md (`git status` was clean before this commit); the untracked
 Windows Sandbox. Lunches, Activity, Settings and More were not looked at again (their code
 did not change in this round apart from the Activity copy button), and no en light pair
 except the phone wizard.
+
+## Re-review 5 (2026-11-12)
+
+Reviewed at `2988b6a` plus the STATUS.md change committed with this section; commits
+`021b20b`, `a505226`, `2988b6a` since the re-review 4 commit `ab10c48`.
+
+**Who did what:** the owner asked the reviewer to make the four re-review 4 fixes and to
+review them. So these fixes were not checked by a second pair of eyes. They are small (one
+border and one spacing in four view files, two screenshot tools, STATUS wording), each has a
+test or a full re-run behind it, and Checkpoint C must be reviewed in a fresh session.
+
+### Verdict: **PASS**
+
+No blocker, must-fix or should-fix is open for phases 5–6. Checkpoint B is passed; the
+migration may go on with phase 7.
+
+### Status of the re-review 4 findings
+
+| ID | State | Commit | Checked how |
+|---|---|---|---|
+| BR4-S1 | **fixed** | `021b20b` | `absences_view.dart` `_card`, `marks_view.dart` `_card`, `timetable_view.dart` `_card` and the wizard card pass `side: BorderSide(color: t.border)` (= `components.py:149`). Absences rows are `tok.gap // 2` apart, on a phone every block and row `tok.gap // 2 + 2` (= `absences.py:99-102`). New `app/test/card_outline_test.dart` (4): outline colour and width on the Absences rows (wide and phone) and the wizard card, the exact row gap under the real theme, and a guard that no `Card(color: t.card, shape: RoundedRectangleBorder(borderRadius: …))` without a side is left under `lib/features`. Screenshots `absences-cs-dark-1280`, `absences-en-light-390`, `wizard-cs-dark-1280`, `wizard-en-light-390`: outline and spacing now as in Flet |
+| BR4-S2 | **fixed** | `2988b6a` | `capture_flet.py` `open_app` polls a screenshot once a second until the page is no longer almost all white (120 s limit, then `RuntimeError`), and `_screenshot` retries a Playwright timeout twice. A full run of the committed script: exit 0, 76 images, none logo-only (scripted check), all newer than the run's start |
+| BR4-S3 | **fixed** | `a505226` | `capture_screens.dart` sets `debugDefaultTargetPlatformOverride = TargetPlatform.windows` for widths from 720 px and resets it at the end of the test body. Re-run: 80 images. *Obnovit data*, the wizard buttons and the segmented controls are now the same height as in the Flet capture at 1280 px, so the earlier difference was the tool, not the app |
+| BR4-S4 | **fixed** | with this section | test map item 16 says which Python cases each group covers (11 + 3 + 11 + 1 dropped = 26, checked against `grep "def test_"`); the stale "in progress, unreviewed" and round-1 wording are gone; suite counts are 502 / 1 skipped; the round 5 screenshot sentence carries a correction |
+
+### Notes carried to Checkpoint C
+
+BR3-N2 (single-instance token from `Random.secure()`), BR-N2 (window scheduler;
+`test_scheduler_skips_refresh_while_setup_pending` is Deferred), BR2-N1 (desktop key store
+not wired), BR-N3, BR-N4, BR4-N1 (the `Duration(days` guard reads one line at a time). The
+phase 7–9 code on the branch is unreviewed. Small layout differences that stay and are
+accepted: the navigation rail items sit about 3 px closer together than in Flet, and an
+Absences row is about 3 px lower.
+
+### What I verified in this re-review, and how
+
+Flutter 3.44.8 / Dart 3.12.2, Windows 11 (Europe/Prague), 12 Nov 2026. Demo data only,
+nothing contacted except 127.0.0.1.
+
+| Check | Result |
+|---|---|
+| `dart analyze` / `dart test` (core) | clean / 764 passed, 2 skipped |
+| `flutter analyze` / `flutter test` (app) | clean / 502 passed, 1 skipped (APK scan needs `STRAKALARI_APK`) |
+| Python suite | 1643 passed |
+| `tools/parity/dump.py` + `git diff --exit-code` on `test/parity/` | clean |
+| Scope of the three code commits | 4 view files (border, spacing), 1 new test file, 2 capture tools; no config key, string, dependency or lockfile change; no existing test touched |
+| Hygiene | commits by DeNdlerX, no `Co-Authored-By` / `Claude-Session`; no upstream for `flutter-migration`; `main` = `0ffdcff` still an ancestor, Python sources unchanged apart from `tools/parity/capture_flet.py` |
+| Screenshots | both sets re-captured with the fixed tools (80 Flutter, 76 Flet, none blank). Read as side-by-side sheets: Absences and wizard at 1280 (cs dark), Marks and Timetable at 1280 (en light), Absences and wizard at 390 (en light). Together with re-review 4 every screen that changed since re-review 3 has been compared wide and narrow, dark and light |
+
+**Not verified:** the phase 7–9 code (Checkpoints C and D), phones and Windows Sandbox.
+Lunches, Activity, Settings and More were last compared in re-review 3; their views did not
+change since, apart from the Activity copy button.

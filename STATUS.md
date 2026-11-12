@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 6 (Checkpoint B re-review 4: PASS WITH FIXES, 2026-11-12) · Next step: **Fix every finding in `reviews/checkpoint-B.md` (blockers first), one commit per finding, then stop for re-review.** The open findings are under *Re-review 4*: BR4-S1 … BR4-S4 (all should-fix). After a PASS: phase 7 desktop checks (Sandbox over-install test) and phase 8 phone checks (ask the owner before the first install on the Pixel 7 Pro).
+Current phase: 7 (Checkpoint B re-review 5: PASS, 2026-11-12) · Next step: **Checkpoint B passed (re-review 5). Start phase 7:** merge `main`, then the desktop checks (Sandbox over-install test); later phase 8 phone checks (ask the owner before the first install on the Pixel 7 Pro). Stop at Checkpoint C.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -21,11 +21,11 @@ breakpoints, rail ↔ bar + More, landscape side rail), theme tokens,
 ARB strings (794 keys + 13 notif_*), shared widgets, error dialog with
 Copy log/Share, tutorial tours, platform seams. Live `AppState` → core
 wiring and all AppState test suites green.
-Phase 6 (screens) is complete and waiting for the Checkpoint B re-review: all 10 screens are wired to live state and
+Phase 6 (screens) is complete and passed Checkpoint B: all 10 screens are wired to live state and
 restyled like the Flet screens (round 4: Today, Planner, Lunches, Activity, Settings, shared theme); both screenshot
-sets were re-captured and compared on 1280 and 390 px, light and dark. App suite: 469 passed, 1 skipped
+sets were re-captured and compared on 1280 and 390 px, light and dark. App suite: 502 passed, 1 skipped
 (APK scan needs `STRAKALARI_APK`); core: 764 passed, 2 skipped; both analyzers clean.
-⛔ Checkpoint B: UI review — round 5 done (re-review 3 findings fixed), ready for the re-review (nothing verified on a phone or in Windows Sandbox).
+⛔ Checkpoint B: UI review (re-review 5: **PASS**, 2026-11-12; nothing verified on a phone or in Windows Sandbox).
 Phase 7 (desktop) is in progress, unreviewed: tray + hide-to-tray, autostart,
 single-instance loopback-TCP, notifications, desktop keystores, Inno
 (AppId kept) + MSIX adaptations, CI release jobs written in code;
@@ -219,9 +219,9 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
     - `TestSoonDetection.*` (4), `TestSoonStatus.*` (6), `TestSoonTemplates.test_planner_templates_for_soon` (1) → `app/test/phase6_features_test.dart` (`soon badge kind is late color`, `soon task kind and lesson status`, `absent soon yields soon excuse and does not merge into full day`)
 15. `tests/test_entry_routing.py` (5) → **Deferred (phase 5/7 — Python `__main__` CLI entry routing; Flutter entry is `app/lib/main.dart`)**
 16. `tests/test_error_report.py` (26):
-    - 13 core cases → `error_report_test.dart`: `exposesOnlyPresence`, `classification`, `namesFix`, `scrubsSecretValues`, `numericAndShort`, `scrubsDecryptedPasswordAndPersonalData`, `carriesDiagnostics`, `extraSecretsRedacted`, `logTailIsContextNotTracebackCopy`, `neverContainsSecrets`, `prefersTypeAndFirstLine`, `namesBuildAndLanguage`, `raiseUserErrorForMissingLogin`
-    - 4 UI dialog cases → `app/test/overlays_test.dart` (in progress, unreviewed): `error dialog shows summary and traceback`, `error dialog with user message hides traceback`, `copy button records a copied confirmation`, `showErrorDialog never throws`
-    - Remaining 9 cases → `app/test/app_state_excuses_and_planner_test.dart` (`reportErrorQueuesPopupWithTraceback`, `reportErrorOutsideHandlerStillSafe`, `acknowledgeClearsPendingButKeepsReport`, `timeoutErrorMarksReportFriendly`, `reportNeverContainsSecrets`, `reportLogTailIsContextNotTracebackCopy`) + `app/test/app_state_error_and_quiet_test.dart` (`userErrorMarksReportFriendly`, `regularErrorHasNoUserMessage`, `reportIsPersistedRedactedToStderr`, `shellPopsQueuedErrorOnce`) + `app/test/activity_view_test.dart` (`activityLogCopyRedactsSecrets`); `test_copy_text_does_not_mount_clipboard_into_overlay` is under *Dropped*
+    - 11 pure core cases → `error_report_test.dart` (13 tests: the 11 below plus `logTailIsContextNotTracebackCopy` and `neverContainsSecrets`, which check the report builder that the two `AppState` cases further down go through): `exposesOnlyPresence`, `classification`, `namesFix`, `scrubsSecretValues`, `numericAndShort`, `scrubsDecryptedPasswordAndPersonalData`, `carriesDiagnostics`, `extraSecretsRedacted`, `logTailIsContextNotTracebackCopy`, `neverContainsSecrets`, `prefersTypeAndFirstLine`, `namesBuildAndLanguage`, `raiseUserErrorForMissingLogin`
+    - 3 UI dialog cases (`test_user_dialog_hides_traceback_but_copies`, `test_copy_text_writes_to_clipboard_service`, `test_error_dialog_copy_button_copies_report`) → `app/test/overlays_test.dart`: `error dialog with user message hides traceback`, `copy button records a copied confirmation`, plus the extra `error dialog shows summary and traceback` and `showErrorDialog never throws`
+    - 11 `AppState` / shell / Activity cases → `app/test/app_state_excuses_and_planner_test.dart` (`reportErrorQueuesPopupWithTraceback`, `reportErrorOutsideHandlerStillSafe`, `acknowledgeClearsPendingButKeepsReport`, `timeoutErrorMarksReportFriendly`, `reportNeverContainsSecrets`, `reportLogTailIsContextNotTracebackCopy`) + `app/test/app_state_error_and_quiet_test.dart` (`userErrorMarksReportFriendly`, `regularErrorHasNoUserMessage`, `reportIsPersistedRedactedToStderr`, `shellPopsQueuedErrorOnce`) + `app/test/activity_view_test.dart` (`activityLogCopyRedactsSecrets`); the last one, `test_copy_text_does_not_mount_clipboard_into_overlay`, is under *Dropped* (11 + 3 + 11 + 1 = 26)
 17. `tests/test_excuse_day_scope.py` (8) → `app/test/excuse_day_scope_test.dart` (8 tests, every Python case has a same-named Dart test; checked by name)
 18. `tests/test_excuse_generation.py` (41 [25 functions]) → `automation_test.dart` (41 parameterized cases across 25 1:1 camelCase functions): `gapDaysAreNotMerged`, `trulyConsecutiveDaysStillMerge`, `stillExcuses $notice`, `staysCancelled $notice`, `variantsGenerate ${v.$1}/${v.$2}`, `lateVariantsAreIncome ${v.$1}`, `cutoffIsDateBasedNotHourBased`, `excusedTypeSkipped`, `excusedTextWithAbsentTypeSkipped`, `fullyExcusedDayProducesNothing`, `fridayAndTuesdayDoNotBridge`, `presentDayStillBreaksChain`, `firstMode`, `randomModePicksFromList`, `emptyTemplates`, `defaultDelay`, `customDelay`, `multiGroupStatusPrioritization`, `pureDaysConsecutive`, `lateIncomeExcuse`, `pureDaysAcrossWeekend`, `delayDaysCutoff`, `fragmentedSameDayAbsences`, `genericEarlyLeaveIsAutoExcusedLikeUi`, `notCountedAbsenceIsNeverExcused`
 19. `tests/test_excuse_history.py` (17):
@@ -810,9 +810,15 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
   - **BR3-M3**: the missing ports are in `app_state_error_and_quiet_test.dart` (`userErrorMarksReportFriendly`, `regularErrorHasNoUserMessage`, `reportIsPersistedRedactedToStderr`, `shellPopsQueuedErrorOnce`, `saveQuietPersistsWithoutRender` against `AppState.saveQuiet`) and `activity_view_test.dart`; the two Flet-only cases are under *Dropped*; test map items 16 and 66 are corrected. **A real bug found by the first port:** `reportError` built the friendly message from `'$exc'`, so it showed `UserError: …` with the type name; Python uses the message only. Fixed (`exc.message`).
   - **BR3-M2**: Absences (percentage `21.4 %` right of a 140 px track via the shared `Meter`, the date line, stat values coloured by the shared `StatCard`, shared `Badge`), Marks (date line, four stat tiles filling the width, two per line on a phone, *Auto* icon on the global toggle only: that is where `marks.py:165` has it, the per-subject toggle has none), Wizard (card at the top, chosen language is a filled primary button, current step dot yellow), Timetable (4 px between cells, header row, rows and the phone day column). Each has a widget test (`absences_view_test.dart`, `marks_live_test.dart`, `wizard_look_test.dart`, `timetable_live_test.dart`).
   - **BR3-S1**: `gFormat` is Python's `format(x, 'g')`; `gformat_test.dart` compares 38 values against a table printed by Python. **BR3-S2**: one half-even helper (core `roundHalfEvenToInt`, now public; the app copy is gone), `tintColor` and the budget shares use it; one weekday-name table (`format.dart`; `app_widgets.dayName` and the planner dialog use it). **BR3-S3**: `capture_flet.py` sets `STRAKALARI_NO_KEYRING` and `DEMO_NO_UPDATE_BANNER`. **BR3-S4**: `save` / `saveQuiet` in `SettingsController` print `Warning: could not save settings: …` on a thrown error (test); the "value is in memory before the save worked" part is the same as Python's `save_quiet` and was left alone.
-  - **Screenshots:** both sets re-captured (80 Flutter, 76 Flet) and Absences and Marks (cs dark 1280) compared by eye: they match. The Flet wizard capture caught only the start-up logo (timing in `capture_flet.py`, not a difference in the app), so the wizard changes are checked by `wizard_look_test.dart` against the Python lines, not by a screenshot. Timetable and the phone layouts were not compared by eye this round.
+  - **Screenshots:** both sets re-captured (80 Flutter, 76 Flet) and Absences and Marks (cs dark 1280) compared by eye: they match. The Flet wizard capture caught only the start-up logo (timing in `capture_flet.py`, not a difference in the app), so the wizard changes are checked by `wizard_look_test.dart` against the Python lines, not by a screenshot. Timetable and the phone layouts were not compared by eye this round. (Corrected in re-review 4: 15 of those 76 Flet images were only the start-up logo; see BR4-S2 below.)
   - Checks: core `dart analyze` clean, `dart test` 764 passed / 2 skipped; app `flutter analyze` clean, `flutter test` 498 passed / 1 skipped.
 - 2026-11-12 · Checkpoint B re-review 4: **PASS WITH FIXES** (all re-review 3 findings fixed; 0 blockers, 0 must-fix; 4 should-fix BR4-S1 … BR4-S4: card outlines, the Flet capture saving the start-up logo, the Flutter capture's control size at 1280 px, STATUS wording) — [docs/flutter-migration/reviews/checkpoint-B.md](docs/flutter-migration/reviews/checkpoint-B.md#re-review-4-2026-11-12)
+- 2026-11-12 · Re-review 4 fixes: **COMPLETE**, made by the reviewer at the owner's request (so the next review, Checkpoint C, must be a fresh session):
+  - **BR4-S1** (`021b20b`): the four card helpers (Absences, Marks, Timetable, wizard) keep the 1 px `tok.border` outline of `components.card`; Absences rows are `tok.gap // 2` apart (`+ 2` on a phone) like `absences.py`; `card_outline_test.dart` (4 tests, one a guard over `lib/features`).
+  - **BR4-S3** (`a505226`): `capture_screens.dart` renders the 1280 px images with `TargetPlatform.windows` (390 px stay Android); buttons are now the same height as in the Flet desktop capture.
+  - **BR4-S2** (`2988b6a`): `capture_flet.py` waits until the page is no longer the start-up logo (up to 120 s, fails loudly) and retries a timed-out screenshot; a full run gave 76 images, none logo-only.
+  - **BR4-S4** (this commit): test map item 16 counts (11 + 3 + 11 + 1 = 26), stale words and suite counts (app 502 passed / 1 skipped) corrected.
+- 2026-11-12 · Checkpoint B re-review 5: **PASS** (BR4-S1 … BR4-S4 fixed; 0 open findings; notes for Checkpoint C) — [docs/flutter-migration/reviews/checkpoint-B.md](docs/flutter-migration/reviews/checkpoint-B.md#re-review-5-2026-11-12)
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 
@@ -849,7 +855,7 @@ Unsure / needs a second pair of eyes:
 - Gemini `localFallbackRecommendation` keyword lists ported line by
   line (Czech stems); only covered via parity fixtures + fakes.
 
-### ⛔ Checkpoint B: UI review (phases 5–6, FAILED three reviews, round 5 done, waiting for the re-review)
+### ⛔ Checkpoint B: UI review (phases 5–6, passed in re-review 5 on 2026-11-12)
 
 The shell and all ten screens exist and are wired to live `AppState` and
 `strakalari_core`. Round 4 restyled Today, Planner, Lunches, Activity and Settings
@@ -871,10 +877,10 @@ What was done:
   - `update.dart`: update cache retrieval and dismissals.
 - Deferred Phase 5/6 AppState and UI test suites ported & 100% green:
   - `app/test/app_state_lunches_test.dart` (lunch AppState cases).
-  - `app/test/app_state_excuses_and_planner_test.dart` (30 tests covering `test_excuse_ignore_list.py`, `test_planned_skips.py`, `test_error_report.py`, `test_cancel_responsive.py`, `test_news.py`, `test_ui_state.py`, `test_update.py`, `test_automation_safety.py`, `test_settings_refresh_interactive.py`).
+  - `app/test/app_state_excuses_and_planner_test.dart` (30 tests in round 1; the per-file test map above has the current names; covering `test_excuse_ignore_list.py`, `test_planned_skips.py`, `test_error_report.py`, `test_cancel_responsive.py`, `test_news.py`, `test_ui_state.py`, `test_update.py`, `test_automation_safety.py`, `test_settings_refresh_interactive.py`).
   - `app/test/phase6_features_test.dart` (15 tests covering `test_early_leave.py`, `test_timetable_week_nav.py`, `test_marks_view.py`, `test_wizard_setup.py`, `test_year_planner.py`).
   - (`screenshot_parity_test.dart` was removed in B-B3; the capture tools replace it.)
-  - (Round 1 count; now app 468 passed + 1 skipped, core 764 passed + 2 skipped.)
+  - (Round 1 count; now app 502 passed + 1 skipped, core 764 passed + 2 skipped.)
   - `dart analyze` and `flutter analyze`: zero issues found across both packages.
 - Parity screenshots (NOT yet valid, see BR-M7):
   - Standalone capture tools established under `tools/parity/`:
@@ -887,7 +893,7 @@ What was done:
 
 How to verify:
 - `cd packages/strakalari_core && dart analyze && dart test` (764 passed, 2 skipped).
-- `cd app && flutter analyze && flutter test` (498 passed, 1 skipped).
+- `cd app && flutter analyze && flutter test` (502 passed, 1 skipped).
 - Re-capture and compare: `cd app; STRAKALARI_PYTHON=<venv python> flutter test ../tools/parity/capture_screens.dart` and `python tools/parity/capture_flet.py` (needs Playwright + Chromium), then look at `build/parity-screens/flet/` vs `build/parity-screens/flutter/`.
 - Test app startup on demo data dir: `python tools/demo_data.py generate build/parity-screens/demo-cs` and run debug executable.
 
