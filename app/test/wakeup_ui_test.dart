@@ -12,6 +12,7 @@ import 'package:app/features/timetable/timetable_view.dart';
 import 'package:app/features/today/today_live.dart';
 import 'package:app/features/today/today_view.dart';
 import 'package:app/l10n/strings.dart';
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
@@ -129,45 +130,65 @@ void main() {
       tester.view.physicalSize = const Size(1600, 1000);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
-      final s = AppState(
-        data: {
-          'absence': {'M': 1.0, 'ČJ': 1.0},
-          'timetable': {
-            '12.10.2026': [
-              {
-                'time': '1 (8:00 - 8:45)',
-                'subject': 'M',
-                'absenceType': 'Absence',
-                'absencetext': 'Absence',
-              },
-              {
-                'time': '2 (8:55 - 9:40)',
-                'subject': 'ČJ',
-                'absenceType': 'Absence',
-                'absencetext': 'Absence',
-              },
-            ],
-          },
+      // Like Python: the two tasks are injected, so the result does not
+      // depend on today's date (the 30-day excuse window).
+      final tasks = <Map<String, Object?>>[
+        {
+          'key': '2026-10-12#1',
+          'label': 'Po 12.10. · 1. hodina (M)',
+          'date': '2026-10-12',
+          'kind': 'short',
+          'period': 1,
         },
-      );
-      final controller = todayControllerFor(s);
+        {
+          'key': '2026-10-12#2',
+          'label': 'Po 12.10. · 2. hodina (ČJ)',
+          'date': '2026-10-12',
+          'kind': 'short',
+          'period': 2,
+        },
+      ];
+      final s = AppState()..excuseTasksOverride = () => tasks;
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: TodayView(
-              controller: controller,
-              tokens: AppTokens.dark(),
+      Future<void> build(int round) => withClock(
+            Clock.fixed(DateTime(2026, 10, 13, 10)),
+            () => tester.pumpWidget(
+              MaterialApp(
+                home: Scaffold(
+                  // A new key per round: built from scratch, like Python
+                  // calling `_excuse_cards` again.
+                  body: TodayView(
+                    key: ValueKey(round),
+                    controller: todayControllerFor(s),
+                    tokens: AppTokens.dark(),
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
+          );
+
+      bool isOpen() => ExpansionTileController.of(
+            tester.element(find.descendant(
+              of: find.byType(ExpansionTile),
+              matching: find.byType(ListTile),
+            ).first),
+          ).isExpanded;
+
+      await build(0);
+      final tiles = find.byType(ExpansionTile);
+      expect(tiles, findsOneWidget);
+      expect(isOpen(), isFalse);
+      final title = tester.widget<ExpansionTile>(tiles).title as Text;
+      expect(
+        title.data,
+        anyOf('Nebo jednotlivě (2 hodiny)', 'Or one by one (2 lessons)'),
       );
 
-      final tiles = find.byType(ExpansionTile);
-      expect(tiles, findsWidgets);
-
-      controller.setDayExpanded('excuse:2026-10-12', true);
-      expect(controller.isDayExpanded('excuse:2026-10-12'), isTrue);
+      s.setDayExpanded('excuse:2026-10-12', true);
+      await build(1);
+      await tester.pumpAndSettle();
+      expect(find.byType(ExpansionTile), findsOneWidget);
+      expect(isOpen(), isTrue);
     });
 
     testWidgets('lunchDaysOpenFromTodayOn', (tester) async {
