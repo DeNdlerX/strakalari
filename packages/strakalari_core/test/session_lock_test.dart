@@ -336,7 +336,11 @@ void main() {
         }
         expect(await _pythonTryLock(repoRoot, lockPath()), 'true');
       },
-      skip: Platform.isLinux ? false : 'flock parity probe runs on Linux only.',
+      // POSIX flock on Linux and macOS (job dart-macos-locks); Windows
+      // uses LockFileEx, proven against Python by hand (Checkpoint A).
+      skip: (Platform.isLinux || Platform.isMacOS)
+          ? false
+          : 'flock parity probe runs on Linux and macOS only.',
       timeout: const Timeout(Duration(seconds: 180)),
     );
   });
