@@ -226,21 +226,26 @@ class PeriodicRunner {
   void start() {
     if (running) return;
     _stopSignal = null;
-    _timer = Timer.periodic(const Duration(seconds: 5), (_) async {
-      if (_inFlight || _isPaused()) return;
-      pollInterval();
-      final now = clock.now();
-      if (!now.isBefore(nextDue(lastRun, intervalMinutes, now))) {
-        _inFlight = true;
-        try {
-          await _runAllOnce();
-        } finally {
-          _inFlight = false;
-        }
+    // No extra sleep: the 5 s tick already paces the loop, so intervals
+    // stay exact and stop() stays responsive.
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) => tick());
+  }
+
+  /// One pass of the loop (`_loop`'s body; the timer calls it every 5 s,
+  /// tests call it directly): held while [paused], otherwise the jobs run
+  /// once they are due.
+  Future<void> tick() async {
+    if (_inFlight || _isPaused()) return;
+    pollInterval();
+    final now = clock.now();
+    if (!now.isBefore(nextDue(lastRun, intervalMinutes, now))) {
+      _inFlight = true;
+      try {
+        await _runAllOnce();
+      } finally {
+        _inFlight = false;
       }
-      // No extra sleep: the 5 s tick above already paces the loop,
-      // so intervals stay exact and stop() stays responsive.
-    });
+    }
   }
 
   /// True once [stop] was called (waits up to [timeout]).

@@ -212,4 +212,20 @@ void main() {
       expect(PeriodicRunner(intervalMinutes: 60).lastRun, isNull);
     });
   });
+
+  test('schedulerHoldsRunsWhilePaused', () async {
+    // Port of tests/test_mobile.py: the phone app in the background holds
+    // due runs; the overdue run fires once when it comes back.
+    final ran = <int>[];
+    var hidden = true;
+    final runner = PeriodicRunner(intervalMinutes: 60, paused: () => hidden);
+    runner.addJob('refresh', () => ran.add(1));
+    await runner.tick();
+    await runner.tick();
+    expect(ran, isEmpty); // held twice
+    hidden = false; // the app came back
+    await runner.tick();
+    await runner.tick(); // not due again
+    expect(ran, [1]);
+  });
 }
