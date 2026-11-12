@@ -50,10 +50,8 @@ dependencies:
   tray_manager: ^0.5.2
   launch_at_startup: ^0.5.1
   win32: ^5.15.0
-  # Phase 7 desktop deps (PLAN 3.3): OS notifications on all platforms
-  # (tray-hidden friendly, like core/notify.py), SHA-256 port slots
+  # Phase 7 desktop deps (PLAN 3.3): SHA-256 port slots
   # (single_instance.dart) and FFI helpers (autostart/keystore).
-  flutter_local_notifications: ^19.4.1
   crypto: ^3.0.8
   ffi: ^2.1.4
   # Workspace core (pure Dart, no Flutter import): controllers use its

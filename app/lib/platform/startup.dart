@@ -177,10 +177,7 @@ Future<void> startPlatformServices(
   // A second launch restores this window.
   ctx.guard?.setOnShow(() => unawaited(tray.showWindow()));
   ctx.guard?.onQuit = () => unawaited(tray.quit());
-  try {
-    await installDesktopNotifier(
-        prefsProvider: prefs, onNotificationTap: tray.showWindow);
-  } catch (_) {}
+  installDesktopNotifier();
 }
 
 TrayStrings _trayStrings() => TrayStrings(

@@ -49,6 +49,7 @@ export 'src/status_notification.dart' hide mealText;
 // both exist in Python. status_notification.dart uses wakeup's via its
 // src import; the barrel exposes schedule's.
 export 'src/wakeup.dart' hide periodOf;
+export 'src/platform/desktop_notify.dart';
 export 'src/platform/notifier.dart';
 export 'src/automation/scheduler.dart';
 export 'src/automation/session_lock.dart';
