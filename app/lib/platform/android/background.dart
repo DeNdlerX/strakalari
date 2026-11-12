@@ -192,6 +192,18 @@ Future<bool> _handOffToUi(AndroidChannel channel, String reason) async {
   }
 }
 
+/// `with KeepAwake(minutes=30)` around the scheduled refresh: the phone's
+/// screen may be off, so the CPU must stay up until the run is done.
+Future<T> androidKeepAwake<T>(Future<T> Function() body,
+    {AndroidChannel channel = const AndroidChannel(), double minutes = 30}) async {
+  final id = await channel.keepAwake(minutes);
+  try {
+    return await body();
+  } finally {
+    if (id != null) await channel.releaseAwake(id);
+  }
+}
+
 /// Core's phone seams (notifications, widget + alarm queue) over
 /// [channel]. Both the UI isolate and a headless run call this.
 void installAndroidBridges(AndroidChannel channel, {String Function()? languageOf}) {
@@ -265,7 +277,8 @@ Future<String> runHeadlessTick(
     await channel.cancelWake();
     return 'off';
   }
-  final runner = registerJobs(state);
+  final runner = registerJobs(state,
+      keepAwake: <T>(body) => androidKeepAwake<T>(body, channel: channel));
   if (refreshJob != null) runner.addJob('refresh', refreshJob);
   final interval = runner.intervalMinutes;
 

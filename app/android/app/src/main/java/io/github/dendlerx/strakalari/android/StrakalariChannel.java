@@ -8,6 +8,7 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
 import android.provider.AlarmClock;
 import android.provider.Settings;
 
@@ -42,6 +43,7 @@ import javax.crypto.spec.GCMParameterSpec;
  *   <li>background service: {@code startBackground}, {@code stopBackground},
  *       {@code updateBackgroundNotification}
  *   <li>refresh wake: {@code scheduleWake}, {@code cancelWake}
+ *   <li>CPU awake during a refresh: {@code keepAwake}, {@code releaseAwake}
  *   <li>wake-up alarm: {@code setWakeupAlarms}, {@code exactAlarmsAllowed},
  *       {@code openExactAlarmSettings}, {@code openSystemAlarm}
  *   <li>widget: {@code updateTimetableWidget}
@@ -183,6 +185,13 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
                     return;
                 case "cancelWake":
                     cancelWake();
+                    result.success(null);
+                    return;
+                case "keepAwake":
+                    result.success(keepAwake(doubleArg(call, "minutes")));
+                    return;
+                case "releaseAwake":
+                    releaseAwake(intArg(call, "id"));
                     result.success(null);
                     return;
                 case "setWakeupAlarms":
@@ -389,6 +398,44 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
         AlarmManager alarms = ctx.getSystemService(AlarmManager.class);
         if (alarms != null) {
             alarms.cancel(RefreshReceiver.wakeIntent(ctx));
+        }
+    }
+
+    // -- CPU awake while a refresh runs (core/android.py KeepAwake) ---------------
+
+    /** Held locks by id: like Python, every {@code KeepAwake} has its own. */
+    private static final Map<Integer, PowerManager.WakeLock> awakeLocks =
+            new java.util.HashMap<>();
+    private static int nextAwakeId = 1;
+
+    /**
+     * A new partial wakelock {@code strakalari:refresh} held for at most
+     * {@code minutes} (the timeout is a safety net). Returns its id for
+     * {@code releaseAwake}, or -1 when no lock could be taken.
+     */
+    private int keepAwake(double minutes) {
+        PowerManager power = requireContext().getSystemService(PowerManager.class);
+        if (power == null) {
+            return -1;
+        }
+        PowerManager.WakeLock lock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
+                "strakalari:refresh");
+        lock.setReferenceCounted(false);
+        lock.acquire((long) (minutes * 60 * 1000));
+        synchronized (StrakalariChannel.class) {
+            int id = nextAwakeId++;
+            awakeLocks.put(id, lock);
+            return id;
+        }
+    }
+
+    private void releaseAwake(int id) {
+        PowerManager.WakeLock lock;
+        synchronized (StrakalariChannel.class) {
+            lock = awakeLocks.remove(id);
+        }
+        if (lock != null && lock.isHeld()) {
+            lock.release();
         }
     }
 

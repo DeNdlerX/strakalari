@@ -27,6 +27,7 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(AndroidChannel.channel, (call) async {
       calls.add(call);
+      if (call.method == 'keepAwake') return 7;
       return call.method == 'scheduleWake' ? true : null;
     });
   });
@@ -119,6 +120,11 @@ void main() {
     expect(out, 'ran');
     expect(spawned, ['strakalari-refresh', 'strakalari-update-check']);
     expect(armed(), now.add(const Duration(minutes: 30, seconds: 10)));
+    // `KeepAwake(minutes=30)` held around the refresh, released after.
+    final awake = calls.where((c) => c.method.endsWith('Awake')).toList();
+    expect(awake.map((c) => c.method), ['keepAwake', 'releaseAwake']);
+    expect((awake.first.arguments as Map)['minutes'], 30.0);
+    expect((awake.last.arguments as Map)['id'], 7);
     expect(calls.where((c) => c.method == 'updateBackgroundNotification'), hasLength(1));
   });
 

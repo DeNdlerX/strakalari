@@ -106,6 +106,7 @@ Future<void> startPlatformServices(
     // the background (the OS freezes it there, mid-run).
     paused: _isPhone ? () => !visible && !_phoneBackgroundOn(state) : null,
     stopped: () => stopping,
+    keepAwake: Platform.isAndroid ? androidKeepAwake : null,
     intervalProvider: () =>
         checkIntervalMinutes(state.get('check_interval_minutes', 60)),
   );

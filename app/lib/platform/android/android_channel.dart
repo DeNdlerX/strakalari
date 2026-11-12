@@ -269,6 +269,34 @@ class AndroidChannel {
     }
   }
 
+  /// Holds the CPU awake with a new partial wakelock `strakalari:refresh`
+  /// for at most [minutes]. Port of `KeepAwake.__enter__`. Returns the
+  /// lock's id for [releaseAwake], or null when none was taken.
+  Future<int?> keepAwake(double minutes) async {
+    try {
+      final id =
+          await _channel.invokeMethod<int>('keepAwake', {'minutes': minutes});
+      return (id == null || id < 0) ? null : id;
+    } on MissingPluginException {
+      return null; // not on Android: a no-op, like Python
+    } on PlatformException catch (e) {
+      // ignore: avoid_print
+      print('Warning: could not keep the CPU awake (${e.message ?? e.code})');
+      return null;
+    }
+  }
+
+  /// Releases one [keepAwake] lock. Port of `KeepAwake.__exit__`.
+  Future<void> releaseAwake(int id) async {
+    try {
+      await _channel.invokeMethod<void>('releaseAwake', {'id': id});
+    } on MissingPluginException {
+      // Not on Android.
+    } on PlatformException {
+      // Python ignores a failed release too.
+    }
+  }
+
   /// Reads and clears why the current headless run started
   /// (`"boot"`, `"alarm"` or empty).
   Future<String> takeHeadlessReason() async {
