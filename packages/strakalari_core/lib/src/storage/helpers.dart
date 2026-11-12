@@ -7,6 +7,7 @@
 import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:clock/clock.dart';
 import 'package:path/path.dart' as p;
@@ -837,8 +838,9 @@ String jsonIndent2(Object? value) {
 /// never leave a truncated file behind. Creates parent dirs as needed.
 void atomicWriteJson(String path, Object? data,
     {Encoding encoding = utf8}) {
-  Directory(p.dirname(p.absolute(path))).createSync(recursive: true);
-  final tmpPath = '$path.$pid.tmp';
+  final directory = p.dirname(p.absolute(path));
+  Directory(directory).createSync(recursive: true);
+  final tmpPath = mkstemp(directory, suffix: '.tmp');
   try {
     File(tmpPath).writeAsStringSync(
         toPlatformNewlines(jsonIndent2(data)),
@@ -852,6 +854,31 @@ void atomicWriteJson(String path, Object? data,
     }
     rethrow;
   }
+}
+
+final math.Random _tempNames = math.Random.secure();
+
+/// `tempfile.mkstemp(dir=directory, suffix=suffix)`: creates a new, empty
+/// file `tmpXXXXXXXX<suffix>` exclusively and returns its path. Every
+/// writer gets its own name, also two isolates of one process (a
+/// `<path>.<pid>.tmp` name would be shared by them).
+String mkstemp(String directory, {String suffix = ''}) {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789_';
+  for (var attempt = 0; attempt < 10000; attempt++) {
+    final name = StringBuffer('tmp');
+    for (var i = 0; i < 8; i++) {
+      name.write(chars[_tempNames.nextInt(chars.length)]);
+    }
+    final candidate = p.join(directory, '$name$suffix');
+    try {
+      File(candidate).createSync(exclusive: true);
+      return candidate;
+    } on FileSystemException {
+      if (File(candidate).existsSync()) continue; // taken: next name
+      rethrow;
+    }
+  }
+  throw FileSystemException('No usable temporary file name found', directory);
 }
 
 /// `os.replace`: renames over an existing target (also on Windows) and never
