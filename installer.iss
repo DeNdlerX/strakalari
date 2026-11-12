@@ -62,6 +62,12 @@ czech.RemoveBrowserMsg=Od této verze Strakaláři prohlížeč nepotřebují.%n
 ; the Flutter build installs as an update over the Python one.
 Source: "app\build\windows\x64\runner\Release\Strakalari.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,*.exp,*.lib,*.ilk,*.map"
+; The Visual C++ runtime the Flutter exe and its plugins link against. A clean
+; Windows (found in Windows Sandbox) does not have it, so ship it app-local.
+; Sysnative: ISCC is 32-bit, and System32 would hand it the 32-bit DLLs.
+Source: "{#GetEnv('SystemRoot')}\Sysnative\vcruntime140.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#GetEnv('SystemRoot')}\Sysnative\vcruntime140_1.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#GetEnv('SystemRoot')}\Sysnative\msvcp140.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "config.example.json"; DestDir: "{app}"; Flags: ignoreversion
 ; NOTE: strava_blacklist.example.json is NOT seeded as a live file: the
 ; default blacklist is empty (the template is just "[]") and a missing

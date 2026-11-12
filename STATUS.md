@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 7 (Checkpoint B re-review 5: PASS, 2026-11-12) · Next step: **Checkpoint B passed (re-review 5). Start phase 7:** merge `main`, then the desktop checks (Sandbox over-install test); later phase 8 phone checks (ask the owner before the first install on the Pixel 7 Pro). Stop at Checkpoint C.
+Current phase: 7 (Checkpoint B re-review 5: PASS, 2026-11-12) · Next step: **Phase 7 Inno over-install test passed in Sandbox.** Remaining before Checkpoint C: Credential Manager key after upgrade, MSIX sideload test, manual tray/autostart/notification checks, deferred phase 7 tests; then phase 8 phone checks (ask the owner before the first install on the Pixel 7 Pro). Stop at Checkpoint C.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -673,6 +673,9 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
 
 ## Questions for the owner / reviewer
 
+- Phase 7: the MSIX package probably needs the VC++ runtime too (the Inno installer now ships it app-local; `tools/make_msix.py --app-dir` stages only the Release folder). Untested.
+- Phase 7: the over-install test seeded the key as `secret.key`; reading a Python-keyring entry from Credential Manager after the upgrade is still untested in Sandbox.
+
 - (Resolved 2026-11-09: Checkpoint A passed in re-review 3; the original
   Checkpoint A questions 1–5 were answered in
   `docs/flutter-migration/reviews/checkpoint-A.md`.)
@@ -920,6 +923,21 @@ How to verify:
 Phase 7 build check (2026-11-12): `flutter build windows --release` succeeds
 (`Strakalari.exe` + plugin DLLs). Inno Setup 6 is at `%LOCALAPPDATA%\Programs\Inno Setup 6`.
 Sandbox over-install test still not run.
+Phase 7 Sandbox over-install test (2026-11-12, Windows Sandbox, network off):
+- Python `Strakalari-Setup-0.1.0.exe` installed, demo data seeded (dry run,
+  fake login encrypted with a throwaway `secret.key`), then the Flutter
+  installer run over it. Both installers exit 0; `config.json`,
+  `data_cache.json`, `excuse_history.json`, `secret.key` byte-identical
+  after the install and after 25 s of the Flutter app running; same HKCU
+  Run value; still one uninstall entry (same AppId). The Flutter app
+  opened on Today with the Python-written demo data.
+- Found and fixed: `installer.iss` had broken bundle paths (never compiled
+  before); a clean Windows lacks the VC++ runtime, so the installer now
+  ships `vcruntime140.dll`, `vcruntime140_1.dll`, `msvcp140.dll` app-local;
+  the window title was `app`, now `Strakaláři` like Python.
+- NOT covered: a key held in Windows Credential Manager by Python keyring
+  (only the `secret.key` file path was seeded); MSIX over-install; tray,
+  autostart, notifications and single instance by hand.
 Unsure / needs a second pair of eyes:
 - Sync-core-bridge vs async-channel seams (phase 8 warm-up design).
 - macOS/Linux code paths, release builds, CI jobs — owner/CI must run.
