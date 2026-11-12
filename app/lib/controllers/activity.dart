@@ -41,8 +41,8 @@ extension ActivityLogic on AppState {
           ? message.trim()
           : shortSummary(exc);
       var userMessage = '';
-      if (exc is UserError && '$exc'.trim().isNotEmpty) {
-        userMessage = '$exc'.split('\n').first.trim();
+      if (exc is UserError && exc.message.trim().isNotEmpty) {
+        userMessage = exc.message.split('\n').first.trim();
         if (userMessage.length > 300) {
           userMessage = userMessage.substring(0, 300);
         }

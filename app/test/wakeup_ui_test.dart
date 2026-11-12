@@ -167,7 +167,7 @@ void main() {
             ),
           );
 
-      bool isOpen() => ExpansionTileController.of(
+      bool isOpen() => ExpansibleController.of(
             tester.element(find.descendant(
               of: find.byType(ExpansionTile),
               matching: find.byType(ListTile),
