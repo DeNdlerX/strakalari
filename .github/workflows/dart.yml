@@ -387,11 +387,13 @@ jobs:
           export STRAKALARI_SIGNING_KEY_PASSWORD="$ANDROID_KEYSTORE_PASSWORD"
           export STRAKALARI_SIGNING_KEY_KEY_PASSWORD="$ANDROID_KEYSTORE_PASSWORD"
           export STRAKALARI_SIGNING_KEY_ALIAS=upload
-          BUILD_NUMBER=$(cd packages/strakalari_core && dart run strakalari_core:build_number "$STRAKALARI_VERSION")
-          (cd app && flutter build apk --release --flavor prod --target-platform android-arm64 \
-            --build-name="$STRAKALARI_VERSION" --build-number="$BUILD_NUMBER")
+          # Built in /tmp/strakalari-build, outside the checkout (Flutter
+          # compiles the plugin registrant under its path), with Python's
+          # build_number as the versionCode; refused if it holds a personal
+          # file (make_mobile.py's check_package, ported).
+          (cd packages/strakalari_core && dart run tool/build_android.dart apk \
+            --version "$STRAKALARI_VERSION" --out "$GITHUB_WORKSPACE")
           rm -f "$RUNNER_TEMP/release.jks"
-          mv app/build/app/outputs/flutter-apk/app-prod-release.apk "Strakalari-${STRAKALARI_VERSION}-android.apk"
           ls -lh Strakalari-*-android.apk
 
       - name: Upload Android Artifacts
