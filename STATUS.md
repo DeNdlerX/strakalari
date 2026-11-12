@@ -917,6 +917,9 @@ How to verify:
   (phase 8) — exact steps in the agents' reports / phase-7-desktop.md.
   Before the first phone install the owner confirms the `.test` app is
   on dry run / demo server.
+Phase 7 build check (2026-11-12): `flutter build windows --release` succeeds
+(`Strakalari.exe` + plugin DLLs). Inno Setup 6 is at `%LOCALAPPDATA%\Programs\Inno Setup 6`.
+Sandbox over-install test still not run.
 Unsure / needs a second pair of eyes:
 - Sync-core-bridge vs async-channel seams (phase 8 warm-up design).
 - macOS/Linux code paths, release builds, CI jobs — owner/CI must run.
