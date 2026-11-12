@@ -102,24 +102,26 @@ String shortTime(Object? raw) => core.shortTime(raw);
 /// `helpers.teacher_surname` (the core port); null reads as empty.
 String teacherSurname(Object? fullName) => core.teacherSurname(fullName ?? '');
 
-/// Python `f"{x:g}"` — drops the trailing `.0`.
+/// Python `format(x, 'g')`: six significant digits, trailing zeros dropped,
+/// exponent form (`1.23457e+06`) from 1e6 and below 1e-4.
 String gFormat(num x) {
-  if (x is int) return '$x';
-  if (x == x.truncateToDouble()) return '${x.truncate()}';
-  var s = '$x';
-  if (s.contains('e') || s.contains('E')) return s;
-  s = s.replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '');
-  return s;
-}
-
-/// Python `round()` (half to even) for non-negative display values —
-/// PLAN §3.5: Dart's `round()` rounds half away from zero.
-int roundHalfEven(double value) {
-  final lo = value.floor();
-  final frac = value - lo;
-  if (frac < 0.5) return lo;
-  if (frac > 0.5) return lo + 1;
-  return lo.isEven ? lo : lo + 1;
+  final d = x.toDouble();
+  if (d.isNaN) return 'nan';
+  if (d.isInfinite) return d < 0 ? '-inf' : 'inf';
+  if (d == 0) return d.isNegative ? '-0' : '0';
+  String strip(String v) => v.contains('.')
+      ? v.replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '')
+      : v;
+  // `d.dddddde+X`: the correctly rounded six significant digits.
+  final m = RegExp(r'^(-?)(\d)\.(\d{5})e([+-])(\d+)$')
+      .firstMatch(d.toStringAsExponential(5))!;
+  final exp = int.parse(m.group(5)!) * (m.group(4) == '-' ? -1 : 1);
+  if (exp < -4 || exp >= 6) {
+    final mantissa = strip('${m.group(2)}.${m.group(3)}');
+    final sign = exp < 0 ? '-' : '+';
+    return '${m.group(1)}${mantissa}e$sign${exp.abs().toString().padLeft(2, '0')}';
+  }
+  return strip(d.toStringAsFixed(5 - exp));
 }
 
 /// `wakeup.clamp_wakeup_minutes` (the core port).
