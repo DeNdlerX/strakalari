@@ -18,6 +18,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:strakalari_core/strakalari_core.dart';
 
@@ -51,9 +52,15 @@ Uint8List? _readTrimmed(String path) {
 }
 
 /// The warmed bridge: answers only for the warmed (key, blob) pair.
+///
+/// [blob] is what the Keystore answered (the raw bytes, not the base64
+/// text of `secret.key.wrapped`): core decodes the file before it calls
+/// [unwrap] and encodes [wrap]'s answer itself. A null [blob] means the
+/// Keystore was unavailable at warm-up: [wrap] refuses, so core keeps the
+/// plain `secret.key` exactly like Python does when the Keystore fails.
 class WarmedAndroidKeystore implements AndroidKeystoreBridge {
   final Uint8List key;
-  final Uint8List blob;
+  final Uint8List? blob;
 
   const WarmedAndroidKeystore(this.key, this.blob);
 
@@ -62,15 +69,20 @@ class WarmedAndroidKeystore implements AndroidKeystoreBridge {
 
   @override
   Uint8List wrap(Uint8List key) {
+    final blob = this.blob;
+    if (blob == null) {
+      throw const KeyStoreUnavailable('The Android Keystore did not answer.');
+    }
     if (_bytesEqual(key, this.key)) return Uint8List.fromList(blob);
     // A different key after warm-up (restored backup, …): refuse, like a
     // Keystore that does not answer. Core keeps the plain file then.
-    throw KeyStoreUnavailable('Key changed after the Keystore warm-up.');
+    throw const KeyStoreUnavailable('Key changed after the Keystore warm-up.');
   }
 
   @override
   Uint8List unwrap(Uint8List blob) {
-    if (_bytesEqual(blob, this.blob)) return Uint8List.fromList(key);
+    final own = this.blob;
+    if (own != null && _bytesEqual(blob, own)) return Uint8List.fromList(key);
     throw const FormatException('the wrapped key does not read back');
   }
 }
@@ -96,10 +108,10 @@ Future<Uint8List?> _adoptWrapped(
     final wrapped = _readTrimmed(wrappedPath);
     if (wrapped != null && wrapped.isNotEmpty) {
       try {
-        final blob = base64.decode(ascii.decode(wrapped));
-        final key = await _channelUnwrap(channel, Uint8List.fromList(blob));
+        final blob = Uint8List.fromList(base64.decode(ascii.decode(wrapped)));
+        final key = await _channelUnwrap(channel, blob);
         if (Fernet.isValidKeyBytes(key)) {
-          androidKeystoreBridge = WarmedAndroidKeystore(key, wrapped);
+          androidKeystoreBridge = WarmedAndroidKeystore(key, blob);
           return key;
         }
       } on FormatException {
@@ -137,8 +149,9 @@ Future<Uint8List> _channelUnwrap(
 Future<Uint8List> warmAndroidKeystore(
   String dataDir, {
   AndroidChannel channel = const AndroidChannel(),
+  @visibleForTesting bool? onAndroid,
 }) async {
-  if (!Platform.isAndroid) {
+  if (!(onAndroid ?? Platform.isAndroid)) {
     throw const KeyStoreMissing('No Android backend.');
   }
   final plainPath = '$dataDir/$keyFile';
@@ -152,9 +165,10 @@ Future<Uint8List> warmAndroidKeystore(
   final wrapped = _readTrimmed(wrappedPath);
   if (wrapped != null) {
     Uint8List? key;
+    Uint8List? blob;
     try {
-      final blob = base64.decode(ascii.decode(wrapped));
-      key = await _channelUnwrap(channel, Uint8List.fromList(blob));
+      blob = Uint8List.fromList(base64.decode(ascii.decode(wrapped)));
+      key = await _channelUnwrap(channel, blob);
     } on Object {
       // Lost Keystore key or tampered blob: quarantine and start over,
       // like core (stored passwords must be entered again).
@@ -170,7 +184,7 @@ Future<Uint8List> warmAndroidKeystore(
         // from a backup). Never guess, keep using it.
         // ignore: avoid_print
         print('Warning: $keyFile differs from $wrappedFile; using the file.');
-        androidKeystoreBridge = WarmedAndroidKeystore(fileKey, wrapped);
+        androidKeystoreBridge = WarmedAndroidKeystore(fileKey, blob);
         return fileKey;
       }
       if (fileKey != null) {
@@ -180,14 +194,15 @@ Future<Uint8List> warmAndroidKeystore(
           // Best effort.
         }
       }
-      androidKeystoreBridge = WarmedAndroidKeystore(key, wrapped);
+      androidKeystoreBridge = WarmedAndroidKeystore(key, blob);
       return key;
     }
   }
 
   final key = fileKey ?? Fernet.generateKey();
+  final Uint8List blob;
   try {
-    final blob = await _channelWrap(channel, key);
+    blob = await _channelWrap(channel, key);
     if (!_bytesEqual(await _channelUnwrap(channel, blob), key)) {
       throw const FormatException('the wrapped key does not read back');
     }
@@ -211,7 +226,7 @@ Future<Uint8List> warmAndroidKeystore(
       File(plainPath).writeAsBytesSync(key);
     }
     androidKeystoreBridge =
-        WarmedAndroidKeystore(key, Uint8List(0)); // refuses: plain file stays
+        WarmedAndroidKeystore(key, null); // refuses: plain file stays
     return key;
   }
   if (fileKey != null) {
@@ -224,7 +239,6 @@ Future<Uint8List> warmAndroidKeystore(
   // ignore: avoid_print
   print('Info: password key '
       '${fileKey != null ? 'moved into' : 'created in'} the Android Keystore.');
-  androidKeystoreBridge = WarmedAndroidKeystore(
-      key, _readTrimmed(wrappedPath) ?? Uint8List(0));
+  androidKeystoreBridge = WarmedAndroidKeystore(key, blob);
   return key;
 }
