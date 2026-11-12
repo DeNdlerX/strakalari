@@ -131,7 +131,7 @@ Future<void> startPlatformServices(
         state.onChanged();
       }
     });
-    final phone = _PhoneBackground(state, loop, const AndroidChannel());
+    final phone = PhoneBackground(state, loop, const AndroidChannel());
     container.listen(appStateProvider, (_, _) => phone.notifier.poke());
     phone.start();
     loop.start();
@@ -204,11 +204,15 @@ bool _phoneBackgroundOn(AppState state) {
 }
 
 /// Android background service + wake-up alarm, following the setting.
+/// (Public for the tests of `_setup_phone_background`.)
 /// Port of `_setup_phone_background` / `_schedule_phone_wake`.
-class _PhoneBackground {
-  _PhoneBackground(this.state, this.loop, this.channel) {
+class PhoneBackground {
+  /// [onAndroid] and [startNotifier] are test seams (Python's tests patch
+  /// `android.available` and `StatusNotifier.start`).
+  PhoneBackground(this.state, this.loop, this.channel,
+      {this.onAndroid, this.startNotifier = true}) {
     notifier = StatusNotifier(
-      () => _phoneBackgroundOn(state) ? state.backgroundStatusInputs() : null,
+      () => _isOn() ? state.backgroundStatusInputs() : null,
       (c) {
         unawaited(channel.updateBackgroundNotification(
             title: c.title, text: c.text, sub: c.sub, rows: c.rowsJson()));
@@ -221,6 +225,12 @@ class _PhoneBackground {
   final AppState state;
   final PeriodicRunner loop;
   final AndroidChannel channel;
+  final bool Function()? onAndroid;
+  final bool startNotifier;
+
+  /// `_phone_background_on`: Android and the switch on.
+  bool _isOn() => (onAndroid ?? () => Platform.isAndroid)() &&
+      backgroundSwitchOn(state.get('run_in_background', true));
   late final StatusNotifier notifier;
   bool _asked = false;
   bool? _on;
@@ -254,7 +264,7 @@ class _PhoneBackground {
 
   void afterRun() {
     unawaited(sync()); // e.g. the wizard just finished: ask now
-    if (_phoneBackgroundOn(state)) unawaited(scheduleWake());
+    if (_isOn()) unawaited(scheduleWake());
     // Also after a skipped or failed run: a new day redraws the widget.
     state.syncAndroidState();
   }
@@ -278,7 +288,7 @@ class _PhoneBackground {
 
   Future<void> sync() async {
     try {
-      final on = _phoneBackgroundOn(state);
+      final on = _isOn();
       if (on && !_asked && !state.setupPending) {
         // Android 13+: allow notifications? Not over the setup wizard;
         // its last save brings us back here.
@@ -316,7 +326,7 @@ class _PhoneBackground {
         'boot_text': Strings.get('bg_boot_text'),
         'events_channel': Strings.get('events_channel'),
       });
-      notifier.start();
+      if (startNotifier) notifier.start();
       await scheduleWake();
     } on Object catch (e) {
       // ignore: avoid_print

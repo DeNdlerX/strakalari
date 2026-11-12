@@ -668,8 +668,10 @@ class AppState {
     final demo = demoMode;
     var pending = 0;
     try {
-      pending = demo ? 0 : unexcusedTasks().length;
-    } catch (_) {
+      pending = demo ? 0 : excuseTasks().length;
+    } catch (exc) {
+      // ignore: avoid_print
+      print('Warning: pending excuses unavailable (${exc.runtimeType}: $exc)');
       pending = 0;
     }
     DateTime? updated;
