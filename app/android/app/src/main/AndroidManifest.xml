@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Bakaláři and Strava are reached over the network (the Flet build
+         template had this in the main manifest too; without it a release
+         build cannot connect at all). -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- Background running: a foreground service keeps the process alive
          while the screen is closed; alarms wake the CPU when a refresh or
          a wake-up alarm is due. No network state is read by the manifest. -->

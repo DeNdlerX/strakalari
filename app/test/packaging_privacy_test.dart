@@ -110,6 +110,9 @@ void main() {
       }
       expect(personal.hasMatch(text), isFalse);
       expect(text.contains('/Users/') || text.contains('C:\\'), isFalse);
+      // The main manifest (not only debug/profile) must let the release
+      // build reach Bakaláři and Strava.
+      expect(text, contains('<uses-permission android:name="android.permission.INTERNET" />'));
     });
 
     test('built APK/AAB carries no personal files', () {
