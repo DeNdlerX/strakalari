@@ -55,16 +55,13 @@ czech.RemoveBrowserMsg=Od této verze Strakaláři prohlížeč nepotřebují.%n
 
 [Files]
 ; Flutter release bundle (flutter build windows --release):
-; build\windows\x64
-unner\Release\Strakalari.exe + flutter_windows.dll
+; build\windows\x64\runner\Release\Strakalari.exe + flutter_windows.dll
 ; + data\ (flutter_assets, ICU data). The whole folder ships — the app
 ; is no longer a onefile exe (cf. dist\Strakalari.exe in the Python
 ; build). Unchanged names (Strakalari.exe, AppId, HKCU Run value) mean
 ; the Flutter build installs as an update over the Python one.
-Source: "app\build\windows\x64
-unner\Release\Strakalari.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "app\build\windows\x64
-unner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,*.exp,*.lib,*.ilk,*.map"
+Source: "app\build\windows\x64\runner\Release\Strakalari.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "app\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,*.exp,*.lib,*.ilk,*.map"
 Source: "config.example.json"; DestDir: "{app}"; Flags: ignoreversion
 ; NOTE: strava_blacklist.example.json is NOT seeded as a live file: the
 ; default blacklist is empty (the template is just "[]") and a missing
