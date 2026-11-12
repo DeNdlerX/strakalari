@@ -53,6 +53,27 @@ int daysBetween(DateTime a, DateTime b) =>
         .difference(DateTime.utc(a.year, a.month, a.day))
         .inDays;
 
+/// Test seams for the data-dir resolution, like Python's tests patching
+/// `sys.platform` and `sys.executable`: the OS (`'win32'`, `'darwin'`,
+/// `'linux'`) and the folder of the executable. Null = the real ones.
+String? dataDirPlatformOverride;
+String? installDirOverride;
+
+/// Test seam for `secret_store.carry_key` during a data move (Python's
+/// tests patch it to simulate a locked keychain).
+bool Function(String oldDir, String newDir)? carryKeyHook;
+
+String get _dataDirPlatform =>
+    dataDirPlatformOverride ??
+    (Platform.isWindows ? 'win32' : (Platform.isMacOS ? 'darwin' : 'linux'));
+
+/// Forgets which data dirs were resolved and migrated (tests; Python
+/// resets `_MACOS_DATA_DIRS` / `_STORE_DATA_DIRS`).
+void clearDataDirCaches() {
+  macosDataDirCache.clear();
+  _storeDataDirs.clear();
+}
+
 /// Returns a writable user data directory depending on platform and
 /// installation mode. `STRAKALARI_DATA_DIR` overrides everything.
 String getUserDataDir() {
@@ -62,7 +83,7 @@ String getUserDataDir() {
     return override;
   }
   if (isMobile()) return _mobileDataDir();
-  if (Platform.isMacOS) return _macosAppDataDir();
+  if (_dataDirPlatform == 'darwin') return _macosAppDataDir();
   if (isStorePackage()) return _storeAppDataDir();
   final root = _installDir();
   if (Directory(root).existsSync()) {
@@ -81,17 +102,17 @@ String getUserDataDir() {
   return _platformDataDir();
 }
 
-String _installDir() => projectRoot;
+String _installDir() => installDirOverride ?? projectRoot;
 
 /// The per-user data dir of an installed app, created.
 String _platformDataDir() {
   late final String dataDir;
-  if (Platform.isWindows) {
+  if (_dataDirPlatform == 'win32') {
     final appData = getenvNonEmpty('LOCALAPPDATA') ??
         getenvNonEmpty('APPDATA') ??
         _homeDir();
     dataDir = p.join(appData, 'Strakalari');
-  } else if (Platform.isMacOS) {
+  } else if (_dataDirPlatform == 'darwin') {
     dataDir = p.join(_homeDir(), 'Library', 'Application Support', 'Strakalari');
   } else {
     final configHome =
@@ -103,7 +124,7 @@ String _platformDataDir() {
 }
 
 String _homeDir() {
-  if (Platform.isWindows) {
+  if (_dataDirPlatform == 'win32') {
     return getenvNonEmpty('USERPROFILE') ?? p.current;
   }
   return getenvNonEmpty('HOME') ?? p.current;
@@ -149,8 +170,9 @@ String _storeAppDataDir() {
 }
 
 /// Resolved macOS data dir per (bundle dir, target dir), fixed for the
-/// process lifetime: every caller must agree on one location.
-final Map<String, String> _macosDataDirs = {};
+/// process lifetime: every caller must agree on one location. Keyed
+/// `'<bundle>\x00<target>'` (public for tests, like `_MACOS_DATA_DIRS`).
+final Map<String, String> macosDataDirCache = {};
 
 /// User files older builds wrote next to the executable, inside the .app
 /// bundle. config.json is not listed: it is copied last and marks a
@@ -172,7 +194,7 @@ String _macosAppDataDir() {
   final bundle = _installDir();
   final target = _platformDataDir();
   final cacheKey = '$bundle\x00$target';
-  final cached = _macosDataDirs[cacheKey];
+  final cached = macosDataDirCache[cacheKey];
   if (cached != null) return cached;
   var chosen = target;
   if (_needsBundleMigration(bundle, target) &&
@@ -181,7 +203,7 @@ String _macosAppDataDir() {
         '($bundle); using it for now, retrying on the next launch.');
     chosen = bundle;
   }
-  _macosDataDirs[cacheKey] = chosen;
+  macosDataDirCache[cacheKey] = chosen;
   return chosen;
 }
 
@@ -230,10 +252,11 @@ void _copyMissing(String src, String dst) {
   try {
     if (FileSystemEntity.isDirectorySync(src)) {
       _copyDir(src, tmp);
+      Directory(tmp).renameSync(dst); // os.replace works on folders too
     } else {
       File(src).copySync(tmp);
+      File(tmp).renameSync(dst);
     }
-    File(tmp).renameSync(dst);
   } finally {
     if (FileSystemEntity.isDirectorySync(tmp)) {
       Directory(tmp).deleteSync(recursive: true);
@@ -264,7 +287,7 @@ bool _migrateBundleData(String bundle, String target) {
     for (final rel in _bundleDataItems(bundle)) {
       _copyMissing(p.join(bundle, rel), p.join(target, rel));
     }
-    if (!carryKey(bundle, target)) return false;
+    if (!(carryKeyHook ?? carryKey)(bundle, target)) return false;
     _copyMissing(
         p.join(bundle, 'config.json'), p.join(target, 'config.json'));
     return true;
