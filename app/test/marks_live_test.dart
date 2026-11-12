@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:app/controllers/app_state.dart' hide MarksController;
 import 'package:app/features/common/app_tokens.dart';
 import 'package:app/features/marks/marks_live.dart';
+import 'package:app/widgets/app_widgets.dart' show StatCard;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -85,6 +86,62 @@ void main() {
     expect(find.textContaining('Biologie'), findsWidgets);
     expect(s.tutorial?.$1, 'marks');
   });
+
+  // Checkpoint B BR3-M2: stat tiles fill the width (two per line on a phone),
+  // the Auto segment has its icon and the "updated" line is under the title.
+  for (final narrow in [false, true]) {
+    testWidgets('marks header and stat tiles like Python (narrow: $narrow)',
+        (tester) async {
+      tester.view.physicalSize = Size(narrow ? 390 : 1280, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final s = AppState(
+        configData: {
+          'tutorials_done': ['intro'],
+        },
+        data: {
+          'absence': {'Biologie': 0.0},
+          'grades': {
+            'Biologie': [
+              {'Grade': '2', 'Weight': 1, 'Date': '10.09.2026'},
+            ],
+          },
+        },
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => FixedAppStateController(s)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LiveMarksView(tokens: AppTokens.dark(), narrow: narrow),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.text(s.updatedLabel), findsOneWidget);
+      expect(find.byIcon(Icons.auto_awesome_outlined), findsOneWidget);
+      final cards = find.byType(StatCard);
+      expect(cards, findsNWidgets(4));
+      final width = narrow ? 390.0 : 1280.0;
+      final rects = [
+        for (var i = 0; i < 4; i++) tester.getRect(cards.at(i)),
+      ];
+      if (narrow) {
+        // Two lines of two: the first pair share a row, the second pair
+        // sit below it, and each pair spans the page width.
+        expect(rects[0].top, rects[1].top);
+        expect(rects[2].top, rects[3].top);
+        expect(rects[2].top, greaterThan(rects[0].bottom - 1));
+        expect(rects[1].right - rects[0].left, greaterThan(width - 40));
+      } else {
+        expect(rects.map((r) => r.top).toSet(), hasLength(1));
+        expect(rects[3].right - rects[0].left, greaterThan(width - 80));
+      }
+    });
+  }
 }
 
 class FixedAppStateController extends AppStateController {

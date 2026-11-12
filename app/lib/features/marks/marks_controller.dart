@@ -40,6 +40,9 @@ class MarksController extends ChangeNotifier {
 
   bool demoMode = false;
 
+  /// `updated_label` text shown under the title.
+  String updatedLabel = '';
+
   /// Fixed clock for tests/screenshots (defaults to `DateTime.now()`).
   DateTime? todayOverride;
 

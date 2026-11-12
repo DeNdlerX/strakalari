@@ -1,6 +1,8 @@
 import '../../l10n/strings.dart';
 import 'package:flutter/material.dart';
 
+import '../../widgets/app_widgets.dart' as w;
+
 import '../../tutorial/tutorial_ui.dart';
 import '../common/app_tokens.dart';
 import '../common/format.dart' hide parseCzDate;
@@ -200,17 +202,11 @@ final hasGrades = c.grades.isNotEmpty;
   // -- header ------------------------------------------------------------------
 
   Widget _headerRow(BuildContext context, bool hasGrades) {
-    final t = tokens;
-return Row(
-      children: [
-        Expanded(
-            child: Text(Strings.get('marks_title'),
-                style: TextStyle(
-                    color: t.text,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold))),
-        if (hasGrades && !narrow) _scaleToggle(),
-      ],
+    return w.HeaderRow(
+      heading: Strings.get('marks_title'),
+      updated: controller.updatedLabel,
+      tok: tokens,
+      actions: [if (hasGrades && !narrow) _scaleToggle()],
     );
   }
 
@@ -221,7 +217,9 @@ return Row(
       child: SegmentedButton<String>(
         segments: [
           ButtonSegment(
-              value: 'auto', label: Text(Strings.get('marks_scale_auto'))),
+              value: 'auto',
+              icon: const Icon(Icons.auto_awesome_outlined),
+              label: Text(Strings.get('marks_scale_auto'))),
           ButtonSegment(
               value: 'grade',
               label: Text(Strings.get('marks_scale_grade'))),
@@ -268,57 +266,48 @@ final predicting = items.any((x) => x.predicting);
     final suffix = predicting
         ? ' · ${Strings.get('marks_predicted_short')}'
         : '';
-    return TutorialAnchor(
-      anchorKey: 'marks_stats',
-      child: Wrap(
-        spacing: tokens.gap,
-        runSpacing: 8,
+    final cards = [
+      w.StatCard(
+          label: '${Strings.get('marks_average')}$suffix',
+          value: formatValue(avg, avgScale),
+          tok: tokens,
+          kind: kindFor(avg, avgScale, bands)),
+      w.StatCard(
+          label: '${Strings.get('marks_report')}$suffix',
+          value: report == null ? '—' : report.toStringAsFixed(2),
+          tok: tokens,
+          kind: kindFor(report, 'grade', bands)),
+      w.StatCard(
+          label: Strings.get('marks_total'), value: '$nMarks', tok: tokens),
+      w.StatCard(
+          label: Strings.get('marks_new'),
+          value: '$nNew',
+          tok: tokens,
+          kind: nNew > 0 ? 'ok' : 'info'),
+    ];
+    // Port of `components.stat_row`: side by side, two per line on a
+    // phone (four across leave no room for their labels).
+    final Widget row;
+    if (!narrow || cards.length <= 3) {
+      row = Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: tokens.gap,
+          children: cards);
+    } else {
+      final half = tokens.gap ~/ 2;
+      row = Column(
+        spacing: half.toDouble(),
+        mainAxisSize: MainAxisSize.min,
         children: [
-          _statCard('${Strings.get('marks_average')}$suffix',
-              formatValue(avg, avgScale), kindFor(avg, avgScale, bands)),
-          _statCard('${Strings.get('marks_report')}$suffix',
-              report == null ? '—' : report.toStringAsFixed(2),
-              kindFor(report, 'grade', bands)),
-          _statCard(Strings.get('marks_total'), '$nMarks', 'info'),
-          _statCard(Strings.get('marks_new'), '$nNew',
-              nNew > 0 ? 'ok' : 'info'),
+          for (var i = 0; i < cards.length; i += 2)
+            Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: half.toDouble(),
+                children: cards.sublist(i, i + 2)),
         ],
-      ),
-    );
-  }
-
-  Widget _statCard(String label, String value, String kind) {
-    final t = tokens;
-    final color =
-        kind == 'info' ? t.text : statusColor(kind, t);
-    return SizedBox(
-      width: 150,
-      child: Card(
-        color: t.card,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(t.radiusMd)),
-        child: Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      color: t.muted, fontSize: t.fsSmall)),
-              const SizedBox(height: 2),
-              Text(value,
-                  style: TextStyle(
-                      color: color,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold)),
-            ],
-          ),
-        ),
-      ),
-    );
+      );
+    }
+    return TutorialAnchor(anchorKey: 'marks_stats', child: row);
   }
 
   Widget? _predictionBanner(BuildContext context) {
