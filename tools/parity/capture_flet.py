@@ -39,6 +39,45 @@ def wait_http(url, timeout=30.0):
             time.sleep(0.5)
     raise RuntimeError(f"Server at {url} did not respond within {timeout}s")
 
+def _is_splash(png):
+    """True while the page still shows the Flet start-up logo (almost all white)."""
+    import io
+
+    from PIL import Image
+
+    small = Image.open(io.BytesIO(png)).convert("RGB").resize((64, 64), Image.NEAREST)
+    white = sum(1 for x in range(64) for y in range(64) if small.getpixel((x, y)) == (255, 255, 255))
+    return white / 4096 > 0.85
+
+
+def _screenshot(page, path=None, tries=3):
+    """page.screenshot that survives a slow frame (Playwright times out now and then)."""
+    for attempt in range(tries):
+        try:
+            return page.screenshot(path=path) if path else page.screenshot()
+        except Exception:
+            if attempt == tries - 1:
+                raise
+            time.sleep(2)
+
+
+def open_app(page, url, timeout=120.0):
+    """Opens the app and waits until it has really rendered.
+
+    A fixed sleep was not enough: the first render sometimes takes far longer
+    (CanvasKit start-up), and the capture then saved the logo instead of the
+    screen. Fails loudly if the app never appears.
+    """
+    page.goto(url)
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        time.sleep(1)
+        if not _is_splash(_screenshot(page)):
+            time.sleep(2)  # let the first frame settle (fonts, icons)
+            return
+    raise RuntimeError(f"The app at {url} still shows the start-up logo after {timeout:.0f}s")
+
+
 def capture_wizard(out_dir, lang, theme, port):
     """The first-run wizard: a folder with no credentials (no demo data)."""
     import json
@@ -61,10 +100,9 @@ def capture_wizard(out_dir, lang, theme, port):
                 for width, height in [(1280, 800), (390, 844)]:
                     page = browser.new_page(viewport={"width": width, "height": height},
                                             device_scale_factor=1)
-                    page.goto(url)
-                    time.sleep(5)
+                    open_app(page, url)
                     dest = os.path.join(out_dir, f"wizard-{lang}-{theme}-{width}.png")
-                    page.screenshot(path=dest)
+                    _screenshot(page, dest)
                     print(f"Captured {dest}")
                     page.close()
                 browser.close()
@@ -107,8 +145,7 @@ def capture_flet():
                                 viewport={"width": width, "height": height},
                                 device_scale_factor=1,
                             )
-                            page.goto(url)
-                            time.sleep(5)  # CanvasKit / first render
+                            open_app(page, url)  # CanvasKit / first render
 
                             def click_nav(screen):
                                 if width >= 720:
@@ -137,7 +174,7 @@ def capture_flet():
                             for s in all_screens:
                                 click_nav(s)
                                 dest = os.path.join(out_dir, f"{s}-{lang}-{theme}-{width}.png")
-                                page.screenshot(path=dest)
+                                _screenshot(page, dest)
                                 print(f"Captured {dest}")
 
                             page.close()
