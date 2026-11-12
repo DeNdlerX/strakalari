@@ -179,6 +179,61 @@ void main() {
     expect(wide.position.maxScrollExtent, 0);
     expect(headerCellWidth(), greaterThan(92));
   });
+
+  // Checkpoint B BR3-M2: `timetable.py` GAP = 4 between the cells of a row,
+  // the header row, the rows themselves and the phone's day column.
+  for (final narrow in [false, true]) {
+    testWidgets('grid cells have a 4 px gap (narrow: $narrow)', (tester) async {
+      addTearDown(tester.view.reset);
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = Size(narrow ? 390 : 1600, 844);
+      final previous = FlutterError.onError;
+      FlutterError.onError = (details) {
+        if (details.exceptionAsString().contains('overflowed')) return;
+        previous?.call(details);
+      };
+      addTearDown(() => FlutterError.onError = previous);
+      final s = AppState(
+        configData: {
+          'tutorials_done': ['intro'],
+        },
+        data: {
+          'timetable': {
+            '12.10.2026': [
+              for (var p = 1; p <= 4; p++)
+                {'subject': 'Predmet$p', 'time': '$p (8:00 - 8:45)'},
+            ],
+          },
+        },
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => FixedAppStateController(s)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LiveTimetableView(
+                tokens: AppTokens.dark(),
+                narrow: narrow,
+                now: DateTime(2026, 10, 12, 10, 0),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      final gapped = tester
+          .widgetList<Row>(find.byType(Row))
+          .where((r) => r.spacing == 4)
+          .toList();
+      // Header row and the lesson row: one slot per period (plus the
+      // day gutter on a wide screen).
+      final perRow = narrow ? 4 : 5;
+      expect(gapped.where((r) => r.children.length == perRow).length,
+          greaterThanOrEqualTo(2));
+    });
+  }
 }
 
 class FixedAppStateController extends AppStateController {

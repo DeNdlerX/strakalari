@@ -379,7 +379,10 @@ Widget swatch(Widget box, String label) => Row(
                   p == focusPeriod)));
         }
         final rows = <Widget>[
-          Row(children: headerCells),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Row(spacing: gap, children: headerCells),
+          ),
         ];
         for (final day in days) {
           final isToday = day == today;
@@ -409,7 +412,7 @@ Widget swatch(Widget box, String label) => Row(
               borderRadius: BorderRadius.circular(tokens.radiusMd),
             ),
             padding: const EdgeInsets.all(2),
-            child: Row(children: cells),
+            child: Row(spacing: gap, children: cells),
           ));
         }
         return Column(
@@ -432,15 +435,19 @@ Widget swatch(Widget box, String label) => Row(
     final maxChars = (((cellW - 24) / 7.5).truncate()).clamp(3, 1 << 30);
     final gutters = <Widget>[const SizedBox(height: headerH)];
     final rows = <Widget>[
-      Row(
-        children: [
-          for (final p in periods)
-            SizedBox(
-                width: cellW,
-                child: _periodHeader(p,
-                    c.periodTime(_asWeekDays(byDayPeriod), p),
-                    p == focusPeriod)),
-        ],
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: Row(
+          spacing: gap,
+          children: [
+            for (final p in periods)
+              SizedBox(
+                  width: cellW,
+                  child: _periodHeader(p,
+                      c.periodTime(_asWeekDays(byDayPeriod), p),
+                      p == focusPeriod)),
+          ],
+        ),
       ),
     ];
     for (final day in days) {
@@ -463,6 +470,7 @@ Widget swatch(Widget box, String label) => Row(
         ),
         padding: const EdgeInsets.all(2),
         child: Row(
+          spacing: gap,
           children: [
             for (final period in periods)
               SizedBox(
@@ -483,12 +491,13 @@ Widget swatch(Widget box, String label) => Row(
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Column(children: gutters),
+        Column(spacing: gap, children: gutters),
         const SizedBox(width: gap),
         Expanded(
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Column(
+                spacing: gap,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: rows),
           ),
