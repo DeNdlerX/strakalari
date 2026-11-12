@@ -23,9 +23,13 @@
     <!-- Android 13+: asked at runtime before the first notification. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Same as the Flet build: the app's name, no Google backup of
+         config.json and the key file, the predictive back gesture. -->
     <application
-        android:label="app"
+        android:label="Strakaláři"
         android:name="${applicationName}"
+        android:allowBackup="false"
+        android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
