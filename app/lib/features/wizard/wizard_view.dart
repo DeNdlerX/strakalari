@@ -1,6 +1,7 @@
 import '../../l10n/strings.dart';
 import 'package:flutter/material.dart';
 
+import '../../widgets/app_widgets.dart' as w;
 import '../common/app_tokens.dart';
 import 'wizard_controller.dart';
 
@@ -131,7 +132,10 @@ final step = c.step.clamp(0, WizardController.stepDone);
       color: t.bg,
       padding: EdgeInsets.all(narrow ? 8 : 24),
       child: LayoutBuilder(
-        builder: (context, constraints) => Center(
+        // Top of the page (`MainAxisAlignment.START` in Python), centred
+        // sideways.
+        builder: (context, constraints) => Align(
+          alignment: Alignment.topCenter,
           child: SizedBox(
             // Python: ResponsiveRow col {xs: 12, md: 9, lg: 7, xl: 6, xxl: 5}
             // (Flet breakpoints 768 / 992 / 1200 / 1400), centered.
@@ -175,7 +179,7 @@ final step = c.step.clamp(0, WizardController.stepDone);
       case 'ok':
         color = t.green;
       case 'working':
-        color = t.accent;
+        color = t.yellow;
       default:
         color = t.faint;
     }
@@ -201,21 +205,19 @@ switch (step) {
             spacing: 8,
             children: [
               lang != 'cs'
-                  ? OutlinedButton(
-                      onPressed: () =>
-                          c.onSetLanguage('cs'),
-                      child: const Text('Čeština'))
-                  : ElevatedButton(
-                      onPressed: null,
-                      child: const Text('Čeština')),
+                  ? w.GhostButton(
+                      label: 'Čeština',
+                      tok: t,
+                      onPressed: () => c.onSetLanguage('cs'))
+                  : w.PrimaryButton(
+                      label: 'Čeština', tok: t, onPressed: () {}),
               lang != 'en'
-                  ? OutlinedButton(
-                      onPressed: () =>
-                          c.onSetLanguage('en'),
-                      child: const Text('English'))
-                  : ElevatedButton(
-                      onPressed: null,
-                      child: const Text('English')),
+                  ? w.GhostButton(
+                      label: 'English',
+                      tok: t,
+                      onPressed: () => c.onSetLanguage('en'))
+                  : w.PrimaryButton(
+                      label: 'English', tok: t, onPressed: () {}),
             ],
           ),
         ];
