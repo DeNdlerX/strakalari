@@ -16,6 +16,14 @@ import 'package:flutter/services.dart';
 /// The channel the Java side serves (`StrakalariChannel`).
 const String androidChannelName = 'strakalari/android';
 
+/// Python's `print(f"Warning: {what} ({type(exc).__name__}: {exc})")`
+/// (or without the type name where android.py leaves it out).
+void _warn(String what, PlatformException e, {required bool typed}) {
+  final detail = e.message ?? e.code;
+  // ignore: avoid_print
+  print('Warning: $what (${typed ? 'PlatformException: ' : ''}$detail)');
+}
+
 /// Typed client for the `strakalari/android` MethodChannel.
 class AndroidChannel {
   /// The UI isolate's channel (the background isolate builds its own).
@@ -62,7 +70,8 @@ class AndroidChannel {
           false;
     } on MissingPluginException {
       return false;
-    } on PlatformException {
+    } on PlatformException catch (e) {
+      _warn('notification failed', e, typed: true);
       return false;
     }
   }
@@ -84,7 +93,8 @@ class AndroidChannel {
       await _channel.invokeMethod<void>('requestNotificationPermission');
     } on MissingPluginException {
       // No backend: nothing to ask through.
-    } on PlatformException {
+    } on PlatformException catch (e) {
+      _warn('could not ask for the notification permission', e, typed: false);
       // Must never break a job.
     }
   }
@@ -95,7 +105,8 @@ class AndroidChannel {
       await _channel.invokeMethod<void>('openNotificationSettings');
     } on MissingPluginException {
       // Ignore.
-    } on PlatformException {
+    } on PlatformException catch (e) {
+      _warn('could not open the notification settings', e, typed: false);
       // Ignore.
     }
   }
@@ -110,7 +121,8 @@ class AndroidChannel {
           false;
     } on MissingPluginException {
       return false;
-    } on PlatformException {
+    } on PlatformException catch (e) {
+      _warn('could not start the background service', e, typed: true);
       return false;
     }
   }
@@ -120,7 +132,8 @@ class AndroidChannel {
       await _channel.invokeMethod<void>('stopBackground');
     } on MissingPluginException {
       // Ignore.
-    } on PlatformException {
+    } on PlatformException catch (e) {
+      _warn('could not stop the background service', e, typed: false);
       // Ignore.
     }
   }
@@ -145,7 +158,8 @@ class AndroidChannel {
           false;
     } on MissingPluginException {
       return false;
-    } on PlatformException {
+    } on PlatformException catch (e) {
+      _warn('could not update the background notification', e, typed: true);
       return false;
     }
   }
@@ -160,7 +174,8 @@ class AndroidChannel {
           false;
     } on MissingPluginException {
       return false;
-    } on PlatformException {
+    } on PlatformException catch (e) {
+      _warn('could not schedule the next wake-up', e, typed: true);
       return false;
     }
   }
@@ -192,7 +207,8 @@ class AndroidChannel {
           false;
     } on MissingPluginException {
       return false;
-    } on PlatformException {
+    } on PlatformException catch (e) {
+      _warn('could not hand over the wake-up alarms', e, typed: true);
       return false;
     }
   }
@@ -215,7 +231,8 @@ class AndroidChannel {
       await _channel.invokeMethod<void>('openExactAlarmSettings');
     } on MissingPluginException {
       // Ignore.
-    } on PlatformException {
+    } on PlatformException catch (e) {
+      _warn('could not open the alarm settings', e, typed: false);
       // Ignore.
     }
   }
@@ -239,7 +256,8 @@ class AndroidChannel {
           false;
     } on MissingPluginException {
       return false;
-    } on PlatformException {
+    } on PlatformException catch (e) {
+      _warn('could not open the Clock app', e, typed: true);
       return false;
     }
   }
@@ -252,7 +270,8 @@ class AndroidChannel {
           false;
     } on MissingPluginException {
       return false;
-    } on PlatformException {
+    } on PlatformException catch (e) {
+      _warn('could not update the timetable widget', e, typed: true);
       return false;
     }
   }
