@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 7 (Checkpoint B re-review 5: PASS, 2026-11-12) · Next step: **Phase 7 Inno over-install test passed in Sandbox.** Remaining before Checkpoint C: Credential Manager key after upgrade, MSIX sideload test, manual tray/autostart/notification checks, deferred phase 7 tests; then phase 8 phone checks (ask the owner before the first install on the Pixel 7 Pro). Stop at Checkpoint C.
+Current phase: 7–8 (desktop + phone checks, in progress) · Next step: **Re-run the Windows Sandbox test on the current build** (the start-up wiring is new and unverified on Windows: tray, single instance, the key moving into Credential Manager, toasts, automatic refresh). The last Sandbox runs failed to start the test script (Sandbox flakiness after a forced close; reboot or wait before retrying). Then the remaining phase 8 phone checks (notifications, wake-up alarm, widget, reboot) and Checkpoint C notes.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -675,6 +675,8 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
 ## Questions for the owner / reviewer
 
 - Phase 8 (2026-11-12): the APK build failed until core library desugaring was enabled (`flutter_local_notifications` requires it). The owner agreed to wipe the old Flet `.test` app; the Flutter `.test` debug build is installed on the Pixel 7 Pro with demo data (local demo server over `adb reverse`, dry run, Strava off).
+- Desktop toasts (2026-11-12): `flutter_local_notifications` crashed the Windows AOT build (gen_snapshot "Class with illegal cid" in its Windows FFI code, also in 4.0.1) once start-up used it. Replaced by a port of Python's own senders (PowerShell WinRT toast / osascript / notify-send) in core `desktop_notify.dart` with the 13 OS-backend cases of test_notify.py; the plugin and the Android desugaring it needed are gone. Not ported: Python's `plyer` fallback (stdout stays the last resort). Unverified: whether PowerShell flashes a console window from the Flutter app.
+- Phone (2026-11-12): the wired build starts, shows the demo data, refreshes against the demo server in dry run (only reads, no excuse sent), starts background running and arms the next wake-up; the post-update wake-up is handed to the running app. Not yet checked: notifications, widget, wake-up alarm, reboot.
 - Start-up wiring was missing (found on the phone, 2026-11-12): `main.dart` never called the phase 7/8 platform code. The phone hung on the splash (no data dir → `AppState` failed → the error card re-threw forever); on Windows there was no tray, single instance, OS key store, toasts or automatic refresh. Now wired in `app/lib/platform/startup.dart` (port of `main.py`, `run()`, `run_mobile()` and the platform half of `main(page)`). Please review it as new code.
 - Android key race (Flutter-only): the UI and a headless wake-up are two isolates in one process and each created its own password key (the second write won). Now only the first creates `secret.key.wrapped`, the other adopts it (exclusive create). Seen fixed on the phone.
 - One-process deviations to sign off: the tray icon is always shown (Python's in-window tray appeared on the first hide) and its menu has Pause like the `--minimized` tray; `test_tray_interval_follows_config_file` has no direct twin.
