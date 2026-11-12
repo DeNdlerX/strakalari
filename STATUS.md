@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 6 (Checkpoint B re-review 3: FAIL, 2026-11-12) · Next step: **Fix every finding in `reviews/checkpoint-B.md` (blockers first), one commit per finding, then stop for re-review.** The open findings are under *Re-review 3*: BR3-B1, BR3-B2, BR3-M1 … BR3-M3, BR3-S1 … BR3-S4. After a PASS: phase 7 desktop checks (Sandbox over-install test) and phase 8 phone checks (ask the owner before the first install on the Pixel 7 Pro).
+Current phase: 6 (Checkpoint B rework round 5 done, waiting for re-review 4) · Next step: **Stop: a reviewer re-checks Checkpoint B (all re-review 3 findings are fixed, see the round 5 entry in the rework log).** After a PASS: phase 7 desktop checks (Sandbox over-install test) and phase 8 phone checks (ask the owner before the first install on the Pixel 7 Pro).
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -25,7 +25,7 @@ Phase 6 (screens) is complete and waiting for the Checkpoint B re-review: all 10
 restyled like the Flet screens (round 4: Today, Planner, Lunches, Activity, Settings, shared theme); both screenshot
 sets were re-captured and compared on 1280 and 390 px, light and dark. App suite: 469 passed, 1 skipped
 (APK scan needs `STRAKALARI_APK`); core: 764 passed, 2 skipped; both analyzers clean.
-⛔ Checkpoint B: UI review — round 4 done, ready for the re-review (nothing verified on a phone or in Windows Sandbox).
+⛔ Checkpoint B: UI review — round 5 done (re-review 3 findings fixed), ready for the re-review (nothing verified on a phone or in Windows Sandbox).
 Phase 7 (desktop) is in progress, unreviewed: tray + hide-to-tray, autostart,
 single-instance loopback-TCP, notifications, desktop keystores, Inno
 (AppId kept) + MSIX adaptations, CI release jobs written in code;
@@ -803,6 +803,15 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
   - **B-M13**: the test map lines for items 17, 19, 21, 30, 38, 40, 50, 51, 53, 56, 67, 79 (unchanged, it was already complete), 81 and 87 and `TestNarrowShell` name the real Dart tests. Every Python test in those files has a same-named Dart test (checked by a script that compares the camel-cased names) except the Flet-only ones, which are under *Dropped*.
   - **Screenshots:** `build/parity-screens/{flutter,flet}/` were re-captured (80 and 76 images) and compared by eye on Today, Planner, Lunches, Activity and Settings (1280 and 390, light and dark). Known differences: the Flet captures show an "update available" button and a next-run time that the demo data in the Flutter capture does not produce; Absences, Marks, Timetable, More and the wizard were not compared again in this round; the wake-up card and the wizard card widths are still unchecked.
 - 2026-11-12 · Checkpoint B re-review 3: **FAIL** (all re-review 2 findings fixed except B-M11 in part; new: 2 blockers BR3-B1 Planner grid / day ranges off by a day after the clock change, BR3-B2 *Copy log* not redacted; 3 must-fix incl. a red app suite; 4 should-fix) — [docs/flutter-migration/reviews/checkpoint-B.md](docs/flutter-migration/reviews/checkpoint-B.md#re-review-3-2026-11-12)
+- 2026-11-12 · Checkpoint B rework, round 5 (after re-review 3). One commit per finding, in the reviewer's order:
+  - **BR3-B1**: every calendar-day step in `app/lib` is `core.addDays` / `core.daysBetween` (semester grid wide + phone, the custom-range dialog month, `addDayRange`, the free-day grouping, Today, Timetable, Activity, planner); the app's second `entryDays` is deleted (the core's is used). New `calendar_days_dst_test.dart`: a guard that fails on `Duration(days` / `.inDays` under `app/lib`, `entryDays` and `addDayRange` for 23.10.–30.10.2026 and 26.3.–2.4.2027, the free-day grouping across 28 Mar, the semester grid on 12 Nov 2026 under `withClock` (today in the *Čt* row/column, 13 Nov in *Pá*, wide and phone), the custom dialog's October 2026. The grid and dialog tests fail on the old code.
+  - **BR3-B2**: *Copy log* copies `redactedLogTail` (last 200 lines, `core.redactText` with the config, fail closed). Tests: `activityLogCopyRedactsSecrets` (= `test_activity_log_copy_redacts_secrets`), the 200-line cut, and the button itself against a mocked clipboard.
+  - **BR3-M1**: `wholeDayExcuseListsLessonsInAFoldedSection` injects the two tasks like Python (`excuseTasksOverride`), pins the clock and checks exactly one tile, collapsed, its title (`Nebo jednotlivě (2 hodiny)`), and the tile itself opened after `setDayExpanded`. To find any other date-dependent test I ran the whole app suite with the clock fixed to 2026-08-20, 2026-12-15 and 2027-03-10 (a temporary hook in `flutter_test_config.dart`, removed again): all green on all three, and the same hook fails the old version of the wake-up test. So no other test depends on today's date.
+  - **BR3-M3**: the missing ports are in `app_state_error_and_quiet_test.dart` (`userErrorMarksReportFriendly`, `regularErrorHasNoUserMessage`, `reportIsPersistedRedactedToStderr`, `shellPopsQueuedErrorOnce`, `saveQuietPersistsWithoutRender` against `AppState.saveQuiet`) and `activity_view_test.dart`; the two Flet-only cases are under *Dropped*; test map items 16 and 66 are corrected. **A real bug found by the first port:** `reportError` built the friendly message from `'$exc'`, so it showed `UserError: …` with the type name; Python uses the message only. Fixed (`exc.message`).
+  - **BR3-M2**: Absences (percentage `21.4 %` right of a 140 px track via the shared `Meter`, the date line, stat values coloured by the shared `StatCard`, shared `Badge`), Marks (date line, four stat tiles filling the width, two per line on a phone, *Auto* icon on the global toggle only: that is where `marks.py:165` has it, the per-subject toggle has none), Wizard (card at the top, chosen language is a filled primary button, current step dot yellow), Timetable (4 px between cells, header row, rows and the phone day column). Each has a widget test (`absences_view_test.dart`, `marks_live_test.dart`, `wizard_look_test.dart`, `timetable_live_test.dart`).
+  - **BR3-S1**: `gFormat` is Python's `format(x, 'g')`; `gformat_test.dart` compares 38 values against a table printed by Python. **BR3-S2**: one half-even helper (core `roundHalfEvenToInt`, now public; the app copy is gone), `tintColor` and the budget shares use it; one weekday-name table (`format.dart`; `app_widgets.dayName` and the planner dialog use it). **BR3-S3**: `capture_flet.py` sets `STRAKALARI_NO_KEYRING` and `DEMO_NO_UPDATE_BANNER`. **BR3-S4**: `save` / `saveQuiet` in `SettingsController` print `Warning: could not save settings: …` on a thrown error (test); the "value is in memory before the save worked" part is the same as Python's `save_quiet` and was left alone.
+  - **Screenshots:** both sets re-captured (80 Flutter, 76 Flet) and Absences and Marks (cs dark 1280) compared by eye: they match. The Flet wizard capture caught only the start-up logo (timing in `capture_flet.py`, not a difference in the app), so the wizard changes are checked by `wizard_look_test.dart` against the Python lines, not by a screenshot. Timetable and the phone layouts were not compared by eye this round.
+  - Checks: core `dart analyze` clean, `dart test` 764 passed / 2 skipped; app `flutter analyze` clean, `flutter test` 498 passed / 1 skipped.
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 
@@ -839,7 +848,7 @@ Unsure / needs a second pair of eyes:
 - Gemini `localFallbackRecommendation` keyword lists ported line by
   line (Czech stems); only covered via parity fixtures + fakes.
 
-### ⛔ Checkpoint B: UI review (phases 5–6, FAILED three reviews, round 4 done, waiting for the re-review)
+### ⛔ Checkpoint B: UI review (phases 5–6, FAILED three reviews, round 5 done, waiting for the re-review)
 
 The shell and all ten screens exist and are wired to live `AppState` and
 `strakalari_core`. Round 4 restyled Today, Planner, Lunches, Activity and Settings
@@ -877,7 +886,7 @@ What was done:
 
 How to verify:
 - `cd packages/strakalari_core && dart analyze && dart test` (764 passed, 2 skipped).
-- `cd app && flutter analyze && flutter test` (469 passed, 1 skipped).
+- `cd app && flutter analyze && flutter test` (498 passed, 1 skipped).
 - Re-capture and compare: `cd app; STRAKALARI_PYTHON=<venv python> flutter test ../tools/parity/capture_screens.dart` and `python tools/parity/capture_flet.py` (needs Playwright + Chromium), then look at `build/parity-screens/flet/` vs `build/parity-screens/flutter/`.
 - Test app startup on demo data dir: `python tools/demo_data.py generate build/parity-screens/demo-cs` and run debug executable.
 
