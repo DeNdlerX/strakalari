@@ -32,8 +32,49 @@ import 'dart:ffi';
 import 'dart:io';
 
 import 'package:ffi/ffi.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:strakalari_core/strakalari_core.dart';
 import 'package:win32/win32.dart';
+
+/// The HKCU Run key, as `winreg` sees it (a fake in tests).
+abstract interface class RunKeyRegistry {
+  /// `QueryValueEx(key, name)`; null when the value is missing
+  /// (`FileNotFoundError`). Throws [RunKeyUnavailable] when the key cannot
+  /// be opened (`OpenKey` raised).
+  String? query(String name);
+
+  /// `SetValueEx(key, name, 0, REG_SZ, value)`; throws on failure.
+  void set(String name, String value);
+
+  /// `DeleteValue(key, name)`; a missing value is not an error.
+  void delete(String name);
+}
+
+/// `winreg.OpenKey` failed (the key could not be opened).
+class RunKeyUnavailable implements Exception {
+  final String message;
+  const RunKeyUnavailable(this.message);
+  @override
+  String toString() => message;
+}
+
+/// Test seams (Python's tests patch `sys.platform`, `winreg`, `HOME`,
+/// `sys.executable`): `'win32'`, `'darwin'` or `'linux'`.
+@visibleForTesting
+String? autostartPlatformOverride;
+@visibleForTesting
+RunKeyRegistry? autostartRegistryOverride;
+@visibleForTesting
+Map<String, String>? autostartEnvOverride;
+@visibleForTesting
+String? autostartExecutableOverride;
+
+String get _platform =>
+    autostartPlatformOverride ??
+    (Platform.isWindows ? 'win32' : (Platform.isMacOS ? 'darwin' : 'linux'));
+Map<String, String> get _env => autostartEnvOverride ?? Platform.environment;
+String get _executable => autostartExecutableOverride ?? Platform.resolvedExecutable;
+RunKeyRegistry get _registry => autostartRegistryOverride ?? const _Win32RunKey();
 
 /// Value / file / plist name (matches Python `APP_NAME`).
 const String autostartAppName = 'Strakalari';
@@ -45,12 +86,14 @@ const String macosLaunchLabel = 'cz.strakalari.app';
 /// `get_launch_command`: double-quoted paths with spaces; single
 /// quotes are NOT used because desktop-file parsers ignore them).
 String getLaunchCommand({bool minimized = true, String? executablePath}) {
-  final exe = executablePath ?? Platform.resolvedExecutable;
+  final exe = executablePath ?? _executable;
   final args = <String>[exe];
   if (minimized) args.add('--minimized');
   return args
-      .map((a) =>
-          (a.contains(' ') || a.contains('\t')) ? '"$a"' : a)
+      .map((a) => ((a.contains(' ') || a.contains('\t')) &&
+              !(a.startsWith('"') && a.endsWith('"')))
+          ? '"$a"'
+          : a)
       .join(' ');
 }
 
@@ -59,9 +102,10 @@ String getLaunchCommand({bool minimized = true, String? executablePath}) {
 /// The app reads the HKCU Run value, so the shortcut still counts as
 /// enabled (and is adopted on the next toggle).
 String startupShortcutPath() {
-  final appData = Platform.environment['APPDATA'] ??
-      Platform.environment['USERPROFILE'] ??
-      '';
+  final env = _env;
+  final appData = (env['APPDATA']?.isNotEmpty ?? false)
+      ? env['APPDATA']!
+      : (env['USERPROFILE'] ?? env['HOME'] ?? '');
   return '$appData\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\$autostartAppName.lnk';
 }
 
@@ -78,8 +122,8 @@ bool autostartManagedByStore() {
 /// True when autostart on system boot is enabled.
 bool isAutostartEnabled() {
   if (autostartManagedByStore()) return false;
-  if (Platform.isWindows) return _isEnabledWindows();
-  if (Platform.isMacOS) {
+  if (_platform == 'win32') return _isEnabledWindows();
+  if (_platform == 'darwin') {
     return File(_macosPlistPath()).existsSync();
   }
   return File(_linuxDesktopPath()).existsSync();
@@ -88,21 +132,20 @@ bool isAutostartEnabled() {
 /// Enables or disables autostart on system boot.
 bool setAutostart(bool enabled, {bool minimized = true}) {
   if (autostartManagedByStore()) return false;
-  if (Platform.isWindows) return _setWindows(enabled, minimized: minimized);
-  if (Platform.isMacOS) return _setMacos(enabled, minimized: minimized);
+  if (_platform == 'win32') return _setWindows(enabled, minimized: minimized);
+  if (_platform == 'darwin') return _setMacos(enabled, minimized: minimized);
   return _setLinux(enabled, minimized: minimized);
 }
 
 // -- Windows -------------------------------------------------------------
 
 bool _isEnabledWindows() {
-  final key = _openRunKey(writable: false);
-  if (key != null) {
-    try {
-      return _queryRunValue(key) != null;
-    } finally {
-      RegCloseKey(key);
-    }
+  try {
+    if (_registry.query(autostartAppName) != null) return true;
+  } on RunKeyUnavailable {
+    // Falls through to the shortcut, like a failed `OpenKey`.
+  } catch (_) {
+    return false; // any other query error
   }
   // No Run value — an older installer may have left a Startup-folder
   // shortcut behind, which launches the app too.
@@ -114,62 +157,93 @@ bool _isEnabledWindows() {
 }
 
 bool _setWindows(bool enabled, {required bool minimized}) {
-  final key = _openRunKey(writable: true);
-  if (key == null) {
-    // ignore: avoid_print
-    print('Warning: Could not open Windows startup registry.');
-    return false;
-  }
   try {
     if (enabled) {
-      if (!_writeRunValue(key, getLaunchCommand(minimized: minimized))) {
-        return false;
-      }
+      _registry.set(autostartAppName, getLaunchCommand(minimized: minimized));
     } else {
-      using((Arena arena) {
-        final name = autostartAppName.toNativeUtf16(allocator: arena);
-        // Missing value is fine (already disabled).
-        RegDeleteValue(key, name);
-      });
+      _registry.delete(autostartAppName); // missing is fine
     }
-  } finally {
-    RegCloseKey(key);
+    // Adopt the legacy installer shortcut: from now on the Run value
+    // above is the single source of truth, so the shortcut must go —
+    // otherwise the app would launch twice (or keep launching after
+    // the user switched autostart off).
+    _removeLegacyShortcut();
+    return true;
+  } catch (e) {
+    // ignore: avoid_print
+    print('Warning: Could not update Windows startup registry: $e');
+    return false;
   }
-  // Adopt the legacy installer shortcut: from now on the Run value
-  // above is the single source of truth, so the shortcut must go —
-  // otherwise the app would launch twice (or keep launching after
-  // the user switched autostart off).
-  _removeLegacyShortcut();
-  return true;
 }
 
-int? _openRunKey({required bool writable}) {
+/// The real HKCU Run key through `package:win32`.
+class _Win32RunKey implements RunKeyRegistry {
+  const _Win32RunKey();
+
+  @override
+  String? query(String name) {
+    final key = _openRunKey(writable: false);
+    try {
+      return _queryRunValue(key, name);
+    } finally {
+      RegCloseKey(key);
+    }
+  }
+
+  @override
+  void set(String name, String value) {
+    final key = _openRunKey(writable: true);
+    try {
+      if (!_writeRunValue(key, name, value)) {
+        throw const RunKeyUnavailable('RegSetValueEx failed');
+      }
+    } finally {
+      RegCloseKey(key);
+    }
+  }
+
+  @override
+  void delete(String name) {
+    final key = _openRunKey(writable: true);
+    try {
+      using((Arena arena) {
+        // Missing value is fine (already disabled).
+        RegDeleteValue(key, name.toNativeUtf16(allocator: arena));
+      });
+    } finally {
+      RegCloseKey(key);
+    }
+  }
+}
+
+int _openRunKey({required bool writable}) {
   return using((Arena arena) {
     final subkey = r'Software\Microsoft\Windows\CurrentVersion\Run'
         .toNativeUtf16(allocator: arena);
     final out = arena<IntPtr>();
     final access = writable ? KEY_SET_VALUE : KEY_READ;
     final rc = RegOpenKeyEx(HKEY_CURRENT_USER, subkey, 0, access, out);
-    if (rc != 0) return null;
+    if (rc != 0) throw RunKeyUnavailable('RegOpenKeyEx failed (Win32 error $rc)');
     return out.value;
   });
 }
 
-String? _queryRunValue(int key) {
+String? _queryRunValue(int key, String valueName) {
   return using((Arena arena) {
-    final name = autostartAppName.toNativeUtf16(allocator: arena);
+    final name = valueName.toNativeUtf16(allocator: arena);
     final type = arena<Uint32>();
     final size = arena<Uint32>()..value = 0;
     var rc = RegQueryValueEx(key, name, nullptr, type, nullptr, size);
-    if (rc != 0 || size.value == 0) return null;
+    if (rc == 2 /* ERROR_FILE_NOT_FOUND */) return null;
+    if (rc != 0) throw StateError('RegQueryValueEx failed (Win32 error $rc)');
+    if (size.value == 0) return '';
     final data = arena<Uint8>(size.value);
     rc = RegQueryValueEx(key, name, nullptr, type, data, size);
-    if (rc != 0) return null;
+    if (rc != 0) throw StateError('RegQueryValueEx failed (Win32 error $rc)');
     final units = size.value ~/ 2;
     // REG_SZ is UTF-16LE NUL-terminated; read the raw units
     // (`Pointer<Utf16>` has no `asTypedList`; the units are identical).
     final codeUnits = data.cast<Uint16>().asTypedList(units);
-    // REG_SZ is NUL-terminated; strip trailing NULs.
     var end = codeUnits.length;
     while (end > 0 && codeUnits[end - 1] == 0) {
       end--;
@@ -178,28 +252,14 @@ String? _queryRunValue(int key) {
   });
 }
 
-bool _writeRunValue(int key, String command) {
-  try {
-    return using((Arena arena) {
-      final name = autostartAppName.toNativeUtf16(allocator: arena);
-      final units = command.codeUnits;
-      final withNull = [...units, 0];
-      final data = arena<Uint16>(withNull.length);
-      data.asTypedList(withNull.length).setAll(0, withNull);
-      final bytes = withNull.length * 2;
-      final rc = RegSetValueEx(
-        key,
-        name,
-        0,
-        REG_SZ,
-        data.cast(),
-        bytes,
-      );
-      return rc == 0;
-    });
-  } catch (_) {
-    return false;
-  }
+bool _writeRunValue(int key, String valueName, String command) {
+  return using((Arena arena) {
+    final name = valueName.toNativeUtf16(allocator: arena);
+    final withNull = [...command.codeUnits, 0];
+    final data = arena<Uint16>(withNull.length);
+    data.asTypedList(withNull.length).setAll(0, withNull);
+    return RegSetValueEx(key, name, 0, REG_SZ, data.cast(), withNull.length * 2) == 0;
+  });
 }
 
 void _removeLegacyShortcut() {
@@ -213,15 +273,15 @@ void _removeLegacyShortcut() {
 // UNVERIFIED: written from `autostart.py`, never run on a Mac.
 
 String _macosPlistPath() {
-  final home = Platform.environment['HOME'] ?? '';
+  final home = _env['HOME'] ?? '';
   return '$home/Library/LaunchAgents/$macosLaunchLabel.plist';
 }
 
+/// `xml.sax.saxutils.escape`: `&`, `<` and `>` only.
 String _xmlEscape(String text) => text
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
+    .replaceAll('>', '&gt;');
 
 bool _setMacos(bool enabled, {required bool minimized}) {
   final plist = File(_macosPlistPath());
@@ -234,7 +294,7 @@ bool _setMacos(bool enabled, {required bool minimized}) {
       return false;
     }
   }
-  final args = <String>[Platform.resolvedExecutable];
+  final args = <String>[_executable];
   if (minimized) args.add('--minimized');
   final argsXml =
       args.map((a) => '<string>${_xmlEscape(a)}</string>').join('\n        ');
@@ -253,8 +313,8 @@ bool _setMacos(bool enabled, {required bool minimized}) {
 </dict>
 </plist>
 ''';
+  plist.parent.createSync(recursive: true); // os.makedirs, outside the try
   try {
-    plist.parent.createSync(recursive: true);
     plist.writeAsStringSync(content);
     return true;
   } catch (e) {
@@ -268,7 +328,7 @@ bool _setMacos(bool enabled, {required bool minimized}) {
 // UNVERIFIED: written from `autostart.py`, never run on Linux.
 
 String _linuxDesktopPath() {
-  final home = Platform.environment['HOME'] ?? '';
+  final home = _env['HOME'] ?? '';
   return '$home/.config/autostart/${autostartAppName.toLowerCase()}.desktop';
 }
 
@@ -292,8 +352,8 @@ Exec=${getLaunchCommand(minimized: minimized)}
 Terminal=false
 Categories=Utility;Education;
 ''';
+  desktop.parent.createSync(recursive: true); // os.makedirs, outside the try
   try {
-    desktop.parent.createSync(recursive: true);
     desktop.writeAsStringSync(content);
     return true;
   } catch (e) {
