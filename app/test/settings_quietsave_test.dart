@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -25,6 +27,23 @@ void main() {
       // A plain save still notifies listeners.
       c.save({'check_interval_minutes': 20});
       expect(renders, 1);
+    });
+
+    // Checkpoint B BR3-S4: CONTRIBUTING §5 "fail loudly" in save code.
+    test('a failing save prints a warning instead of vanishing', () {
+      final printed = <String>[];
+      runZoned(() {
+        final c = SettingsController({},
+            persist: (_) => throw StateError('disk gone'));
+        expect(c.save({'x': 1}), isFalse);
+        expect(c.saveQuiet({'x': 2}), isFalse);
+      },
+          zoneSpecification: ZoneSpecification(
+            print: (self, parent, zone, line) => printed.add(line),
+          ));
+      expect(printed, hasLength(2));
+      expect(printed.every((l) => l.startsWith('Warning:')), isTrue);
+      expect(printed.first, contains('disk gone'));
     });
 
     test('save quiet reports failure', () {

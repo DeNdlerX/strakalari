@@ -98,7 +98,9 @@ class SettingsController {
     config.addAll(updates);
     try {
       if (persist != null && persist!(updates) == false) return false;
-    } catch (_) {
+    } catch (exc) {
+      // ignore: avoid_print
+      print('Warning: could not save settings: $exc');
       return false;
     }
     _emitConfig();
@@ -114,7 +116,9 @@ class SettingsController {
     try {
       final writer = persistQuiet ?? persist;
       if (writer != null && writer(updates) == false) return false;
-    } catch (_) {
+    } catch (exc) {
+      // ignore: avoid_print
+      print('Warning: could not save settings: $exc');
       return false;
     }
     _emitConfig();

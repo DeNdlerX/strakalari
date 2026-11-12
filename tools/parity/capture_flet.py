@@ -6,6 +6,14 @@ import time
 import urllib.request
 from playwright.sync_api import sync_playwright
 
+#: Keeps the capture hermetic: no OS credential store, no GitHub update check
+#: (that is where an "update available" button in the Flet set came from).
+_HERMETIC_ENV = {
+    "PYTHONIOENCODING": "utf-8",
+    "STRAKALARI_NO_KEYRING": "1",
+    "DEMO_NO_UPDATE_BANNER": "1",
+}
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, ROOT)
 
@@ -40,7 +48,7 @@ def capture_wizard(out_dir, lang, theme, port):
             json.dump({"theme": theme, "language": lang}, f)
         server = subprocess.Popen(
             [sys.executable, os.path.join(ROOT, "tools", "parity", "serve_wizard.py"), tmp_dir, "--port", str(port)],
-            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+            env={**os.environ, **_HERMETIC_ENV},
         )
         try:
             url = f"http://127.0.0.1:{port}"
@@ -84,7 +92,7 @@ def capture_flet():
                 capture_wizard(out_dir, lang, theme, port + 1)
                 server = subprocess.Popen(
                     [sys.executable, os.path.join(ROOT, "tools", "demo_data.py"), "serve", tmp_dir, "--port", str(port)],
-                    env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                    env={**os.environ, **_HERMETIC_ENV},
                 )
                 try:
                     url = f"http://127.0.0.1:{port}"
