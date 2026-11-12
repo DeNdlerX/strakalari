@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 7–8 (desktop + phone checks, in progress) · Next step: **Fix every finding in `reviews/checkpoint-C.md` (blockers first), one commit per finding, then stop for re-review.**
+Current phase: 7–8 (Checkpoint C rework, round 1) · Next step: **C-M6: port the remaining deferred phase 7–8 tests (list in the round-1 entry under Checkpoint notes); then C-M7 (phone over-install, Sandbox re-test) once the owner answers the phone question under Questions; then stop for the Checkpoint C re-review.**
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -111,7 +111,7 @@ State: todo = not started, tests = Dart tests written, in progress, unreviewed =
 | strakalari/flet_ui/__init__.py | app barrel (shell + features) | — | in progress, unreviewed |
 | strakalari/flet_ui/__main__.py | app/lib/main.dart | widget_test.dart smoke (boots + rail navigation) | in progress, unreviewed |
 | strakalari/flet_ui/app.py | app/lib/main.dart + shell/ | widget_test.dart smoke; navigation covered | in progress, unreviewed |
-| strakalari/flet_ui/assets.py | app assets | test_icons.py | todo |
+| strakalari/flet_ui/assets.py | app assets | test_icons.py 13 → icons_test.dart 15 | done |
 | strakalari/flet_ui/components.py | app/lib/widgets/ | overlays_test.dart (8) | in progress, unreviewed |
 | strakalari/flet_ui/macos.py | app/lib/platform/desktop/ (tray hosts window, data dir) | — (macOS unverified) | in progress, unreviewed |
 | strakalari/flet_ui/overlays.py | app/lib/widgets/overlays.dart + error_dialog.dart | overlays_test.dart (8) | in progress, unreviewed |
@@ -291,7 +291,7 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
     - 4 core cases → `i18n_test.dart`: `getAndSetLanguage`, `missingKeyFallsBack`, `coreMessagesHaveBothLanguagesAndSamePlaceholders`, `coreMessageFollowsLanguage`
     - `test_core_messages_follow_language` → `error_report_test.dart`: `namesFix` (tests `timeoutUserMessage` in cs/en)
     - `test_new_flet_strings_present`, `test_dead_keys_removed_and_live_keys_kept` → `app/test/strings_table_parity_test.dart` (the string table has the same keys in both languages, every placeholder formats, no dead key under `lib`)
-31. `tests/test_icons.py` (13) → **Deferred (phase 6/7 — app icon assets verification)**
+31. `tests/test_icons.py` (13) → `app/test/icons_test.dart` (15): every case by name; the helper cases check the Flutter places (exe icon, bundled tray glyphs, the 64 px glyph) plus the Android launcher icon and manifest identity (C-M4).
 32. `tests/test_imports_resolve.py` (354 [1 function]) → **Dropped (Python AST relative-import check; replaced by `dart analyze` and `flutter analyze`)**
 33. `tests/test_log_redaction.py` (3) → `error_report_test.dart`: `plaintextAndCiphertextSecretsAreScrubbed`, `followsChangedPassword`, `skipPersonalData`
 34. `tests/test_lunch_auto.py` (11) → `lunch_auto_test.dart`:
@@ -339,7 +339,7 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
     - ` test_update_check_per_distribution`, `test_repo_has_no_distribution_marker` → `packaging_test.dart`: `iosComesFromAppStore`, `androidWithoutDistributionIsNull`, `androidPlayChannel`, `offPhoneIsNull`, `emptyEnvironmentIsNull`
     - `TestNarrowShell.*` (12) → `app/test/mobile_narrow_shell_test.dart` (11 same-named tests) + `app/test/widget_test.dart` (`Layout breakpoints match the Python shell`, `Router builds every main screen without throwing`); `test_refresh_ticks_repaint_only_the_topbar` is under *Dropped*
     - `TestMakeMobile.test_stage_has_no_personal_files`, `test_package_check_finds_nested_personal_file`, `test_path_markers_spell_every_separator`, `test_package_check_finds_build_machine_path` → `app/test/packaging_privacy_test.dart` (in progress, unreviewed)
-    - Remaining `TestDataDir`, `TestKeystoreKey`, `TestPhoneBackground`, `test_open_system_alarm_*` → **Deferred (phase 8 — Android bridge/keystore/service)**; Flet-packaging-specific `TestMakeMobile` (`test_flet_pin_matches_desktop`, `test_extension_wheel`, `test_pyc_shim_*`) → **Deferred (phase 8/10 — decide at Android review)**
+    - `TestKeystoreKey` (4) → `app/test/android_keystore_test.dart` (4 + 2: Keystore down on a fresh install, two isolates at once), run through the warm-up and core `getKey` (C-B1). `test_build_numbers_grow` → `packages/strakalari_core/test/build_number_test.dart`. Remaining `TestDataDir`, `TestPhoneBackground`, `test_open_system_alarm_*` → **Deferred (phase 8, C-M6)**; Flet-packaging-specific `TestMakeMobile` (`test_flet_pin_matches_desktop`, `test_extension_wheel`, `test_pyc_shim_*`) → **Deferred (phase 8/10 — decide at Android review)**
 47. `tests/test_models.py` (19):
     - 17 pure model cases → `models_test.dart` (17 1:1 camelCase cases)
     - 2 engine cases (`test_engine_excuses_neomluveno_day`, `test_engine_excuses_unexcused_type`) → `automation_test.dart`: `engineExcusesNeomluvenoDay`, `engineExcusesUnexcusedType`
@@ -372,7 +372,7 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
 59. `tests/test_schedule.py` (24) → `schedule_test.dart` (24 1:1 camelCase cases; `test_forecast_prefers_stable_hours_over_raw_weeks` → `forecast_test.dart`: `counts the stable week` + `schedule_test.dart`: `stableHoursIgnoreClocklessExtraRow`)
 60. `tests/test_scheduler.py` (13):
     - 10 core cases → `scheduler_test.dart`: `stopWithoutStartIsSafe`, `failedRunRetriesSoon`, `runNowLeavesTimerAlone`, `scheduling` (`test_scheduler_next_due`), `runsJobsAndCapturesErrors`, `lastUpdatedTimeParsesFormats`, `startupSeedNeedsPositiveEvidence`, `seedDefersFirstAutoRun`, `runnerAcceptsLastRunSeed`, `keepsFullTraceback` (also in `cache_test.dart`: `lastUpdatedTimeParsesFormats`, `startupSeedNeedsPositiveEvidence`)
-    - 3 `flet_ui.app`/`tray` cases (`test_register_jobs_seeds_from_fresh_cache`, `test_register_jobs_empty_cache_refreshes_on_start`, `test_tray_startup_seed`) → **Deferred (phase 5/7 — UI/tray scheduler registration)**
+    - `test_register_jobs_seeds_from_fresh_cache`, `test_register_jobs_empty_cache_refreshes_on_start` → `app/test/register_jobs_test.dart` (with `test_wizard_setup.py::test_scheduler_skips_refresh_while_setup_pending` and one result-hook case). `test_tray_startup_seed` → *Dropped* (one process).
 61. `tests/test_scheduler_retry.py` (7):
     - 2 core `PeriodicRunner` cases → `scheduler_test.dart`: `intervalProviderIsPolled`, `jobFailedCountsAsFailureButReported`
     - 4 window-job cases → `app/test/scheduler_retry_test.dart` (`AppState.scheduledRefreshJob`): `windowJobRaisesWhenRefreshFailed`, `windowJobIgnoresCancelledRunInAnyLanguage`, `windowJobStopsWaitingOnShutdown`, `windowJobGivesUpOnAHungRefresh`
@@ -443,7 +443,7 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
     - 40 core cases → `update_test.dart` (40 1:1 camelCase cases)
     - `TestConfigChannel.test_validation` → `config_test.dart`: `validateCatchesBadModeAndThresholds`
     - 5 `TestStrings` / `TestChannelState` (`flet_ui` banner/diagnostics/config channel state) → `app/test/app_state_excuses_and_planner_test.dart` (`dismissUpdateAndSetUpdateChannel`)
-90. `tests/test_version_sync.py` (3) → **Deferred (phase 7/10 — version sync across `pubspec.yaml`, Inno installer, MSIX)**
+90. `tests/test_version_sync.py` (3) → `app/test/version_sync_test.dart` (2): `pubspecMatchesPackage` (build-name = `__version__`, build-number = `build_number(__version__)`), `installerDefaultMatchesPackage`; `test_pep440_mapping` → *Dropped*.
 91. `tests/test_wake_ui.py` (2) → **Deferred (phase 5/8 — UI isolate wakeup from background worker)**
 92. `tests/test_wakeup_and_widget.py` (44 [42 functions]):
     - 21 core `TestWakeupAlarm`, `TestWidgetPayload`, `TestSyncAndroid` functions → `wakeup_test.dart` (21 1:1 camelCase cases)
@@ -472,7 +472,18 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
   - `tests/test_open_url.py::test_click_handlers_are_coroutine_functions`, `::test_helper_itself_is_coroutine` — protect against a Flet handler that forgot `await`; Dart futures need no such handler shape.
   - `tests/test_ui_views.py` Flet container reuse and stale-reply cases (lines 131, 147, 162, 288, 319) — Flet control identity and RPC replies; replaced by `scroll_keeps_offset_test.dart`, which checks the behaviour they protect (a scrolled screen keeps its offset when the state changes).
 
+- `tests/test_scheduler.py::test_tray_startup_seed` — `TrayApp._startup_seed` is the tray process's own seed; Flutter has one process, the tray uses the window's runner, seeded by `registerJobs` (covered by `registerJobsSeedsFromFreshCache`).
+- `tests/test_version_sync.py::test_pep440_mapping` — the PEP 440 spelling exists only for `pyproject.toml`; no Flutter file is written in it (the build number has its own test).
+
 ## Deviations from Python (each needs reviewer sign-off)
+
+- Checkpoint C round 1 (2026-11-12):
+  - The phone's headless wake (new in Flutter, PLAN §3.4) builds the UI's `AppState` and runs one due tick of the same runner (`registerJobs`); its run record lives only in that isolate (Python had no screenless runs at all).
+  - `KeepAwake` wraps the whole refresh job, gates included (Python takes it after the gates; the gates return at once).
+  - A living UI that takes a hand-off holds a 1-minute wakelock for 15 s so its runner's next 5 s tick can start the job (Python: the alarm just woke the CPU for the running scheduler).
+  - `checkIntervalMinutes`: a string Python's `float()` rejects falls back to 60 instead of raising.
+  - The Android launcher icon resources are copied from the last Flet phone build's output (`build/mobile/.../res`: the five `ic_launcher.png`, the adaptive icon, its foreground PNGs, `ic_launcher_background` #ffffff); the splash images were not copied.
+  - `WinVaultKeyring.deletePassword` returns false where keyring raises `PasswordDeleteError`; `forgetKey` treats both as "nothing left behind".
 
 - Test seams in production code (BR-N1, B-S2): `ConfigManager.saveOverride` (now `@visibleForTesting`, core depends on `package:meta`), `AppState.geminiTransport` (the AI key test; Python tests monkeypatch `gemini.test_api_key`), `AppState.createApp`, `excuseTasksOverride`, `submitDayExcuseOverride`, `wakeupAvailableOverride`.
 - ARB files (B-S3): `app/lib/l10n/app_cs.arb` / `app_en.arb` are generated and kept equal to the `Strings` tables by `strings_table_parity_test.dart`; the app reads `Strings` (background code has no `BuildContext`), so there is no `l10n.yaml` / `gen-l10n` wiring (PLAN §3.2 says ARB + gen-l10n).
@@ -674,6 +685,10 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
 
 ## Questions for the owner / reviewer
 
+- **Phone test (C-M7, 2026-11-12), for the owner:** the review asks to install the Flutter `.test` build *over* the Flet `.test` build, so the saved login is checked across the update. That means: uninstall the Flutter `.test` app now on the Pixel (it only holds demo data), build and install the Flet `.test` app, set it up on the demo server in dry run, then install the Flutter `.test` build over it. OK to do that? The real Play Store app is never touched.
+- **Release APK carries the build folder's path (found 2026-11-12, open):** a local `flutter build apk --release --flavor prod` (signed with the real key, versionCode 10099, label `Strakaláři`, INTERNET present) fails Python's own `tools/make_mobile.py check_package`: `lib/arm64-v8a/libapp.so` holds one string, `file:///C:/Users/<owner>/…/app/.dart_tool/flutter_build/dart_plugin_registrant.dart` (Flutter compiles its generated plugin registrant under its file path). On CI it would be the runner's path instead. Python avoided the same thing for `.pyc` files by scrubbing paths. Options: build from a neutral folder (e.g. a short staging path), or `--obfuscate` (makes error reports unreadable, a behaviour change). Which one? Not changed yet. Also: `packaging_privacy_test.dart` scans raw bytes, so on a release APK it also flags the file *names* `secret.key` and `already_excused_lessons.json` that the compiled code mentions; Python's check reads the APK's file list and finds no such files there. Should the Dart test follow Python (file list + path markers)? I did not change the test.
+- C-N3 (from the review): `BootReceiver` (Java kept unchanged) still shows "open the app once" after a reboot, although the refresh now restarts by itself. Change the text (touches the kept Java and its strings) or leave it?
+
 - Phase 8 (2026-11-12): the APK build failed until core library desugaring was enabled (`flutter_local_notifications` requires it). The owner agreed to wipe the old Flet `.test` app; the Flutter `.test` debug build is installed on the Pixel 7 Pro with demo data (local demo server over `adb reverse`, dry run, Strava off).
 - Desktop toasts (2026-11-12): `flutter_local_notifications` crashed the Windows AOT build (gen_snapshot "Class with illegal cid" in its Windows FFI code, also in 4.0.1) once start-up used it. Replaced by a port of Python's own senders (PowerShell WinRT toast / osascript / notify-send) in core `desktop_notify.dart` with the 13 OS-backend cases of test_notify.py; the plugin and the Android desugaring it needed are gone. Not ported: Python's `plyer` fallback (stdout stays the last resort). Unverified: whether PowerShell flashes a console window from the Flutter app.
 - Phone (2026-11-12): the wired build starts, shows the demo data, refreshes against the demo server in dry run (only reads, no excuse sent), starts background running and arms the next wake-up; the post-update wake-up is handed to the running app. Not yet checked: notifications, widget, wake-up alarm, reboot.
@@ -831,6 +846,22 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
   - **BR4-S4** (this commit): test map item 16 counts (11 + 3 + 11 + 1 = 26), stale words and suite counts (app 502 passed / 1 skipped) corrected.
 - 2026-11-12 · Checkpoint B re-review 5: **PASS** (BR4-S1 … BR4-S4 fixed; 0 open findings; notes for Checkpoint C) — [docs/flutter-migration/reviews/checkpoint-B.md](docs/flutter-migration/reviews/checkpoint-B.md#re-review-5-2026-11-12)
 - 2026-11-12 · Checkpoint C review: **FAIL** (4 blockers, 8 must-fix, 7 should-fix; phases 7–8 were not finished) — [docs/flutter-migration/reviews/checkpoint-C.md](docs/flutter-migration/reviews/checkpoint-C.md)
+
+- 2026-11-12 · Checkpoint C rework, round 1 (after the review). One commit per finding, blockers first:
+  - **C-B1** (`351525d`): the warmed bridge keeps the raw Keystore blob (not the base64 text), so core's unwrap matches and no start throws the key away; a Keystore that failed at warm-up now refuses `wrap` (before, core would have written an empty `secret.key.wrapped` and deleted the plain key). `android_keystore_test.dart`: the four `TestKeystoreKey` cases + Keystore down on a fresh install + two isolates at once, each through warm-up and core `getKey`, checking key and files.
+  - **C-B2 + C-S4** (`5ddd024`): `win_credentials.dart` ports `WinVaultKeyring` line by line (compound re-save before a write, `Comment`, read through the compound name, an empty stored user is not ours, delete only where `UserName` matches) behind a `WinCredApi` seam; failures other than `ERROR_NOT_FOUND` are `KeyStoreUnavailable`; `GetLastError` is a leaf call resolved before the Win32 call (a lazy lookup cleared it: the first real run read error 0). `keystore_windows_test.dart` (13): fake credential table + two data folders through core, and one read-only real Credential Manager lookup of a missing name.
+  - **C-B4** (`a2f4c46`): `INTERNET` in the main manifest; the manifest test checks it.
+  - **C-B3 + C-S7** (`8e251bf`): the headless wake reads `run_in_background` first (off: cancel the wake, nothing runs, nothing is re-armed), then hands off or runs one due tick on the UI's `AppState` (setup / login gates, the worker's notifications, language, run record, `bg_notif_*` fallback); not due (reboot, app update) only arms the due time; a failed run comes back in 5 minutes. `android_background_test.dart` (7).
+  - **C-M8** (`24a3aed`): `platform/scheduler_jobs.dart` ports `_register_jobs` on core `PeriodicRunner` for the app and the headless wake; `DesktopBackgroundLoop` is deleted. `register_jobs_test.dart` (4).
+  - **C-M3** (`05f0f3d`): channel `keepAwake` / `releaseAwake` (a new partial wakelock `strakalari:refresh` per use, 30 min timeout) around the scheduled refresh.
+  - **C-M1** (`e4bc44b`): hand-off is acknowledged at once (`'taken'`); no acknowledgement in 5 s = dead UI, the stale name is removed and the job runs headless; the UI drops its name on `detached`. `android_handoff_test.dart` (4, one with a closed port).
+  - **C-M2** (`5a11cac`): `MainActivity` passes itself to the channel (`setActivity`), so the permission prompt has a screen.
+  - **C-M5** (`4dd13b2`): `preProdReleaseBuild` fails without the real key (checked: with key OK, without key stops, phonetest still allowed); the env vars work without the properties file.
+  - **C-M4** (`f444505`): label `Strakaláři`, `allowBackup="false"`, `enableOnBackInvokedCallback="true"`, the Flet build's launcher icon, `assets/icon.ico` as the exe icon, core `buildNumber` + `bin/build_number.dart` (port of `build_number`), app version `0.1.0+10099`; `icons_test.dart`, `version_sync_test.dart`, `build_number_test.dart`.
+  - **C-S1** (`7aff23a`), **C-S2** (`edd87ab`, `mkstemp`), **C-S3** (`0723eb1`, Python's `Warning:` lines on the channel), **C-S6** (`9f4bd37`, flock test on macOS too), **C-S5** (this round: `build-flutter-android` job in `dart.yml`, same secrets/alias/arch as `build.yml`, versionCode from `build_number`, APK attached to the release).
+  - **Not done yet:** **C-M6** (still Deferred: `test_single_instance` 22, `test_shutdown` 23, `test_store_package` 18, `test_macos_tray_host` 15, `test_macos_data_dir` 9, `test_minimize_to_tray` 8, `test_autostart` 3 + `test_autostart_platforms` 5, `test_entry_routing` 5, `test_tray_ui_command` 4, `test_wake_ui` 2, `test_tray_language` 1, the 12 Android/wiring cases of `test_status_notification.py`, `TestDataDir`, `TestPhoneBackground`, `test_open_system_alarm_*`, the remaining Android cases of `test_wakeup_and_widget.py`). **C-M7** (phone over-install over the Flet `.test` build, notifications / alarm / widget / reboot on the phone, Sandbox re-test with a keyring-held key, MSIX): waits for the owner (Questions). Nothing of this round ran on the phone or in Sandbox.
+  - Checks: core `dart analyze` clean, `dart test` 782 passed / 2 skipped; app `flutter analyze` clean, `flutter test` 564 passed / 1 skipped; Java/Kotlin compile (`:app:compilePhonetestDebugJavaWithJavac`, `…Kotlin`, `processPhonetestDebugResources`).
+  - Release APK built locally with the CI job's commands (`build_number 0.1.0` = 10099, `--flavor prod --target-platform android-arm64`): `aapt2 dump badging` shows `io.github.dendlerx.strakalari`, versionCode 10099, versionName 0.1.0, label `Strakaláři`, INTERNET; `apksigner` shows a certificate that is not the debug key's. It fails the privacy checks (see Questions). The APK was not installed anywhere.
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 
