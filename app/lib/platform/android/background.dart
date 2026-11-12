@@ -35,6 +35,7 @@ import 'package:strakalari_core/strakalari_core.dart';
 
 import '../../controllers/app_state.dart';
 import '../../l10n/strings.dart';
+import '../scheduler_jobs.dart';
 import 'android_channel.dart';
 import 'android_keystore.dart';
 import 'android_notifications.dart';
@@ -168,17 +169,6 @@ bool backgroundSwitchOn(Object? value) {
   return true;
 }
 
-/// Python `float(get("check_interval_minutes", 60) or 60)` (the runner's
-/// interval; core clamps it to at least 1). A string Python's `float()`
-/// would reject falls back to 60 instead of raising.
-double checkIntervalMinutes(Object? raw) {
-  if (raw == null || raw == false || raw == 0 || raw == '') return 60.0;
-  if (raw == true) return 1.0;
-  if (raw is num) return raw.toDouble();
-  final parsed = double.tryParse('$raw'.trim());
-  return (parsed == null || parsed == 0) ? 60.0 : parsed;
-}
-
 /// Hands the job to the live UI isolate. True when it took the job.
 Future<bool> _handOffToUi(AndroidChannel channel, String reason) async {
   final ui = IsolateNameServer.lookupPortByName(uiIsolatePortName);
@@ -256,9 +246,9 @@ Future<void> _runInline(AndroidChannel channel, String reason, String dataDir) a
 /// One scheduler tick without the screen: what Python's `_register_jobs`
 /// runner and `_setup_phone_background` do when the wake fires.
 ///
-/// The runner is core's [PeriodicRunner] with the UI's two jobs and its
-/// result hook; its first run is anchored to the last successful refresh
-/// (`_startup_seed`). Not due yet (a reboot, an app update): only the
+/// The runner is the UI's ([registerJobs]: core's [PeriodicRunner], the
+/// two jobs, the result hook); its first run is anchored to the last
+/// successful refresh (`_startup_seed`). Not due yet (a reboot, an app update): only the
 /// wake for the due time is armed. Due: one run (the refresh job keeps
 /// its gates: setup not finished, a refresh running, no login), then the
 /// status notification, widget and alarms, and the next wake from the
@@ -275,31 +265,9 @@ Future<String> runHeadlessTick(
     await channel.cancelWake();
     return 'off';
   }
-  final interval = checkIntervalMinutes(state.get('check_interval_minutes', 60));
-  DateTime? seed;
-  try {
-    seed = startupSeed(state.data);
-  } on Object {
-    seed = null;
-  }
-  final runner = PeriodicRunner(
-    intervalMinutes: interval,
-    lastRun: seed,
-    onResult: (result) {
-      // Scheduler heartbeat, then the failure report (`_on_result`).
-      state.schedulerLastRun = clock.now();
-      if (!result.ok && !result.reported) {
-        state.scheduledJobFailed(result.name, result.error);
-      }
-    },
-  );
-  if (seed != null) state.schedulerLastRun = seed;
-  runner.addJob('refresh', refreshJob ?? () => state.scheduledRefreshJob());
-  runner.addJob(
-      'update',
-      () => state.startUpdateCheck()
-          ? 'update check started'
-          : 'update check busy');
+  final runner = registerJobs(state);
+  if (refreshJob != null) runner.addJob('refresh', refreshJob);
+  final interval = runner.intervalMinutes;
 
   final now = clock.now();
   var outcome = 'not due';

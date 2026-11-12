@@ -32,6 +32,7 @@ import 'desktop/keystore_desktop.dart';
 import 'desktop/notifications.dart';
 import 'desktop/single_instance.dart';
 import 'desktop/tray.dart';
+import 'scheduler_jobs.dart';
 
 bool get _isPhone => Platform.isAndroid || Platform.isIOS;
 
@@ -97,37 +98,17 @@ Future<void> startPlatformServices(
   var stopping = false;
   var visible = true;
 
-  double interval() =>
-      checkIntervalMinutes(state.get('check_interval_minutes', 60));
-
-  Map<String, Object?>? prefs() {
-    final raw = state.get('notifications', {});
-    return raw is Map ? raw.cast<String, Object?>() : null;
-  }
-
-  _PhoneBackground? phone;
-  final loop = DesktopBackgroundLoop(
-    refreshJob: () => state.scheduledRefreshJob(stopped: () => stopping),
-    intervalMinutesProvider: interval,
-    prefsProvider: prefs,
+  // `_register_jobs`: core's runner with the window's jobs; the first
+  // auto-run is anchored to the last successful refresh.
+  final loop = registerJobs(
+    state,
     // Phone without background running: runs wait while the app is in
     // the background (the OS freezes it there, mid-run).
-    pausedProvider:
-        _isPhone ? () => !visible && !_phoneBackgroundOn(state) : null,
-    updateJob: () async => state.startUpdateCheck()
-        ? 'update check started'
-        : 'update check busy',
-    onFailure: state.scheduledJobFailed,
-    afterRun: () => phone?.afterRun(),
+    paused: _isPhone ? () => !visible && !_phoneBackgroundOn(state) : null,
+    stopped: () => stopping,
+    intervalProvider: () =>
+        checkIntervalMinutes(state.get('check_interval_minutes', 60)),
   );
-  // Anchor the first auto-run to the last successful refresh; with no
-  // or an overdue cache the app refreshes on start.
-  DateTime? seed;
-  try {
-    seed = startupSeed(state.data);
-  } catch (_) {}
-  if (seed != null) state.schedulerLastRun = seed;
-  loop.start(seedLastRun: seed);
   // Non-blocking release check (silent when offline).
   try {
     state.startUpdateCheck();
@@ -145,11 +126,13 @@ Future<void> startPlatformServices(
     try {
       await registerUiRefreshPort(ReceivePort(), onRefresh: loop.runNow);
     } catch (_) {}
-    phone = _PhoneBackground(state, loop, const AndroidChannel());
-    container.listen(appStateProvider, (_, _) => phone?.notifier.poke());
+    final phone = _PhoneBackground(state, loop, const AndroidChannel());
+    container.listen(appStateProvider, (_, _) => phone.notifier.poke());
     phone.start();
+    loop.start();
     return;
   }
+  loop.start();
   if (_isPhone) return;
 
   final tray = DesktopTrayController(
@@ -211,7 +194,7 @@ class _PhoneBackground {
   }
 
   final AppState state;
-  final DesktopBackgroundLoop loop;
+  final PeriodicRunner loop;
   final AndroidChannel channel;
   late final StatusNotifier notifier;
   bool _asked = false;
@@ -231,6 +214,12 @@ class _PhoneBackground {
       );
 
   void start() {
+    // `_setup_phone_background` chains the runner's result hook.
+    final previous = loop.onResult;
+    loop.onResult = (result) {
+      previous?.call(result);
+      afterRun();
+    };
     state.configListeners.add(() => unawaited(sync()));
     unawaited(sync());
     // Widget and wake-up alarms need no running Dart, but the first data

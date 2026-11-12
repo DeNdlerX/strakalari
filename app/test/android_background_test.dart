@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:app/controllers/app_state.dart';
 import 'package:app/platform/android/android_channel.dart';
 import 'package:app/platform/android/background.dart';
+import 'package:app/platform/scheduler_jobs.dart';
 import 'package:clock/clock.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
