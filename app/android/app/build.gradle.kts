@@ -7,6 +7,9 @@ plugins {
 import java.io.FileInputStream
 import java.util.Properties
 
+/** Set while configuring `android {}`: whether the real release key exists. */
+var releaseSigningFound = false
+
 android {
     namespace = "io.github.dendlerx.strakalari"
     compileSdk = flutter.compileSdkVersion
@@ -48,51 +51,64 @@ android {
     // Release signing reads the release key properties (the same folder the
     // Python build used: ~/.strakalari-signing/android-release.properties
     // with storeFile/storePassword/keyAlias/keyPassword; storeFile relative
-    // to that file). Without it (or on CI without the env vars below) the
-    // release build falls back to the debug key, which can never be updated
-    // by a release build. Never generate or commit a key here; the env vars
-    // win over the properties file, like tools/make_mobile.py.
+    // to that file). The env vars win over the properties file, like
+    // tools/make_mobile.py, and also work without it (CI). Never generate or
+    // commit a key here.
     val signingPropsFile = File(
         System.getProperty("user.home"),
         ".strakalari-signing/android-release.properties",
     )
+    val props = Properties()
     if (signingPropsFile.isFile) {
-        val props = Properties()
         FileInputStream(signingPropsFile).use { stream -> props.load(stream) }
-        fun prop(name: String, env: String): String? =
-            System.getenv(env)?.takeIf { it.isNotEmpty() } ?: props.getProperty(name)
-        val releaseStoreFile = prop("storeFile", "STRAKALARI_SIGNING_KEY_STORE")
-        val releaseStorePassword = prop("storePassword", "STRAKALARI_SIGNING_KEY_PASSWORD")
-        val releaseKeyAlias = prop("keyAlias", "STRAKALARI_SIGNING_KEY_ALIAS")
-        val releaseKeyPassword = prop("keyPassword", "STRAKALARI_SIGNING_KEY_KEY_PASSWORD")
-            ?: releaseStorePassword // PKCS12: one password, like make_mobile.py
-        if (releaseStoreFile != null && releaseStorePassword != null
-            && releaseKeyAlias != null && releaseKeyPassword != null
-        ) {
-            val resolved = File(signingPropsFile.parentFile, releaseStoreFile)
-                .let { if (it.isFile) it else File(releaseStoreFile) }
-            if (resolved.isFile) {
-                signingConfigs {
-                    create("release") {
-                        this.storeFile = resolved
-                        this.storePassword = releaseStorePassword
-                        this.keyAlias = releaseKeyAlias
-                        this.keyPassword = releaseKeyPassword
-                    }
+    }
+    fun prop(name: String, env: String): String? =
+        System.getenv(env)?.takeIf { it.isNotEmpty() } ?: props.getProperty(name)
+    val releaseStoreFile = prop("storeFile", "STRAKALARI_SIGNING_KEY_STORE")
+    val releaseStorePassword = prop("storePassword", "STRAKALARI_SIGNING_KEY_PASSWORD")
+    val releaseKeyAlias = prop("keyAlias", "STRAKALARI_SIGNING_KEY_ALIAS")
+    val releaseKeyPassword = prop("keyPassword", "STRAKALARI_SIGNING_KEY_KEY_PASSWORD")
+        ?: releaseStorePassword // PKCS12: one password, like make_mobile.py
+    if (releaseStoreFile != null && releaseStorePassword != null
+        && releaseKeyAlias != null && releaseKeyPassword != null
+    ) {
+        val resolved = File(signingPropsFile.parentFile, releaseStoreFile)
+            .let { if (it.isFile) it else File(releaseStoreFile) }
+        if (resolved.isFile) {
+            signingConfigs {
+                create("release") {
+                    this.storeFile = resolved
+                    this.storePassword = releaseStorePassword
+                    this.keyAlias = releaseKeyAlias
+                    this.keyPassword = releaseKeyPassword
                 }
             }
         }
     }
+    val releaseSigning = signingConfigs.findByName("release")
+    releaseSigningFound = releaseSigning != null
 
     buildTypes {
         release {
-            val releaseSigning = try {
-                signingConfigs.getByName("release")
-            } catch (_: Exception) {
-                null
-            }
-            // Debug key fallback: fine for testing, never for release.
+            // The debug key is only for the phonetest flavor (its release
+            // build can never update a real install, which is fine there);
+            // a prod release without the real key stops below.
             signingConfig = releaseSigning ?: signingConfigs.getByName("debug")
+        }
+    }
+}
+
+// A prod release (APK or AAB) signed with the debug key could never update
+// the installed app, and the build would give no hint: refuse it.
+tasks.matching { it.name == "preProdReleaseBuild" }.configureEach {
+    doFirst {
+        if (!releaseSigningFound) {
+            throw GradleException(
+                "No release signing key: put it in ~/.strakalari-signing/" +
+                    "android-release.properties (storeFile, storePassword, keyAlias, " +
+                    "keyPassword) or set STRAKALARI_SIGNING_KEY_STORE / _PASSWORD / " +
+                    "_ALIAS. Only the phonetest flavor may use the debug key."
+            )
         }
     }
 }

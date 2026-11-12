@@ -14,4 +14,14 @@ void main() {
     expect(text, contains('setActivity(this)'));
     expect(text, contains('setActivity(null)'));
   });
+
+  test('aProdReleaseWithoutTheRealKeyIsRefused', () {
+    // C-M5: the debug-key fallback is for the phonetest flavor only.
+    final file = File('android/app/build.gradle.kts');
+    if (!file.existsSync()) return;
+    final text = file.readAsStringSync();
+    expect(text, contains('it.name == "preProdReleaseBuild"'));
+    expect(text, contains('if (!releaseSigningFound)'));
+    expect(text, contains('throw GradleException('));
+  });
 }
