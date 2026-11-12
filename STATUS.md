@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 7–8 (desktop + phone checks, in progress) · Next step: **Re-run the Windows Sandbox test on the current build** (the start-up wiring is new and unverified on Windows: tray, single instance, the key moving into Credential Manager, toasts, automatic refresh). The last Sandbox runs failed to start the test script (Sandbox flakiness after a forced close; reboot or wait before retrying). Then the remaining phase 8 phone checks (notifications, wake-up alarm, widget, reboot) and Checkpoint C notes.
+Current phase: 7–8 (desktop + phone checks, in progress) · Next step: **Fix every finding in `reviews/checkpoint-C.md` (blockers first), one commit per finding, then stop for re-review.**
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -830,6 +830,7 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
   - **BR4-S2** (`2988b6a`): `capture_flet.py` waits until the page is no longer the start-up logo (up to 120 s, fails loudly) and retries a timed-out screenshot; a full run gave 76 images, none logo-only.
   - **BR4-S4** (this commit): test map item 16 counts (11 + 3 + 11 + 1 = 26), stale words and suite counts (app 502 passed / 1 skipped) corrected.
 - 2026-11-12 · Checkpoint B re-review 5: **PASS** (BR4-S1 … BR4-S4 fixed; 0 open findings; notes for Checkpoint C) — [docs/flutter-migration/reviews/checkpoint-B.md](docs/flutter-migration/reviews/checkpoint-B.md#re-review-5-2026-11-12)
+- 2026-11-12 · Checkpoint C review: **FAIL** (4 blockers, 8 must-fix, 7 should-fix; phases 7–8 were not finished) — [docs/flutter-migration/reviews/checkpoint-C.md](docs/flutter-migration/reviews/checkpoint-C.md)
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 
