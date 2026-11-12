@@ -5,6 +5,8 @@
 // (phase 7 resolves it exactly like `core.helpers.get_user_data_dir`),
 // Riverpod scope, MaterialApp with both token themes, cs/en
 // localizations, and the go_router shell.
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,6 +16,7 @@ import 'controllers/app_state.dart';
 import 'l10n/strings.dart';
 import 'platform/android/background.dart' as android_bg;
 import 'platform/desktop/console_log.dart';
+import 'platform/desktop/store_package.dart';
 import 'platform/notifications.dart';
 import 'platform/startup.dart';
 import 'shell/router.dart';
@@ -30,6 +33,8 @@ Future<void> backgroundMain() => android_bg.androidBackgroundEntry();
 final _router = buildRouter();
 
 Future<void> main(List<String> args) async {
+  // Store (MSIX) build? Decides the data folder, so it comes first.
+  if (Platform.isWindows) registerStorePackageProbe();
   // `ensure_stdio`: the Windows release build has no console, so prints
   // and uncaught errors go to console.log in the data folder.
   if (windowedBuild) {
