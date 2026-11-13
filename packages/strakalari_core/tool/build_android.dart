@@ -78,12 +78,15 @@ Future<void> main(List<String> argv) async {
   await run([
     'build', kind, '--release', '--flavor', flavor,
     '--build-name', version, '--build-number', '$code',
-    if (kind == 'apk' && !extra.contains('--target-platform')) ...['--target-platform', 'android-arm64'],
+    // One APK per ABI like Flet's `split_per_abi = true`: Flutter then adds
+    // the same versionCode offset (arm64-v8a: +2000, 10099 -> 12099), so it
+    // installs over the Flet GitHub APK. Only the arm64 one is shipped.
+    if (kind == 'apk') ...['--split-per-abi', '--target-platform', 'android-arm64'],
     ...extra,
   ]);
 
   final built = kind == 'apk'
-      ? p.join(stage, 'app', 'build', 'app', 'outputs', 'flutter-apk', 'app-$flavor-release.apk')
+      ? p.join(stage, 'app', 'build', 'app', 'outputs', 'flutter-apk', 'app-arm64-v8a-$flavor-release.apk')
       : p.join(stage, 'app', 'build', 'app', 'outputs', 'bundle', '${flavor}Release', 'app-$flavor-release.aab');
   if (!File(built).existsSync()) _fail('no build output at $built');
 
@@ -103,5 +106,7 @@ Future<void> main(List<String> argv) async {
   final target = p.join(out, 'Strakalari-$version$suffix-android.${kind == 'apk' ? 'apk' : 'aab'}');
   File(built).copySync(target);
   final mb = (File(target).lengthSync() / (1024 * 1024)).toStringAsFixed(1);
-  stdout.writeln('Built $target ($mb MB, no personal files or paths, versionCode $code)');
+  // Flutter's per-ABI offset for arm64-v8a, like Flet's APK.
+  final shipped = kind == 'apk' ? code + 2000 : code;
+  stdout.writeln('Built $target ($mb MB, no personal files or paths, versionCode $shipped)');
 }
