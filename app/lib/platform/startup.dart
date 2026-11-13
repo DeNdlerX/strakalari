@@ -271,8 +271,7 @@ class PhoneBackground {
 
   Future<void> scheduleWake() async {
     try {
-      final due = nextDue(
-          loop.lastRun, _intervalMinutes().toDouble(), clock.now());
+      final due = nextDue(loop.lastRun, loop.intervalMinutes, clock.now());
       // A little after due: the loop's tick (5 s) must see it as due.
       if (await channel.scheduleWake(due.add(const Duration(seconds: 10)))) {
         // ignore: avoid_print

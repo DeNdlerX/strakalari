@@ -101,6 +101,21 @@ void main() {
       await _settle();
       expect(methods(), contains('scheduleWake'));
     });
+
+    test('scheduleWakeUsesRunnersFractionalInterval', () async {
+      final s = AppState(data: {})..wizardDismissed = true;
+      s.save({'run_in_background': true, 'check_interval_minutes': 2.5});
+      final runner = PeriodicRunner(intervalMinutes: 2.5);
+      final phone = PhoneBackground(s, runner, const AndroidChannel(),
+          onAndroid: () => true, startNotifier: false);
+      runner.lastRun = now;
+      calls.clear();
+      await withClock(Clock.fixed(now), () => phone.scheduleWake());
+      final wake = calls.singleWhere((c) => c.method == 'scheduleWake');
+      final epochSeconds = (wake.arguments as Map)['epochSeconds'] as double;
+      final expected = now.add(const Duration(minutes: 2, seconds: 40));
+      expect(epochSeconds, expected.millisecondsSinceEpoch / 1000.0);
+    });
   });
 
   group('TestPhoneWiring', () {
