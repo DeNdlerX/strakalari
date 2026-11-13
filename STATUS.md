@@ -1058,6 +1058,8 @@ Done in Phase 9 so far:
   - Fresh refresh soak (`soak_refresh.py` vs `dart bin/refresh_dryrun.dart` -> `soak_compare.py`): `IDENTICAL (modulo ts)`.
   - Accumulating refresh soak (reusing Day 1 scratch dirs): `IDENTICAL (modulo ts)`.
   - Fetch parity (`fetch.py` vs `dart bin/parity_fetch.dart`): `FETCH-OK (31116 bytes identical)`.
+  - Real-submit proof (`--send-day 09.11.2026` in `confirm` mode, separate fresh local demo server per side): `IDENTICAL (modulo ts)` across `result`, `audit`, `outbox`, `history`, `sidecar`, and `cache`.
+  - Local Windows Release + MSIX verification (`2f2b0f6`): `flutter build windows --release` succeeded (`Strakalari.exe`), and `tools/make_msix.py` packed `vcruntime140.dll`, `vcruntime140_1.dll`, and `msvcp140.dll` into the root of an unsigned MSIX (34 zip entries, zero personal files).
 - Carry-over review notes fixed / verified (`CR-N5`, `R-N2`, `R-N1`, `CR-N4`, `A-N3`):
   - **Windows toast console flash (`CR-N5`, `9d868c5`):** `runProcess` in `packages/strakalari_core/lib/src/platform/desktop_notify.dart` now launches Windows processes via `CreateProcessW` (`CREATE_NO_WINDOW` + `SW_HIDE`) in `Isolate.run`, preventing a flashing PowerShell console window from the GUI app; added `runProcess` test in `desktop_notify_test.dart`.
   - **MSIX VC++ runtime & comment typo (`CR-N5` / `R-N2`, `2f2b0f6`):** `.github/workflows/dart.yml` `build-flutter-msix` now copies `vcruntime140.dll`, `vcruntime140_1.dll`, `msvcp140.dll` into `flutter-bundle/` before `tools/make_msix.py`; fixed the stale `{D94B0F7F-...}` AppId comment typo (`{D94B0B7F-...}`).
