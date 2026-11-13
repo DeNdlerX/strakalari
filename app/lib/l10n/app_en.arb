@@ -520,7 +520,7 @@
   "run_failed": "Failed",
   "run_history": "Run history",
   "run_in_background": "Run in the background",
-  "run_in_background_hint": "The app then refreshes, excuses and orders with its screen closed, as often as the auto-check under Automation is set to. Meanwhile a notification with an overview stays in the shade — choose below what it shows. After the phone restarts or the app updates, open it once.",
+  "run_in_background_hint": "The app then refreshes, excuses and orders with its screen closed, as often as the auto-check under Automation is set to. Meanwhile a notification with an overview stays in the shade — choose below what it shows.",
   "run_took": "took {d}",
   "safe_to": "Safe to",
   "save_failed": "Could not save settings",

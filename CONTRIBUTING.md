@@ -16,7 +16,7 @@ End-user documentation lives in [README.md](README.md) / [README.en.md](README.e
 > ```bash
 > PYTHONUTF8=1 python -m pytest tests/ -q   # Python reference suite
 > cd packages/strakalari_core && dart analyze && dart test   # core
-> cd app && flutter analyze                  # app (widget tests from phase 5)
+> cd app && flutter analyze && flutter test                # app
 > PYTHONUTF8=1 python tools/parity/dump.py   # then git diff --exit-code on test/parity/
 > ```
 >

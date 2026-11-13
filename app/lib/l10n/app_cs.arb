@@ -520,7 +520,7 @@
   "run_failed": "Chyba",
   "run_history": "Historie běhů",
   "run_in_background": "Běžet na pozadí",
-  "run_in_background_hint": "Aplikace pak obnovuje data, omlouvá a objednává i se zavřenou obrazovkou, tak často, jak je nastavená automatická kontrola v Automatizaci. V oznámeních přitom zůstane přehled — co ukazuje, nastavíte níže. Po restartu telefonu nebo aktualizaci aplikace ji jednou otevřete.",
+  "run_in_background_hint": "Aplikace pak obnovuje data, omlouvá a objednává i se zavřenou obrazovkou, tak často, jak je nastavená automatická kontrola v Automatizaci. V oznámeních přitom zůstane přehled — co ukazuje, nastavíte níže.",
   "run_took": "trvalo {d}",
   "safe_to": "Bezpečně do",
   "save_failed": "Nepodařilo se uložit nastavení",
