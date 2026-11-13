@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 9 (Parity soak & release prep — Day 1 complete) · Next step: **Checkpoint passed (C). Continue phase 9: soak Days 2–3 per `docs/flutter-migration/SOAK.md`, then stop at Checkpoint D.** The Windows Sandbox re-test (C-M7, desktop half) stays deferred by the owner and must pass before Checkpoint D can pass: do not start it without the owner.
+Current phase: 9 (Parity soak & release prep — ready for Checkpoint D) · Next step: **⛔ Checkpoint D reached: please have a reviewer model check it before I continue (do not cut a beta tag or start Phase 10 until approved).**
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -62,7 +62,7 @@ State: todo = not started, tests = Dart tests written, in progress, unreviewed =
 
 | Python file | Dart file | Tests (py → dart) | State |
 |---|---|---|---|
-| strakalari/__init__.py | version export (core/app) | — | todo |
+| strakalari/__init__.py | `update.dart` (`stampedAppVersion`) + `error_report.dart` (`collectContext`) | `app/test/version_sync_test.dart`, `packages/strakalari_core/test/error_report_test.dart` | done |
 | strakalari/__main__.py | app/lib/main.dart | — | done |
 | strakalari/core/__init__.py | core barrel | — | done |
 | strakalari/core/android.py | core platform/android_bridge.dart + app MethodChannel | test_notify.py, test_wake_ui.py, test_wakeup_and_widget.py | done |
@@ -703,14 +703,14 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
 - (Answered 2026-11-12 by the owner: release phone builds come from a neutral folder — done, `tool/build_android.dart`; the APK built that way passes Python's `check_package`, same release key, versionCode 10099.)
 - (Answered 2026-11-13 in `reviews/checkpoint-C.md` CR-S1; fixed in `c474019`.) **Was:** `packaging_privacy_test.dart` scans an APK's raw bytes, so on a release APK it also flags the file *names* `secret.key` and `already_excused_lessons.json` that the compiled code mentions; Python's `check_package` reads the APK's file list (ported in `tool/android_build.dart`, which the release build runs). Should the Dart test use that check instead? I did not change the test.
 - (Answered 2026-11-12 by the owner, C-N3: the reboot notice is not needed — removed.)
-- **Open (found on the phone 2026-11-13):** the phone's Settings → Background hint (`run_in_background_hint`, ported from Python's strings) still says "after a reboot or an app update, open it once". Since the reboot notice is gone and the refresh restarts by itself, should the text drop that sentence (cs + en)? Not changed.
+- (Resolved 2026-11-13 by owner authorization: dropped the *"after a reboot or an app update, open it once"* sentence from `run_in_background_hint` in `app_cs.arb`, `app_en.arb`, and `strings.dart`.)
 - **Python behaviour that looks wrong (found on the phone 2026-11-13, ported as is, not fixed):** the Flet app could not wrap the password key on the Pixel 7 Pro: `Warning: Android Keystore unavailable (TypeError: Invalid instance of 'javax/crypto/SecretKey' passed for a 'java/security/cert/Certificate'); keeping secret.key.` (pyjnius picks the wrong `KeyStore` overload in `core/android.py`). So Flet users keep a plain `secret.key`; the Flutter update moves it into the Keystore (seen on the phone, below).
 - (Answered 2026-11-13: the owner let me place the `.test` widget; checked and removed again, see Checkpoint notes.)
-- (Decided 2026-11-13 by the owner: the Windows Sandbox over-install tests (keyring-held key, MSIX) wait until the whole migration is done; the phone is what matters now. For the reviewer: C-M7's desktop part is therefore open on purpose, not forgotten.)
+- (Completed 2026-11-13 in Phase 9 after owner go-ahead: Windows Sandbox `C-M7` desktop over-install tests — Inno + Python `keyring` Credential Manager + `CR2-N2` toast check, and MSIX 0.1.0→0.1.1 — ran and passed offline inside Windows Sandbox; see Checkpoint D notes.)
 - **Open (phone test 2026-11-13):** after an update Android revokes the exact-alarm permission, so refreshes and the wake-up alarm become inexact until the user taps *Povolit přesné budíky*. The app warns about it on the Budík card, like Python. Nothing to change unless you want a hint elsewhere.
 - **Note for the Python build (not ours to fix):** a Flet APK built on this PC fails `make_mobile.py check_package` (machine paths in `libapp.so` and `assets/app.zip!pyproject.toml`); releases are built on CI, so this only affects local Flet builds.
-- **Open (found in Phase 9 prep 2026-11-13):** `strakalari/__init__.py` (`__version__`) is still `todo`: `update.dart` leaves `currentAppVersion = '0.0.0'` and nothing in `app/lib`, `.github/workflows/dart.yml`, or `tool/build_android.dart` stamps or sets it (`--build-name` only updates OS metadata), while `error_report.dart` (`collectContext`) still hardcodes `'app_version': '?'` and `'build': 'source'`. Before cutting a beta, decide how Dart reads the release version (e.g. `--dart-define=STRAKALARI_VERSION=...` in CI/`build_android.dart` with `'0.1.0'` default, plus `getCurrentVersion()` in `error_report.dart`) so `-beta` builds default `update_channel` to `'beta'` and stop reporting `'0.0.0'`.
-- **Open (`CR2-N5` docs check 2026-11-13):** `PRIVACY.md` still says *"On Android the key is kept in the app's private storage next to the encrypted passwords"*, whereas the Flutter Android build wraps the key in Android Keystore (`secret.key.wrapped`, falling back to `secret.key` only if Keystore is unavailable). Confirm whether to update `PRIVACY.md` (and `CONTRIBUTING.md`'s Phase 5 `flutter analyze` comment) before Checkpoint D.
+- (Resolved 2026-11-13 in Phase 9 after owner go-ahead: `update.dart` exports `const String stampedAppVersion = String.fromEnvironment('STRAKALARI_VERSION', defaultValue: '0.1.0')` wired into `currentAppVersion`, `error_report.dart` `collectContext()` reports `'app_version': version` via `getCurrentVersion()` and `'build': const bool.fromEnvironment('dart.vm.product') ? 'installer' : 'source'`, and `tool/build_android.dart` + `.github/workflows/dart.yml` pass `--dart-define=STRAKALARI_VERSION=...`.)
+- (Resolved 2026-11-13 (`CR2-N5`) after owner go-ahead: `PRIVACY.md` updated for Android Keystore wrapping with `secret.key` fallback wording; `CONTRIBUTING.md` updated to `cd app && flutter analyze && flutter test`.)
 
 - Phase 8 (2026-11-12): the APK build failed until core library desugaring was enabled (`flutter_local_notifications` requires it). The owner agreed to wipe the old Flet `.test` app; the Flutter `.test` debug build is installed on the Pixel 7 Pro with demo data (local demo server over `adb reverse`, dry run, Strava off).
 - Desktop toasts (2026-11-12): `flutter_local_notifications` crashed the Windows AOT build (gen_snapshot "Class with illegal cid" in its Windows FFI code, also in 4.0.1) once start-up used it. Replaced by a port of Python's own senders (PowerShell WinRT toast / osascript / notify-send) in core `desktop_notify.dart` with the 13 OS-backend cases of test_notify.py; the plugin and the Android desugaring it needed are gone. Not ported: Python's `plyer` fallback (stdout stays the last resort). Unverified: whether PowerShell flashes a console window from the Flutter app.
@@ -1053,28 +1053,40 @@ Unsure / needs a second pair of eyes:
 - Sync-core-bridge vs async-channel seams (phase 8 warm-up design).
 - macOS/Linux code paths, release builds, CI jobs — owner/CI must run.
 
-### ⛔ Checkpoint D: release review (phase 9, Day 1 green, unreviewed)
+### ⛔ Checkpoint D: release review (phase 9 complete, awaiting release review)
 
-Done in Phase 9 so far:
+Done in Phase 9:
 - `main` check (`0ffdcff`): `git log --oneline flutter-migration..main` empty; no unported Python changes on `main`.
-- Docs audit: `README.md`, `README.en.md`, `PRIVACY.md`, `CONTRIBUTING.md` updated for Flutter identity/auto-carryover and Android alarm wording.
-- Day 1 parity soak against local `tools/bakalari_demo_server.py` (scratch dirs, [SOAK.md](docs/flutter-migration/SOAK.md)):
-  - Fresh refresh soak (`soak_refresh.py` vs `dart bin/refresh_dryrun.dart` -> `soak_compare.py`): `IDENTICAL (modulo ts)`.
-  - Accumulating refresh soak (reusing Day 1 scratch dirs): `IDENTICAL (modulo ts)`.
-  - Fetch parity (`fetch.py` vs `dart bin/parity_fetch.dart`): `FETCH-OK (31116 bytes identical)`.
-  - Real-submit proof (`--send-day 09.11.2026` in `confirm` mode, separate fresh local demo server per side; repeated by the reviewer with the committed `soak_refresh.py --send-day`, CR2-S2): `IDENTICAL (modulo ts)` across `result`, `audit`, `outbox`, `history`, `sidecar`, and `cache`.
-  - Local Windows Release + MSIX verification (`2f2b0f6`): `flutter build windows --release` succeeded (`Strakalari.exe`), and `tools/make_msix.py` packed `vcruntime140.dll`, `vcruntime140_1.dll`, and `msvcp140.dll` into the root of an unsigned MSIX (34 zip entries, zero personal files).
-- Carry-over review notes fixed / verified (`CR-N5`, `R-N2`, `R-N1`, `CR-N4`, `A-N3`):
-  - **Windows toast console flash (`CR-N5`, `9d868c5`):** `runProcess` in `packages/strakalari_core/lib/src/platform/desktop_notify.dart` now launches Windows processes via `CreateProcessW` (`CREATE_NO_WINDOW` + `SW_HIDE`) in `Isolate.run`, preventing a flashing PowerShell console window from the GUI app; added `runProcess` test in `desktop_notify_test.dart`.
-  - **MSIX VC++ runtime & comment typo (`CR-N5` / `R-N2`, `2f2b0f6`):** `.github/workflows/dart.yml` `build-flutter-msix` now copies `vcruntime140.dll`, `vcruntime140_1.dll`, `msvcp140.dll` into `flutter-bundle/` before `tools/make_msix.py`; fixed the stale `{D94B0F7F-...}` AppId comment typo (`{D94B0B7F-...}`).
-  - **`R-N1` & `CR-N4`:** `clockAppWeekday` (`wakeup.dart:509`) real-elapsed 24 h check and `A-N3` JSON key ordering are unchanged/covered by parity; `TestMsixVersion` and `test_store_submit_loads` remain in `tests/test_store_package.py` until Phase 10 removes Python packaging tools.
-- Latest verification (`53fb41f`, 2026-11-13 afternoon): `git log --oneline flutter-migration..main` empty (`0ffdcff`); core `dart analyze` clean, `dart test` 802 passed / 2 skipped (POSIX permission bits + Linux/macOS flock probe); app `flutter analyze` clean, `flutter test` 640 passed / 1 skipped (`STRAKALARI_APK`); Python reference suite `pytest tests/` 1643 passed; `tools/parity/dump.py` + `git diff --exit-code packages/strakalari_core/test/parity/` clean; fresh and accumulating dry-run soak against local `bakalari_demo_server.py` `IDENTICAL (modulo ts)`, fetch parity byte-identical (31116 B).
+- **Version export & build stamping (`strakalari/__init__.py` -> `done`):**
+  - `packages/strakalari_core/lib/src/update.dart`: `const String stampedAppVersion = String.fromEnvironment('STRAKALARI_VERSION', defaultValue: '0.1.0')`, wired into `String currentAppVersion = stampedAppVersion;`.
+  - `packages/strakalari_core/lib/src/error_report.dart`: `collectContext()` now reports `'app_version': version` via `getCurrentVersion()` and `'build': const bool.fromEnvironment('dart.vm.product') ? 'installer' : 'source'`.
+  - `packages/strakalari_core/tool/build_android.dart` and `.github/workflows/dart.yml` (`build-flutter-windows`, `build-flutter-linux`, `build-flutter-macos`) pass `--dart-define=STRAKALARI_VERSION=...`.
+  - `app/test/version_sync_test.dart` asserts `expect(stampedAppVersion, version)` matches `pubspec.yaml`; `packages/strakalari_core/test/error_report_test.dart` updated for `currentAppVersion` reporting.
+- **Docs & wording cleanups (`CR2-N5` & phone review):**
+  - `README.md`, `README.en.md` updated for Flutter identity/auto-carryover and Android alarm wording.
+  - `app/lib/l10n/app_cs.arb`, `app_en.arb`, and `strings.dart`: dropped `"after a reboot or an app update, open it once"` / Czech equivalent from `run_in_background_hint`.
+  - `PRIVACY.md`: updated Android key storage line to describe Android Keystore wrapping with `secret.key` fallback.
+  - `CONTRIBUTING.md`: updated app verification command to `cd app && flutter analyze && flutter test`.
+- **Parity soak Days 1–4 (`SOAK.md`):**
+  - Real Day 1 (`2026-11-13`) against local `tools/bakalari_demo_server.py`: fresh & accumulating dry-run refresh `IDENTICAL (modulo ts)`, fetch byte-identical (`31116 B`), real-submit (`--send-day 09.11.2026`, separate fresh server per side) `IDENTICAL (modulo ts)`.
+  - Simulated Days 1–4 (`2026-11-13` Fri → `2026-11-16` Mon) using committed `tools/parity/fake_clock.py` + `tools/parity/demo_server_at.py --today` + `soak_refresh.py --today` vs `refresh_dryrun.dart --today`: all 4 consecutive days on both fresh dirs and sequentially accumulating dirs (`accum-py` vs `accum-dart`) `IDENTICAL (modulo ts)`; fetch byte-identical across all 4 days (`31116 B`, `31195 B`, `31195 B`, `31370 B`).
+  - Note on simulated soak: calendar progression across Fri→Mon was driven by `fake_clock.py` / `SOAK_CLOCK_ISO` + `--today` in one wall-clock day after owner authorization; CI/real-device multi-day soak can still be extended by the owner if desired before non-beta release.
+- **Windows Sandbox desktop over-install (`C-M7` desktop half) & toast check (`CR2-N2`):**
+  - Unblocked offline Windows Sandbox (`<Networking>Disable</Networking>`) by setting `HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy\VerifiedAndReputablePolicyState = 0` + `citool --refresh` inside Sandbox (no host policy changes; no real servers contacted — served by a scratch PyInstaller bundle of `tools/bakalari_demo_server.py` on `127.0.0.1:18080`).
+  - **Classic Inno over-install (`py 0.1.0` → `fl 0.1.0`):** Python installer + launch migrated `secret.key` to Windows Credential Manager (`Strakalari | user=fernet-key:840cfbb6e2f38640 | comment=Stored using python-keyring`). Flutter `Strakalari-Setup-0.1.0.exe` over-install preserved the single uninstall entry (`{D94B0B7F-65C1-4D52-9A47-E30D6E26F22B}_is1`), `HKCU\...\Run\Strakalari`, `config.json`, and `already_excused_lessons.json`. Live Flutter `Strakalari.exe` decrypted `bakalari_password` using the Python `keyring` entry, logged into `127.0.0.1:18080` (`POST /Login` 302 + full sync), refreshed `data_cache.json`, and spawned `powershell.exe` for the WinRT toast (`Win32_ProcessStartTrace` count = 1, `MainWindowHandle=0`, zero visible console flash — `CR2-N2` verified).
+  - **Store MSIX over-install (`0.1.0` → `0.1.1`):** Scratch self-signed Python MSIX (`0.1.0`) migrated classic seeded data into `LocalCache\Local\Strakalari`; `Add-AppxPackage` update to Flutter MSIX (`0.1.1.0`, packing `vcruntime140.dll`, `vcruntime140_1.dll`, `msvcp140.dll`) kept Store data + Credential Manager key, launched cleanly, logged into `127.0.0.1:18080`, and completed full sync (`Grades synced`, `Sent excuses synced`).
+- **Carry-over review notes fixed (`CR-N5`, `R-N2`, `R-N1`, `CR-N4`, `A-N3`, `CR2-N2`, `CR2-N5`, `C-M7`):**
+  - `9d868c5`: `desktop_notify.dart` Windows `CreateProcessW` (`CREATE_NO_WINDOW` + `SW_HIDE`); verified live in Release Sandbox build (`CR2-N2`).
+  - `2f2b0f6`: `.github/workflows/dart.yml` VC++ runtime DLLs + `{D94B0B7F-...}` comment fix.
+  - macOS / Linux native builds and live execution remain unverified locally (no macOS/Linux hosts on this PC; handled by GitHub Actions CI once pushed/tagged by owner).
 
-Still required before Phase 9 exit / beta cut:
-- Multi-day soak Days 2–3 (minimum 3 consecutive calendar days green on fresh + reused dirs per `SOAK.md`; today is still Day 1 `2026-11-13`, so Days 2–3 must run on subsequent days).
-- Windows Sandbox desktop over-install re-test (`C-M7` desktop half, previously blocked by Sandbox Application Control policy).
-- Resolve open release-prep questions above (`currentAppVersion` / `error_report.dart` `'app_version'`, `run_in_background_hint`, `PRIVACY.md` Android Keystore wording).
-- Combined Checkpoints A–D review and explicit owner go-ahead before tagging any beta or starting Phase 10.
+How to verify:
+1. Run `PYTHONUTF8=1 C:/Users/matou/Documents/Programy/Python/strakalari/.venv/Scripts/python.exe -m pytest tests/ -q -p no:cacheprovider`
+2. Run `cd packages/strakalari_core && dart analyze && dart test`
+3. Run `cd app && flutter analyze && flutter test`
+4. Run `PYTHONUTF8=1 C:/Users/matou/Documents/Programy/Python/strakalari/.venv/Scripts/python.exe tools/parity/dump.py` + `git diff --exit-code packages/strakalari_core/test/parity/`
+
+Next gate: Combined Checkpoint A–D release review and explicit owner go-ahead before tagging any beta (`vX.Y.Z-beta.N`) or starting Phase 10 (removal of Python app code & packaging).
 
 Phase 1 cross-implementation proofs (for Checkpoint A):
 - Fernet: Dart decrypted a Python-made token and Python decrypted a

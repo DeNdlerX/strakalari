@@ -69,6 +69,8 @@ def main() -> None:
     parser.add_argument("--send-day", default=None, metavar="DD.MM.YYYY",
                         help="REAL submit of one whole-day excuse "
                              "(demo server on localhost only)")
+    parser.add_argument("--today", default=None, metavar="YYYY-MM-DD",
+                        help="simulate calendar date YYYY-MM-DD at 12:00:00")
     args = parser.parse_args()
     if args.send_day is not None and not is_loopback_send_url(args.url):
         raise SystemExit("Refusing --send-day unless target host is "
@@ -80,6 +82,11 @@ def main() -> None:
     from strakalari.core.excuse_history import load_unconfirmed
     from strakalari.core.helpers import parse_date
     from strakalari.core.refresh import run_refresh
+
+    if args.today is not None:
+        from tools.parity.fake_clock import install_fake_clock
+
+        install_fake_clock(args.today, ("strakalari.core", __name__))
 
     data_dir = args.data_dir or os.environ.get("STRAKALARI_DATA_DIR", "")
     if not data_dir:

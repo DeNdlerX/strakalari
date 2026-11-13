@@ -18,6 +18,7 @@ import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:clock/clock.dart';
 import 'package:strakalari_core/src/automation/audit.dart';
 import 'package:strakalari_core/src/automation/automation.dart';
 import 'package:strakalari_core/src/automation/excuse_history.dart';
@@ -61,6 +62,7 @@ Future<void> main(List<String> args) async {
   var password = 'demo';
   String? dataDirArg;
   String? sendDay;
+  String? todayArg;
   for (var i = 0; i < args.length; i++) {
     if (args[i] == '--url' && i + 1 < args.length) url = args[++i];
     if (args[i] == '--user' && i + 1 < args.length) user = args[++i];
@@ -75,10 +77,18 @@ Future<void> main(List<String> args) async {
     if (args[i] == '--send-day' && i + 1 < args.length) {
       sendDay = args[++i];
     }
+    if (args[i] == '--today' && i + 1 < args.length) {
+      todayArg = args[++i];
+    }
   }
   if (sendDay != null && !isLoopbackSendUrl(url)) {
     throw ArgumentError(
         'Refusing --send-day unless target host is localhost/127.0.0.1/[::1]: $url');
+  }
+  DateTime? fixedNow;
+  if (todayArg != null) {
+    final parts = todayArg.split('-').map(int.parse).toList();
+    fixedNow = DateTime(parts[0], parts[1], parts[2], 12, 0, 0);
   }
   final dataDir =
       dataDirArg ?? Directory.systemTemp.createTempSync('dart_dry_').path;
@@ -101,95 +111,103 @@ Future<void> main(List<String> args) async {
     'strava_order_mode': 'confirm',
     'use_strava': false,
   };
-  final app = Strakalari(
-      configFile: '$dataDir/config.json', configData: config);
-  final result = await runRefresh(app, app.configData);
+  Future<void> runBody() async {
+    final app = Strakalari(
+        configFile: '$dataDir/config.json', configData: config);
+    final result = await runRefresh(app, app.configData);
 
-  // Seed a deterministic unexcused lesson on the latest loaded school
-  // day at least 3 days before today so excusePending() exercises
-  // generateExcuses + sendExcuse in dry_run mode against the server.
-  var pendingSent = 0;
-  if (sendDay == null) {
-    final now = DateTime.now();
-    final todayD = DateTime(now.year, now.month, now.day);
-    final eligibleDays = <(DateTime, String, List<Object?>)>[];
-    for (final entry in app.timetableData.entries) {
-      final lessons = entry.value;
-      if (lessons is! List || lessons.isEmpty) continue;
-      DateTime parsed;
-      try {
-        final p = parseDate(entry.key);
-        parsed = DateTime(p.year, p.month, p.day);
-      } on Object {
-        continue;
+    // Seed a deterministic unexcused lesson on the latest loaded school
+    // day at least 3 days before today so excusePending() exercises
+    // generateExcuses + sendExcuse in dry_run mode against the server.
+    var pendingSent = 0;
+    if (sendDay == null) {
+      final now = clock.now();
+      final todayD = DateTime(now.year, now.month, now.day);
+      final eligibleDays = <(DateTime, String, List<Object?>)>[];
+      for (final entry in app.timetableData.entries) {
+        final lessons = entry.value;
+        if (lessons is! List || lessons.isEmpty) continue;
+        DateTime parsed;
+        try {
+          final p = parseDate(entry.key);
+          parsed = DateTime(p.year, p.month, p.day);
+        } on Object {
+          continue;
+        }
+        if (daysBetween(parsed, todayD) >= 3) {
+          eligibleDays.add((parsed, entry.key, lessons));
+        }
       }
-      if (daysBetween(parsed, todayD) >= 3) {
-        eligibleDays.add((parsed, entry.key, lessons));
+      if (eligibleDays.isNotEmpty) {
+        eligibleDays.sort((a, b) => b.$1.compareTo(a.$1));
+        final firstLesson = eligibleDays.first.$3.first;
+        if (firstLesson is Map) {
+          firstLesson['absenceType'] = 'Absent';
+          firstLesson['absencetext'] = 'neomluveno';
+        }
       }
+      pendingSent = await app.excusePending();
     }
-    if (eligibleDays.isNotEmpty) {
-      eligibleDays.sort((a, b) => b.$1.compareTo(a.$1));
-      final firstLesson = eligibleDays.first.$3.first;
-      if (firstLesson is Map) {
-        firstLesson['absenceType'] = 'Absent';
-        firstLesson['absencetext'] = 'neomluveno';
-      }
+
+    // A dry-run one-click excuse for a synthetic past absence (fill only),
+    // or a REAL whole-day submit when --send-day is given (demo server only).
+    final now = clock.now();
+    final past = addDays(DateTime(now.year, now.month, now.day), -5);
+    String two(int n) => n.toString().padLeft(2, '0');
+    final day = sendDay ??
+        '${two(past.day)}.${two(past.month)}.${past.year}';
+    final singleOutcome = sendDay == null
+        ? await app.excuseSingle({
+            'type': 'days and hours',
+            'starting_day': day,
+            'ending_day': day,
+            'starting_lesson': 2,
+            'ending_lesson': 4,
+          }, 'Omluvte prosim absenci.')
+        : await app.excuseSingle({
+            'type': 'pure days',
+            'starting_day': day,
+            'ending_day': day,
+          }, 'Omluvenka test');
+
+    final historyFile = app.alreadyExcusedFile;
+    List<Object?> history = const [];
+    if (File(historyFile).existsSync()) {
+      history = jsonDecode(File(historyFile).readAsStringSync()) as List;
     }
-    pendingSent = await app.excusePending();
+    final cache = loadDataCache();
+    final data = <String, Object?>{
+      'result': {
+        'scope': result.scope,
+        'bakalari_fetched': result.bakalariFetched,
+        'strava_fetched': result.stravaFetched,
+        'subjects': result.subjects,
+        'menu_days': result.menuDays,
+        'excuses_sent': result.excusesSent,
+        'excuses_failed': result.excusesFailed,
+        'lunches_ordered': result.lunchesOrdered,
+        'automation_paused': result.automationPaused,
+        'low_balance': result.lowBalance,
+        'errors': [for (final e in result.errors) '${e.$1}: ${e.$2}'],
+        'news': [for (final n in result.news) '${n.$1}: ${n.$2}'],
+        'saved_keys': (result.saved.keys.toList()..sort()),
+      },
+      'dry_run_pending_sent': pendingSent,
+      'dry_run_single_filled': singleOutcome,
+      'audit': recent(limit: 2000),
+      'outbox': await app.bakalariClient!.fetchSentExcuses(limit: 100),
+      'history': history,
+      'sidecar': loadUnconfirmed(historyFile),
+      'cache_keys': (cache.keys.toList()..sort()),
+      'cache': cache,
+    };
+    stdout.write('${jsonEncode(canonical(data))}\n');
+    app.close();
   }
 
-  // A dry-run one-click excuse for a synthetic past absence (fill only),
-  // or a REAL whole-day submit when --send-day is given (demo server only).
-  final now = DateTime.now();
-  final past = addDays(DateTime(now.year, now.month, now.day), -5);
-  String two(int n) => n.toString().padLeft(2, '0');
-  final day = sendDay ??
-      '${two(past.day)}.${two(past.month)}.${past.year}';
-  final singleOutcome = sendDay == null
-      ? await app.excuseSingle({
-          'type': 'days and hours',
-          'starting_day': day,
-          'ending_day': day,
-          'starting_lesson': 2,
-          'ending_lesson': 4,
-        }, 'Omluvte prosim absenci.')
-      : await app.excuseSingle({
-          'type': 'pure days',
-          'starting_day': day,
-          'ending_day': day,
-        }, 'Omluvenka test');
-
-  final historyFile = app.alreadyExcusedFile;
-  List<Object?> history = const [];
-  if (File(historyFile).existsSync()) {
-    history = jsonDecode(File(historyFile).readAsStringSync()) as List;
+  if (fixedNow != null) {
+    await withClock(Clock.fixed(fixedNow), runBody);
+  } else {
+    await runBody();
   }
-  final cache = loadDataCache();
-  final data = <String, Object?>{
-    'result': {
-      'scope': result.scope,
-      'bakalari_fetched': result.bakalariFetched,
-      'strava_fetched': result.stravaFetched,
-      'subjects': result.subjects,
-      'menu_days': result.menuDays,
-      'excuses_sent': result.excusesSent,
-      'excuses_failed': result.excusesFailed,
-      'lunches_ordered': result.lunchesOrdered,
-      'automation_paused': result.automationPaused,
-      'low_balance': result.lowBalance,
-      'errors': [for (final e in result.errors) '${e.$1}: ${e.$2}'],
-      'news': [for (final n in result.news) '${n.$1}: ${n.$2}'],
-      'saved_keys': (result.saved.keys.toList()..sort()),
-    },
-    'dry_run_pending_sent': pendingSent,
-    'dry_run_single_filled': singleOutcome,
-    'audit': recent(limit: 2000),
-    'outbox': await app.bakalariClient!.fetchSentExcuses(limit: 100),
-    'history': history,
-    'sidecar': loadUnconfirmed(historyFile),
-    'cache_keys': (cache.keys.toList()..sort()),
-    'cache': cache,
-  };
-  stdout.write('${jsonEncode(canonical(data))}\n');
-  app.close();
 }

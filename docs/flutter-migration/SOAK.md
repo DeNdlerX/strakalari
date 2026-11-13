@@ -103,6 +103,8 @@ scratch dir, never committed user data):
 
 - `2026-11-13 · py@0ffdcff dart@2f2b0f6 · suites OK (1643 py, 802+2skip core, 640+1skip app, 5/5 APK) · refresh IDENTICAL (fresh & accumulating) · fetch OK (31116 B) · notes: Day 1 against local bakalari_demo_server; fixed Windows toast console flash (9d868c5) and MSIX VC++ runtime DLLs + AppId comment (2f2b0f6); real-submit --send-day 09.11.2026 proof IDENTICAL (modulo ts) & local Release Strakalari.exe + MSIX build OK (vcruntime140/vcruntime140_1/msvcp140 packed)`
 - `2026-11-13 · py@0ffdcff dart@b79b29b · real-submit proof repeated by the reviewer with the committed scripts (`--send-day 09.11.2026`, a fresh demo server per side): IDENTICAL (modulo ts); 5 outbox entries and 5 history entries on each side, empty unconfirmed file`
+- `2026-11-13..2026-11-16 (simulated Days 1–4, Fri→Mon, fake_clock.py + demo_server_at.py --today) · soak_refresh.py --today vs refresh_dryrun.dart --today · fresh & sequentially accumulating dirs (accum-py vs accum-dart) all 4 days IDENTICAL (modulo ts) · fetch parity byte-identical on all 4 days (2026-11-13: 31116 B, 2026-11-14: 31195 B, 2026-11-15: 31195 B, 2026-11-16: 31370 B)`
+- `2026-11-13 (Windows Sandbox desktop re-test C-M7 + CR2-N2) · offline Sandbox (VerifiedAndReputablePolicyState=0 + citool --refresh, demo_srv.exe on 127.0.0.1:18080) · Classic Inno 0.1.0 Python→Flutter over-install preserved HKCU Run, single Uninstall AppId, config.json, already_excused_lessons.json, migrated keyring Credential Manager entry (Strakalari), Flutter logged in + synced + spawned PowerShell toast with MainWindowHandle=0; Store MSIX 0.1.0→0.1.1 over-install migrated LocalCache data + logged in + synced`
 
 ## Exit criteria (all must hold)
 
