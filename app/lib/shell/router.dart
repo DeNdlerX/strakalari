@@ -99,7 +99,9 @@ class PlaceholderScreen extends StatelessWidget {
 GoRoute _route(String name) => GoRoute(
       path: '/$name',
       name: name,
-      builder: (context, state) => Consumer(
+      builder: (context, state) => ShellBackScope(
+        route: name,
+        child: Consumer(
         builder: (context, ref, _) {
           final appState = ref.watch(appStateProvider);
           final size = MediaQuery.sizeOf(context);
@@ -137,6 +139,7 @@ GoRoute _route(String name) => GoRoute(
               return PlaceholderScreen(route: name);
           }
         },
+        ),
       ),
     );
 

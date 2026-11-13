@@ -93,6 +93,47 @@ void closeSubpage({
   }
 }
 
+/// The phone's Back button on one shell page: closes the page's open
+/// sub-page first, else goes to [backTarget]; on Today (or the wizard, or a
+/// wide window) Back leaves the app. Port of `enable_back_navigation`'s
+/// `_on_confirm_pop` in strakalari/flet_ui/app.py.
+///
+/// Each page wraps itself in this (router.dart), so the [PopScope] belongs to
+/// the route of go_router's inner navigator. That navigator tells Android
+/// whether the app handles Back; a scope above it, in the shell, was
+/// overruled and Android closed the app.
+class ShellBackScope extends ConsumerWidget {
+  final String route;
+  final Widget child;
+  const ShellBackScope({super.key, required this.route, required this.child});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final appState = ref.watch(appStateProvider);
+    final size = MediaQuery.sizeOf(context);
+    final narrow = isNarrowSize(size.width, size.height);
+    if (!narrow) return child;
+    final subpage = subpageOpen(route: route, narrow: narrow, state: appState);
+    final target = backTarget(
+      route: route,
+      narrow: narrow,
+      wizardShown: appState.wizardShown,
+    );
+    return PopScope(
+      canPop: subpage.isEmpty && target == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (subpage.isNotEmpty) {
+          closeSubpage(route: route, narrow: narrow, state: appState);
+        } else if (target != null) {
+          context.go(routeLocation(target));
+        }
+      },
+      child: child,
+    );
+  }
+}
+
 const Map<String, IconData> _railIcons = {
   'today': Icons.home_outlined,
   'timetable': Icons.calendar_month_outlined,
@@ -227,34 +268,9 @@ class AppScaffold extends ConsumerWidget {
       ],
     );
 
-    final subpage = subpageOpen(
-      route: route,
-      narrow: narrow,
-      state: appState,
-    );
-    final target = backTarget(
-      route: route,
-      narrow: narrow,
-      wizardShown: appState.wizardShown,
-    );
-    final canPop = !narrow || (subpage.isEmpty && target == null);
-
-    Widget wrapPop(Widget scaffold) {
-      if (!narrow) return scaffold;
-      return PopScope(
-        canPop: canPop,
-        onPopInvokedWithResult: (didPop, _) {
-          if (didPop) return;
-          if (subpage.isNotEmpty) {
-            closeSubpage(route: route, narrow: narrow, state: appState);
-          } else if (target != null) {
-            context.go(routeLocation(target));
-          }
-        },
-        child: scaffold,
-      );
-    }
-
+    // Phone Back is handled per page by [ShellBackScope] (router.dart), under
+    // go_router's inner navigator: a PopScope here, above that navigator, was
+    // overruled by it, so Android closed the app on every screen.
     switch (layout) {
       case ShellLayout.bar:
         final tabs = narrowTabs;
@@ -267,7 +283,7 @@ class AppScaffold extends ConsumerWidget {
             index = 0;
           }
         }
-        return wrapPop(Scaffold(
+        return Scaffold(
           body: SafeArea(
             bottom: false,
             child: right,
@@ -291,12 +307,12 @@ class AppScaffold extends ConsumerWidget {
                 ),
             ],
           ),
-        ));
+        );
       case ShellLayout.side:
         final tabs = narrowTabs;
         var sideIndex = tabs.indexOf(route);
         if (sideIndex < 0) sideIndex = tabs.indexOf('more');
-        return wrapPop(Scaffold(
+        return Scaffold(
           body: Row(
             children: [
               Container(
@@ -338,11 +354,11 @@ class AppScaffold extends ConsumerWidget {
               ),
             ],
           ),
-        ));
+        );
       case ShellLayout.wide:
         var railIndex = shellRoutes.indexOf(route);
         if (railIndex < 0) railIndex = 0;
-        return wrapPop(Scaffold(
+        return Scaffold(
           body: Row(
             children: [
               NavigationRail(
@@ -365,7 +381,7 @@ class AppScaffold extends ConsumerWidget {
               Expanded(child: right),
             ],
           ),
-        ));
+        );
     }
   }
 
