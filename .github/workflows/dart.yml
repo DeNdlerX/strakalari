@@ -102,7 +102,7 @@ jobs:
   # Same asset set as build.yml, minus the MSIX (it goes straight to
   # the Microsoft Store via publish-store, which also signs it; see
   # docs/STORE.md). Same identity everywhere: Inno AppId
-  # {D94B0F7F-65C1-4D52-9A47-E30D6E26F22B}, the Store identity from
+  # {D94B0B7F-65C1-4D52-9A47-E30D6E26F22B}, the Store identity from
   # build.yml env, macOS bundle cz.strakalari.app.
   meta:
     name: Resolve version
@@ -235,6 +235,17 @@ jobs:
         with:
           name: windows-bundle
           path: flutter-bundle
+
+      - name: Copy VC++ runtime DLLs into MSIX bundle
+        run: |
+          # Flutter's Windows runner links dynamically to the MSVC runtime
+          # (installer.iss bundles the same three DLLs app-locally;
+          # msix/AppxManifest.xml declares no VCLibs package dependency).
+          foreach ($dll in @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll")) {
+            $src = Join-Path "$env:SystemRoot\System32" $dll
+            if (-not (Test-Path $src)) { throw "Missing $src" }
+            Copy-Item $src "flutter-bundle\$dll" -Force
+          }
 
       - name: Pack unsigned MSIX
         shell: pwsh
