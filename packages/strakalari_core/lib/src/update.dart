@@ -31,9 +31,16 @@ import 'platform/packaging.dart';
 /// Test seam: raw body of the releases list request. Null = real network.
 Future<String?> Function(Uri url)? fetchReleasesHook;
 
-/// Currently running application version (stamped at build; the app sets
-/// it at startup). Tests override it directly.
-String currentAppVersion = '0.0.0';
+/// Build-time version stamped via `--dart-define=STRAKALARI_VERSION=...`
+/// (defaults to the current `strakalari/__init__.py` / `app/pubspec.yaml` version).
+const String stampedAppVersion = String.fromEnvironment(
+  'STRAKALARI_VERSION',
+  defaultValue: '0.1.0',
+);
+
+/// Currently running application version (defaults to [stampedAppVersion]).
+/// Tests override it directly.
+String currentAppVersion = stampedAppVersion;
 
 const String githubRepo = 'DeNdlerX/strakalari';
 final Uri apiUrl = Uri.parse(

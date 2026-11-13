@@ -21,6 +21,7 @@ import 'package:clock/clock.dart';
 import 'i18n.dart';
 import 'storage/config.dart';
 import 'storage/helpers.dart';
+import 'update.dart' show getCurrentVersion;
 
 /// A failure the user can fix themselves (missing URL, bad login, ...).
 class UserError implements Exception {
@@ -284,6 +285,12 @@ String formatTraceback(Object? error, [StackTrace? stackTrace]) {
 
 /// Environment block: version, build kind, OS, Dart, UI language.
 Map<String, Object?> collectContext() {
+  String version;
+  try {
+    version = getCurrentVersion();
+  } catch (_) {
+    version = '?';
+  }
   String language;
   try {
     language = getLanguage();
@@ -291,14 +298,11 @@ Map<String, Object?> collectContext() {
     language = '?';
   }
   return {
-    // No update module in core yet — the phase-3 port plugs its version
-    // in here (Python: `update.get_current_version()`).
-    'app_version': '?',
-    // Installer build vs. a source checkout behave differently (paths,
-    // stdio) — the first thing to know about a bug. (Python keys this
-    // off `sys.frozen`; Dart ships AOT either way, so this stays
-    // "source" until the packaging phase refines it.)
-    'build': 'source',
+    'app_version': version,
+    // Installer/release AOT build vs. a debug/source run.
+    'build': const bool.fromEnvironment('dart.vm.product')
+        ? 'installer'
+        : 'source',
     'platform': Platform.operatingSystemVersion,
     // Python names this key "python" with `sys.version`; the runtime
     // here is Dart.

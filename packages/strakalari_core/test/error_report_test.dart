@@ -16,6 +16,7 @@ import 'package:strakalari_core/src/i18n.dart';
 import 'package:strakalari_core/src/platform/packaging.dart';
 import 'package:strakalari_core/src/storage/helpers.dart';
 import 'package:strakalari_core/src/storage/secret_store.dart';
+import 'package:strakalari_core/src/update.dart';
 
 void main() {
   Directory? tmp;
@@ -292,7 +293,11 @@ void main() {
 
   group('collectContext', () {
     test('namesBuildAndLanguage', () {
+      final saved = currentAppVersion;
+      addTearDown(() => currentAppVersion = saved);
+      currentAppVersion = '0.2.0-beta.1';
       final ctx = collectContext();
+      expect(ctx['app_version'], '0.2.0-beta.1');
       expect(ctx['build'], isIn(['installer', 'source']));
       expect(ctx['language'], isIn(['cs', 'en']));
     });

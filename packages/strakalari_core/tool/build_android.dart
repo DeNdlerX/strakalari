@@ -78,6 +78,7 @@ Future<void> main(List<String> argv) async {
   await run([
     'build', kind, '--release', '--flavor', flavor,
     '--build-name', version, '--build-number', '$code',
+    '--dart-define=STRAKALARI_VERSION=$version',
     // One APK per ABI like Flet's `split_per_abi = true`: Flutter then adds
     // the same versionCode offset (arm64-v8a: +2000, 10099 -> 12099), so it
     // installs over the Flet GitHub APK. Only the arm64 one is shipped.

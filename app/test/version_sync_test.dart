@@ -20,6 +20,7 @@ void main() {
     expect(m!.group(1), version);
     // versionCode as the Flet build stamped it (tools/make_mobile.py).
     expect(int.parse(m.group(2)!), buildNumber(version));
+    expect(stampedAppVersion, version);
   });
 
   test('installerDefaultMatchesPackage', () {
