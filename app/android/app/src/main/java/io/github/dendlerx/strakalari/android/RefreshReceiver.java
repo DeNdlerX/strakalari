@@ -126,9 +126,12 @@ public class RefreshReceiver extends BroadcastReceiver {
             StrakalariChannel.headlessReason = reason;
             headlessChannel.setReleaseHook(() -> release(appCtx));
             try {
-                if (handle != 0L) {
-                    FlutterCallbackInformation info =
-                            FlutterCallbackInformation.lookupCallbackInformation(handle);
+                // A handle this build does not know (possible after an app
+                // update) looks up as null: use the named entry point then.
+                FlutterCallbackInformation info = handle != 0L
+                        ? FlutterCallbackInformation.lookupCallbackInformation(handle)
+                        : null;
+                if (info != null) {
                     DartCallback callback = new DartCallback(
                             appCtx.getAssets(),
                             FlutterInjector.instance().flutterLoader()
@@ -146,7 +149,12 @@ public class RefreshReceiver extends BroadcastReceiver {
                                     "backgroundMain"));
                 }
             } catch (Exception | Error e) {
+                // Dart never ran, so nothing armed the next wake: retry.
                 release(appCtx);
+                Log.w("strakalari",
+                        "Warning: headless refresh could not start ("
+                                + e + "); retrying in 5 min.");
+                armRetry(appCtx);
                 return;
             }
             engine = created;
@@ -168,12 +176,17 @@ public class RefreshReceiver extends BroadcastReceiver {
         Log.w("strakalari",
                 "Warning: headless refresh timed out; retrying in 5 min.");
         if (ctx != null) {
-            AlarmManager alarms = ctx.getSystemService(AlarmManager.class);
-            if (alarms != null) {
-                long atMs = System.currentTimeMillis() + RETRY_MS;
-                alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMs,
-                        wakeIntent(ctx));
-            }
+            armRetry(ctx);
+        }
+    }
+
+    /** Arms the wake alarm {@code RETRY_MS} ahead (a run that never finished). */
+    private static void armRetry(@NonNull Context ctx) {
+        AlarmManager alarms = ctx.getSystemService(AlarmManager.class);
+        if (alarms != null) {
+            long atMs = System.currentTimeMillis() + RETRY_MS;
+            alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMs,
+                    wakeIntent(ctx));
         }
     }
 
