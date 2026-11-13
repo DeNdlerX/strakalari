@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -133,6 +134,33 @@ void main() {
               run: fakeRun(capture, 0)),
           isTrue);
       expect(capture.first.$3, const Duration(seconds: 15));
+    });
+  });
+
+  group('runProcess', () {
+    test('returnsExitCodeAndEnforcesTimeoutWithoutConsoleWindow', () async {
+      final (exe, okArgs, errArgs, sleepArgs) = Platform.isWindows
+          ? (
+              'powershell.exe',
+              ['-NoProfile', '-Command', 'exit 0'],
+              ['-NoProfile', '-Command', 'exit 7'],
+              ['-NoProfile', '-Command', 'Start-Sleep -Seconds 5'],
+            )
+          : (
+              '/bin/sh',
+              ['-c', 'exit 0'],
+              ['-c', 'exit 7'],
+              ['-c', 'sleep 5'],
+            );
+      expect(await runProcess(exe, okArgs, timeout: const Duration(seconds: 10)),
+          0);
+      expect(
+          await runProcess(exe, errArgs, timeout: const Duration(seconds: 10)),
+          7);
+      await expectLater(
+        runProcess(exe, sleepArgs, timeout: const Duration(milliseconds: 250)),
+        throwsA(isA<TimeoutException>()),
+      );
     });
   });
 }
