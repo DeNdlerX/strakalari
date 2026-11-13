@@ -2,6 +2,7 @@
 // acknowledges at once; a closed port (the engine dropped the UI isolate
 // while the process lives on) is noticed, its stale name removed, and
 // the headless side runs the job itself.
+import 'dart:async';
 import 'dart:isolate';
 import 'dart:ui';
 
@@ -21,15 +22,17 @@ void main() {
   test('aLivingUiAcknowledgesAtOnceThenDoesTheJob', () async {
     final port = ReceivePort();
     var handedOff = 0;
+    // The job cannot finish until the test releases it, so a 'taken'
+    // answer proves the acknowledgement comes before the job (no timing).
+    final release = Completer<void>();
     final sub = await registerUiRefreshPort(port, onHandOff: () async {
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await release.future;
       handedOff++;
     });
-    final sw = Stopwatch()..start();
     expect(await handOffToUi('alarm', ackTimeout: const Duration(seconds: 5)), isTrue);
-    expect(sw.elapsed, lessThan(const Duration(seconds: 1)),
-        reason: 'the acknowledgement comes before the job runs');
-    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(handedOff, 0, reason: 'the acknowledgement comes before the job runs');
+    release.complete();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
     expect(handedOff, 1);
     await sub.cancel();
     port.close();
