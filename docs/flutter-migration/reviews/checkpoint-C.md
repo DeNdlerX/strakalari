@@ -560,3 +560,27 @@ The main checkout's data files were not opened.
 | Scope | no change under `strakalari/`, `tests/`, `tools/`, `mobile/`, `installer.iss` since `8fd21c5`; `git log flutter-migration..main` is empty, `0ffdcff` is the last ported commit |
 | Architecture | no `package:flutter` in core; no build_runner; `pubspec.lock` committed; Flutter 3.44.8 pinned in `dart.yml` |
 | Hygiene | no upstream; 9 commits by DeNdlerX; no `Co-Authored-By` / `Claude-Session`; no personal file added (`test/parity/config.json` is the known fixture) |
+
+---
+
+## Re-review 3 (2026-11-13)
+
+### Verdict: **PASS**
+
+The owner asked the reviewer to fix the three should-fix items of re-review 2 itself and to
+accept the result. So these fixes were written and checked by the same reviewer; they are
+not independently reviewed. Checkpoint D should read them once more.
+
+| Finding | Fix | How checked |
+|---|---|---|
+| CR2-S1 failed headless start leaves no wake | `RefreshReceiver.java`: an unknown callback handle (`lookupCallbackInformation` gives `null`) falls back to the named entry point `backgroundMain`; a start that throws writes a warning line and arms the 5-minute retry through `armRetry`, which `giveUp()` now shares. | Both Java flavors compile (`:app:compilePhonetestDebugJavaWithJavac`, `:app:compileProdReleaseJavaWithJavac`). Not run on the phone. |
+| CR2-S2 real-submit proof not repeatable | `tools/parity/soak_refresh.py --send-day DD.MM.YYYY`: `confirm` mode, one whole-day `excuse_single`, the seeded dry-run step skipped, refused unless the host is `localhost` / `127.0.0.1` / `[::1]`, as `bin/refresh_dryrun.dart` does. SOAK.md corrected and the run logged. | Guard refused `http://example.com` (exit 1). Proof run with a fresh demo server per side, `--send-day 09.11.2026`: `IDENTICAL (modulo ts)`; 5 outbox and 5 history entries on each side, empty unconfirmed file. Python suite 1643 passed. |
+| CR2-S3 STATUS.md contradicted itself | Header, Modules State column and test mapping no longer say "in progress, unreviewed"; Checkpoint C marked passed with the open Sandbox half. | Read. |
+
+No Dart file changed, so the Dart suites of re-review 2 (core 802 passed / 2 skipped, app 640
+passed / 1 skipped, analyzers clean, parity JSON clean) still stand.
+
+**Still open, not passed:** the Windows Sandbox over-install test (C-M7, desktop half,
+including the toast check of CR2-N2), deferred by the owner; it must pass before Checkpoint D
+can pass. Nothing was run on the phone in this review (CR-M2 and CR2-S1 are compiled, not
+exercised there). macOS and Linux remain unverified, for the owner's CI run.
