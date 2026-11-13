@@ -16,6 +16,11 @@ Reproducible run (phase 9 soak; demo server only, throwaway data dirs)::
 
 Never sends anything: ``excuse_mode`` is forced to ``dry_run`` and Strava
 is disabled. Never point this at a real server or a real data dir.
+
+Opt-in ``--send-day DD.MM.YYYY`` performs one REAL whole-day submit, like
+the Dart side's option of the same name: demo server only (refused unless
+the host is localhost / 127.0.0.1 / [::1]), for the send-path parity proof.
+Use a fresh demo server per side.
 """
 
 from __future__ import annotations
@@ -25,6 +30,7 @@ import json
 import os
 import sys
 from datetime import datetime, timedelta
+from urllib.parse import urlsplit
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, REPO_ROOT)
@@ -39,6 +45,19 @@ def canonical(value):
     return value
 
 
+def is_loopback_send_url(url: str) -> bool:
+    """True when ``url`` targets a loopback host; ``--send-day`` is refused
+    for any other host so this script can never send to a school server."""
+    try:
+        parts = urlsplit(url.strip())
+        host = (parts.hostname or "").lower()
+    except ValueError:
+        return False
+    if not parts.scheme or not parts.netloc:
+        return False
+    return host in ("127.0.0.1", "localhost", "::1")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--url", default="http://127.0.0.1:8080")
@@ -47,7 +66,13 @@ def main() -> None:
     parser.add_argument("--data-dir", default=None,
                         help="throwaway dir (STRAKALARI_DATA_DIR); "
                              "never a real data dir")
+    parser.add_argument("--send-day", default=None, metavar="DD.MM.YYYY",
+                        help="REAL submit of one whole-day excuse "
+                             "(demo server on localhost only)")
     args = parser.parse_args()
+    if args.send_day is not None and not is_loopback_send_url(args.url):
+        raise SystemExit("Refusing --send-day unless target host is "
+                         f"localhost/127.0.0.1/[::1]: {args.url}")
 
     from strakalari.core.audit import recent
     from strakalari.core.automation import Strakalari
@@ -68,7 +93,7 @@ def main() -> None:
         "bakalari_password": args.password,
         "go_back_weeks": 1,
         "go_forward_weeks": 1,
-        "excuse_mode": "dry_run",
+        "excuse_mode": "dry_run" if args.send_day is None else "confirm",
         "strava_order_mode": "confirm",
         "use_strava": False,
     }
@@ -80,36 +105,46 @@ def main() -> None:
         # Seed a deterministic unexcused lesson on the latest loaded school
         # day at least 3 days before today so excuse_pending() exercises
         # generate_excuses + send_excuse in dry_run mode against the server.
-        today_d = datetime.now().date()
-        eligible_days = []
-        for day_key, lessons in (app.timetableData or {}).items():
-            if not isinstance(lessons, list) or not lessons:
-                continue
-            try:
-                parsed = parse_date(day_key).date()
-            except ValueError:
-                continue
-            if (today_d - parsed).days >= 3:
-                eligible_days.append((parsed, day_key, lessons))
-        if eligible_days:
-            eligible_days.sort(key=lambda item: item[0], reverse=True)
-            _, _, target_lessons = eligible_days[0]
-            if isinstance(target_lessons[0], dict):
-                target_lessons[0]["absenceType"] = "Absent"
-                target_lessons[0]["absencetext"] = "neomluveno"
-        pending_sent = app.excuse_pending()
+        pending_sent = 0
+        if args.send_day is None:
+            today_d = datetime.now().date()
+            eligible_days = []
+            for day_key, lessons in (app.timetableData or {}).items():
+                if not isinstance(lessons, list) or not lessons:
+                    continue
+                try:
+                    parsed = parse_date(day_key).date()
+                except ValueError:
+                    continue
+                if (today_d - parsed).days >= 3:
+                    eligible_days.append((parsed, day_key, lessons))
+            if eligible_days:
+                eligible_days.sort(key=lambda item: item[0], reverse=True)
+                _, _, target_lessons = eligible_days[0]
+                if isinstance(target_lessons[0], dict):
+                    target_lessons[0]["absenceType"] = "Absent"
+                    target_lessons[0]["absencetext"] = "neomluveno"
+            pending_sent = app.excuse_pending()
 
         # A dry-run one-click excuse for a synthetic past absence (fill
-        # only, mirrors refresh_dryrun.dart).
+        # only), or a REAL whole-day submit when --send-day is given (demo
+        # server only); mirrors refresh_dryrun.dart.
         past = datetime.now() - timedelta(days=5)
-        day = past.strftime("%d.%m.%Y")
-        single_outcome = app.excuse_single(
-            {"type": "days and hours",
-             "starting_day": day,
-             "ending_day": day,
-             "starting_lesson": 2,
-             "ending_lesson": 4},
-            "Omluvte prosim absenci.")
+        day = args.send_day or past.strftime("%d.%m.%Y")
+        if args.send_day is None:
+            single_outcome = app.excuse_single(
+                {"type": "days and hours",
+                 "starting_day": day,
+                 "ending_day": day,
+                 "starting_lesson": 2,
+                 "ending_lesson": 4},
+                "Omluvte prosim absenci.")
+        else:
+            single_outcome = app.excuse_single(
+                {"type": "pure days",
+                 "starting_day": day,
+                 "ending_day": day},
+                "Omluvenka test")
 
         history = []
         try:

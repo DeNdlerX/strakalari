@@ -70,9 +70,11 @@ outbox/history fills). Both must compare identically.
 
 Optional (not daily, demo server only): the real-submit proof with a
 fresh server instance per side —
-`soak_refresh.py --send-day DD.MM.YYYY` is dry-run-only tooling; the
-Dart side takes `--send-day DD.MM.YYYY`. Sent/history/outbox must match.
-Record the date and the day used.
+both `soak_refresh.py` and `bin/refresh_dryrun.dart` take
+`--send-day DD.MM.YYYY` (one real whole-day submit in `confirm` mode,
+refused unless the host is localhost / 127.0.0.1 / [::1]). Compare with
+`soak_compare.py`: sent/history/outbox must match. Record the date and
+the day used.
 
 ## What to compare (the checklist)
 
@@ -100,6 +102,7 @@ scratch dir, never committed user data):
 `YYYY-MM-DD · py@<sha> dart@<sha> (git rev-parse --short HEAD) · suites OK · refresh IDENTICAL · fetch OK · notes: …`
 
 - `2026-11-13 · py@0ffdcff dart@2f2b0f6 · suites OK (1643 py, 802+2skip core, 640+1skip app, 5/5 APK) · refresh IDENTICAL (fresh & accumulating) · fetch OK (31116 B) · notes: Day 1 against local bakalari_demo_server; fixed Windows toast console flash (9d868c5) and MSIX VC++ runtime DLLs + AppId comment (2f2b0f6); real-submit --send-day 09.11.2026 proof IDENTICAL (modulo ts) & local Release Strakalari.exe + MSIX build OK (vcruntime140/vcruntime140_1/msvcp140 packed)`
+- `2026-11-13 · py@0ffdcff dart@b79b29b · real-submit proof repeated by the reviewer with the committed scripts (`--send-day 09.11.2026`, a fresh demo server per side): IDENTICAL (modulo ts); 5 outbox entries and 5 history entries on each side, empty unconfirmed file`
 
 ## Exit criteria (all must hold)
 
