@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 7–8 (Checkpoint C rework, round 2) · Next step: **Fix every finding in the "Re-review (2026-11-13)" section of `reviews/checkpoint-C.md` (CR-M1 and CR-M2 first, then CR-S1 and CR-S2), one commit per finding, then stop for re-review.** The Windows Sandbox re-test (C-M7, desktop half) stays deferred by the owner: do not start it.
+Current phase: 7–8 (Checkpoint C rework, round 2 complete) · Next step: **Checkpoint C re-review (round 2).** CR-M1, CR-M2, CR-S1, and CR-S2 are fixed and verified; the Windows Sandbox re-test (C-M7, desktop half) remains deferred by the owner until the migration is done.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -701,7 +701,7 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
 
 - (Answered 2026-11-13: the owner allowed the phone test, done in part, see Checkpoint notes.) **Was:** Phone test (C-M7, 2026-11-12), for the owner: the review asks to install the Flutter `.test` build *over* the Flet `.test` build, so the saved login is checked across the update. That means: uninstall the Flutter `.test` app now on the Pixel (it only holds demo data), build and install the Flet `.test` app, set it up on the demo server in dry run, then install the Flutter `.test` build over it. OK to do that? The real Play Store app is never touched.
 - (Answered 2026-11-12 by the owner: release phone builds come from a neutral folder — done, `tool/build_android.dart`; the APK built that way passes Python's `check_package`, same release key, versionCode 10099.)
-- **Open:** `packaging_privacy_test.dart` scans an APK's raw bytes, so on a release APK it also flags the file *names* `secret.key` and `already_excused_lessons.json` that the compiled code mentions; Python's `check_package` reads the APK's file list (ported in `tool/android_build.dart`, which the release build runs). Should the Dart test use that check instead? I did not change the test.
+- (Answered 2026-11-13 in `reviews/checkpoint-C.md` CR-S1; fixed in `c474019`.) **Was:** `packaging_privacy_test.dart` scans an APK's raw bytes, so on a release APK it also flags the file *names* `secret.key` and `already_excused_lessons.json` that the compiled code mentions; Python's `check_package` reads the APK's file list (ported in `tool/android_build.dart`, which the release build runs). Should the Dart test use that check instead? I did not change the test.
 - (Answered 2026-11-12 by the owner, C-N3: the reboot notice is not needed — removed.)
 - **Open (found on the phone 2026-11-13):** the phone's Settings → Background hint (`run_in_background_hint`, ported from Python's strings) still says "after a reboot or an app update, open it once". Since the reboot notice is gone and the refresh restarts by itself, should the text drop that sentence (cs + en)? Not changed.
 - **Python behaviour that looks wrong (found on the phone 2026-11-13, ported as is, not fixed):** the Flet app could not wrap the password key on the Pixel 7 Pro: `Warning: Android Keystore unavailable (TypeError: Invalid instance of 'javax/crypto/SecretKey' passed for a 'java/security/cert/Certificate'); keeping secret.key.` (pyjnius picks the wrong `KeyStore` overload in `core/android.py`). So Flet users keep a plain `secret.key`; the Flutter update moves it into the Keystore (seen on the phone, below).
@@ -918,6 +918,12 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
   - **Blocker found:** in today's Windows Sandbox every unsigned program is refused ("An Application Control policy has blocked this file"): the installers and Python, both from the shared folders and after copying them onto the Sandbox's own disk. On the host, Smart App Control is off (`VerifiedAndReputablePolicyState 0`). The 2026-11-12 Sandbox run did not hit this, so something changed in the Sandbox since. Whoever runs the test later has to solve this first (e.g. look at the Sandbox's CodeIntegrity event log for the policy).
 
 - 2026-11-13 · Checkpoint C re-review: **FAIL** (narrow: all 4 blockers, C-M1 … C-M6, C-M8 and C-S1 … C-S7 fixed; open: 2 new must-fix CR-M1 differing `secret.key` deleted on the phone, CR-M2 a headless run over ten minutes is killed and nothing is re-armed; 2 should-fix CR-S1, CR-S2; the Windows Sandbox half of C-M7 stays open by the owner's decision and must pass before Checkpoint D) — [docs/flutter-migration/reviews/checkpoint-C.md](docs/flutter-migration/reviews/checkpoint-C.md#re-review-2026-11-13)
+- 2026-11-13 · Checkpoint C rework, round 2 (after re-review). Fixed, one commit each:
+  - **CR-M1** (`4ad019b`): in `app/lib/platform/android/android_keystore.dart`, when `secret.key` differs from `secret.key.wrapped`, register `WarmedAndroidKeystore(key, blob)` with the Keystore's unwrapped `key` (not `fileKey`), so core's `_androidLoadOrCreate` enters the differing-file branch and keeps `secret.key` untouched alongside `secret.key.wrapped`. Added `differingPlainKeyIsKeptAlongsideWrappedKeyAcrossStarts` in `app/test/android_keystore_test.dart` (7/7 passed).
+  - **CR-M2** (`02646b5`): in `RefreshReceiver.java`, extended `HOLD_MS` from 10 min to 32 min (30 min refresh wait + 60 s update wait + margin), saved `appContext` while running, logged a warning in `giveUp()`, and armed a 5-min retry wake (`AlarmManager.setAndAllowWhileIdle` with `wakeIntent`) on timeout; in `app/lib/platform/android/background.dart`, `runHeadlessTick` now arms a fallback wake (`nextDue(now, interval, now) + 10 s`) before `runner.runAllOnce()` and always re-arms in `finally`. Added `fallbackWakeIsArmedBeforeTheJobStarts` in `app/test/android_background_test.dart` (9/9 passed); `:app:compilePhonetestDebugJavaWithJavac` and `:app:compileProdReleaseJavaWithJavac` succeeded.
+  - **CR-S1** (`c474019`): `app/test/packaging_privacy_test.dart` now uses `checkPackage` + `buildPathMarkers` from `packages/strakalari_core/tool/android_build.dart` for the `STRAKALARI_APK` / `STRAKALARI_AAB` check (5/5 passed against `dist/flutter-android/Strakalari-0.1.0-android.apk`).
+  - **CR-S2** (`45c5d6c`): `PhoneBackground.scheduleWake` in `app/lib/platform/startup.dart` now uses `loop.intervalMinutes` instead of truncating to a whole number. Added `scheduleWakeUsesRunnersFractionalInterval` in `app/test/android_phone_background_test.dart` (14/14 passed).
+  - Checks: core `dart analyze` clean, `dart test` 801 passed / 2 skipped; app `flutter analyze` clean, `flutter test` 640 passed / 1 skipped (and 5/5 passed with `STRAKALARI_APK=dist/flutter-android/Strakalari-0.1.0-android.apk`); Python reference suite 1643 passed; `tools/parity/dump.py` + `git diff --exit-code packages/strakalari_core/test/parity/` clean.
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 
@@ -1001,21 +1007,26 @@ Unsure / needs a second pair of eyes:
 - Planner cache key holiday comparison: stringified sorted dates used for pure value comparison across Dart records.
 - `wakeupAvailable` remains stubbed to false pending Android Phase 8 implementation.
 
-### ⛔ Checkpoint C: platform review (phases 7–8, in progress, unreviewed)
+### ⛔ Checkpoint C: platform review (phases 7–8, rework round 2 complete, ready for re-review)
 
-In progress, unreviewed, largely UNVERIFIED on this machine (see the per-area
-notes): desktop tray/autostart/single-instance/notifications/keystores,
-Inno (AppId kept) + MSIX adaptations, CI release jobs; Android Java
-moved + MethodChannel + headless `backgroundMain` + boot re-arm +
-widget/alarms + Keystore unwrap + `.test` flavor + privacy test.
+Done: desktop tray/autostart/single-instance/notifications/keystores,
+Inno (AppId kept) + MSIX adaptations, CI release jobs (including
+`build-flutter-android`); Android Java moved + MethodChannel + headless
+`backgroundMain` + UI-isolate hand-off + boot re-arm + widget/alarms +
+Keystore unwrap + `.test` flavor + privacy test; all Checkpoint C
+review and re-review code findings (`C-B1..C-B4`, `C-M1..C-M6`, `C-M8`,
+`C-S1..C-S7`, `CR-M1..CR-M2`, `CR-S1..CR-S2`) fixed with tests; phone
+tests (parts 1 & 2) passed on the Pixel 7 Pro for over-install over Flet
+`.test`, notifications, reboot background alarm, wake-up alarm arming,
+home-screen widget, and Back navigation.
+Deferred by the owner until the migration is done: Windows Sandbox
+over-install re-test (`C-M7` desktop half: Credential Manager key + MSIX;
+hit an unsigned-binary Application Control block in Sandbox on 2026-11-13).
 How to verify:
-- `flutter analyze` (clean); `:app:compileProd/PhonetestDebugSources`
-  BUILD SUCCESSFUL; `packaging_privacy_test.dart` 4 pass + 1 skip
-  (needs `STRAKALARI_APK/AAB`).
-- Sandbox over-install test (phase 7) and on-phone `.test` test
-  (phase 8) — exact steps in the agents' reports / phase-7-desktop.md.
-  Before the first phone install the owner confirms the `.test` app is
-  on dry run / demo server.
+- `cd packages/strakalari_core && dart analyze && dart test` (801 passed, 2 skipped: POSIX permissions + Linux/macOS flock probe).
+- `cd app && flutter analyze && flutter test` (640 passed, 1 skipped unless `STRAKALARI_APK`/`STRAKALARI_AAB` is set; 5/5 passed with `STRAKALARI_APK=dist/flutter-android/Strakalari-0.1.0-android.apk`).
+- `PYTHONUTF8=1 python -m pytest tests/ -q` (1643 passed) and `PYTHONUTF8=1 python tools/parity/dump.py` + `git diff --exit-code packages/strakalari_core/test/parity/` (clean).
+- Java/Kotlin compile: `:app:compilePhonetestDebugJavaWithJavac` and `:app:compileProdReleaseJavaWithJavac` pass (`BUILD SUCCESSFUL`).
 Phase 7 build check (2026-11-12): `flutter build windows --release` succeeds
 (`Strakalari.exe` + plugin DLLs). Inno Setup 6 is at `%LOCALAPPDATA%\Programs\Inno Setup 6`.
 Sandbox over-install test still not run.
