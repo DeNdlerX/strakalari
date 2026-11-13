@@ -13,6 +13,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../packages/strakalari_core/tool/android_build.dart' as android_build;
+
 /// The same personal-file names `tests/test_packaging_privacy.py` and
 /// `tools/make_mobile.py` guard (plus the mobile-only extras).
 final RegExp personal = RegExp(
@@ -123,9 +125,21 @@ void main() {
       if (paths.isEmpty) {
         markTestSkipped('Set STRAKALARI_APK/AAB to scan a built artifact.');
       }
+      final home = Platform
+              .environment[Platform.isWindows ? 'USERPROFILE' : 'HOME'] ??
+          '';
+      final repo = File('android/app/build.gradle.kts').existsSync()
+          ? Directory.current.parent.path
+          : (File('app/android/app/build.gradle.kts').existsSync()
+              ? Directory.current.path
+              : null);
+      final markers = android_build.buildPathMarkers(
+          [if (home.isNotEmpty) home, ?repo]);
       for (final path in paths) {
         final bytes = File(path).readAsBytesSync();
-        expect(privacyLeaks(bytes), isEmpty, reason: path);
+        final result = android_build.checkPackage(bytes, markers);
+        expect(result.leaked, isEmpty, reason: path);
+        expect(result.paths, isEmpty, reason: path);
       }
     }, skip: Platform.environment['STRAKALARI_APK'] == null &&
         Platform.environment['STRAKALARI_AAB'] == null);
