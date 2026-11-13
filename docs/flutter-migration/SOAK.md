@@ -99,6 +99,8 @@ scratch dir, never committed user data):
 
 `YYYY-MM-DD · py@<sha> dart@<sha> (git rev-parse --short HEAD) · suites OK · refresh IDENTICAL · fetch OK · notes: …`
 
+- `2026-11-13 · py@0ffdcff dart@2f2b0f6 · suites OK (1643 py, 802+2skip core, 640+1skip app, 5/5 APK) · refresh IDENTICAL (fresh & accumulating) · fetch OK (31116 B) · notes: Day 1 against local bakalari_demo_server; fixed Windows toast console flash (9d868c5) and MSIX VC++ runtime DLLs + AppId comment (2f2b0f6)`
+
 ## Exit criteria (all must hold)
 
 1. **No open parity differences**: items 1–9 green for several

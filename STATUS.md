@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 7–8 (Checkpoint C rework, round 2 complete) · Next step: **Checkpoint C re-review (round 2).** CR-M1, CR-M2, CR-S1, and CR-S2 are fixed and verified; the Windows Sandbox re-test (C-M7, desktop half) remains deferred by the owner until the migration is done.
+Current phase: 9 (Parity soak & release prep — Day 1 complete) · Next step: **Phase 9 multi-day soak (Days 2–3) + Windows Sandbox desktop over-install test (`C-M7`)**, then combined Checkpoints A–D review and owner go-ahead before any beta cut.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -37,10 +37,10 @@ UI-isolate hand-off, boot re-arm, widget/alarms, Keystore unwrap,
 `.test` flavor, privacy test port. `:app:compileProd/PhonetestDebugSources`
 green, `flutter analyze` clean. On-phone verification pending.
 ⛔ Checkpoint C: platform review (unreviewed).
-Phase 9 (soak prep) is in progress, unreviewed: soak_compare/soak_refresh scripts,
-SOAK.md routine, README/CONTRIBUTING/PRIVACY wording; multi-day soak not
-yet run. Beta release waits for Checkpoint A–D sign-off and the owner's
-go-ahead. ⛔ Checkpoint D: release review (unreviewed).
+Phase 9 (parity soak & release prep) has Day 1 green and CR-N5 fixes landed
+(`9d868c5`, `2f2b0f6`); Days 2–3 soak and the Windows Sandbox re-test (`C-M7`)
+remain before Checkpoint D. Beta release waits for Checkpoints A–D sign-off
+and the owner's go-ahead. ⛔ Checkpoint D: release review (unreviewed).
 Phase 10 (switch) NOT started: needs reviewer sign-off + owner merge.
 
 ## Phase 0 (done)
@@ -1049,12 +1049,25 @@ Unsure / needs a second pair of eyes:
 - Sync-core-bridge vs async-channel seams (phase 8 warm-up design).
 - macOS/Linux code paths, release builds, CI jobs — owner/CI must run.
 
-### ⛔ Checkpoint D: release review (phase 9, in progress, unreviewed)
+### ⛔ Checkpoint D: release review (phase 9, Day 1 green, unreviewed)
 
-In progress, unreviewed: `tools/parity/soak_refresh.py` + `soak_compare.py`,
-`docs/flutter-migration/SOAK.md` routine, README/PRIVACY/CONTRIBUTING
-wording. Multi-day side-by-side soak and the beta cut wait for
-Checkpoints A–C sign-off and the owner's go-ahead — no tag/merge/push done.
+Done in Phase 9 so far:
+- `main` check (`0ffdcff`): `git log --oneline flutter-migration..main` empty; no unported Python changes on `main`.
+- Docs audit: `README.md`, `README.en.md`, `PRIVACY.md`, `CONTRIBUTING.md` updated for Flutter identity/auto-carryover and Android alarm wording.
+- Day 1 parity soak against local `tools/bakalari_demo_server.py` (scratch dirs, [SOAK.md](docs/flutter-migration/SOAK.md)):
+  - Fresh refresh soak (`soak_refresh.py` vs `dart bin/refresh_dryrun.dart` -> `soak_compare.py`): `IDENTICAL (modulo ts)`.
+  - Accumulating refresh soak (reusing Day 1 scratch dirs): `IDENTICAL (modulo ts)`.
+  - Fetch parity (`fetch.py` vs `dart bin/parity_fetch.dart`): `FETCH-OK (31116 bytes identical)`.
+- Carry-over review notes fixed / verified (`CR-N5`, `R-N2`, `R-N1`, `CR-N4`, `A-N3`):
+  - **Windows toast console flash (`CR-N5`, `9d868c5`):** `runProcess` in `packages/strakalari_core/lib/src/platform/desktop_notify.dart` now launches Windows processes via `CreateProcessW` (`CREATE_NO_WINDOW` + `SW_HIDE`) in `Isolate.run`, preventing a flashing PowerShell console window from the GUI app; added `runProcess` test in `desktop_notify_test.dart`.
+  - **MSIX VC++ runtime & comment typo (`CR-N5` / `R-N2`, `2f2b0f6`):** `.github/workflows/dart.yml` `build-flutter-msix` now copies `vcruntime140.dll`, `vcruntime140_1.dll`, `msvcp140.dll` into `flutter-bundle/` before `tools/make_msix.py`; fixed the stale `{D94B0F7F-...}` AppId comment typo (`{D94B0B7F-...}`).
+  - **`R-N1` & `CR-N4`:** `clockAppWeekday` (`wakeup.dart:509`) real-elapsed 24 h check and `A-N3` JSON key ordering are unchanged/covered by parity; `TestMsixVersion` and `test_store_submit_loads` remain in `tests/test_store_package.py` until Phase 10 removes Python packaging tools.
+- Latest verification (`2f2b0f6`): core `dart analyze` clean, `dart test` 802 passed / 2 skipped (POSIX permission bits + Linux/macOS flock probe); app `flutter analyze` clean, `flutter test` 640 passed / 1 skipped (and 5/5 passed with `STRAKALARI_APK=dist/flutter-android/Strakalari-0.1.0-android.apk`); Python reference suite `pytest tests/` 1643 passed; `tools/parity/dump.py` + `git diff --exit-code packages/strakalari_core/test/parity/` clean.
+
+Still required before Phase 9 exit / beta cut:
+- Multi-day soak Days 2–3 (minimum 3 consecutive days green on fresh + reused dirs per `SOAK.md`).
+- Windows Sandbox desktop over-install re-test (`C-M7` desktop half, previously blocked by Sandbox Application Control policy).
+- Combined Checkpoints A–D review and explicit owner go-ahead before tagging any beta or starting Phase 10.
 
 Phase 1 cross-implementation proofs (for Checkpoint A):
 - Fernet: Dart decrypted a Python-made token and Python decrypted a
