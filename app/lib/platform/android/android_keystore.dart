@@ -184,7 +184,7 @@ Future<Uint8List> warmAndroidKeystore(
         // from a backup). Never guess, keep using it.
         // ignore: avoid_print
         print('Warning: $keyFile differs from $wrappedFile; using the file.');
-        androidKeystoreBridge = WarmedAndroidKeystore(fileKey, blob);
+        androidKeystoreBridge = WarmedAndroidKeystore(key, blob);
         return fileKey;
       }
       if (fileKey != null) {

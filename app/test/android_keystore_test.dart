@@ -148,4 +148,24 @@ void main() {
     expect(_names(data), ['secret.key.lock', 'secret.key.wrapped']);
     expect(await start(), keys[0]);
   });
+
+  test('differingPlainKeyIsKeptAlongsideWrappedKeyAcrossStarts', () async {
+    await start();
+    final wrappedBefore =
+        File('${data.path}/secret.key.wrapped').readAsBytesSync();
+    final fileKey = Fernet.generateKey();
+    File('${data.path}/secret.key').writeAsBytesSync(fileKey);
+
+    expect(await start(), fileKey);
+    expect(File('${data.path}/secret.key').existsSync(), isTrue);
+    expect(File('${data.path}/secret.key').readAsBytesSync(), fileKey);
+    expect(File('${data.path}/secret.key.wrapped').readAsBytesSync(),
+        wrappedBefore);
+
+    expect(await start(), fileKey);
+    expect(File('${data.path}/secret.key').existsSync(), isTrue);
+    expect(File('${data.path}/secret.key').readAsBytesSync(), fileKey);
+    expect(File('${data.path}/secret.key.wrapped').readAsBytesSync(),
+        wrappedBefore);
+  });
 }
