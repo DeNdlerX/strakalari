@@ -450,3 +450,113 @@ The main checkout's data files were not opened.
 | Hygiene | no upstream; 37 commits by DeNdlerX; no `Co-Authored-By` / `Claude-Session`; no personal file ever added; APK asset name equals `build.yml`'s |
 | CR-M1 | throwaway probe test, output above; deleted again |
 | CR-M2 | read from `RefreshReceiver.java` and `background.dart`; not run |
+
+---
+
+## Re-review 2 (2026-11-13)
+
+Reviewed at `263f3d8`: the 9 commits `8fd21c5..263f3d8` (the four fixes `4ad019b`, `02646b5`,
+`c474019`, `45c5d6c`, the STATUS commit `ef66763`, and four Phase 9 commits made before this
+re-review: `9d868c5`, `2f2b0f6`, `c4e7be2`, `263f3d8`). Fresh session; the reviewer changed no
+code.
+
+### Verdict: **PASS WITH FIXES**
+
+CR-M1, CR-M2, CR-S1 and CR-S2 are fixed in the code and tested. No blocker and no must-fix is
+open. Left: **3 should-fix** below, and the desktop half of **C-M7** (Windows Sandbox
+over-install with the key in Credential Manager, and the MSIX), which the owner put off on
+purpose. C-M7 is not passed: it stays a release condition and must pass before Checkpoint D
+can pass.
+
+### Findings of the last re-review
+
+| Finding | State | How checked |
+|---|---|---|
+| CR-M1 differing `secret.key` deleted | fixed | `app/lib/platform/android/android_keystore.dart:187` registers the bridge with the Keystore's key, so core (`packages/strakalari_core/lib/src/storage/secret_store.dart:112-117`) reaches the same "differs, using the file" branch as `strakalari/core/secret_store.py:216-220` and keeps the file. `android_keystore_test.dart` `differingPlainKeyIsKeptAlongsideWrappedKeyAcrossStarts`: two starts, same key, both files byte-identical. |
+| CR-M2 headless run killed, no retry | fixed | `RefreshReceiver.java:52-53` (32 min hold, 5 min retry), `:158-178` `giveUp()` logs a warning and arms the wake through the same `wakeIntent` and the same `setAndAllowWhileIdle` call as `StrakalariChannel.scheduleWake` (`:392-402`). `app/lib/platform/android/background.dart:301-320`: a fallback wake one interval ahead before `runAllOnce()`, the real wake in `finally`. `android_background_test.dart` `fallbackWakeIsArmedBeforeTheJobStarts` checks the order against the fake channel. Both Java flavors compile (`:app:compilePhonetestDebugJavaWithJavac`, `:app:compileProdReleaseJavaWithJavac`, run by the reviewer). Not run on the phone. |
+| CR-S1 privacy test on a release APK | fixed | `app/test/packaging_privacy_test.dart:128-143` uses `checkPackage` / `buildPathMarkers` (`packages/strakalari_core/tool/android_build.dart:47-101`), read against `tools/make_mobile.py:379-436`: same markers, same nested-zip walk, same two checks. Run by the reviewer with `STRAKALARI_APK=dist/flutter-android/Strakalari-0.1.0-android.apk`: 5 passed. |
+| CR-S2 whole-number interval | fixed | `app/lib/platform/startup.dart:274` uses `loop.intervalMinutes` (`app.py:1026`); `android_phone_background_test.dart` `scheduleWakeUsesRunnersFractionalInterval` (2.5 min gives +2:40). |
+
+### New findings
+
+#### Should-fix
+
+- **CR2-S1 Android: a headless start that fails leaves no wake armed.**
+  `app/android/app/src/main/java/io/github/dendlerx/strakalari/android/RefreshReceiver.java:128-150`.
+  (a) `FlutterCallbackInformation.lookupCallbackInformation(handle)` returns `null` when the
+  stored handle is not known to this build (possible after an app update); the code passes
+  that `null` on, the start throws, and the `catch` only calls `release(appCtx)`.
+  (b) Any other exception at start ends the same way. In both cases the alarm that started
+  the run is used up and Dart never ran, so nothing armed the next one: background refreshes
+  stop without a word until the app is opened, the case CR-M2 was about.
+  Correct: when `info == null`, fall back to the named entry point `backgroundMain` (the
+  `else` branch already there); in the `catch`, write a `Log.w("strakalari", "Warning: …")`
+  line and arm the same 5-minute retry wake that `giveUp()` arms (share one helper). No Dart
+  change needed.
+- **CR2-S2 The "real-submit proof" in STATUS.md cannot be repeated from the repository.**
+  `STATUS.md` (Checkpoint D notes) and `docs/flutter-migration/SOAK.md` (log line of
+  2026-11-13) say a real submit with `--send-day 09.11.2026` was "IDENTICAL" on both sides.
+  Only the Dart side has that option (`packages/strakalari_core/bin/refresh_dryrun.dart:75`);
+  `tools/parity/soak_refresh.py` has no `--send-day`, and SOAK.md itself calls it
+  "dry-run-only tooling". How the Python side was run is not recorded and no script for it
+  is committed. Correct: add the option to `tools/parity/soak_refresh.py` (allowed: it is
+  under `tools/parity/`), doing what the Dart side does (`excuse_mode: confirm`, one
+  whole-day submit through `send_excuse`, refused unless the host is `127.0.0.1`,
+  `localhost` or `[::1]`), fix the SOAK.md sentence, and re-run the proof with a fresh demo
+  server per side. Or remove the claim. Checkpoint D will not accept it as it stands.
+- **CR2-S3 STATUS.md contradicts itself at the top.** Lines 29–39 still say phases 7 and 8
+  are "in progress, unreviewed … On-phone verification pending" and "Checkpoint C: platform
+  review (unreviewed)"; the Modules table still marks most UI rows "in progress,
+  unreviewed" although Checkpoint B passed. Bring the header and the State column in line
+  with the Checkpoint notes (Checkpoint D checks that nothing in STATUS.md is left open or
+  wrong).
+
+#### Notes
+
+- **CR2-N1 Process.** Next step after the last re-review said "then stop for re-review".
+  The four Phase 9 commits were made anyway. They are reviewed here and nothing wrong was
+  found in them, but the rule stands: at "stop for re-review", stop.
+- **CR2-N2** `packages/strakalari_core/lib/src/platform/desktop_notify.dart:55-60, 170-278`
+  (`CreateProcessW`, `CREATE_NO_WINDOW`, `STARTF_USESHOWWINDOW` + `SW_HIDE`, like
+  `strakalari/core/notify.py:131-142`): struct layout, quoting (`CommandLineToArgvW` rules,
+  as Python's `list2cmdline`), handle and heap clean-up and the timeout kill read line by
+  line; accepted. The test `returnsExitCodeAndEnforcesTimeoutWithoutConsoleWindow` checks
+  exit code and timeout only; that no console window flashes can only be seen by eye in a
+  release build. Add it to the Sandbox checklist (C-M7).
+- **CR2-N3** `RefreshReceiver.java:110, 153`: the wakelock and the give-up timer both run
+  out after exactly `HOLD_MS`. Harmless in practice (both fire on the main thread, the lock
+  first), no change required; a lock a few seconds longer would remove the doubt.
+- **CR2-N4** `.github/workflows/dart.yml:239-248` copies the three VC++ runtime DLLs from
+  the runner's `System32` into the MSIX bundle, like `installer.iss:68-70`. Not run by the
+  reviewer (no CI, no MSIX install); belongs to the Sandbox test and the owner's CI run.
+- **CR2-N5** For Checkpoint D: the README / PRIVACY / CONTRIBUTING wording was changed in
+  `2b17249` (2026-11-08), before most of phases 5–8 existed. It has not been reviewed yet
+  and must be re-read against the finished app at Checkpoint D. The soak has one day logged
+  of the three SOAK.md requires.
+
+### Not verified (not passed on trust)
+
+- **Windows Sandbox (C-M7, desktop half):** unchanged, put off by the owner. Release
+  condition for Checkpoint D. Add the toast check of CR2-N2.
+- **Phone:** nothing was run on the phone in this session; CR-M2's Java was compiled, not
+  exercised. The earlier phone results are the migrating agent's.
+- **macOS and Linux:** all of it, as listed in the first review. For the owner's CI run.
+
+### What I verified, and how
+
+Flutter 3.44.8 / Dart 3.12.2, Windows 11, 13 Nov 2026. Nothing contacted except localhost.
+The main checkout's data files were not opened.
+
+| Check | Result |
+|---|---|
+| `dart analyze` / `dart test` (core) | clean / 802 passed, 2 skipped (POSIX permission bits; the flock probe is Linux and macOS only) |
+| `flutter analyze` / `flutter test` (app) | clean / 640 passed, 1 skipped (APK scan; run separately with `STRAKALARI_APK`: 5 passed) |
+| Python suite | 1643 passed |
+| `tools/parity/dump.py` + `git diff --exit-code` on `test/parity/` | clean, working tree unchanged |
+| Android Java | both compile tasks `BUILD SUCCESSFUL` (after `flutter build apk --config-only`, which only rewrote the untracked `local.properties`) |
+| Dry-run parity (Phase 9 claim) | own demo server on localhost, fresh throwaway folders: `soak_refresh.py` vs `bin/refresh_dryrun.dart` gives `IDENTICAL (modulo ts)`; a second run on the same folders gives `IDENTICAL (modulo ts)`; `fetch.py` vs `parity_fetch.dart` byte-identical (31116 bytes); 4 audit lines on each side |
+| Test integrity | diff of all test files since `8fd21c5`: 102 lines added, 1 removed (the raw-byte scan replaced by `checkPackage`, as CR-S1 asked). No `skip:` added, no loosened assertion; the one new `isNotNull` is followed by value checks |
+| Pitfalls | one new `RegExp` (`[\s"]`, command-line quoting, no Python pattern to match); no new `catch (_)`, no `DateTime.now()`, no `jsonEncode`, no date maths in the changed Dart |
+| Scope | no change under `strakalari/`, `tests/`, `tools/`, `mobile/`, `installer.iss` since `8fd21c5`; `git log flutter-migration..main` is empty, `0ffdcff` is the last ported commit |
+| Architecture | no `package:flutter` in core; no build_runner; `pubspec.lock` committed; Flutter 3.44.8 pinned in `dart.yml` |
+| Hygiene | no upstream; 9 commits by DeNdlerX; no `Co-Authored-By` / `Claude-Session`; no personal file added (`test/parity/config.json` is the known fixture) |

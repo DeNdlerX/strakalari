@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 9 (Parity soak & release prep — Day 1 complete) · Next step: **Phase 9 multi-day soak (Days 2–3) + Windows Sandbox desktop over-install test (`C-M7`)**, then combined Checkpoints A–D review and owner go-ahead before any beta cut.
+Current phase: 7–8 (Checkpoint C rework, round 3; Phase 9 Day 1 already logged) · Next step: **Fix every finding in the "Re-review 2 (2026-11-13)" section of `reviews/checkpoint-C.md` (CR2-S1, CR2-S2, CR2-S3), one commit per finding, then stop for re-review.** Do not continue Phase 9 before that re-review. The Windows Sandbox re-test (C-M7, desktop half) stays deferred by the owner: do not start it.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -924,6 +924,7 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
   - **CR-S1** (`c474019`): `app/test/packaging_privacy_test.dart` now uses `checkPackage` + `buildPathMarkers` from `packages/strakalari_core/tool/android_build.dart` for the `STRAKALARI_APK` / `STRAKALARI_AAB` check (5/5 passed against `dist/flutter-android/Strakalari-0.1.0-android.apk`).
   - **CR-S2** (`45c5d6c`): `PhoneBackground.scheduleWake` in `app/lib/platform/startup.dart` now uses `loop.intervalMinutes` instead of truncating to a whole number. Added `scheduleWakeUsesRunnersFractionalInterval` in `app/test/android_phone_background_test.dart` (14/14 passed).
   - Checks: core `dart analyze` clean, `dart test` 801 passed / 2 skipped; app `flutter analyze` clean, `flutter test` 640 passed / 1 skipped (and 5/5 passed with `STRAKALARI_APK=dist/flutter-android/Strakalari-0.1.0-android.apk`); Python reference suite 1643 passed; `tools/parity/dump.py` + `git diff --exit-code packages/strakalari_core/test/parity/` clean.
+- 2026-11-13 · Checkpoint C re-review 2: **PASS WITH FIXES** (CR-M1, CR-M2, CR-S1, CR-S2 fixed; open: 3 should-fix CR2-S1 … CR2-S3; the Sandbox half of C-M7 stays a release condition for Checkpoint D) — [docs/flutter-migration/reviews/checkpoint-C.md](docs/flutter-migration/reviews/checkpoint-C.md)
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 
