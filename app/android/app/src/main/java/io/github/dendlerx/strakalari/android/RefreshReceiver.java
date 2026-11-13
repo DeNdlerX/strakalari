@@ -10,6 +10,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 
@@ -38,16 +39,21 @@ import io.flutter.view.FlutterCallbackInformation;
  *
  * <p>Only one run at a time: a second wake while one runs is dropped (the
  * next armed wake retries). The CPU is held until Dart reports
- * {@code backgroundDone}, or a ten-minute timeout releases everything.
+ * {@code backgroundDone}, or a 32-minute timeout releases everything (covering
+ * the 30-minute job wait plus the 60-second update check) and arms a 5-minute
+ * retry wake.
  */
 public class RefreshReceiver extends BroadcastReceiver {
     static final String ACTION_WAKE =
             "io.github.dendlerx.strakalari.android.ACTION_REFRESH_RUN";
     private static final String PREFS = "strakalari_background";
     private static final String KEY_CALLBACK = "bg_callback";
-    private static final long HOLD_MS = 10 * 60 * 1000L;
+    // Longest allowed run: 30 min refresh job wait + 60 s update wait + margin.
+    private static final long HOLD_MS = 32 * 60 * 1000L;
+    private static final long RETRY_MS = 5 * 60 * 1000L;
     private static final int REQUEST_WAKE = 7305;
 
+    private static Context appContext;
     private static FlutterEngine engine;
     private static StrakalariChannel headlessChannel;
     private static PowerManager.WakeLock lock;
@@ -73,25 +79,7 @@ public class RefreshReceiver extends BroadcastReceiver {
     /** Dart's end-of-run signal: releases the wakelock and the engine. */
     static void release(@NonNull Context ctx) {
         synchronized (RefreshReceiver.class) {
-            handler.removeCallbacks(timeout);
-            if (lock != null) {
-                try {
-                    if (lock.isHeld()) {
-                        lock.release();
-                    }
-                } catch (RuntimeException ignored) {
-                    // Already released.
-                }
-                lock = null;
-            }
-            if (headlessChannel != null) {
-                headlessChannel.detach();
-                headlessChannel = null;
-            }
-            if (engine != null) {
-                engine.destroy();
-                engine = null;
-            }
+            releaseStatic();
         }
     }
 
@@ -115,6 +103,7 @@ public class RefreshReceiver extends BroadcastReceiver {
             if (pm == null) {
                 return;
             }
+            appContext = appCtx;
             lock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
                     "strakalari:headless-refresh");
             lock.setReferenceCounted(false);
@@ -167,12 +156,24 @@ public class RefreshReceiver extends BroadcastReceiver {
     }
 
     private static void giveUp() {
+        Context ctx;
         synchronized (RefreshReceiver.class) {
             if (engine == null) {
                 return;
             }
-            // Dart never reported back; drop the run. The armed wake retries.
+            ctx = appContext;
             releaseStatic();
+        }
+        // Dart never reported back; drop the run and arm a 5-minute retry.
+        Log.w("strakalari",
+                "Warning: headless refresh timed out; retrying in 5 min.");
+        if (ctx != null) {
+            AlarmManager alarms = ctx.getSystemService(AlarmManager.class);
+            if (alarms != null) {
+                long atMs = System.currentTimeMillis() + RETRY_MS;
+                alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMs,
+                        wakeIntent(ctx));
+            }
         }
     }
 
@@ -195,6 +196,7 @@ public class RefreshReceiver extends BroadcastReceiver {
             engine.destroy();
             engine = null;
         }
+        appContext = null;
     }
 
     /** AlarmManager clock check shared with the widget's tick (unused here). */

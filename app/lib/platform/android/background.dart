@@ -298,20 +298,26 @@ Future<String> runHeadlessTick(
 
   final now = clock.now();
   var outcome = 'not due';
-  if (!now.isBefore(nextDue(runner.lastRun, runner.intervalMinutes, now))) {
-    await runner.runAllOnce();
-    outcome = 'ran';
-    // The update check runs on its own; let it finish before the
-    // engine goes away (bounded).
-    final deadline = clock.now().add(updateWait);
-    while (state.updateCheckRunning && clock.now().isBefore(deadline)) {
-      await Future<void>.delayed(const Duration(milliseconds: 200));
+  try {
+    if (!now.isBefore(nextDue(runner.lastRun, runner.intervalMinutes, now))) {
+      // Fallback wake before the job starts: if the process is killed
+      // mid-run, the schedule still comes back.
+      await _scheduleWakeAt(channel, nextDue(now, interval, now), quiet: true);
+      await runner.runAllOnce();
+      outcome = 'ran';
+      // The update check runs on its own; let it finish before the
+      // engine goes away (bounded).
+      final deadline = clock.now().add(updateWait);
+      while (state.updateCheckRunning && clock.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      }
+      _postStatus(state, channel, interval);
+      // Also after a skipped or failed run: a new day redraws the widget.
+      state.syncAndroidState();
     }
-    _postStatus(state, channel, interval);
-    // Also after a skipped or failed run: a new day redraws the widget.
-    state.syncAndroidState();
+  } finally {
+    await _scheduleWake(channel, runner);
   }
-  await _scheduleWake(channel, runner);
   return outcome;
 }
 
@@ -342,11 +348,16 @@ void _postStatus(AppState state, AndroidChannel channel, double interval) {
 }
 
 /// `_schedule_phone_wake`: the alarm for the runner's next due run.
-Future<void> _scheduleWake(AndroidChannel channel, PeriodicRunner runner) async {
+Future<void> _scheduleWake(AndroidChannel channel, PeriodicRunner runner) =>
+    _scheduleWakeAt(
+        channel, nextDue(runner.lastRun, runner.intervalMinutes, clock.now()));
+
+Future<void> _scheduleWakeAt(AndroidChannel channel, DateTime due,
+    {bool quiet = false}) async {
   try {
-    final due = nextDue(runner.lastRun, runner.intervalMinutes, clock.now());
     // A little after due: the runner must see it as due.
-    if (await channel.scheduleWake(due.add(const Duration(seconds: 10)))) {
+    if (await channel.scheduleWake(due.add(const Duration(seconds: 10))) &&
+        !quiet) {
       // ignore: avoid_print
       print('Info: next background check at '
           '${due.hour.toString().padLeft(2, '0')}:'

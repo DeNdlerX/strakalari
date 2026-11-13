@@ -136,6 +136,30 @@ void main() {
     expect(armed(), now.add(const Duration(minutes: 5, seconds: 10)));
   });
 
+  test('fallbackWakeIsArmedBeforeTheJobStarts', () async {
+    final spawned = <String>[];
+    List<String>? methodsAtRefresh;
+    final state = ready(spawned,
+        config: {'check_interval_minutes': 30},
+        data: {'last_updated': '12.11.2026 09:00:00'});
+    final prevSpawn = state.spawn;
+    state.spawn = (job, name) {
+      if (name == 'strakalari-refresh') {
+        methodsAtRefresh = [for (final c in calls) c.method];
+      }
+      prevSpawn(job, name);
+    };
+    final out = await withClock(
+        Clock.fixed(now), () => runHeadlessTick(state, const AndroidChannel()));
+    expect(out, 'ran');
+    expect(methodsAtRefresh, isNotNull);
+    expect(methodsAtRefresh, contains('scheduleWake'));
+    expect(methodsAtRefresh!.indexOf('scheduleWake'),
+        lessThan(methodsAtRefresh!.indexOf('keepAwake')));
+    expect(calls.where((c) => c.method == 'scheduleWake'), hasLength(2));
+    expect(armed(), now.add(const Duration(minutes: 30, seconds: 10)));
+  });
+
   test('switchAndIntervalFollowPythonTruthiness', () {
     expect(backgroundSwitchOn(true), isTrue);
     expect(backgroundSwitchOn(false), isFalse);
