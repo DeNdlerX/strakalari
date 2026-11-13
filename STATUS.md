@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 7–8 (Checkpoint C rework, round 1) · Next step: **⛔ Checkpoint C re-review (stopped here, 2026-11-13).** The phone part of C-M7 is done (reboot test, wake-up alarm and widget passed, Back button bug found and fixed). The Windows Sandbox re-test (keyring-held key, MSIX) is deferred by the owner until the migration is complete; see Checkpoint notes.
+Current phase: 7–8 (Checkpoint C rework, round 2) · Next step: **Fix every finding in the "Re-review (2026-11-13)" section of `reviews/checkpoint-C.md` (CR-M1 and CR-M2 first, then CR-S1 and CR-S2), one commit per finding, then stop for re-review.** The Windows Sandbox re-test (C-M7, desktop half) stays deferred by the owner: do not start it.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -916,6 +916,8 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
   - Plan: (1) classic: Python Inno install → seed with Python's own `ConfigManager` + `secret_store` through `keyring` (the key in Credential Manager, no `secret.key`), cache removed so the app logs in on start → run the Python app → wait past a 2-min interval → Flutter installer over it → the Flutter app must log in to the demo server (run inside the Sandbox, network off). (2) Store: the same classic seed → Python MSIX (first start copies the classic data and carries the key) → Flutter MSIX 0.1.1 as an update (same identity, signed in the Sandbox with a throwaway certificate) → the Flutter Store app must log in.
   - Built for it (outside the repo, nothing committed): the Python app with PyInstaller, its installer from `main`'s `installer.iss`, the Flutter installer from the branch's `installer.iss`, and both MSIX packages with `tools/make_msix.py` (`--exe` / `--app-dir`). All four built without errors.
   - **Blocker found:** in today's Windows Sandbox every unsigned program is refused ("An Application Control policy has blocked this file"): the installers and Python, both from the shared folders and after copying them onto the Sandbox's own disk. On the host, Smart App Control is off (`VerifiedAndReputablePolicyState 0`). The 2026-11-12 Sandbox run did not hit this, so something changed in the Sandbox since. Whoever runs the test later has to solve this first (e.g. look at the Sandbox's CodeIntegrity event log for the policy).
+
+- 2026-11-13 · Checkpoint C re-review: **FAIL** (narrow: all 4 blockers, C-M1 … C-M6, C-M8 and C-S1 … C-S7 fixed; open: 2 new must-fix CR-M1 differing `secret.key` deleted on the phone, CR-M2 a headless run over ten minutes is killed and nothing is re-armed; 2 should-fix CR-S1, CR-S2; the Windows Sandbox half of C-M7 stays open by the owner's decision and must pass before Checkpoint D) — [docs/flutter-migration/reviews/checkpoint-C.md](docs/flutter-migration/reviews/checkpoint-C.md#re-review-2026-11-13)
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 

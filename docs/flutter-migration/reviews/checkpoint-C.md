@@ -296,3 +296,157 @@ The main checkout's data files were not opened.
 blockers above come first; the owner was not asked to confirm the phone's state). C-M1 is from
 reading the code. `session.lock` Python↔Dart was not re-run by hand (covered at Checkpoint A
 and by `session_lock_test.dart`).
+
+---
+
+## Re-review (2026-11-13)
+
+Reviewed at `f237bef`: the 37 commits `259cfbf..f237bef`. Fresh session; the reviewer changed
+no code (one throwaway probe test was run and deleted again).
+
+### Verdict: **FAIL** (narrow)
+
+All 4 blockers and the must-fix items C-M1 … C-M6 and C-M8 are fixed in the code, and every
+should-fix C-S1 … C-S7 is done. What is left: **2 new must-fix** (CR-M1, CR-M2), **2
+should-fix**, and the desktop half of **C-M7**, which the owner put off on purpose. No
+blocker is open.
+
+### Earlier findings
+
+| Finding | State | How checked |
+|---|---|---|
+| C-B1 key thrown away on every start | fixed | `android_keystore.dart:61-88, 111-114, 170, 197, 242` keep the raw blob; `android_keystore_test.dart` (6) runs warm-up then core `getKey`; read against `secret_store.py:194-240`. But see CR-M1. |
+| C-B2 Credential Manager overwrite / delete | fixed | `win_credentials.dart:119-179` read line by line against `keyring/backends/Windows.py` (`_resolve_credential`, `set_password`, `delete_password`, `_read_credential`, `_delete_password`): same order, same conditions, same comment, UTF-16LE blob. `keystore_windows_test.dart` (13). |
+| C-B3 automation with background off | fixed | `background.dart:126-149` reads `run_in_background` before anything else and cancels the wake; `runHeadlessTick` (`:284-316`) uses `registerJobs` (the gates of `app.py:952-957`), runs only when due, arms the due time otherwise. `android_background_test.dart` (8). |
+| C-B4 no INTERNET in release | fixed | `AndroidManifest.xml:5`, checked by `packaging_privacy_test.dart:115`. |
+| C-M1 dead UI port | fixed | `background.dart:78-89, 186-206`: acknowledgement first, 5 s, stale name removed, `detached` unregisters (`startup.dart:127`). The session lock is `flock` through FFI (`helpers.dart:391-432`), so two isolates do exclude each other. `android_handoff_test.dart` (4). |
+| C-M2 notification permission | fixed | `MainActivity.kt:16`, `StrakalariChannel.java:124`. Seen on the phone by the migrating agent. |
+| C-M3 CPU awake | fixed | `StrakalariChannel.java:413-449`, `background.dart:210-218`, held around the refresh job (`scheduler_jobs.dart:72-76`). |
+| C-M4 app identity | fixed | manifest label / `allowBackup` / back callback, icons, `pubspec.yaml` `0.1.0+10099`; `build_number.dart` equals `make_mobile.py:211-223`; `icons_test`, `version_sync_test`, `build_number_test`. |
+| C-M5 debug-signed release | fixed | `build.gradle.kts:103-115` stops `preProdReleaseBuild` without the key. |
+| C-M6 tests not ported | fixed | Python case counts taken with `pytest --collect-only` and compared with the Dart files; every *Dropped* reason is a Flet-child / tray-parent / Python-import subject that does not exist in the one-process app. Accepted. |
+| C-M7 checkpoint conditions | **phone half done, desktop half open** | see "Not verified" below. |
+| C-M8 own scheduler copy | fixed | `tray.dart` copy deleted; `scheduler_jobs.dart` on core `PeriodicRunner`; `register_jobs_test.dart` (4). |
+| C-S1 … C-S7 | fixed | read each diff: identity (`single_instance.dart:71-107`), `mkstemp` (`helpers.dart:882-905`), warning lines, `WinCredError` handling, CI Android job, flock test on macOS, `checkIntervalMinutes`. |
+| C-N3 reboot notice | accepted | owner's decision; `BootReceiver.java` now differs from `mobile/strakalari_android` by 29 lines (the notice removed), the other moved classes still only by the `R` import. |
+
+### New findings
+
+#### Must-fix
+
+**CR-M1 Android: a plain `secret.key` that differs from the wrapped key is deleted, and the
+passwords are lost on the next start.**
+`app/lib/platform/android/android_keystore.dart:182-189`: when `secret.key` and
+`secret.key.wrapped` hold different keys, the warm-up correctly returns the file's key, but
+registers `WarmedAndroidKeystore(fileKey, blob)`. Core then runs its own pass
+(`packages/strakalari_core/lib/src/storage/secret_store.dart:105-120`): `unwrap(blob)` now
+answers `fileKey`, the two keys look equal, and line 119 deletes `secret.key` as a "leftover
+of a migration". On the next start only the wrapped key exists, which is the *other* key, so
+nothing saved under the file's key decrypts any more. Python
+(`strakalari/core/secret_store.py:216-220`) returns the file's key and **keeps the file**.
+
+Proven with a throwaway test (same fake channel as `android_keystore_test.dart`; fresh start,
+then a second valid key written to `secret.key`, then two starts):
+
+```
+Warning: secret.key differs from secret.key.wrapped; using the file.
+PROBE warmed==k1: true
+PROBE core==k1: true
+PROBE secret.key exists after start: false
+PROBE next start key==k1: false  ==k2: true
+```
+
+Correct: in this branch the bridge must answer core with what the Keystore really said, so
+core reaches the same "differs, using the file" branch and keeps the file: register a bridge
+whose `unwrap(blob)` returns the **Keystore's** key (`key`, not `fileKey`). Add the case to
+`android_keystore_test.dart`: after the start `secret.key` still exists, a second start
+returns the same key, and both files are unchanged (as in Python).
+
+**CR-M2 Android: a headless run that takes longer than ten minutes is killed, and no further
+refresh is ever scheduled.**
+`app/android/app/src/main/java/io/github/dendlerx/strakalari/android/RefreshReceiver.java:48, 169-177`:
+after `HOLD_MS` (10 min) `giveUp()` destroys the engine. Its comment says "the armed wake
+retries", but during an inline run no wake is armed: the alarm that started the run is used
+up, and the next one is only set at the end of `runHeadlessTick`
+(`app/lib/platform/android/background.dart:314`). So a slow run (the job itself may wait up
+to 30 minutes, `app/lib/controllers/activity.dart:256-258` = `_REFRESH_JOB_WAIT_S`,
+`strakalari/flet_ui/app.py:930`; `KeepAwake` is also 30 minutes) is cut off in the middle and
+background refreshes stop until the user opens the app, without a word. The same happens when
+the Dart side dies before it reports `backgroundDone`. This is exactly what the headless
+entry was built to end.
+
+Correct: (1) `HOLD_MS` must cover the longest allowed run (the 30-minute job wait plus the
+60 s update wait); (2) `giveUp()` must arm a retry wake itself (`AlarmManager` with
+`wakeIntent`, about 5 minutes ahead, the scheduler's retry time), and log a warning line;
+(3) `runHeadlessTick` should arm a fallback wake before `runAllOnce()` as well, so a killed
+process also comes back. Add a Dart test that a wake is armed before the job starts.
+
+#### Should-fix
+
+- **CR-S1** `app/test/packaging_privacy_test.dart:118-131` scans the raw APK bytes, so it
+  fails on a real release APK (it finds the file *names* `secret.key` and
+  `already_excused_lessons.json` inside the compiled code; reported by the migrating agent
+  under Questions). Answer to that question: yes, use the ported `check_package`
+  (`packages/strakalari_core/tool/android_build.dart`, what `tools/make_mobile.py` does:
+  the archive's file list plus machine paths), so the one privacy check that exists is the
+  one that passes on the release build.
+- **CR-S2** `app/lib/platform/startup.dart:272-275` (`PhoneBackground.scheduleWake`) uses
+  the interval cut to a whole number, Python uses the runner's own value
+  (`_schedule_phone_wake`, `app.py:1026`: `runner.interval_minutes`). With an interval like
+  2.5 the alarm fires before the runner is due and is re-armed in the past until it is. Use
+  `loop.intervalMinutes` like `background.dart:347`.
+
+#### Notes
+
+- **CR-N1** `app/test/android_background_test.dart` `theHeadlessRunActuallyRunsItsJobs`
+  checks the source text of `background.dart`, not behaviour. Accepted (the phone run is the
+  real proof), but do not add more tests of this kind.
+- **CR-N2** A crash between `createSync(exclusive: true)` and the write
+  (`android_keystore.dart:215-221`) leaves an empty `secret.key.wrapped`; every later start
+  then waits 3 s and keeps the plain file. Safe, only slow. No change required.
+- **CR-N3** For the owner (open questions in STATUS.md): the Settings → Background hint
+  still says "open it once after a reboot or update" although that is no longer needed;
+  changing it is a text change in both languages and is the owner's call. The exact-alarm
+  permission being withdrawn by Android after an update is Android's behaviour and the app
+  already warns about it; nothing to change.
+- **CR-N4** For Checkpoint D: `TestMsixVersion` and `test_store_submit_loads` live only in
+  the Python suite; phase 10 must keep or port them, since `tools/make_msix.py` stays.
+  `bg_boot_title` / `bg_boot_text` are still sent to the service but no longer shown.
+- **CR-N5** Still not looked at closely (carried from C-N5): `desktop_notify.dart` and the
+  PowerShell toast's console window, the MSIX and the VC++ runtime, R-N1, R-N2, R-N6, A-N3.
+
+### Not verified (not passed on trust)
+
+- **Windows Sandbox (C-M7, desktop half):** installing the Flutter installer and the Flutter
+  MSIX over the Python ones, with the key held in Credential Manager. Put off by the owner
+  until the migration is complete; the migrating agent also reports that today's Sandbox
+  refuses unsigned programs. This stays a release condition: it must pass before
+  Checkpoint D can pass. The 2026-11-12 Sandbox run predates the start-up wiring and does
+  not count.
+- **Phone:** the over-install over the Flet `.test` build, notifications, reboot, wake-up
+  alarm and widget are the migrating agent's results (STATUS.md, 2026-11-13). The reviewer
+  did not repeat them on the phone in this session. The wake-up alarm was armed but never
+  rang. Nothing in STATUS.md or the commits shows a test against the Play app or the
+  owner's real installation; the one mis-placed Play-app widget was removed at once.
+- **macOS and Linux:** all of it, as listed in the first review, plus the new `chmod 600`
+  on the instance token and the macOS flock test. For the owner's CI run.
+
+### What I verified, and how
+
+Flutter 3.44.8 / Dart 3.12.2, Windows 11, 13 Nov 2026. Nothing contacted except localhost.
+The main checkout's data files were not opened.
+
+| Check | Result |
+|---|---|
+| `dart analyze` / `dart test` (core) | clean / 801 passed, 2 skipped (one is the flock probe: Linux and macOS only) |
+| `flutter analyze` / `flutter test` (app) | clean / 637 passed, 1 skipped (APK scan needs `STRAKALARI_APK`) |
+| Python suite | 1643 passed |
+| `tools/parity/dump.py` + `git diff --exit-code` on `test/parity/` | clean, working tree unchanged |
+| Test integrity | diff of every existing test file since `259cfbf`: only additions, the Linux-only skip widened to macOS, the `no_wall_clock` exception removed. New `skip:` only for OS-bound cases. No loosened assertion. |
+| Pitfalls | every new `RegExp` and `catch (_)` in the changed Dart read; none in send, order or save code; no `DateTime.now()` (the test's last exception is gone) |
+| Scope | no change under `strakalari/`, `tests/`, `tools/`, `mobile/`, `installer.iss` since `259cfbf`; `main` (`0ffdcff`) is an ancestor and is the last ported commit |
+| Architecture | no `package:flutter` in core `lib`, `bin`, `tool`; no build_runner; workspace `pubspec.lock` committed; Flutter 3.44.8 and `--enforce-lockfile` in every `dart.yml` job |
+| Java | `diff` against `mobile/strakalari_android`: six files differ by the `R` import only, `BootReceiver.java` by the removed notice, four are identical |
+| Hygiene | no upstream; 37 commits by DeNdlerX; no `Co-Authored-By` / `Claude-Session`; no personal file ever added; APK asset name equals `build.yml`'s |
+| CR-M1 | throwaway probe test, output above; deleted again |
+| CR-M2 | read from `RefreshReceiver.java` and `background.dart`; not run |
