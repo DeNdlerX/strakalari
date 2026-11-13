@@ -263,8 +263,9 @@ Future<void> _runInline(AndroidChannel channel, String reason, String dataDir) a
   }
   installAndroidBridges(channel, languageOf: () => Strings.lang);
   // The same state the UI builds: its language (core + strings), the
-  // refresh worker with its session lock, notifications and run record.
-  final state = AppState();
+  // refresh worker with its session lock, notifications and run record,
+  // and the UI's job runner (a bare AppState only records intent).
+  final state = AppState()..spawn = AppState.liveSpawn;
   await runHeadlessTick(state, channel);
 }
 

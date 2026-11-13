@@ -233,8 +233,19 @@ class AppState {
   /// [AppState] (unit tests) only records intent and never touches the
   /// network, exactly like the earlier phase-5 stubs.
   void Function(Future<void> Function() job, String name) spawn =
-      _noSpawn;
-  static void _noSpawn(Future<void> Function() job, String name) {}
+      noSpawn;
+  static void noSpawn(Future<void> Function() job, String name) {}
+
+  /// The live app's [spawn]: runs the job on the event loop. Used by the
+  /// UI ([AppStateController]) and the phone's headless wake-up alike.
+  static void liveSpawn(Future<void> Function() job, String name) {
+    // A failing job must never crash the app: the jobs report their own
+    // errors, this is the last-resort net (Python: `_spawn`).
+    unawaited(job().catchError((Object e, StackTrace s) {
+      // ignore: avoid_print
+      print('Warning: background job $name failed: $e');
+    }));
+  }
 
   /// Factory for [Strakalari] sessions (test seam: tests inject fakes
   /// without touching the network).
@@ -890,14 +901,7 @@ class AppStateController extends Notifier<AppState> {
       this.state = this.state;
     };
     state.onProgress = state.onChanged;
-    state.spawn = (job, name) {
-      // A failing job must never crash the app: the jobs report their
-      // own errors, this is the last-resort net (Python: `_spawn`).
-      unawaited(job().catchError((Object e, StackTrace s) {
-        // ignore: avoid_print
-        print('Warning: background job $name failed: $e');
-      }));
-    };
+    state.spawn = AppState.liveSpawn;
     return state;
   }
 

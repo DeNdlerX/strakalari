@@ -151,4 +151,15 @@ void main() {
     expect(checkIntervalMinutes(false), 60.0);
     expect(checkIntervalMinutes(0.5), 0.5); // core clamps to 1 later
   });
+
+  test('theHeadlessRunActuallyRunsItsJobs', () async {
+    // Found on the phone: a bare AppState only records a spawned job, so
+    // the headless refresh never ran and the job waited 30 minutes.
+    var ran = false;
+    AppState.liveSpawn(() async => ran = true, 'strakalari-refresh');
+    await Future<void>.delayed(Duration.zero);
+    expect(ran, isTrue);
+    final code = File('lib/platform/android/background.dart').readAsStringSync();
+    expect(code, contains('AppState()..spawn = AppState.liveSpawn'));
+  });
 }
