@@ -4,192 +4,178 @@ Thanks for wanting to help! This guide covers local development, testing, buildi
 
 End-user documentation lives in [README.md](README.md) / [README.en.md](README.en.md) — this file is for developers only.
 
-> **Flutter migration in progress (branch `flutter-migration`, PLAN in
-> `docs/flutter-migration/PLAN.md`).** The Python app below stays the
-> reference until phase 10: do not edit it, except for parity scripts in
-> `tools/parity/` and merges from `main`. New Dart code goes to
-> `packages/strakalari_core/` (pure Dart, never imports Flutter) and
-> `app/` (the Flutter UI). Pin **Flutter 3.44.8**, commit every
-> `pubspec.lock`, and never release from this branch without the owner's
-> go-ahead. Verify with:
->
-> ```bash
-> PYTHONUTF8=1 python -m pytest tests/ -q   # Python reference suite
-> cd packages/strakalari_core && dart analyze && dart test   # core
-> cd app && flutter analyze && flutter test                # app
-> PYTHONUTF8=1 python tools/parity/dump.py   # then git diff --exit-code on test/parity/
-> ```
->
-> Side-by-side parity against the demo server (never real servers or
-> accounts) is scripted in `tools/parity/soak_refresh.py` (+
-> `bin/refresh_dryrun.dart`, compared with `tools/parity/soak_compare.py`);
-> the daily routine lives in [docs/flutter-migration/SOAK.md](docs/flutter-migration/SOAK.md).
-> The safety rules in §5 carry over word for word: one `runRefresh`
-> pipeline, one `session.lock`, one send path with the history coverage
-> check, everything audited, `automation_paused` stops every auto phase,
-> fail loudly.
+> **Python parity reference:** Until the phase 10 switch in
+> [docs/flutter-migration/PLAN.md](docs/flutter-migration/PLAN.md), the original
+> Python app under `strakalari/` and `tests/` remains in the repository as the
+> read-only reference for behavior parity. Do not edit Python files outside
+> `tools/parity/` and merges from `main`.
 
 ---
 
 ## 1. Prerequisites
 
-- **Python 3.11 or 3.12** (frozen release builds pin **3.11**; do not develop on <3.11).
-- Git.
-- No admin rights needed for development (but Windows tray/autostart features are best tested on Windows).
+- **Flutter 3.44.8** (Dart **3.12.2** — pinned; do not run `flutter upgrade`).
+- **Git**.
+- **Desktop / Android toolchains** for the targets you build locally:
+  - Windows: Visual Studio with the Desktop development with C++ workload (and Inno Setup 6 for `installer.iss`).
+  - Android: JDK 17 and the Android SDK.
+  - Linux / macOS: standard Flutter Linux (`clang`, `cmake`, `ninja-build`, `pkg-config`, `libgtk-3-dev`, `libayatana-appindicator3-dev`, `libsecret-tools`) or Xcode.
+- **Python 3.11 or 3.12** (with `.venv` set up from `requirements.txt` / `requirements-dev.txt`) to run the Python reference suite and the local demo tools (`tools/demo_data.py`, `tools/bakalari_demo_server.py`).
 
 ## 2. Local setup
 
 ```bash
 git clone https://github.com/DeNdlerX/strakalari.git
 cd strakalari
+dart pub get --enforce-lockfile
 ```
 
-**On GNU/Linux and macOS:**
+The repository uses a Dart pub workspace (`pubspec.yaml` at the repo root linking `packages/strakalari_core` and `app`). Always resolve dependencies with `--enforce-lockfile` so builds match the committed `pubspec.lock`.
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-**On Windows (PowerShell):**
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-Create your local config from the template (never commit the real one — `config.json` holds credentials):
-
-```bash
-cp config.example.json config.json        # GNU/Linux, macOS
-copy config.example.json config.json      # Windows PowerShell
-```
+Never commit a real `config.json` or data folder — `config.json` holds credentials. Use `tools/demo_data.py` in a throwaway directory outside the repository for local testing.
 
 ## 3. Running from source
 
+Generate synthetic demo data in a throwaway directory and start the local demo Bakaláři server (never use real school servers or accounts during development):
+
 ```bash
-python main.py                 # desktop UI (Windows: run.bat)
-python main.py --minimized     # tray mode (background service)
-python -m strakalari.flet_ui --view web --port 8555   # browser preview of the UI
+python tools/demo_data.py generate <THROW_AWAY_DIR>
+python tools/bakalari_demo_server.py --port 8080 --user demo --password demo
 ```
 
-Without credentials the wizard can be skipped ("Skip for now"); the screens then stay empty until real data is cached.
+Then run the Flutter app pointed at that directory:
+
+```bash
+cd app
+STRAKALARI_DATA_DIR=<THROW_AWAY_DIR> flutter run -d windows
+STRAKALARI_DATA_DIR=<THROW_AWAY_DIR> flutter run -d windows -- --minimized   # start hidden in the tray
+```
+
+Without credentials the setup wizard can be skipped ("Skip for now"); screens stay empty until real data is cached.
 
 ### Configuration and data files
 
 Users configure everything on the **Settings** screen; the files below are for development and debugging.
 
-- `config.json` — settings. `config.example.json` is the full key reference. `strava_blacklist.json` holds the forbidden lunch ingredients.
-- `data_cache.json` — the downloaded timetable, absences, marks and menu.
-- `already_excused_lessons.json`, `automation_history.jsonl` — what was sent (the Activity screen reads the history).
-- `log.txt`, `console.log` — the app log and the captured stdout/stderr of windowed builds.
+- `config.json` — settings. `config.example.json` is the canonical key reference. `strava_blacklist.json` holds forbidden lunch ingredients.
+- `data_cache.json` — the downloaded timetable, absences, marks, and menu.
+- `already_excused_lessons.json`, `already_excused_lessons.unconfirmed.json`, `automation_history.jsonl` — sent excuses, unconfirmed submits awaiting outbox settlement, and the Activity audit log.
+- `log.txt`, `console.log` — the app log and captured stdout/stderr/warnings of windowed builds (`app/lib/platform/desktop/console_log.dart`).
 - `school_presets/*.json` — user-added school calendars (see [docs/SCHOOL_PRESETS.md](docs/SCHOOL_PRESETS.md)).
 
-Where they live (`core.helpers.get_user_data_dir`): next to `main.py` when running from source, next to the executable when that folder is writable (the Windows installer puts it in `%LOCALAPPDATA%\Programs\Strakalari`), otherwise `%LOCALAPPDATA%\Strakalari`, `~/Library/Application Support/Strakalari` (macOS, always) or `~/.config/strakalari` (Linux, e.g. the read-only AppImage mount). `STRAKALARI_DATA_DIR` overrides all of them.
+Where they live (`getUserDataDir` in `packages/strakalari_core/lib/src/storage/helpers.dart`): next to the executable when that folder is writable (the classic Windows installer puts it in `%LOCALAPPDATA%\Programs\Strakalari`), otherwise `%LOCALAPPDATA%\Strakalari` (including the Microsoft Store package's virtualized `LocalCache\Local\Strakalari`), `~/Library/Application Support/Strakalari` (macOS, always), `~/.config/strakalari` (Linux), or `getApplicationSupportDirectory()/data` (Android). `STRAKALARI_DATA_DIR` overrides all of them.
 
-Passwords and the Gemini key are encrypted; the key is kept in the OS credential store via `keyring` (`core.secret_store`), falling back to `secret.key` in the data folder where no store exists. The in-app "Copy log" button scrubs passwords, usernames and the signature (`core.error_report.redact_text`); the raw files are not scrubbed.
+Passwords and the Gemini API key are encrypted with Fernet; the key lives in the OS credential store (`DesktopKeyStore` in `app/lib/platform/desktop/keystore_desktop.dart` for Windows Credential Manager, macOS Keychain, and Linux Secret Service, or wrapped with the Android Keystore alias `strakalari-secret-key` via `AndroidChannel`), falling back to `secret.key` when no store is available (`secret_store.dart`). The in-app "Copy log" action scrubs passwords, usernames, API keys, and the signature (`redactText` in `packages/strakalari_core/lib/src/error_report.dart`); raw files on disk are not scrubbed.
 
 ## 4. Tests
 
 ```bash
-python -m pytest tests/ -v
-python -m ruff check .   # lint: bug-finding rules only (config in pyproject.toml)
+cd packages/strakalari_core && dart analyze && dart test   # pure-Dart core
+cd app && flutter analyze && flutter test                # Flutter app & platform tests
+PYTHONUTF8=1 python -m pytest tests/ -q                  # Python reference suite
+PYTHONUTF8=1 python tools/parity/dump.py                 # verify parity fixtures (git diff --exit-code packages/strakalari_core/test/parity/)
 ```
 
-- CI runs the linter and the suite on Ubuntu + Windows × Python 3.11/3.12 (see `.github/workflows/test.yml`).
-- CI minutes are limited — **always run the full suite locally and make it pass before pushing**. Don't use CI as your test runner.
-- Add a test when you fix a bug or change behavior (`tests/test_*.py`).
+- CI runs analysis, core/app tests, and release builds in `.github/workflows/dart.yml` (plus `dart-macos-locks` for Apple Silicon `flock` verification on manual dispatch and release tags).
+- CI minutes are limited — **always run the checks locally and make them pass before pushing**. Don't use CI as your test runner.
+- Side-by-side parity runs against the local demo server are documented in [docs/flutter-migration/SOAK.md](docs/flutter-migration/SOAK.md) (`tools/parity/soak_refresh.py`, `packages/strakalari_core/bin/refresh_dryrun.dart`, `tools/parity/soak_compare.py`).
+- Add tests alongside every bug fix or behavior change (`packages/strakalari_core/test/*_test.dart`, `app/test/*_test.dart`).
 
 ## 5. Project layout
 
 ```
-main.py                  # entry point: UI, or tray with --minimized
-strakalari/core/         # business logic (no UI imports)
-  bakalari_client.py     #   Bakaláři client (plain HTTP, no browser), assembled from:
-  bakalari_timetable.py  #     weekly + stable timetable
-  bakalari_data.py       #     marks, absence, sent excuses, substitutions, baseline
-  bakalari_excuse.py     #     the excuse form postback, confirmed via Komens → Odeslané
-  bakalari_common.py     #     pure parsing helpers shared by the above
-  bakalari_http.py       #   plain-HTTP web session (login, WebForms posts and callbacks)
-  strava_client.py       #   Strava client (the web app's JSON API, no browser): login, menu
-  strava_ordering.py     #     staged orders with the web app's checks, one verified save
-  automation.py          #   Strakalari: clients + excuse sending + order application
-  refresh.py             #   THE refresh pipeline (used by the UI and the tray)
-  excuse_history.py      #   already-excused history: coverage checks + send lock
-  audit.py               #   automation history: every send/order attempt (Activity screen)
-  secret_store.py        #   password-encryption key in the OS credential store (keyring)
-  school_presets.py      #   school calendars (shipped + school_presets/*.json)
-  lunch_auto.py          #   auto-mode lunch picks (blacklist filter / Gemini)
-  status_notification.py #   the phone's background notification as an overview (lunch, next lesson, …)
-  models.py, schedule.py, forecast.py, planned_skips.py, …
-strakalari/flet_ui/      # Flet desktop UI
-  state.py               #   AppState core (+ state_*.py mixins per feature)
-  views/, strings.py, tray.py, app.py
-tests/                   # pytest suite, one file per feature (shared fixtures in conftest.py)
-tools/demo_data.py       # synthetic demo data + README screenshots
-docs/BAKALARI_API.md     # the Bakaláři web requests the client sends (pages, endpoints, postbacks)
-docs/STRAVA_API.md       # the Strava web app API the client uses
-config.example.json      # canonical config-key reference (keep in sync with code!)
-strakalari.spec          # PyInstaller bundle definition
-installer.iss            # Inno Setup script (Windows installer)
+pubspec.yaml                         # Dart workspace root (packages/strakalari_core, app)
+analysis_options.yaml                # shared lints (package:lints + strict casts/inference/raw-types)
+packages/strakalari_core/            # pure Dart core (must never import Flutter)
+  lib/src/
+    bakalari/                        #   http_session, client, timetable, data, excuse, common, extractors
+    strava/                          #   client, ordering, extractors
+    automation/                      #   automation, refresh, scheduler, excuse_history, audit, session_lock, cancel
+    planning/                        #   schedule, forecast, planner, planned_skips, grades, matching, school_presets
+    lunches/                         #   lunch_auto, lunch_cutoff, gemini
+    storage/                         #   config, cache, helpers, fernet, secret_store
+    platform/                        #   abstract interfaces (AndroidBridge, KeyStore, Notifier, packaging, build_number)
+    models.dart, i18n.dart, error_report.dart, news.dart, update.dart, wakeup.dart, status_notification.dart
+  test/                              # unit + parity tests (+ test/parity/*.json fixtures)
+app/                                 # Flutter UI & platform implementations (package:app)
+  lib/
+    main.dart                        #   UI entry + @pragma('vm:entry-point') backgroundMain()
+    shell/                           #   router (go_router), adaptive scaffold (720/520 breakpoints), theme tokens
+    controllers/                     #   Riverpod AppState + feature facades (excuses, lunches, marks, planner, …)
+    features/<screen>/               #   today, timetable, absences, marks, planner, lunches, activity, settings, wizard, more
+    widgets/, tutorial/              #   shared widgets, overlays, error dialogs, interactive tutorial tours
+    platform/                        #   desktop (tray, autostart, single_instance, console_log, keystore, store_package),
+                                     #   android (MethodChannel, keystore, backgroundMain, notifications), startup
+    l10n/                            #   app_cs.arb, app_en.arb, strings.dart
+  android/ windows/ macos/ linux/    # platform runners (+ Android Java classes under io/github/dendlerx/strakalari/android/)
+  test/                              # widget & platform unit tests
+tools/                               # parity oracle/soak scripts, demo_data.py, bakalari_demo_server.py, make_msix.py
+docs/                                # BAKALARI_API.md, STRAVA_API.md, SCHOOL_PRESETS.md, STORE.md, flutter-migration/
+config.example.json                  # canonical config-key reference (keep in sync with config.dart!)
+installer.iss                        # Inno Setup script (Windows installer)
 ```
 
 These rules keep the automation safe:
 
-- **One pipeline.** Anything that refreshes data or runs auto modes goes through `core.refresh.run_refresh` — never a second copy in the UI or the tray.
-- **One session at a time.** The tray and the window are separate processes (on macOS always: every launch runs the tray, which opens the window, because Cocoa needs the main thread — see `flet_ui/macos.py`). Whole refreshes and order submits run under `core.refresh.session_lock()` (an OS file lock); a caller that cannot get it skips with a visible message instead of running in parallel.
-- **One send path.** Excuses are sent only via `Strakalari._send_excuse`, which checks the history for coverage and holds the history lock across check, submit and write. Navigation-triggering clicks use `click(once=True)` and are never retried. A submit the site never confirmed is `unconfirmed`, not `failed`: it goes to `already_excused_lessons.unconfirmed.json` and blocks every re-send until a successful Komens outbox read settles it — and auto mode never sends when the outbox could not be read.
-- **Everything is recorded.** Every send/order attempt (manual or auto, real or dry run, success or failure) goes to `core.audit`; `automation_paused` must stop every auto phase.
-- **New feature, new tutorial.** Interactive tutorials live in `flet_ui/tutorial.py`: add a `Tour` to `TOURS`, its `tut_*` strings (cs + en), call `tutorial.offer(state, "<id>")` in the view once the feature's content is on screen, wrap the controls it explains in `tutorial.anchor(...)`, and fire `state.tutorial_event("<name>")` where the action succeeds if a step waits for it. The module docstring has the details.
-- **Fail loudly.** In send, order and save code an exception is never swallowed silently: log it (`write_log` / `self.log`), or `print("Warning: …")` where no logger exists (windowed builds write stdout/stderr to `console.log`). An auto phase that did not do its job is an `AutomationError` in `RefreshResult.errors`, which the UI and tray surface. Silent `except Exception: pass` is fine only for optional probes (is an element visible, cosmetic UI updates); a wait or fallback a scraper deliberately carries on after logs one line via `self._debug(what, exc)`. `write_log` scrubs stored passwords and API keys before anything reaches `log.txt`.
+- **One pipeline.** Anything that refreshes data or runs auto modes goes through `runRefresh` (`packages/strakalari_core/lib/src/automation/refresh.dart`) — never a second copy in the UI, tray, or background entry.
+- **One session at a time.** Desktop runs as one process: closing the window hides it to the tray (when `minimize_to_tray` is enabled; `--minimized` starts hidden), and a second launch wakes the existing window over `SingleInstance` loopback TCP (`app/lib/platform/desktop/single_instance.dart`). Whole refreshes and order submits run under `withSessionLock` / `withSessionLockAsync` (`session.lock`, compatible with Python's OS file lock); a caller that cannot acquire it skips with a visible message instead of running in parallel. On Android, `backgroundMain` checks `IsolateNameServer` and hands off to the live UI isolate if one is active before falling back to running headless.
+- **One send path.** Excuses are sent only via `Strakalari.sendExcuse` (`packages/strakalari_core/lib/src/automation/automation.dart`), which checks `excuse_history.dart` for coverage and holds `HistoryLock` across check, submit, and write. Navigation-triggering clicks use `once: true` and are never retried. A submit the site never confirmed is `unconfirmed`, not `failed`: it goes to `already_excused_lessons.unconfirmed.json` and blocks every re-send until a successful Komens outbox read settles it — and auto mode never sends when the outbox could not be read.
+- **Everything is recorded.** Every send/order attempt (manual or auto, real or dry run, success or failure) goes to `audit.dart` (`automation_history.jsonl`); `automation_paused` must stop every auto phase.
+- **New feature, new tutorial.** Interactive tutorials live in `app/lib/tutorial/tours.dart`: add a `Tour` to `tours`, add its `tut_*` strings (cs + en) in `app/lib/l10n/`, call `tutorialOffer` in the view once the feature's content is on screen, wrap the controls it explains in `TutorialAnchor`, and fire `tutorialEvent` where the action succeeds if a step waits for it.
+- **Fail loudly.** In send, order, and save code an exception is never swallowed silently: log it (`writeLog` / `app.log`), or `print('Warning: …')` where no logger exists (windowed Windows builds write stdout/stderr to `console.log` via `console_log.dart`). An auto phase that did not do its job is an `AutomationError` in `RefreshResult.errors`, which the UI and notifications surface. Silent `catch (_)` is fine only for optional probes (cosmetic UI state or non-critical reads); a wait or fallback a scraper deliberately carries on after logs one line via `_debug`. `writeLog` scrubs stored passwords and API keys before anything reaches `log.txt`.
 
 ## 6. Contribution guidelines
 
 - **Match existing style and conventions.** Touch only what the task needs — no drive-by refactors, renames, or reformatting.
-- **Config keys are canonical.** The keys in `config.example.json` are the only valid names — no aliases, no silent migration. If you add/remove/rename a key, update `config.example.json`, the validation in `strakalari/core/config.py`, and its tests in the same PR.
-- **Dependencies are pinned exactly** in `requirements.txt` (CI resolves fresh every run; floating ranges have shipped broken combos before). `flet` + `flet-desktop` + `flet-web` must share one version. If you bump a version, re-run the full test suite **plus a local frozen smoke test** (section 7) before committing.
-- **Keep it locale-safe.** Releases are QA-tested on an English-locale Windows machine — never assume a Czech locale: no locale-dependent date/number parsing, no hardcoded Czech strings in logic (UI text belongs in `strakalari/flet_ui/strings.py` with both `cs` and `en`), no console codepage assumptions.
+- **Config keys are canonical.** The keys in `config.example.json` are the only valid names — no aliases, no silent migration. If you add/remove/rename a key, update `config.example.json`, the validation in `packages/strakalari_core/lib/src/storage/config.dart`, and its tests in the same PR.
+- **Dependencies are pinned via `pubspec.lock`.** Commit lockfile updates deliberately and always run `dart pub get --enforce-lockfile` plus the full test suites.
+- **Keep it locale-safe.** Releases are QA-tested on an English-locale Windows machine — never assume a Czech locale: no locale-dependent date/number parsing, no hardcoded Czech strings in logic (UI text lives in `app/lib/l10n/app_cs.arb`, `app_en.arb`, and `strings.dart`; core background strings live in `packages/strakalari_core/lib/src/i18n.dart` with both `cs` and `en`), no console codepage assumptions.
 - **Keep it end-user safe.** The installer is used by non-technical classmates: no scary dialogs, no unexplained failures, no data loss. Destructive/network actions default to confirmation (`confirm` modes).
-- **Screenshots use synthetic data only.** README images live in `docs/images/` (`<screen>-cs.png` / `<screen>-en.png`, dark theme) and come from `python tools/demo_data.py screenshots`, which builds a made-up student in a throwaway data folder and captures both languages with headless Chromium (dev-only: `pip install playwright` and `playwright install chromium` first; the app itself needs no browser). `generate` / `serve` give you the same demo data to click through by hand. Never take screenshots from a real account.
-- **User docs stay non-technical.** README.md / README.en.md are for classmates who just download the installer; anything about source, config files or internals belongs here.
+- **Screenshots use synthetic data only.** README images live in `docs/images/` (`<screen>-cs.png` / `<screen>-en.png`, dark theme) and are captured from synthetic demo data (`tools/parity/capture_screens.dart` / `tools/demo_data.py`), never from a real account.
+- **User docs stay non-technical.** README.md / README.en.md are for classmates who just download the installer; anything about source, config files, or internals belongs here.
 - **GPLv3.** All contributions are under the project's GNU GPLv3 license.
 
 ## 7. Building installers locally
 
-Verify packaging work locally (PyInstaller + smoke test) rather than burning CI release runs:
+Verify packaging work locally rather than burning CI release runs. **Always run `flutter clean` inside `app/` before a local Windows release build** so stale plugin DLLs from earlier builds are not left behind in `app/build/windows/x64/runner/Release/` and swept into the installer.
 
-```bash
-pyinstaller strakalari.spec
-```
+- **Windows installer**:
 
-- **Windows installer**: compile `installer.iss` with Inno Setup (`ISCC.exe`); local builds fall back to the hardcoded version in the script, CI stamps the release version.
-- **Linux**: AppImage packaging — see `.github/workflows/build.yml` (`build-linux` job).
-- **macOS**: `.dmg` drag-and-drop bundle — see `build-macos` in the same workflow.
+  ```bash
+  cd app
+  flutter clean
+  flutter build windows --release --build-name=<version> --build-number=<num> --dart-define=STRAKALARI_VERSION=<version>
+  ```
 
-After building, smoke-test the actual artifact (launch, wizard, one refresh) before pushing.
+  Then compile `installer.iss` with Inno Setup (`ISCC.exe /DMyAppVersion=<version> installer.iss`; local runs without `/DMyAppVersion` fall back to the version hardcoded in `installer.iss`).
+- **Windows Microsoft Store (MSIX)**: pack the release bundle directory (plus app-local VC++ runtime DLLs) with `python tools/make_msix.py --app-dir <dir> --out Strakalari-<version>.msix --version <version> ...` (see `build-flutter-msix` in `.github/workflows/dart.yml` and [docs/STORE.md](docs/STORE.md)).
+- **Linux**: AppImage packaging (including bundled `libayatana-appindicator3` and `secret-tool`) — see `build-flutter-linux` in `.github/workflows/dart.yml`.
+- **macOS**: `.dmg` drag-and-drop bundle — see `build-flutter-macos` in `.github/workflows/dart.yml`.
+
+After building, smoke-test the actual artifact (launch, wizard, one refresh against `tools/bakalari_demo_server.py`) before pushing.
 
 ### Phone app (Android; iOS later)
 
-The phone app is the same code built with `flet build`. `tools/make_mobile.py` copies only `main.py`, `strakalari/` and the launcher icon into `build/mobile/` (never the repo root, which holds your real `config.json` and data), writes the mobile `pyproject.toml` there (bundle id `io.github.dendlerx.strakalari`, mobile dependency pins), builds, and fails if a personal file name or a path of the build machine (your home or repo folder, e.g. `C:\Users\<name>\…`) ends up in the APK; compiled `.pyc` files record relative paths, so phone tracebacks show `strakalari/core/refresh.py`, not your folders:
+`packages/strakalari_core/tool/build_android.dart` stages only the required source files into a neutral staging folder outside your home directory and repo (so no personal file or machine path ends up in the APK/AAB), runs `flutter build` with `--split-per-abi` (for APKs) and `buildNumber(version)` as the `versionCode`, and runs `checkPackage` against the output:
 
 ```bash
-python tools/make_mobile.py apk -- --arch arm64-v8a
+cd packages/strakalari_core
+dart run tool/build_android.dart apk --flavor prod --stage C:/strakalari-build
 ```
 
-The first build downloads Flutter, a JDK and the Android SDK into your home folder (several GB; Windows also needs *Developer Mode* on for Flutter's symlinks). Install the APK from `dist/mobile/apk/` with `adb install -r <file>.apk` (USB debugging on).
+Use `--flavor phonetest` (`io.github.dendlerx.strakalari.test`) when testing on a real phone alongside an existing Play Store install (`prod` = `io.github.dendlerx.strakalari`).
 
-- **Signing**: every release APK must carry the same release key, or Android refuses to update installed copies. The tool signs with `~/.strakalari-signing/android-release.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`) when it exists, else with Flutter's debug key (testing only; `--release` refuses that). CI signs with the repository secrets `ANDROID_KEYSTORE_B64` (the `.jks`, base64) and `ANDROID_KEYSTORE_PASSWORD`; the `build-android` job attaches `Strakalari-<version>-android.apk` to every release. Keep a backup of the key folder outside this machine.
-- **Distribution**: `apk` builds are for GitHub Releases and keep the in-app update check; `aab` builds are for Google Play, which owns updates (the check is off, see `packaging.mobile_store()`).
-
-- **Layout** follows the page width, not the platform: below 720 px the app switches to the phone layout (bottom bar + *More*, stacked panels; `state.narrow`, `C.narrow(state)`). Try it without a phone: `python tools/demo_data.py serve DIR` and a ~390 px wide browser window.
-- **Platform differences** go through `strakalari.core.packaging.is_mobile()` / `mobile_platform()`: data in the app's private storage, no tray/autostart/single-instance, Android Back walks up the screens. Phone-specific wording lives in `MOBILE_STRINGS` in `strings.py`.
-- **Android system features** (notifications, background running, wake-up alarms, the Android Keystore protecting the password key) are called from Python through pyjnius in `strakalari/core/android.py`, without a Flutter channel, so they keep working after the app's screen is closed (Flet keeps Python alive in the process). The few Java classes Android needs in the APK (the foreground service, the alarm, boot and notification-update receivers, the notification icon) live in the Flet extension `mobile/strakalari_android`; `make_mobile.py` packs it as a wheel. With *Run in the background* off, scheduled refreshes wait while the app is hidden.
+- **Signing**: every release APK must carry the same release key, or Android refuses to update installed copies. `app/android/app/build.gradle.kts` reads `~/.strakalari-signing/android-release.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`) or the `STRAKALARI_SIGNING_*` environment variables and refuses a `prod` release build without them. CI signs using `ANDROID_KEYSTORE_B64` and `ANDROID_KEYSTORE_PASSWORD`. Keep a backup of the signing key folder outside this machine.
+- **Distribution**: `apk` builds are for GitHub Releases and keep the in-app update check; `aab` (`appbundle`) builds are for Google Play, which owns updates (`mobileStore()` disables the GitHub check).
+- **Layout** follows the page width, not the platform: below 720 px (`narrowMaxWidth` in `app/lib/shell/scaffold.dart`) the app switches to the phone layout (bottom bar + *More*, stacked panels).
+- **Platform differences** go through `isMobile()` / `mobilePlatform()` in `packages/strakalari_core/lib/src/platform/packaging.dart`: data in the app's private storage, no tray/autostart/single-instance, Android Back walks up the screens (`ShellBackScope`). Phone-specific wording lives in `Strings.isMobile` overrides (`app/lib/l10n/strings.dart`).
+- **Android system features** (notifications, foreground service, wake-up alarms, boot/update receivers, home-screen widget, Android Keystore key wrapping) live in Java under `app/android/app/src/main/java/io/github/dendlerx/strakalari/android/` and are wired to Dart over the `strakalari/android` MethodChannel (`StrakalariChannel` / `android_channel.dart`). Scheduled background refreshes run headlessly via `@pragma('vm:entry-point') backgroundMain()` (`app/lib/main.dart` → `app/lib/platform/android/background.dart`) and automatically re-arm after a reboot or app update without opening the UI. With *Run in the background* off, scheduled wakes are cancelled and refreshes pause while the app is hidden.
 
 ## 8. Releases
 
-Releases are cut by tagging: `git tag vX.Y.Z && git push origin vX.Y.Z` — or run the **Build & Release Strakalari** workflow by hand with the `release_tag` input (the tag is created on the selected commit). The `build.yml` workflow builds all three platforms, runs the test suite, and a single final job publishes one GitHub Release with every installer attached and generated notes. Keep `strakalari/__init__.py:__version__` sensible — CI stamps it from the tag at build time.
+Releases are cut by tagging: `git tag vX.Y.Z && git push origin vX.Y.Z` — or by triggering the **Dart** workflow (`.github/workflows/dart.yml`) via `workflow_dispatch` with `release_tag` (leave `release_tag` empty for a build-only run producing Windows, Linux, and macOS artifacts without publishing).
+
+Keep the version synchronized across `app/pubspec.yaml` (`version: <ver>+<buildNumber>`), `packages/strakalari_core/lib/src/update.dart` (`stampedAppVersion` default, overridden on release builds by `--dart-define=STRAKALARI_VERSION=...`), and `installer.iss` (`#define MyAppVersion`); `app/test/version_sync_test.dart` checks that they agree.
 
 - **Stable** (`v0.2.0`): published as a **draft** — review it and press *Publish*.
 - **Beta** (`v0.2.0-beta.1`, anything with a `-suffix`): published immediately and marked **Pre-release**. Only users on the *Beta* update channel (Settings → Diagnostics; the default for anyone whose first install was a beta) are notified; *Stable* users never see pre-releases. Beta users are also notified about stable releases, and `0.2.0` counts as newer than `0.2.0-beta.N`.
