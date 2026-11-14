@@ -3,6 +3,12 @@
 Used only by ``tools/parity/soak_refresh.py --today YYYY-MM-DD`` and
 ``tools/parity/demo_server_at.py --today YYYY-MM-DD``. Never touches
 ``strakalari/`` or ``tools/bakalari_demo_server.py``.
+
+Limitation: ``apply()`` only patches module-level ``datetime`` and ``date``
+names. Function-local imports (``strakalari/core/automation.py:700``,
+``strakalari/core/refresh.py:155``, and
+``strakalari/core/excuse_history.py:237, 245, 280``) still read the real
+system clock; none of those paths run in ``dry_run`` mode without Strava.
 """
 
 from __future__ import annotations

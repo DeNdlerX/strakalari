@@ -40,7 +40,7 @@ python tools/bakalari_demo_server.py --port 18080 &
 # 2. Suites must stay green (read-only runs):
 PYTHONUTF8=1 python -m pytest tests/ -q -p no:cacheprovider   # expect: 1643 passed
 cd packages/strakalari_core && dart analyze                  # expect: No issues found
-cd packages/strakalari_core && dart test                     # expect: All tests passed (720)
+cd packages/strakalari_core && dart test                     # expect: 802 passed (2 POSIX skips on Windows)
 cd app && flutter analyze                                    # expect: No issues found
 
 # 3. Parity oracle must be untouched (hand-edits would show as drift):
@@ -81,7 +81,7 @@ the day used.
 | # | Item | How | Green when |
 |---|------|-----|------------|
 | 1 | Python suite | `pytest tests/` | 1643 passed, no new failures |
-| 2 | Dart suite | `dart test` (core) | all passed (720 on 2026-11-08) |
+| 2 | Dart suite | `dart test` (core) | all passed (802 passed, 2 skipped on Windows on 2026-11-14) |
 | 3 | Analyzers | `dart analyze`, `flutter analyze` | No issues found |
 | 4 | Parity oracle | `dump.py` + `git diff --exit-code` | empty diff |
 | 5 | Refresh parity | `soak_compare.py` | `IDENTICAL (modulo ts)` |
@@ -105,6 +105,8 @@ scratch dir, never committed user data):
 - `2026-11-13 · py@0ffdcff dart@b79b29b · real-submit proof repeated by the reviewer with the committed scripts (`--send-day 09.11.2026`, a fresh demo server per side): IDENTICAL (modulo ts); 5 outbox entries and 5 history entries on each side, empty unconfirmed file`
 - `2026-11-13..2026-11-16 (simulated Days 1–4, Fri→Mon, fake_clock.py + demo_server_at.py --today) · soak_refresh.py --today vs refresh_dryrun.dart --today · fresh & sequentially accumulating dirs (accum-py vs accum-dart) all 4 days IDENTICAL (modulo ts) · fetch parity byte-identical on all 4 days (2026-11-13: 31116 B, 2026-11-14: 31195 B, 2026-11-15: 31195 B, 2026-11-16: 31370 B)`
 - `2026-11-13 (Windows Sandbox desktop re-test C-M7 + CR2-N2) · offline Sandbox (VerifiedAndReputablePolicyState=0 + citool --refresh, demo_srv.exe on 127.0.0.1:18080) · Classic Inno 0.1.0 Python→Flutter over-install preserved HKCU Run, single Uninstall AppId, config.json, already_excused_lessons.json, migrated keyring Credential Manager entry (Strakalari), Flutter logged in + synced + spawned PowerShell toast with MainWindowHandle=0; Store MSIX 0.1.0→0.1.1 over-install migrated LocalCache data + logged in + synced`
+- `2026-11-14 · py@0ffdcff dart@c7caf4b (Checkpoint D review, reviews/checkpoint-D.md) · suites OK (1643 py, 802+2skip core, 640+1skip app, 5/5 APK) · refresh IDENTICAL (real day 2026-11-14 fresh & accumulating, plus simulated 2026-11-16, 18, 20, 23 and 2026-12-01 fresh & accumulating) · fetch byte-identical (14 Nov: 31195 B; sim 31370, 31373, 31375, 30893, 30411 B) · real-submit --send-day 09.11.2026 IDENTICAL (modulo ts; 5 outbox, 5 history, empty unconfirmed) · classic Inno Sandbox over-install 0.1.0→0.2.0-beta.1 OK in dry run`
+- `2026-11-14 · py@0ffdcff dart@590ed4b (D-S1 post-rework real-day soak) · refresh IDENTICAL (modulo ts) on fresh & accumulating dirs · fetch OK (31195 B, sha256 0ebaaac06df6) · notes: app suite now 644+1skip after D-M7 locateCliTool tests (+4); full suites run cleanly after D-S2+D-S3 commit`
 
 ## Exit criteria (all must hold)
 
