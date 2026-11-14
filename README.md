@@ -36,7 +36,7 @@ Bezplatná aplikace pro studenty na Windows, macOS, Linux a Android. Nic neprogr
 
 Když vyjde nová verze, aplikace vám to sama oznámí. Stáhněte nový instalátor ze stránky [Releases](https://github.com/DeNdlerX/strakalari/releases) a spusťte ho přes stávající instalaci (v telefonu nainstalujte nový `.apk` přes stávající aplikaci). **Nastavení, hesla i historie zůstanou.** Nic nemusíte odinstalovávat.
 
-> **Přechod na nové (Flutter) sestavení:** má stejnou identitu aplikace, takže se nainstaluje přes původní verzi jako běžná aktualizace do stejné datové složky. **Nastavení, hesla i historie se převezmou samy, bez jakéhokoli převodu.**
+> **Přechod na novou verzi aplikace:** nová verze se nainstaluje přímo přes tu původní jako běžná aktualizace. **Nastavení, hesla i historie zůstanou na svém místě a převezmou se samy, bez jakéhokoli dalšího kroku.**
 
 Verzi z Microsoft Storu aktualizuje sám Store, aplikace na nové verze neupozorňuje.
 

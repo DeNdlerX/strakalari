@@ -1,6 +1,6 @@
 # Privacy Policy for Strakaláři
 
-**Last updated:** October 20, 2026
+**Last updated:** November 14, 2026
 
 Strakaláři is an open-source, local application for Windows, macOS, Linux and Android designed to help students manage school schedules, absences, and lunches. Your privacy is paramount: **the application operates locally on your device and does not collect, track, or sell your personal data.**
 
@@ -21,8 +21,8 @@ Strakaláři processes the following information strictly to perform the actions
 
 * **Local Storage Only:** All configuration, caches, and logs reside solely on your local device: on Windows in `%LOCALAPPDATA%\Programs\Strakalari` (installer version) or `%LOCALAPPDATA%\Strakalari` (Microsoft Store version, kept by Windows in the app's private package folder), on macOS in `~/Library/Application Support/Strakalari` and on Linux in `~/.config/strakalari`. `STRAKALARI_DATA_DIR` overrides all of them.
 * **Android:** All data resides in the app's private storage on your phone, which other apps cannot access. Android backup is disabled for the app, so the data is not uploaded to Google's cloud backup.
-* **Rebuilt app, same data:** the new (Flutter) builds carry the same application identity (the Android `applicationId`, the Windows installer `AppId`, the MSIX identity), so they install over the previous version as a regular update. They read and write the same folders and the same file formats — settings, passwords and history carry over with no migration step, and nothing is uploaded or moved anywhere in the process. What the app connects to (§3) and how credentials are protected do not change.
-* **Credential Encryption:** Passwords are encrypted before saving. On Windows the encryption key is protected using the operating system's native credential management / DPAPI mechanisms. On Android the key is wrapped with Android Keystore when available and kept in the app's private storage next to the encrypted passwords.
+* **Upgrading between versions:** updating the app installs over the previous version and continues using the same local data folder and file formats. Settings, saved passwords, and absence history carry over automatically on your device without any extra migration step, and nothing leaves your device during the update. What the app connects to (§3) does not change.
+* **Credential Encryption:** Passwords are encrypted before saving. The encryption key is stored in the platform's native credential store when available: Windows Credential Manager on Windows, Apple Keychain on macOS, Secret Service (via `secret-tool`, bundled in the AppImage) on Linux, and Android Keystore on Android. If the operating system credential store is unavailable (for example on a headless desktop session), the app falls back to a local `secret.key` file stored alongside the encrypted passwords in its private data directory.
 * **No Developer Access:** The developer(s) of Strakaláři have **no access** to your credentials, school data, or activity logs.
 
 ---

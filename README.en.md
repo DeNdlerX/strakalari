@@ -36,7 +36,7 @@ A free app for students on Windows, macOS, Linux and Android. No coding: downloa
 
 When a new version comes out, the app tells you. Download the new installer from [Releases](https://github.com/DeNdlerX/strakalari/releases) and run it over your current install (on a phone, install the new `.apk` over the app). **Your settings, passwords and history are kept.** There is no need to uninstall first.
 
-> **Moving to the new (Flutter) build:** it carries the same application identity, so it installs over the previous version as a regular update into the same data folder. **Settings, passwords and history carry over on their own, with no migration step.**
+> **Upgrading to the new version:** install it over your previous version just like any regular update. **Settings, passwords and history carry over automatically, with no extra steps.**
 
 The Microsoft Store version is updated by the Store itself; the app doesn't announce new versions there.
 
