@@ -195,4 +195,70 @@ void main() {
     expect(Win32CredApi().read('Strakalari-test-missing-$pid-${Object().hashCode}'),
         isNull);
   }, skip: !Platform.isWindows);
+
+  group('locateCliTool (D-M7)', () {
+    late Directory root;
+    late Directory binDir;
+    late Directory pathDir;
+
+    setUp(() {
+      root = Directory.systemTemp.createTempSync('cli_tool_');
+      binDir = Directory('${root.path}${Platform.pathSeparator}bin')..createSync();
+      pathDir = Directory('${root.path}${Platform.pathSeparator}path')..createSync();
+    });
+
+    tearDown(() {
+      root.deleteSync(recursive: true);
+    });
+
+    test('prefersExecutableDirectoryOverPath', () {
+      final bundled = File('${binDir.path}${Platform.pathSeparator}secret-tool')
+        ..writeAsStringSync('');
+      File('${pathDir.path}${Platform.pathSeparator}secret-tool')
+          .writeAsStringSync('');
+
+      final found = locateCliTool(
+        'secret-tool',
+        executablePath: '${binDir.path}${Platform.pathSeparator}strakalari',
+        pathEnv: pathDir.path,
+      );
+      expect(found, bundled.path);
+    });
+
+    test('findsBundledToolWhenPathIsEmpty', () {
+      final bundled = File('${binDir.path}${Platform.pathSeparator}secret-tool')
+        ..writeAsStringSync('');
+
+      final found = locateCliTool(
+        'secret-tool',
+        executablePath: '${binDir.path}${Platform.pathSeparator}strakalari',
+        pathEnv: '',
+      );
+      expect(found, bundled.path);
+    });
+
+    test('fallsBackToPathWhenAbsentFromExecutableDirectory', () {
+      final emptyDir = Directory('${root.path}${Platform.pathSeparator}empty')
+        ..createSync();
+      final systemTool = File('${pathDir.path}${Platform.pathSeparator}secret-tool')
+        ..writeAsStringSync('');
+      final sep = Platform.isWindows ? ';' : ':';
+
+      final found = locateCliTool(
+        'secret-tool',
+        executablePath: '${binDir.path}${Platform.pathSeparator}strakalari',
+        pathEnv: '${emptyDir.path}$sep${pathDir.path}',
+      );
+      expect(found, systemTool.path);
+    });
+
+    test('returnsNullWhenMissingEverywhere', () {
+      final found = locateCliTool(
+        'secret-tool',
+        executablePath: '${binDir.path}${Platform.pathSeparator}strakalari',
+        pathEnv: pathDir.path,
+      );
+      expect(found, isNull);
+    });
+  });
 }

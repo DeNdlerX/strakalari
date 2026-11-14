@@ -252,11 +252,12 @@ void _setLinux(String service, String account, String password,
       'sh',
       [
         '-c',
-        'printf "%s" "\$STRAKALARI_SECRET" | secret-tool store '
+        'printf "%s" "\$STRAKALARI_SECRET" | "\$STRAKALARI_SECRET_TOOL" store '
             '--label="\$STRAKALARI_LABEL" service "\$STRAKALARI_SERVICE" '
             'username "\$STRAKALARI_USER" application "\$STRAKALARI_APP"',
       ],
       environment: {
+        'STRAKALARI_SECRET_TOOL': exe,
         'STRAKALARI_SECRET': password,
         'STRAKALARI_LABEL': _linuxLabel(service, account),
         'STRAKALARI_SERVICE': service,
@@ -301,16 +302,33 @@ void _deleteLinux(String service, String account, {required bool allowCli}) {
 
 // -- helpers ---------------------------------------------------------------
 
-String? _which(String exe) {
-  final pathSep = Platform.isWindows ? ';' : ':';
-  final path = Platform.environment['PATH'] ?? '';
-  final names =
-      Platform.isWindows ? <String>[exe, '$exe.exe'] : <String>[exe];
+/// Resolves [exe] by checking the running executable's directory first
+/// (so tools bundled in an AppImage are preferred) before falling back to
+/// `PATH`.
+String? locateCliTool(
+  String exe, {
+  String? executablePath,
+  String? pathEnv,
+  bool? isWindows,
+}) {
+  final win = isWindows ?? Platform.isWindows;
+  final pathSep = win ? ';' : ':';
+  final names = win ? <String>[exe, '$exe.exe'] : <String>[exe];
+  final dirs = <String>[];
+  final execPath = executablePath ?? Platform.resolvedExecutable;
+  if (execPath.isNotEmpty) {
+    final execDir = File(execPath).parent.path;
+    if (execDir.isNotEmpty) dirs.add(execDir);
+  }
+  final path = pathEnv ?? Platform.environment['PATH'] ?? '';
   for (final dir in path.split(pathSep)) {
-    if (dir.isEmpty) continue;
+    if (dir.isNotEmpty) dirs.add(dir);
+  }
+  for (final dir in dirs) {
     for (final name in names) {
-      final candidate =
-          '$dir${Platform.pathSeparator}$name';
+      final candidate = dir.endsWith(Platform.pathSeparator)
+          ? '$dir$name'
+          : '$dir${Platform.pathSeparator}$name';
       try {
         if (File(candidate).existsSync()) return candidate;
       } catch (_) {}
@@ -318,3 +336,5 @@ String? _which(String exe) {
   }
   return null;
 }
+
+String? _which(String exe) => locateCliTool(exe);
