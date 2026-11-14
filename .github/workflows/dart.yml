@@ -478,7 +478,7 @@ jobs:
   # in build.yml), which also signs it.
   release-flutter:
     name: Publish Flutter GitHub Release
-    needs: [meta, build-flutter-windows, build-flutter-linux, build-flutter-macos, build-flutter-android]
+    needs: [dart, dart-macos-locks, meta, build-flutter-windows, build-flutter-linux, build-flutter-macos, build-flutter-android]
     if: needs.meta.outputs.release == 'true'
     runs-on: ubuntu-latest
     permissions:
