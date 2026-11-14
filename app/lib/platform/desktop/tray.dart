@@ -28,8 +28,7 @@ import 'dart:io';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
-/// Window title / tray tooltip. Must match the shell's title and the
-/// phase-5 stub's `appWindowTitle` (`platform/desktop.dart`).
+/// Window title / tray tooltip. Must match the shell's title.
 const String desktopWindowTitle = 'Strakaláři';
 
 /// True where the window process can host its own tray icon
@@ -79,9 +78,6 @@ class TrayStrings {
 }
 
 /// Window + tray mechanic: hide-to-tray, tray menu, show/quit.
-///
-/// Distinct from the phase-5 stub (`platform/desktop.dart`): that one
-/// records calls for tests, this one drives the real plugins.
 class DesktopTrayController with WindowListener, TrayListener {
   DesktopTrayController({
     String? iconPath,
