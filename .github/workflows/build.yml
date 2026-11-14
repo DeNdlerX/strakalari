@@ -1,9 +1,6 @@
 name: Build & Release Strakalari
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       release_tag:
