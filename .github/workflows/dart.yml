@@ -173,8 +173,9 @@ jobs:
         run: |
           $ver = $env:STRAKALARI_VERSION
           $iss = Get-Content installer.iss -Raw
-          $iss2, $n = $iss -replace '#define MyAppVersion "[^"]+"', ('#define MyAppVersion "' + $ver + '"')
+          $n = ([regex]::Matches($iss, '#define MyAppVersion "[^"]+"')).Count
           if ($n -ne 1) { throw "version stamp not found in installer.iss" }
+          $iss2 = $iss -replace '#define MyAppVersion "[^"]+"', ('#define MyAppVersion "' + $ver + '"')
           Set-Content installer.iss $iss2 -NoNewline
 
       - name: Resolve workspace dependencies
