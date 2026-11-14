@@ -297,7 +297,7 @@ jobs:
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake git ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev
+          sudo apt-get install -y clang cmake git ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev libayatana-appindicator3-dev
 
       - name: Resolve workspace dependencies
         run: dart pub get --enforce-lockfile
@@ -319,6 +319,14 @@ jobs:
 
           cp -r app/build/linux/x64/release/bundle/* "$APPDIR/usr/bin/"
           chmod +x "$APPDIR/usr/bin/strakalari"
+          mkdir -p "$APPDIR/usr/bin/lib"
+          for pat in \
+            "libayatana-appindicator3.so*" \
+            "libayatana-indicator3.so*" \
+            "libdbusmenu-glib.so*" \
+            "libdbusmenu-gtk3.so*"; do
+            cp -P /usr/lib/x86_64-linux-gnu/$pat "$APPDIR/usr/bin/lib/"
+          done
           cp assets/logo-256.png "$APPDIR/strakalari.png"
           cp assets/logo-256.png "$APPDIR/.DirIcon"
           cp assets/logo-256.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/strakalari.png"
@@ -328,7 +336,7 @@ jobs:
           Type=Application
           Name=Strakalari
           Comment=Automated school absence excusing and food ordering
-          Exec=strakalari --minimized
+          Exec=strakalari
           Icon=strakalari
           Terminal=false
           Categories=Utility;Education;
