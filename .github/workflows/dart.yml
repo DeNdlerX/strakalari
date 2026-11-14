@@ -480,6 +480,8 @@ jobs:
     needs: [meta, build-flutter-windows, build-flutter-linux, build-flutter-macos, build-flutter-android]
     if: needs.meta.outputs.release == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
