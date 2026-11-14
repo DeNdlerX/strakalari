@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 9 (Parity soak & release prep — ready for Checkpoint D) · Next step: **⛔ Checkpoint D reached: please have a reviewer model check it before I continue (do not cut a beta tag or start Phase 10 until approved).**
+Current phase: 9 (Parity soak & release prep — ready for Checkpoint D) · Next step: Fix every finding in `reviews/checkpoint-D.md` (blockers first), one commit per finding, then stop for re-review.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -928,6 +928,7 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
   - Checks: core `dart analyze` clean, `dart test` 801 passed / 2 skipped; app `flutter analyze` clean, `flutter test` 640 passed / 1 skipped (and 5/5 passed with `STRAKALARI_APK=dist/flutter-android/Strakalari-0.1.0-android.apk`); Python reference suite 1643 passed; `tools/parity/dump.py` + `git diff --exit-code packages/strakalari_core/test/parity/` clean.
 - 2026-11-13 · Checkpoint C re-review 2: **PASS WITH FIXES** (CR-M1, CR-M2, CR-S1, CR-S2 fixed; open: 3 should-fix CR2-S1 … CR2-S3; the Sandbox half of C-M7 stays a release condition for Checkpoint D) — [docs/flutter-migration/reviews/checkpoint-C.md](docs/flutter-migration/reviews/checkpoint-C.md)
 - 2026-11-13 · Checkpoint C re-review 3: **PASS** (CR2-S1 … CR2-S3 fixed by the reviewer on the owner's instruction; the Sandbox half of C-M7 stays a release condition for Checkpoint D) — [docs/flutter-migration/reviews/checkpoint-C.md](docs/flutter-migration/reviews/checkpoint-C.md)
+- 2026-11-14 · Checkpoint D review: **FAIL** (1 blocker D-B1: the Windows release job in `dart.yml` always fails; 8 must-fix D-M1 … D-M8 in the release workflow, macOS and Linux packaging and CONTRIBUTING.md; 7 should-fix; suites, parity, the soak and the classic Windows Sandbox install-over test pass; no beta tag and no phase 10 yet) — [docs/flutter-migration/reviews/checkpoint-D.md](docs/flutter-migration/reviews/checkpoint-D.md)
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 
