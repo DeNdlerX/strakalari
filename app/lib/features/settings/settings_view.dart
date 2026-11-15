@@ -79,6 +79,17 @@ class _AutosaveFieldState extends State<AutosaveField> {
   }
 
   @override
+  void didUpdateWidget(AutosaveField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!focus.hasFocus &&
+        !widget.password &&
+        (oldWidget.fallback != widget.fallback ||
+            oldWidget.draftKey != widget.draftKey)) {
+      _showValue(widget.controller.draft(widget.draftKey, widget.fallback));
+    }
+  }
+
+  @override
   void dispose() {
     text.dispose();
     focus.dispose();
@@ -103,8 +114,12 @@ class _AutosaveFieldState extends State<AutosaveField> {
         return;
       }
     }
+    final raw = c.get(widget.configKey);
+    final baseline = (raw == null || '$raw'.isEmpty) && widget.fallback.isNotEmpty
+        ? widget.fallback
+        : raw;
     if (!widget.password &&
-        SettingsController.sameValue(c.get(widget.configKey), newVal)) {
+        SettingsController.sameValue(baseline, newVal)) {
       c.clearDrafts(widget.draftKey);
       _showValue(newVal);
       return; // focus moved without an edit: nothing to save
@@ -129,8 +144,8 @@ class _AutosaveFieldState extends State<AutosaveField> {
   @override
   Widget build(BuildContext context) {
     final tok = tokensOf(context);
-    // Python `labeled_field`: a fixed caption above the box, the label as
-    // the placeholder (a floating label reads as "empty" even when filled).
+    // Python `labeled_field`: a fixed caption above the box; only show a
+    // placeholder when an explicit hint differs from the caption.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       spacing: 4,
@@ -146,7 +161,7 @@ class _AutosaveFieldState extends State<AutosaveField> {
           focusNode: focus,
           style: TextStyle(color: tok.text, fontSize: tok.fsBody),
           decoration: InputDecoration(
-            hintText: widget.hint.isEmpty ? widget.label : widget.hint,
+            hintText: widget.hint.isEmpty ? null : widget.hint,
             suffixIcon: widget.password
                 ? IconButton(
                     tooltip: '',
@@ -1017,6 +1032,13 @@ class SettingsView extends StatelessWidget {
   // -- calendar ----------------------------------------------------------------------
   List<Widget> _calendar() {
     final c = controller;
+    final presetOpts = core.presetOptions(Strings.lang);
+    final rawPreset = '${c.get('school_preset_id', 'custom')}';
+    final knownIds = {for (final (id, _) in presetOpts) id, 'custom'};
+    final presetId = knownIds.contains(rawPreset) ? rawPreset : 'custom';
+    final (presetSem1, presetSem2) = core.presetCloses(presetId);
+    final rawSem1 = '${c.get('sem1_close', '')}';
+    final rawSem2 = '${c.get('sem2_close', '')}';
     final days = c.userFreeDays();
     days.sort((a, b) => '${a['date']}'.compareTo('${b['date']}'));
     return [
@@ -1027,22 +1049,30 @@ class SettingsView extends StatelessWidget {
               spacing: 20,
             children: [
               DropdownButtonFormField<String>(
+                key: ValueKey('cal:preset:$presetId:${Strings.lang}'),
                 decoration:
                     InputDecoration(labelText: Strings.get('cal_preset')),
-                initialValue: 'custom',
+                initialValue: presetId,
                 items: [
-                  DropdownMenuItem(
-                      value: 'custom', child: Text(Strings.get('cal_custom_opt'))),
+                  for (final (id, label) in presetOpts)
+                    DropdownMenuItem(value: id, child: Text(label)),
+                  if (!presetOpts.any((e) => e.$1 == 'custom'))
+                    DropdownMenuItem(
+                        value: 'custom',
+                        child: Text(Strings.get('cal_custom_opt'))),
                 ],
-                onChanged: (v) =>
-                    c.save({'school_preset_id': v ?? 'custom'}),
+                onChanged: (v) {
+                  c.save({'school_preset_id': v ?? 'custom'});
+                  onChanged?.call();
+                },
               ),
               AutosaveField(
                 controller: c,
                 label: Strings.get('cal_sem1'),
                 draftKey: 'cal:sem1',
                 configKey: 'sem1_close',
-                fallback: '${c.get('sem1_close', '')}',
+                fallback: rawSem1.isNotEmpty ? rawSem1 : presetSem1,
+                hint: presetSem1,
                 parse: (raw) {
                   final cleaned = raw.trim();
                   if (cleaned.isNotEmpty &&
@@ -1057,7 +1087,8 @@ class SettingsView extends StatelessWidget {
                 label: Strings.get('cal_sem2'),
                 draftKey: 'cal:sem2',
                 configKey: 'sem2_close',
-                fallback: '${c.get('sem2_close', '')}',
+                fallback: rawSem2.isNotEmpty ? rawSem2 : presetSem2,
+                hint: presetSem2,
                 parse: (raw) {
                   final cleaned = raw.trim();
                   if (cleaned.isNotEmpty &&
