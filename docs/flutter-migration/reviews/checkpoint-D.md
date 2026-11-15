@@ -319,3 +319,110 @@ scratch folder).
 | Android release build through `tool/build_android.dart apk --version 0.2.0-beta.1` | builds from the neutral folder; `io.github.dendlerx.strakalari`, versionCode 22031 (20031 + 2000), versionName `0.2.0-beta.1`; signed by the release key (`CN=Strakalari, O=DeNdler`, same certificate as the 0.1.0 APK); the tool's own package check passes; `packaging_privacy_test.dart` with `STRAKALARI_APK`: 5 passed. Not installed on the phone |
 | `dart.yml` | read completely against `build.yml`; D-B1 reproduced locally; `tray_manager`'s Linux build file read in the pub cache; nothing run on CI |
 | Docs | README.md, README.en.md, PRIVACY.md and CONTRIBUTING.md read completely, with their diff against `main` |
+
+---
+
+# Re-review (2026-11-14)
+
+Reviewed at `952b065`: the 15 commits since the review (`be9f81e..952b065`, `e264719` …
+`952b065`, one per finding; D-S2 and D-S3 share the last one). The reviewer changed no code.
+
+## Verdict: **PASS**
+
+Every finding of the review is fixed in the code, not only marked fixed; nothing else broke;
+no new blocker, must-fix or should-fix. Phase 10 may start **on the branch**.
+
+This is not yet a go for a release or for the merge into `main`. Three things stay with the
+owner, and the final review (after phase 10) will check them again:
+
+1. **Nothing in `dart.yml` has ever run** (the branch was never pushed), and macOS and Linux
+   were never built or started by anyone. See "Still unverified" below. Before any beta tag:
+   one build-only run (Actions → Dart → Run workflow, tag field empty), then try the `.dmg`
+   and the AppImage by hand.
+2. **Soak days.** `SOAK.md:113-114` asks for three consecutive real days; there are two
+   (13 and 14 Nov), plus nine simulated days (4 by the migrating agent, 5 by the first
+   reviewer), all identical. STATUS.md says the owner allowed simulated days. The reviewer
+   accepts this in substance (the demo server's data depends only on the date, and the
+   simulated days cross a weekend and a month end), but the owner should say so, or one more
+   real day is run before the beta.
+3. **Open owner question** (`STATUS.md:713`): after an update Android takes the exact-alarm
+   permission away until the user allows it again; the app warns on the Budík card like
+   Python. Change nothing, or add a hint elsewhere? (No change is the parity answer.)
+
+## The findings, one by one
+
+| Finding | Commit | Checked how | Result |
+|---|---|---|---|
+| D-B1 version stamp | `e264719` | `dart.yml:176-182` read; the same lines run by the reviewer against the real `installer.iss` (nothing written): the count is 1 and the replaced text carries the new version | fixed |
+| D-M1 Python workflow on tags | `15b09ac` | the `build.yml` diff is exactly the three `push: tags` lines; `workflow_dispatch` kept | fixed |
+| D-M2 release permission | `f882df4` | `dart.yml:496-497`, on `release-flutter` only | fixed |
+| D-M3 build-only run | `96e439e` | `dart.yml:111` (`meta` on any manual run or tag), `:142-147` (version from `app/pubspec.yaml`, now `0.1.0`, `release=false`); the Windows, Linux and macOS jobs have no `if`; MSIX, Android and `release-flutter` keep `release == 'true'`. A plain branch push or a pull request skips `meta`, so the build jobs are skipped with it | fixed |
+| D-M4 tests gate the release | `8f5d5c4` | `dart.yml:493`; `dart` runs on tags and manual runs, `dart-macos-locks` too (`:65`) | fixed |
+| D-M5 Linux tray library, `Exec` | `c9870c5` | `dart.yml:300` installs `libayatana-appindicator3-dev`; `:324-332` copies the tray libraries into `usr/bin/lib`; `:342` `Exec=strakalari`; `:352` `LD_LIBRARY_PATH` in `AppRun` | fixed as written, **not runnable here** |
+| D-M6 macOS sandbox | `cfb8f3c` | both entitlements files: `app-sandbox` is `<false/>` | fixed as written, **not runnable here** |
+| D-M7 `secret-tool` | `361a18f` | `dart.yml:300, 322-323` ship it in the AppImage next to the executable; `keystore_desktop.dart:308-340` `locateCliTool` looks in the executable's folder before `PATH`; `:255-260` the store pipe now calls the located path; 4 new tests in `keystore_windows_test.dart:199-262` (prefer bundled, empty PATH, fall back, missing) call the real function and check exact paths | fixed as written, **Linux run still owed** |
+| D-M8 CONTRIBUTING.md | `35c940b` | read completely; every file and name it cites was looked up in the tree (one slip, D2-N1) | fixed |
+| D-S1 soak log, `fake_clock.py` | `e53d32c` | `SOAK.md:108-109`, `fake_clock.py:6-11`; one more run logged, but on the same day (see 2 above) | fixed, the owner's word is open |
+| D-S2 MSIX Sandbox on the current build, dry run | `952b065` | repeated by the reviewer, below | fixed |
+| D-S3 STATUS.md closed | `952b065` | `STATUS.md:40-46, 705-742` read: the stale items are marked resolved with their commits; one owner question left (3 above) | fixed |
+| D-S4 user docs | `590ed4b` | README.md:39 and README.en.md:39 in plain words; PRIVACY.md date and `:24-25` | fixed |
+| D-S5 dead stub | `984ed3f` | `app/lib/platform/desktop.dart` gone; `launch_at_startup` gone from `app/pubspec.yaml` and `pubspec.lock` (with `win32_registry`, which only it used); no import left (analyzers clean) | fixed |
+| D-S6 pinned actions | `ca7a4c8` | all 25 `uses:` carry a commit id; each of the 7 ids was looked up with `git ls-remote --tags` in the action's public repository and belongs to the version in the comment; 5 of them are the ones `build.yml` already uses | fixed |
+| D-S7 file properties | `f4e7bdb` | `Runner.rc:92-98`; seen on the built exe inside the Sandbox: `ProductName=Strakalari FileDescription=Strakalari CompanyName=Strakalari` | fixed |
+
+## Notes
+
+- **D2-N1** `CONTRIBUTING.md:125` says a scraper's deliberate fallback "logs one line via
+  `_debug`". The Dart method is `debug(what, exc)`
+  (`packages/strakalari_core/lib/src/bakalari/client.dart:154`); `_debug` is the Python name
+  (`self._debug`). Correct it when phase 10 touches the file.
+- **D2-N2** `PRIVACY.md:24` now says the key is "stored in ... Android Keystore on Android".
+  More exact: the key file stays in the app's private storage and is *wrapped* by the Android
+  Keystore (the wording before `590ed4b`). Not wrong enough to block; tidy it in phase 10.
+- **D2-N3** `locateCliTool` also serves the macOS `security` lookup
+  (`keystore_desktop.dart:142, 166, 196`), so the app's own folder is searched first there
+  too. Harmless: that folder is as trusted as the executable itself.
+- **D2-N4** The MSIX Sandbox test cannot use the real Store identity (that needs the Store's
+  signature); it uses `StrakalariSandbox.Strakalari` with a throwaway certificate on both
+  packages. The real identity values in `dart.yml:230-232` equal `build.yml:156-158`. The
+  real Store update is only proven by the first Store submission.
+- **D2-N5 For phase 10** (D-N1 still stands): move `publish-store` from `build.yml` into
+  `dart.yml` and keep `tools/make_msix.py` and `tools/store_submit.py` with their tests (the
+  MSIX job needs no `pip install`: `make_msix.py` uses the standard library only). The
+  `dart-macos-locks` job and `helpers_test.dart` use the Python app for a cross test, which
+  ends with it. `tools/parity/`, the demo server and `demo_data.py` are Python tools the
+  Dart docs still point to (`CONTRIBUTING.md:23, 39-44, 75-76`): decide per tool, keep it or
+  drop it together with the lines that cite it, and list the decision in STATUS.md.
+- **D-N6 still true:** nothing was run on the phone by a reviewer.
+
+## Still unverified, for the owner's CI run (not passed)
+
+Unchanged from the review, minus the MSIX install-over test:
+
+- every job in `dart.yml` (never run);
+- macOS: build, `.dmg`, key reading through `security`, LaunchAgent, tray, single instance,
+  `flock`, a `-beta.1` build name;
+- Linux: build, AppImage with the bundled libraries, key reading through the bundled
+  `secret-tool` (D-M7: until this is seen working, the README promise that passwords carry
+  over is unproven on Linux), autostart, tray, notifications;
+- the MSIX packed by CI and the Store submission.
+
+## What I verified, and how
+
+Flutter 3.44.8 / Dart 3.12.2, Windows 11, 14 Nov 2026. Only localhost was contacted, plus
+read-only `git ls-remote` on seven public action repositories. The main checkout's data
+files were not opened. The working tree was clean before and after.
+
+| Check | Result |
+|---|---|
+| `dart analyze` / `dart test` (core) | clean / 802 passed, 2 skipped (the same two platform skips) |
+| `flutter analyze` / `flutter test` (app) | clean / 644 passed, 1 skipped (APK scan) |
+| Python suite | 1643 passed |
+| `tools/parity/dump.py` + `git diff --exit-code` on `test/parity/` | clean |
+| Test integrity since `be9f81e` | one test file changed (`keystore_windows_test.dart`, +66 lines, 4 new tests); no line removed from any test; no new `skip:` |
+| Scope and pitfalls | the only Dart logic changed is `locateCliTool` and the `secret-tool` call; no `RegExp`, date, rounding or JSON code touched; no config key touched; nothing changed under `strakalari/`, `tests/`, `mobile/`; the one `tools/` change is the `fake_clock.py` docstring; `git log flutter-migration..main` is empty (`0ffdcff` is still the last ported commit) |
+| Architecture | no `package:flutter` in core; the lockfile is committed and consistent |
+| Hygiene | no upstream; the 15 commits are by DeNdlerX, without `Co-Authored-By` / `Claude-Session`; no personal file added |
+| Soak, real day 14 Nov, own demo server on localhost, throwaway folders | fresh: `IDENTICAL (modulo ts)`; the same folders again: `IDENTICAL (modulo ts)`; fetch byte-identical (31195 B) |
+| Clean Windows release build at `952b065` (`flutter clean`, then `--build-name=0.1.0 --build-number=10099 --dart-define=STRAKALARI_VERSION=0.1.0`) | builds. Compared with the files inside the migrating agent's `Strakalari-fl-0.1.1.msix`: the same 20 files; the compiled Dart code (`data/app.so`), `flutter_windows.dll` and all assets are byte-identical; only the exe and the five C++ plugin DLLs differ (build timestamps). So the tested package holds the current code |
+| Windows Sandbox, MSIX install-over, repeated by the reviewer (network off: `outside network reachable = False`; the agent's `run_msix.ps1` was read first and run unchanged from a copy in the reviewer's scratch folder) | Seed: demo server on 127.0.0.1, user `demo`, `excuse_mode` and `strava_order_mode` `dry_run`, Strava off, one real-shaped history entry (05.11.2026, lessons 1–2). Python MSIX 0.1.0.0 installed and started: data copied to `LocalCache\Local\Strakalari`, no `secret.key` there, Credential Manager entry `Strakalari` / `fernet-key:285cb7ed71a7fe87`, no login yet. Flutter MSIX 0.1.1.0 installed over it (same package family): one `POST /Login` 302 (the password was decrypted with the key Python stored), full refresh, cache written, `secret.key` did not come back, the seeded history entry kept first and unchanged with 4 entries synced from the web after it, config still on dry run. Requests seen by the demo server: login, timetable, absences, marks, subjects, the Komens outbox list and two message reads. **No post to the excuse form**, no outbox file |

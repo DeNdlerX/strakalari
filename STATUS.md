@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 9 (Parity soak & release prep — Checkpoint D rework complete, ready for re-review) · Next step: Have a reviewer model re-check Checkpoint D (`reviews/checkpoint-D.md` fixes `D-B1`, `D-M1..D-M8`, `D-S1..D-S7`), then wait for the owner's go-ahead before any beta tag or Phase 10.
+Current phase: 9 (Checkpoint D passed in re-review, 2026-11-14) · Next step: Checkpoint D passed (re-review, `reviews/checkpoint-D.md`). Start phase 10 on the branch, but only once the owner says go in your session; follow notes D2-N1, D2-N2 and D2-N5 there, then stop for the final review. Never tag, merge or push.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -925,6 +925,7 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
 - 2026-11-13 · Checkpoint C re-review 3: **PASS** (CR2-S1 … CR2-S3 fixed by the reviewer on the owner's instruction; the Sandbox half of C-M7 stays a release condition for Checkpoint D) — [docs/flutter-migration/reviews/checkpoint-C.md](docs/flutter-migration/reviews/checkpoint-C.md)
 - 2026-11-14 · Checkpoint D review: **FAIL** (1 blocker D-B1: the Windows release job in `dart.yml` always fails; 8 must-fix D-M1 … D-M8 in the release workflow, macOS and Linux packaging and CONTRIBUTING.md; 7 should-fix; suites, parity, the soak and the classic Windows Sandbox install-over test pass; no beta tag and no phase 10 yet) — [docs/flutter-migration/reviews/checkpoint-D.md](docs/flutter-migration/reviews/checkpoint-D.md)
 - 2026-11-14 · Checkpoint D rework: **FIXED** (`D-B1`, `D-M1`…`D-M8`, `D-S1`…`D-S7` addressed in one-finding commits `e264719`…HEAD, including clean Release build, offline dry-run MSIX Windows Sandbox over-install `0.1.0`→`0.1.1`, and `2026-11-14` real-day soak; ready for Checkpoint D re-review before any beta tag or Phase 10).
+- 2026-11-14 · Checkpoint D re-review: **PASS** (every finding fixed; the MSIX Sandbox test repeated by the reviewer; left for the owner: the first CI run with macOS and Linux, the soak-day question, the exact-alarm question) — [docs/flutter-migration/reviews/checkpoint-D.md](docs/flutter-migration/reviews/checkpoint-D.md)
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 
