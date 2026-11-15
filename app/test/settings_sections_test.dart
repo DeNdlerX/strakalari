@@ -430,4 +430,28 @@ void main() {
       expect(updatedSem2.controller?.text, expectedSem2);
     });
   });
+
+  group('B6 notification event labels', () {
+    testWidgets(
+        'every notification event renders its localized cs and en label without raw keys',
+        (t) async {
+      final prevLang = Strings.lang;
+      addTearDown(() => Strings.lang = prevLang);
+
+      for (final lang in ['cs', 'en']) {
+        Strings.lang = lang;
+        final c = _controller();
+        await _openSection(t, c, 'notifications');
+
+        for (final event in kNotificationEvents) {
+          final label = Strings.get('notif_$event');
+          expect(label, isNotEmpty);
+          expect(label, isNot('notif_$event'));
+          expect(label, isNot(event));
+          expect(find.text(label), findsOneWidget);
+          expect(find.text(event), findsNothing);
+        }
+      }
+    });
+  });
 }

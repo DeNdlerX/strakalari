@@ -1813,7 +1813,7 @@ class SettingsView extends StatelessWidget {
                   controlAffinity: ListTileControlAffinity.leading,
                   contentPadding: EdgeInsets.zero,
                   key: Key('notif:$event'),
-                  title: Text(event),
+                  title: Text(Strings.get('notif_$event')),
                   value: (prefs[event] ?? true) == true,
                   onChanged: (v) {
                     prefs[event] = v;
