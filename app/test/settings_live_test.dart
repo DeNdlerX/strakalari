@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -143,6 +144,219 @@ void main() {
       });
     }
   }
+
+  group('B2 template editor', () {
+    testWidgets('saves typed name and text on focus loss without + Přidat or Delete',
+        (tester) async {
+      final s = AppState(configData: {
+        'tutorials_enabled': false,
+        'late_income_excuses': ['Původní text'],
+      });
+      s.setSettingsSection('templates');
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: LiveSettingsView(narrow: true)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final nameField = find.byKey(const Key('tpl:late_income_excuses:0:name'));
+      final textField = find.byKey(const Key('tpl:late_income_excuses:0:text'));
+      await tester.enterText(nameField, 'Lékař');
+      await tester.enterText(textField, 'Dobrý den,\nomluvte prosím příchod.');
+      await tester.pump();
+
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+
+      final saved = jsonDecode(
+          File(s.config.configPath).readAsStringSync()) as Map<String, dynamic>;
+      expect(saved['late_income_excuses'], [
+        {'name': 'Lékař', 'text': 'Dobrý den,\nomluvte prosím příchod.'},
+      ]);
+    });
+
+    testWidgets('saves typed text when leaving the screen without blurring first',
+        (tester) async {
+      final s = AppState(configData: {
+        'tutorials_enabled': false,
+        'short_absence_excuses': [
+          {'name': 'Rodina', 'text': 'Starý text'},
+        ],
+      });
+      s.setSettingsSection('templates');
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: LiveSettingsView(narrow: true)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final textField =
+          find.byKey(const Key('tpl:short_absence_excuses:0:text'));
+      await tester.scrollUntilVisible(
+        textField,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.ensureVisible(textField);
+      await tester.pump();
+      await tester.tap(textField);
+      await tester.pump();
+      await tester.enterText(textField, 'Nový text omluvenky');
+      await tester.pump();
+
+      // Navigate away without explicitly blurring the focused TextField.
+      s.closeSettingsSection();
+      await tester.pumpAndSettle();
+
+      final saved = jsonDecode(
+          File(s.config.configPath).readAsStringSync()) as Map<String, dynamic>;
+      expect(saved['short_absence_excuses'], [
+        {'name': 'Rodina', 'text': 'Nový text omluvenky'},
+      ]);
+    });
+
+    testWidgets('keeps controller identity and cursor across rebuilds and disposes on unmount',
+        (tester) async {
+      final s = AppState(configData: {
+        'tutorials_enabled': false,
+        'late_income_excuses': [
+          {'name': 'Doprava', 'text': 'Pozdní příchod vlakem'},
+        ],
+      });
+      s.setSettingsSection('templates');
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: LiveSettingsView(narrow: true)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final textFinder = find.byKey(const Key('tpl:late_income_excuses:0:text'));
+      final nameFinder = find.byKey(const Key('tpl:late_income_excuses:0:name'));
+      await tester.tap(textFinder);
+      await tester.pump();
+
+      final textCtrl = tester.widget<TextField>(textFinder).controller!;
+      final nameCtrl = tester.widget<TextField>(nameFinder).controller!;
+      textCtrl.selection = const TextSelection.collapsed(offset: 6);
+      await tester.pump();
+
+      // Trigger a full UI rebuild via AppState.
+      s.onChanged();
+      await tester.pump();
+
+      expect(identical(tester.widget<TextField>(textFinder).controller, textCtrl),
+          isTrue);
+      expect(tester.widget<TextField>(textFinder).controller!.selection,
+          const TextSelection.collapsed(offset: 6));
+
+      // Leave the section; controllers must be disposed.
+      s.closeSettingsSection();
+      await tester.pumpAndSettle();
+      expect(() => textCtrl.addListener(() {}), throwsFlutterError);
+      expect(() => nameCtrl.addListener(() {}), throwsFlutterError);
+    });
+
+    testWidgets('name and text fields do not overlap at 390 px and text field grows with lines',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final s = AppState(configData: {
+        'tutorials_enabled': false,
+        'late_income_excuses': [
+          {'name': 'Doprava', 'text': 'Krátký text'},
+        ],
+      });
+      s.setSettingsSection('templates');
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: LiveSettingsView(narrow: true)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final nameFinder = find.byKey(const Key('tpl:late_income_excuses:0:name'));
+      final textFinder = find.byKey(const Key('tpl:late_income_excuses:0:text'));
+      final nameRect = tester.getRect(nameFinder);
+      final textRect1 = tester.getRect(textFinder);
+      expect(textRect1.top - nameRect.bottom, greaterThanOrEqualTo(8.0));
+
+      final textWidget = tester.widget<TextField>(textFinder);
+      expect(textWidget.minLines, greaterThanOrEqualTo(2));
+      expect(textWidget.maxLines, isNull);
+
+      await tester.enterText(
+          textFinder, 'Řádek 1\nŘádek 2\nŘádek 3\nŘádek 4\nŘádek 5');
+      await tester.pumpAndSettle();
+      final textRect5 = tester.getRect(textFinder);
+      expect(textRect5.height, greaterThan(textRect1.height + 10));
+    });
+
+    testWidgets('adding and deleting templates while focused still works',
+        (tester) async {
+      final s = AppState(configData: {
+        'tutorials_enabled': false,
+        'late_income_excuses': ['První', 'Druhá'],
+      });
+      s.setSettingsSection('templates');
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: LiveSettingsView(narrow: true)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Focus row 0 and delete it directly.
+      await tester.tap(find.byKey(const Key('tpl:late_income_excuses:0:text')));
+      await tester.pump();
+      await tester.tap(find.byTooltip(Strings.get('delete')).first);
+      await tester.pumpAndSettle();
+
+      expect(s.get('late_income_excuses'), ['Druhá']);
+      expect(find.byKey(const Key('tpl:late_income_excuses:1:text')),
+          findsNothing);
+
+      // Add a new row and fill it.
+      await tester.tap(find.text('+ ${Strings.get('add')}').first);
+      await tester.pumpAndSettle();
+      final addedText =
+          find.byKey(const Key('tpl:late_income_excuses:1:text'));
+      expect(addedText, findsOneWidget);
+      await tester.enterText(addedText, 'Třetí');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+      expect(s.get('late_income_excuses'), ['Druhá', 'Třetí']);
+    });
+  });
 }
 
 class _SeededAppStateController extends AppStateController {

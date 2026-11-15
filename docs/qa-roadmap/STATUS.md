@@ -1,13 +1,13 @@
 # QA & roadmap status
 
 Branch: qa-roadmap · Base: main @ a528acd · Current phase: 1
-Next step: B2 (settings excuse-template persistence and field layout)
+Next step: B1 (wizard excuse templates reuse TemplateEditor and keep structured format)
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
 |---|---|---|---|---|---|
 | B1 | todo | — | — | — | Depends on B2 |
-| B2 | todo | — | — | — | Start here in Phase 1 |
+| B2 | done | self (B2 commit) | `app/test/settings_live_test.dart` (`B2 template editor`) | `build/qa-evidence/B2/before_settings_templates_390.png`, `build/qa-evidence/B2/after_settings_templates_390.png` | Field spacing 12 px, `minLines: 2, maxLines: null`, commit on blur/submit/dispose |
 | B3 | todo | — | — | — | |
 | B4 | todo | — | — | — | |
 | B5 | todo | — | — | — | |

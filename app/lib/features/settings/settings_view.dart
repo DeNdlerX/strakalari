@@ -184,13 +184,47 @@ class TemplateEditor extends StatefulWidget {
   State<TemplateEditor> createState() => _TemplateEditorState();
 }
 
+class _TemplateRow {
+  final TextEditingController name;
+  final TextEditingController text;
+  final FocusNode nameFocus;
+  final FocusNode textFocus;
+  bool disposed = false;
+
+  _TemplateRow(String initialName, String initialText, VoidCallback onBlur)
+      : name = TextEditingController(text: initialName),
+        text = TextEditingController(text: initialText),
+        nameFocus = FocusNode(),
+        textFocus = FocusNode() {
+    nameFocus.addListener(() {
+      if (!nameFocus.hasFocus) onBlur();
+    });
+    textFocus.addListener(() {
+      if (!textFocus.hasFocus) onBlur();
+    });
+  }
+
+  void dispose() {
+    if (disposed) return;
+    disposed = true;
+    name.dispose();
+    text.dispose();
+    nameFocus.dispose();
+    textFocus.dispose();
+  }
+}
+
 class _TemplateEditorState extends State<TemplateEditor> {
   late List<Map<String, String>> values;
+  final List<_TemplateRow> _rows = [];
+  final List<_TemplateRow> _pendingDispose = [];
+  bool _dirty = false;
 
   @override
   void initState() {
     super.initState();
     values = _load();
+    _rebuildRows();
   }
 
   List<Map<String, String>> _load() {
@@ -211,8 +245,95 @@ class _TemplateEditorState extends State<TemplateEditor> {
     return out;
   }
 
+  void _rebuildRows() {
+    if (_rows.isNotEmpty) {
+      _pendingDispose.addAll(_rows);
+      _rows.clear();
+      _schedulePendingDispose();
+    }
+    for (var i = 0; i < values.length; i++) {
+      _rows.add(_makeRow(values[i]));
+    }
+  }
+
+  _TemplateRow _makeRow(Map<String, String> item) => _TemplateRow(
+        item['name'] ?? '',
+        item['text'] ?? '',
+        _commitIfDirty,
+      );
+
+  void _schedulePendingDispose() {
+    if (_pendingDispose.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _flushPendingDispose();
+    });
+  }
+
+  void _flushPendingDispose() {
+    for (final r in _pendingDispose) {
+      r.dispose();
+    }
+    _pendingDispose.clear();
+  }
+
+  static bool _sameValues(
+      List<Map<String, String>> a, List<Map<String, String>> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i]['name'] != b[i]['name'] || a[i]['text'] != b[i]['text']) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @override
+  void didUpdateWidget(covariant TemplateEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final keyChanged = widget.configKey != oldWidget.configKey;
+    final anyFocused =
+        _rows.any((r) => r.nameFocus.hasFocus || r.textFocus.hasFocus);
+    if (!keyChanged && (_dirty || anyFocused)) return;
+    final fresh = _load();
+    if (keyChanged || !_sameValues(fresh, values)) {
+      values = fresh;
+      _dirty = false;
+      _rebuildRows();
+    }
+  }
+
+  void _syncFromRows() {
+    for (var i = 0; i < _rows.length && i < values.length; i++) {
+      values[i]['name'] = _rows[i].name.text;
+      values[i]['text'] = _rows[i].text.text;
+    }
+  }
+
+  void _commitIfDirty() {
+    if (!_dirty) return;
+    _commit();
+  }
+
   void _commit() {
+    _syncFromRows();
+    _dirty = false;
     widget.controller.commitTemplates(widget.configKey, values);
+  }
+
+  @override
+  void dispose() {
+    if (_dirty) {
+      _syncFromRows();
+      _dirty = false;
+      widget.controller.commitTemplates(widget.configKey, values);
+    }
+    for (final r in _rows) {
+      r.dispose();
+    }
+    _rows.clear();
+    _flushPendingDispose();
+    super.dispose();
   }
 
   @override
@@ -221,34 +342,44 @@ class _TemplateEditorState extends State<TemplateEditor> {
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-              spacing: 20,
+          spacing: 20,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _CardTitle(Strings.get(widget.titleKey)),
-            for (var i = 0; i < values.length; i++)
+            for (var i = 0; i < _rows.length; i++)
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: Column(
+                      spacing: 12,
                       children: [
                         TextField(
                           key: Key('tpl:${widget.configKey}:$i:name'),
                           decoration: InputDecoration(
                               labelText:
                                   Strings.format('tpl_name', {'n': i + 1})),
-                          controller: TextEditingController(
-                              text: values[i]['name']),
-                          onChanged: (v) => values[i]['name'] = v,
+                          controller: _rows[i].name,
+                          focusNode: _rows[i].nameFocus,
+                          onChanged: (v) {
+                            values[i]['name'] = v;
+                            _dirty = true;
+                          },
+                          onSubmitted: (_) => _commit(),
                         ),
                         TextField(
                           key: Key('tpl:${widget.configKey}:$i:text'),
                           decoration: InputDecoration(
                               labelText: Strings.get('tpl_text')),
-                          controller: TextEditingController(
-                              text: values[i]['text']),
-                          maxLines: 2,
-                          onChanged: (v) => values[i]['text'] = v,
+                          controller: _rows[i].text,
+                          focusNode: _rows[i].textFocus,
+                          keyboardType: TextInputType.multiline,
+                          minLines: 2,
+                          maxLines: null,
+                          onChanged: (v) {
+                            values[i]['text'] = v;
+                            _dirty = true;
+                          },
                         ),
                       ],
                     ),
@@ -257,7 +388,12 @@ class _TemplateEditorState extends State<TemplateEditor> {
                     tooltip: Strings.get('delete'),
                     icon: const Icon(Icons.delete_outline),
                     onPressed: () {
-                      setState(() => values.removeAt(i));
+                      setState(() {
+                        values.removeAt(i);
+                        final removed = _rows.removeAt(i);
+                        _pendingDispose.add(removed);
+                      });
+                      _schedulePendingDispose();
                       _commit();
                     },
                   ),
@@ -265,8 +401,11 @@ class _TemplateEditorState extends State<TemplateEditor> {
               ),
             TextButton(
               onPressed: () {
-                setState(
-                    () => values.add({'name': '', 'text': ''}));
+                setState(() {
+                  final item = {'name': '', 'text': ''};
+                  values.add(item);
+                  _rows.add(_makeRow(item));
+                });
                 _commit();
               },
               child: Text('+ ${Strings.get('add')}'),
