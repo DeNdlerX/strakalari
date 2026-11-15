@@ -14,7 +14,7 @@ End-user documentation lives in [README.md](README.md) / [README.en.md](README.e
   - Windows: Visual Studio with the Desktop development with C++ workload (and Inno Setup 6 for `installer.iss`).
   - Android: JDK 17 and the Android SDK.
   - Linux / macOS: standard Flutter Linux (`clang`, `cmake`, `ninja-build`, `pkg-config`, `libgtk-3-dev`, `libayatana-appindicator3-dev`, `libsecret-tools`) or Xcode.
-- **Python 3** (stdlib only — optional) to run the local demo tools (`tools/demo_data.py`, `tools/bakalari_demo_server.py`) and Windows MSIX packaging (`tools/make_msix.py`, `tools/store_submit.py`).
+- **Python 3** (stdlib only — optional) to run the local demo tools (`tools/demo_data.py`, `tools/bakalari_demo_server.py`) and Windows MSIX packaging (`tools/make_msix.py`, `tools/store_submit.py`). Only `tools/render_icon.py` (regenerating the icon files) needs extra packages: `pip install playwright pillow`.
 
 ## 2. Local setup
 

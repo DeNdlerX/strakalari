@@ -1,5 +1,5 @@
 name: strakalari_core
-description: Pure-Dart core of Strakalari (no Flutter import). Behavior parity with strakalari/core.
+description: Pure-Dart core of Strakalari (no Flutter import).
 version: 0.1.0
 
 environment:
