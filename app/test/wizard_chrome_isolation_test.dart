@@ -95,8 +95,9 @@ void main() {
       'bakalari_username': 'novak',
       'bakalari_password': 'secret',
     });
-    // needsSetup becomes false, but wizard is mid-run (setupPending is still true)
-    expect(state.needsSetup(), isFalse);
+    // A saved login does not finish the setup: the wizard is mid-run, and
+    // stays pending even across an app restart (the step is persisted).
+    expect(state.needsSetup(), isTrue);
     expect(state.setupPending, isTrue);
 
     await tester.pumpAndSettle();

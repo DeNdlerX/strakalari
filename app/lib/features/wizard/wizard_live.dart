@@ -148,10 +148,7 @@ class _LiveWizardViewState extends ConsumerState<LiveWizardView> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final s = ref.read(appStateProvider);
-      if (!s.wizardDismissed) {
-        s.wizardShown = true;
-      }
+      ref.read(appStateProvider).wizardOpened();
     });
   }
 

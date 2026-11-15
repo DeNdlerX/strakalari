@@ -57,6 +57,25 @@ void main() {
     expect(s.drafts.containsKey('wiz:disclaimer'), isFalse);
   });
 
+  test('an unfinished wizard resumes after the app restarts', () {
+    // The first step already saved a login; leaving the app there must not
+    // count as a finished setup.
+    final first = AppState()..wizardOpened();
+    first.save({
+      'bakalari_url': 'https://skola.bakalari.cz',
+      'bakalari_username': 'novak',
+      'bakalari_password': 'secret',
+    });
+    first.wizardGoto(WizardController.stepStrava, WizardController.stepDone);
+
+    final restarted = AppState();
+    expect(restarted.setupPending, isTrue);
+    expect(restarted.wizardStep, WizardController.stepStrava);
+
+    restarted.wizardFinished();
+    expect(AppState().setupPending, isFalse);
+  });
+
   testWidgets('LiveWizardView renders and marks wizardShown on AppState',
       (tester) async {
     final s = AppState();

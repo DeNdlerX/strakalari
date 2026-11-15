@@ -129,6 +129,8 @@ class AppState {
       final v = '${get('timetable_view', 'table')}';
       return (v == 'table' || v == 'list') ? v : 'table';
     }();
+    final savedStep = _savedWizardStep;
+    if (savedStep > 0) wizardStep = savedStep;
     try {
       final cached = loadCached(updateChannel);
       if (cached != null &&
@@ -809,10 +811,24 @@ class AppState {
 
   bool _hasAnyCredentials() => _hasCredentials() || _hasStravaCredentials();
 
-  // -- first-run wizard (in-memory step, gating on real credentials) ---------------------
+  // -- first-run wizard (gating on real credentials) -------------------------------------
+  /// Config key holding the step of an unfinished wizard (-1 / absent =
+  /// no wizard in progress). Persisted so that leaving the app mid-setup
+  /// resumes the wizard instead of counting the setup as finished just
+  /// because the first step already saved a login.
+  static const String wizardStepKey = 'wizard_step';
+
+  int get _savedWizardStep =>
+      int.tryParse('${get(wizardStepKey, -1)}') ?? -1;
+
+  void _saveWizardStep(int step) {
+    if (_savedWizardStep == step) return;
+    saveQuiet({wizardStepKey: step});
+  }
+
   bool needsSetup() {
     if (wizardDismissed) return false;
-    return !_hasAnyCredentials();
+    return _savedWizardStep >= 0 || !_hasAnyCredentials();
   }
 
   bool get setupPending {
@@ -820,13 +836,22 @@ class AppState {
     return wizardShown || needsSetup();
   }
 
+  /// The wizard is on screen: remember it across app restarts.
+  void wizardOpened() {
+    if (wizardDismissed) return;
+    wizardShown = true;
+    _saveWizardStep(wizardStep);
+  }
+
   void dismissWizard() {
     wizardDismissed = true;
+    _saveWizardStep(-1);
     _emit();
   }
 
   void wizardGoto(int step, int stepDone) {
     wizardStep = step.clamp(0, stepDone);
+    _saveWizardStep(wizardStep);
     _emit();
   }
 
@@ -835,6 +860,7 @@ class AppState {
     wizardStep = 0;
     drafts.removeWhere((k, _) => k.startsWith('wiz:'));
     wizardVerified.clear();
+    _saveWizardStep(-1);
     _emit();
   }
 
