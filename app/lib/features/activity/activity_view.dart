@@ -48,8 +48,12 @@ String durationText(Object? seconds) {
 }
 
 DateTime? runTime(Map<String, dynamic> run) {
+  final raw = '${run['at'] ?? ''}'.trim();
+  // Legacy runs stored a date-only YYYY-MM-DD 'at'; skip midnight parsing so
+  // runWhen falls back to the preformatted 'finished' clock label instead.
+  if (!raw.contains('T') && !raw.contains(' ')) return null;
   try {
-    return DateTime.parse('${run['at'] ?? ''}');
+    return DateTime.parse(raw);
   } catch (_) {
     return null;
   }
