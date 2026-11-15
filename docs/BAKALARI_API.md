@@ -5,10 +5,10 @@ does: the same pages, the same form posts, the same JSON endpoints the
 pages call from their own scripts. It never uses the mobile API
 (`/api/login`, `/api/3/…`).
 
-Code: `strakalari/core/bakalari_http.py` (session, WebForms helpers),
-`bakalari_client.py` + the `bakalari_*` mixins, parsers in
-`strakalari/core/extractors/bakalari.py`. Tests run against a fake server
-(`tests/fake_bakalari.py`).
+Code: `packages/strakalari_core/lib/src/bakalari/http_session.dart`
+(session, WebForms helpers), `client.dart` + `timetable.dart`, `data.dart`,
+`excuse.dart`, parsers in `extractors.dart`. Tests run against a fake server
+(`packages/strakalari_core/test/fake_bakalari.dart`).
 
 **Sources.** Everything here was read from the live web app of one school
 (Bakaláři web 2.2.x, October 2026): page HTML, page scripts, and real
@@ -445,8 +445,8 @@ as they are. So the HTML is encoded **twice**: `<p>a&b</p>` →
 | `DXCss` | the page's stylesheet links (`DXR.axd` ones as ids) |
 | `DXMVCEditorsValues` | a JS object literal of every editor value, dates as `new Date(2026,9,1)` |
 
-The exact field-by-field builder is `excuse_postback()` in
-`strakalari/core/bakalari_excuse.py`.
+The exact field-by-field builder is `excusePostback()` in
+`packages/strakalari_core/lib/src/bakalari/excuse.dart`.
 
 **Result.** The reply to a successful post was not characterized beyond
 "not the login page". The client posts once, never retries, and counts the
@@ -482,7 +482,7 @@ DevExpress runs every client-state value through it before posting:
 &lt;  → &ltx;    < → &lt;    &gt;   → &gtx;    > → &gt;
 ```
 
-(in this order). `dx_encode_html()` / `dx_state()` in `bakalari_http.py`.
+(in this order). `dxEncodeHtml()` / `dxState()` in `http_session.dart`.
 
 ### DevExpress callbacks
 

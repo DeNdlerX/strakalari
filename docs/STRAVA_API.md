@@ -4,10 +4,9 @@ Strava's web app (`https://app.strava.cz`, the site the login on
 `strava.cz` leads to) is a Next.js single-page app that talks to its own
 JSON endpoints under `/api/`. Strakaláři sends the same requests.
 
-Code: `strakalari/core/strava_client.py` (login, menu),
-`strava_ordering.py` (ordering, save), parsers in
-`strakalari/core/extractors/strava.py`. Tests run against a fake API
-(`tests/test_strava_client.py`).
+Code: `packages/strakalari_core/lib/src/strava/client.dart` (login, menu),
+`ordering.dart` (ordering, save), parsers in `extractors.dart`. Tests run
+against a fake API (`packages/strakalari_core/test/strava_test.dart`).
 
 **Sources.** Read from the live web app (October 2026): its page scripts
 and real replies for one canteen on the older backend (**S4**, see below).
@@ -234,7 +233,7 @@ row to `0`.
 ```
 
 `xml` is the order sheet, entity-encoded (`&lt;` …) exactly as the web
-app builds it (`order_sheet()` in `strava_ordering.py` matches it byte for
+app builds it (`orderSheet()` in `ordering.dart` matches it byte for
 byte):
 
 ```text

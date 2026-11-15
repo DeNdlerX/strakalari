@@ -65,8 +65,9 @@ printed to the console log.
 
 ## Contributing a preset
 
-Add a dict shaped like `GEKOM_2026_2027` to `PRESETS` in
-`strakalari/core/school_presets.py`. `tests/test_school_calendar.py`
-checks every shipped preset with `validate_preset()`; add a test for the
+Add a map shaped like `gekom20262027` to `presets` in
+`packages/strakalari_core/lib/src/planning/school_presets.dart`.
+`packages/strakalari_core/test/school_presets_test.dart`
+checks every shipped preset with `validatePreset()`; add a test for the
 expected day count as for GEKOM. Please include a link to the school's
 published calendar in the pull request.
