@@ -4,12 +4,6 @@ Thanks for wanting to help! This guide covers local development, testing, buildi
 
 End-user documentation lives in [README.md](README.md) / [README.en.md](README.en.md) — this file is for developers only.
 
-> **Python parity reference:** Until the phase 10 switch in
-> [docs/flutter-migration/PLAN.md](docs/flutter-migration/PLAN.md), the original
-> Python app under `strakalari/` and `tests/` remains in the repository as the
-> read-only reference for behavior parity. Do not edit Python files outside
-> `tools/parity/` and merges from `main`.
-
 ---
 
 ## 1. Prerequisites
@@ -20,7 +14,7 @@ End-user documentation lives in [README.md](README.md) / [README.en.md](README.e
   - Windows: Visual Studio with the Desktop development with C++ workload (and Inno Setup 6 for `installer.iss`).
   - Android: JDK 17 and the Android SDK.
   - Linux / macOS: standard Flutter Linux (`clang`, `cmake`, `ninja-build`, `pkg-config`, `libgtk-3-dev`, `libayatana-appindicator3-dev`, `libsecret-tools`) or Xcode.
-- **Python 3.11 or 3.12** (with `.venv` set up from `requirements.txt` / `requirements-dev.txt`) to run the Python reference suite and the local demo tools (`tools/demo_data.py`, `tools/bakalari_demo_server.py`).
+- **Python 3** (stdlib only — optional) to run the local demo tools (`tools/demo_data.py`, `tools/bakalari_demo_server.py`) and Windows MSIX packaging (`tools/make_msix.py`, `tools/store_submit.py`).
 
 ## 2. Local setup
 
@@ -70,15 +64,13 @@ Passwords and the Gemini API key are encrypted with Fernet; the key lives in the
 ## 4. Tests
 
 ```bash
-cd packages/strakalari_core && dart analyze && dart test   # pure-Dart core
+cd packages/strakalari_core && dart analyze && dart test   # pure-Dart core (includes parity vector tests)
 cd app && flutter analyze && flutter test                # Flutter app & platform tests
-PYTHONUTF8=1 python -m pytest tests/ -q                  # Python reference suite
-PYTHONUTF8=1 python tools/parity/dump.py                 # verify parity fixtures (git diff --exit-code packages/strakalari_core/test/parity/)
 ```
 
 - CI runs analysis, core/app tests, and release builds in `.github/workflows/dart.yml` (plus `dart-macos-locks` for Apple Silicon `flock` verification on manual dispatch and release tags).
 - CI minutes are limited — **always run the checks locally and make them pass before pushing**. Don't use CI as your test runner.
-- Side-by-side parity runs against the local demo server are documented in [docs/flutter-migration/SOAK.md](docs/flutter-migration/SOAK.md) (`tools/parity/soak_refresh.py`, `packages/strakalari_core/bin/refresh_dryrun.dart`, `tools/parity/soak_compare.py`).
+- Committed parity test vectors live in `packages/strakalari_core/test/parity/*.json` and are verified automatically by `parity_*_test.dart`.
 - Add tests alongside every bug fix or behavior change (`packages/strakalari_core/test/*_test.dart`, `app/test/*_test.dart`).
 
 ## 5. Project layout
@@ -109,7 +101,7 @@ app/                                 # Flutter UI & platform implementations (pa
     l10n/                            #   app_cs.arb, app_en.arb, strings.dart
   android/ windows/ macos/ linux/    # platform runners (+ Android Java classes under io/github/dendlerx/strakalari/android/)
   test/                              # widget & platform unit tests
-tools/                               # parity oracle/soak scripts, demo_data.py, bakalari_demo_server.py, make_msix.py
+tools/                               # demo_data.py, bakalari_demo_server.py, make_msix.py, store_submit.py, render_icon.py, parity/capture_screens.dart
 docs/                                # BAKALARI_API.md, STRAVA_API.md, SCHOOL_PRESETS.md, STORE.md, flutter-migration/
 config.example.json                  # canonical config-key reference (keep in sync with config.dart!)
 installer.iss                        # Inno Setup script (Windows installer)
@@ -118,11 +110,11 @@ installer.iss                        # Inno Setup script (Windows installer)
 These rules keep the automation safe:
 
 - **One pipeline.** Anything that refreshes data or runs auto modes goes through `runRefresh` (`packages/strakalari_core/lib/src/automation/refresh.dart`) — never a second copy in the UI, tray, or background entry.
-- **One session at a time.** Desktop runs as one process: closing the window hides it to the tray (when `minimize_to_tray` is enabled; `--minimized` starts hidden), and a second launch wakes the existing window over `SingleInstance` loopback TCP (`app/lib/platform/desktop/single_instance.dart`). Whole refreshes and order submits run under `withSessionLock` / `withSessionLockAsync` (`session.lock`, compatible with Python's OS file lock); a caller that cannot acquire it skips with a visible message instead of running in parallel. On Android, `backgroundMain` checks `IsolateNameServer` and hands off to the live UI isolate if one is active before falling back to running headless.
+- **One session at a time.** Desktop runs as one process: closing the window hides it to the tray (when `minimize_to_tray` is enabled; `--minimized` starts hidden), and a second launch wakes the existing window over `SingleInstance` loopback TCP (`app/lib/platform/desktop/single_instance.dart`). Whole refreshes and order submits run under `withSessionLock` / `withSessionLockAsync` (`session.lock`, OS file lock); a caller that cannot acquire it skips with a visible message instead of running in parallel. On Android, `backgroundMain` checks `IsolateNameServer` and hands off to the live UI isolate if one is active before falling back to running headless.
 - **One send path.** Excuses are sent only via `Strakalari.sendExcuse` (`packages/strakalari_core/lib/src/automation/automation.dart`), which checks `excuse_history.dart` for coverage and holds `HistoryLock` across check, submit, and write. Navigation-triggering clicks use `once: true` and are never retried. A submit the site never confirmed is `unconfirmed`, not `failed`: it goes to `already_excused_lessons.unconfirmed.json` and blocks every re-send until a successful Komens outbox read settles it — and auto mode never sends when the outbox could not be read.
 - **Everything is recorded.** Every send/order attempt (manual or auto, real or dry run, success or failure) goes to `audit.dart` (`automation_history.jsonl`); `automation_paused` must stop every auto phase.
 - **New feature, new tutorial.** Interactive tutorials live in `app/lib/tutorial/tours.dart`: add a `Tour` to `tours`, add its `tut_*` strings (cs + en) in `app/lib/l10n/`, call `tutorialOffer` in the view once the feature's content is on screen, wrap the controls it explains in `TutorialAnchor`, and fire `tutorialEvent` where the action succeeds if a step waits for it.
-- **Fail loudly.** In send, order, and save code an exception is never swallowed silently: log it (`writeLog` / `app.log`), or `print('Warning: …')` where no logger exists (windowed Windows builds write stdout/stderr to `console.log` via `console_log.dart`). An auto phase that did not do its job is an `AutomationError` in `RefreshResult.errors`, which the UI and notifications surface. Silent `catch (_)` is fine only for optional probes (cosmetic UI state or non-critical reads); a wait or fallback a scraper deliberately carries on after logs one line via `_debug`. `writeLog` scrubs stored passwords and API keys before anything reaches `log.txt`.
+- **Fail loudly.** In send, order, and save code an exception is never swallowed silently: log it (`writeLog` / `app.log`), or `print('Warning: …')` where no logger exists (windowed Windows builds write stdout/stderr to `console.log` via `console_log.dart`). An auto phase that did not do its job is an `AutomationError` in `RefreshResult.errors`, which the UI and notifications surface. Silent `catch (_)` is fine only for optional probes (cosmetic UI state or non-critical reads); a wait or fallback a scraper deliberately carries on after logs one line via `debug(what, exc)` (`packages/strakalari_core/lib/src/bakalari/client.dart`). `writeLog` scrubs stored passwords and API keys before anything reaches `log.txt`.
 
 ## 6. Contribution guidelines
 

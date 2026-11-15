@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 9 (Checkpoint D passed in re-review, 2026-11-14) · Next step: Checkpoint D passed (re-review, `reviews/checkpoint-D.md`). Start phase 10 on the branch, but only once the owner says go in your session; follow notes D2-N1, D2-N2 and D2-N5 there, then stop for the final review. Never tag, merge or push.
+Current phase: 10 (Complete on branch — awaiting final merge review) · Next step: Phase 10 complete on branch `flutter-migration`. Have a reviewer model perform the final merge check before merging `flutter-migration` into `main`, tagging, or pushing.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -37,14 +37,14 @@ headless backgroundMain with UI-isolate hand-off, boot re-arm,
 widget/alarms, Keystore unwrap, `.test` flavor, privacy test port.
 Verified on the test phone by the migrating agent (2026-11-13).
 ⛔ Checkpoint C: platform review (re-review 3: **PASS**, 2026-11-13; Sandbox half of C-M7 open).
-Phase 9 (parity soak & release prep) is complete: real days 2026-11-13 and
-2026-11-14 plus simulated multi-day runs match byte-for-byte on fetch and
-`IDENTICAL (modulo ts)` on dry-run refresh, both offline Windows Sandbox
-over-install tests (classic Inno and Store MSIX, in dry run) pass, and every
-finding in `reviews/checkpoint-D.md` (`D-B1`, `D-M1..D-M8`, `D-S1..D-S7`) is
-fixed and ready for Checkpoint D re-review. Beta release waits for reviewer
-sign-off and the owner's explicit go-ahead.
-Phase 10 (switch) NOT started: needs reviewer sign-off + owner merge.
+Phase 9 (parity soak & release prep) passed Checkpoint D re-review on 2026-11-14
+and the owner accepted simulated soak days on 2026-11-15 to proceed with Phase 10.
+Phase 10 (switch) is complete on `flutter-migration` (`strakalari/`, `tests/`,
+`mobile/`, PyInstaller/Flet packaging, Python CI workflows, and Python-only
+`tools/parity/*.py` removed; `.github/workflows/dart.yml` switched; docs and
+remaining tests updated; reviewer notes `D-N1`, `D2-N1`, `D2-N2`, `D2-N5`
+addressed). Ready for the reviewer model's final merge review before merging
+into `main`, tagging, or pushing.
 
 ## Phase 0 (done)
 
@@ -402,7 +402,7 @@ Every Python `tests/test_*.py` file (94 files) is mapped below to its Dart test(
 72. `tests/test_status_notification.py` (51):
     - 39 core `TestItems`, `TestLunchtime`, `TestLunch`, `TestNextLesson`, `TestOtherLines`, `TestNotifier` cases → `status_notification_test.dart` (39 1:1 camelCase cases)
     - `TestAndroidBridge` (6) and `TestPhoneWiring` (4) → `app/test/android_phone_background_test.dart`; `TestSettings` (2) → `app/test/background_settings_test.dart` (+ the Store startup card)
-73. `tests/test_store_package.py` (18) → `app/test/store_package_test.dart` (13: detection 4, data dir 4, update gate 3, autostart gate 2); `TestMsixVersion` (4) and `test_store_submit_loads` test Python tools that still pack and publish the MSIX and stay in the Python suite until phase 10
+73. `tests/test_store_package.py` (18) → `app/test/store_package_test.dart` (18: detection 4, data dir 4, update gate 3, autostart gate 2, `TestMsixVersion` 4, `storeSubmitLoads` 1; calls stdlib `tools/make_msix.py` and `tools/store_submit.py` directly via Python 3)
 74. `tests/test_strava_blacklist_edits.py` (5):
     - `test_default_blacklist_template_is_empty` → `config_test.dart`: `blacklistFiltersTemplatePlaceholders` / `repoExampleFilesAreValid`
     - 4 `TestBlacklistEdits` (`AppState` add/remove blacklist word) → `app/test/app_state_lunches_test.dart` (addRefusesOnCorruptFile, removeRefusesOnNonList, addAndRemoveKeepExistingWords, addToMissingFileCreatesIt)
@@ -487,6 +487,7 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
   - `tests/test_mobile.py` `TestMakeMobile::test_flet_pin_matches_desktop`, `::test_extension_wheel`, `::test_pyc_shim_*` — the Flet build, its extension wheel and `.pyc` path scrubbing; the Flutter build is `tool/build_android.dart` (tested in `android_build_test.dart`).
 - `tests/test_scheduler.py::test_tray_startup_seed` — `TrayApp._startup_seed` is the tray process's own seed; Flutter has one process, the tray uses the window's runner, seeded by `registerJobs` (covered by `registerJobsSeedsFromFreshCache`).
 - `tests/test_version_sync.py::test_pep440_mapping` — the PEP 440 spelling exists only for `pyproject.toml`; no Flutter file is written in it (the build number has its own test).
+- `packages/strakalari_core/test/helpers_test.dart::pythonWritesDartRewritesBytesMatch` — dropped in Phase 10 when `strakalari/` was removed (`D2-N5`); byte-for-byte round-trip parity remains covered by `parity_helpers_test.dart::roundTripFiles` against committed `packages/strakalari_core/test/parity/helpers.json`.
 
 ## Deviations from Python (each needs reviewer sign-off)
 
@@ -1094,6 +1095,18 @@ How to verify:
 4. Run `PYTHONUTF8=1 C:/Users/matou/Documents/Programy/Python/strakalari/.venv/Scripts/python.exe tools/parity/dump.py` + `git diff --exit-code packages/strakalari_core/test/parity/` (empty diff).
 
 Next gate: Checkpoint D re-review (`reviews/checkpoint-D.md`) and explicit owner go-ahead before tagging any beta (`vX.Y.Z-beta.N`) or starting Phase 10 (removal of Python app code & packaging).
+
+### Phase 10 — Switch & Cleanup Notes
+
+- **Removed Python app, tests, and packaging:** `strakalari/`, `tests/` (`tests/fixtures/` moved via `git mv` to `packages/strakalari_core/test/fixtures/`), `mobile/`, `main.py`, `strakalari.spec`, `rthook_frozen_builtins.py`, `tools/make_mobile.py`, `pyproject.toml`, `requirements.txt`, `requirements-dev.txt`, `build.bat`, `run.bat`, `.github/workflows/build.yml`, `.github/workflows/test.yml`, and Python-only `tools/parity/*.py` scripts (`dump.py`, `fetch.py`, `soak_refresh.py`, `soak_compare.py`, `fake_clock.py`, `demo_server_at.py`, `capture_flet.py`, `serve_wizard.py`).
+- **Retained `tools/` (`D2-N5`):** `tools/make_msix.py`, `tools/store_submit.py` (tested directly by `app/test/store_package_test.dart`), `tools/bakalari_demo_server.py`, `tools/demo_data.py` (`generate` subcommand only, stdlib-only; Flet/Playwright subcommands removed), `tools/render_icon.py`, and `tools/parity/capture_screens.dart` (along with committed `packages/strakalari_core/test/parity/*.json` and `packages/strakalari_core/test/fixtures/`).
+- **CI switch (`.github/workflows/dart.yml`):** triggers on pushes to `main` and `flutter-migration` plus `v*` tags and `workflow_dispatch`; removed Python 3.11 + `cryptography==50.0.1` setup from `dart-macos-locks` (`D-N1`, `D2-N5`); kept `release-flutter` (`softprops/action-gh-release`) and added `publish-store` (`needs: [meta, build-flutter-msix]`, non-prerelease tags, runs `python3 tools/store_submit.py "$MSIX" --commit`).
+- **Reviewer notes addressed:** `D-N1` (`dart-macos-locks` cleanup in `.github/workflows/dart.yml`), `D2-N1` (`CONTRIBUTING.md`: `_debug` -> `debug(what, exc)`), `D2-N2` (`PRIVACY.md`: clarified Android encryption key file in private storage is wrapped by Android Keystore, falling back to unwrapped `secret.key`), `D2-N5` (`packages/strakalari_core/test/timetable_test.dart` reads `test/fixtures/`; `app/test/version_sync_test.dart` uses `stampedAppVersion`; `packages/strakalari_core/tool/build_android.dart` parses default version from `app/pubspec.yaml`; `packages/strakalari_core/test/helpers_test.dart` dropped `pythonWritesDartRewritesBytesMatch`; `packages/strakalari_core/test/session_lock_test.dart` switched POSIX `matchesPythonFlock` to stdlib `fcntl.flock`; `app/test/store_package_test.dart` absorbed `TestMsixVersion` [4] and `storeSubmitLoads` [1]).
+- **Verification (Windows 11; macOS/Linux and CI `dart-macos-locks` unverified locally until CI runs):**
+  - `packages/strakalari_core`: `dart analyze` -> `No issues found!`; `dart test` -> `801 passed, 2 skipped` (`freshLockFileIsOwnerReadWritable` and `matchesPythonFlock`, POSIX-only on Windows), exit 0.
+  - `app`: `flutter analyze` -> `No issues found!`; `flutter test` -> `649 passed, 1 skipped`, exit 0.
+  - Retained Python tools: `python tools/make_msix.py --help` (exit 0), `python tools/demo_data.py --help` (exit 0), `py_compile` on `tools/store_submit.py` and `tools/bakalari_demo_server.py` (exit 0).
+- **Next gate:** Final reviewer check before merging `flutter-migration` into `main`, pushing, or tagging a release.
 
 Phase 1 cross-implementation proofs (for Checkpoint A):
 - Fernet: Dart decrypted a Python-made token and Python decrypted a

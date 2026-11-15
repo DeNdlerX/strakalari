@@ -1,4 +1,4 @@
-"""Synthetic demo data for README screenshots (never use a real account).
+"""Synthetic demo data for local testing and screenshots (never use a real account).
 
 Builds a throwaway data folder (``config.json`` + ``data_cache.json``) for
 a made-up student: fake teachers, marks, absences and canteen menus, all
@@ -6,17 +6,7 @@ dated relative to today so pending excuses and orderable lunches exist.
 
 Usage (from the repository root)::
 
-    python tools/demo_data.py screenshots            # docs/images/*-cs.png / *-en.png
-    python tools/demo_data.py screenshots --theme light
-    python tools/demo_data.py generate DIR --lang en # just write the data folder
-    python tools/demo_data.py serve DIR --port 8561  # browse it at http://127.0.0.1:8561
-    python tools/demo_data.py playstore              # dist/playstore/<lang>/: phone + 7"/10" tablet shots, feature graphic
-
-``serve`` runs the Flet UI as a local web server on that folder
-(``STRAKALARI_DATA_DIR``), skipping the first-run wizard and the
-single-instance guard, so it never touches a running Strakaláři.
-``screenshots`` does generate + serve + headless Chromium (Playwright) for
-both languages and writes the images the READMEs embed.
+    python tools/demo_data.py generate DIR --lang en
 
 The school calendar is the GEKOM 2026/2027 preset; once that year is
 over, switch ``PRESET_ID`` to a current preset or the Planner stays empty.
@@ -27,14 +17,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
-import sys
-import tempfile
-import time
-import urllib.request
 from datetime import date, datetime, timedelta
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PRESET_ID = "gekom_2026_2027"
 
 DAYS_CS = ["pondělí", "úterý", "středa", "čtvrtek", "pátek"]
@@ -93,10 +77,6 @@ MENUS = [
      "Buchtičky se šodó"),
 ]
 
-#: README images: (file stem, route). The planner shot keeps its tutorial
-#: bubble on, so it runs last with every other tour already marked done.
-SHOTS = [("today", "today"), ("timetable", "timetable"), ("marks", "marks"),
-         ("lunches", "lunches"), ("planner", "planner")]
 TOURS_DONE = ["intro", "excuse", "timetable", "absences", "lunches", "marks",
               "settings", "activity"]
 
@@ -219,222 +199,6 @@ def generate(out_dir: str, lang: str = "cs", theme: str = "dark",
     return out_dir
 
 
-def serve(data_dir: str, port: int) -> None:
-    """Serves the UI on ``data_dir`` at http://127.0.0.1:<port> (blocks)."""
-    os.environ["STRAKALARI_DATA_DIR"] = os.path.abspath(data_dir)
-    # A plain HTTP server, no browser window opened.
-    os.environ["FLET_FORCE_WEB_SERVER"] = "1"
-    os.chdir(data_dir)
-    sys.path.insert(0, ROOT)
-
-    import flet as ft
-
-    from strakalari.flet_ui import app
-    from strakalari.flet_ui.assets import assets_dir
-
-    if os.environ.get("DEMO_NO_UPDATE_BANNER"):
-        from strakalari.core import update
-
-        update.updates_managed_externally = lambda: True
-
-    class DemoState(app.AppState):
-        def __init__(self, *a, **kw):
-            super().__init__(*a, **kw)
-            self.wizard_dismissed = True  # no credentials: skip the wizard
-
-    app.AppState = DemoState
-    # app.main, not app.run(): run() holds the single-instance port and
-    # would show an already running Strakaláři instead of serving.
-    ft.app(target=app.main, view=None, port=port, assets_dir=str(assets_dir()))
-
-
-def _wait_http(url: str, timeout: float = 60.0) -> None:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            with urllib.request.urlopen(url, timeout=3):
-                return
-        except OSError:
-            time.sleep(1)
-    raise RuntimeError(f"demo server did not come up at {url}")
-
-
-def _rail_click(page, route: str) -> None:
-    from strakalari.flet_ui.app import ROUTES
-
-    # Nav rail destinations sit 64 px apart, the first centred at y=45
-    # (1280x800 viewport).
-    page.mouse.click(50, 45 + 64 * ROUTES.index(route))
-    time.sleep(2.5)
-
-
-def screenshots(out_dir: str, theme: str, port: int) -> None:
-    from PIL import Image
-    from playwright.sync_api import sync_playwright
-
-    sys.path.insert(0, ROOT)
-    os.makedirs(out_dir, exist_ok=True)
-    for lang in ("cs", "en"):
-        with tempfile.TemporaryDirectory(prefix=f"strakalari-demo-{lang}-") as tmp:
-            generate(tmp, lang=lang, theme=theme, tutorials=True)
-            server = subprocess.Popen(
-                [sys.executable, os.path.abspath(__file__), "serve", tmp, "--port", str(port)],
-                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-            )
-            try:
-                url = f"http://127.0.0.1:{port}"
-                _wait_http(url)
-                with sync_playwright() as p:
-                    browser = p.chromium.launch(
-                        headless=True,
-                        args=["--use-gl=swiftshader", "--enable-unsafe-swiftshader"])
-                    page = browser.new_page(viewport={"width": 1280, "height": 800},
-                                            device_scale_factor=2)
-                    page.goto(url)
-                    time.sleep(10)  # CanvasKit start-up + first render
-                    for stem, route in SHOTS:
-                        _rail_click(page, route)
-                        if route == "planner":
-                            time.sleep(2)  # the tutorial bubble fades in
-                        raw = os.path.join(tmp, f"{stem}.png")
-                        page.screenshot(path=raw)
-                        img = Image.open(raw).convert("RGB").resize((1600, 1000), Image.LANCZOS)
-                        img = img.quantize(colors=256, method=Image.Quantize.MEDIANCUT,
-                                           dither=Image.Dither.NONE)
-                        dest = os.path.join(out_dir, f"{stem}-{lang}.png")
-                        img.save(dest, optimize=True)
-                        print(f"{dest} ({os.path.getsize(dest) // 1024} KB)")
-                    browser.close()
-            finally:
-                server.terminate()
-                server.wait(timeout=15)
-
-
-#: Play Store screenshots: (folder, CSS viewport, device scale) -> exact pixels
-#: 1080x1920, 1200x1920, 2560x1600 (Play: 9:16 or 16:9, 320-3840 px per side).
-#: The app picks its layout from the width: phones and 7" tablets (portrait)
-#: get the bottom bar, the 10" tablet (landscape) the side rail, as on a
-#: real device.
-PLAY_DEVICES = [("phone", (360, 640), 3), ("tablet7", (600, 960), 2),
-                ("tablet10", (1280, 800), 2)]
-PLAY_ROUTES = ["today", "timetable", "marks", "lunches", "absences", "planner"]
-#: Screens the phone layout keeps in the "Více" menu: tile centre (CSS px) by route.
-MORE_TILES = {"absences": 105, "planner": 161}
-PLAY_TAGLINES = {"cs": "Rozvrh, známky, absence a obědy na jednom místě",
-                 "en": "Timetable, marks, absences and lunches in one place"}
-_FONT_DIRS = ["C:/Windows/Fonts", "/usr/share/fonts/truetype/dejavu", "/Library/Fonts",
-              "/System/Library/Fonts/Supplemental"]
-
-
-def _font(size: int, bold: bool = False):
-    from PIL import ImageFont
-
-    for name in (("segoeuib.ttf", "DejaVuSans-Bold.ttf", "Arial Bold.ttf") if bold
-                 else ("segoeui.ttf", "DejaVuSans.ttf", "Arial.ttf")):
-        for folder in _FONT_DIRS:
-            path = os.path.join(folder, name)
-            if os.path.exists(path):
-                return ImageFont.truetype(path, size)
-    return ImageFont.load_default(size)
-
-
-def feature_graphic(path: str, lang: str) -> None:
-    """The 1024x500 Play feature graphic: logo, name and a one-line tagline."""
-    from PIL import Image, ImageDraw
-
-    width, height = 1024, 500
-    bg = Image.new("RGB", (width, height))
-    draw = ImageDraw.Draw(bg)
-    for y in range(height):  # vertical gradient in the app's dark theme colours
-        k = y / (height - 1)
-        draw.line([(0, y), (width, y)], fill=tuple(int(a + (b - a) * k) for a, b in
-                                                    ((15, 28), (17, 32), (21, 44))))
-    logo = Image.open(os.path.join(ROOT, "assets", "logo-512.png")).convert("RGBA")
-    ghost = logo.resize((620, 620), Image.LANCZOS)
-    ghost.putalpha(ghost.getchannel("A").point(lambda a: a * 0.10))
-    bg.paste(ghost, (width - 440, -60), ghost)  # faint oversized copy bleeding off the right edge
-    mark = logo.resize((340, 340), Image.LANCZOS)
-    bg.paste(mark, (70, 80), mark)
-    draw.text((450, 130), "Strakaláři", font=_font(88, bold=True), fill=(232, 234, 240))
-    tagline, font, lines, line = PLAY_TAGLINES[lang], _font(34), [], ""
-    for word in tagline.split():  # wrap to the space right of the logo
-        if draw.textlength(f"{line} {word}".strip(), font=font) > width - 450 - 50:
-            lines.append(line)
-            line = word
-        else:
-            line = f"{line} {word}".strip()
-    lines.append(line)
-    for i, text in enumerate(lines):
-        draw.text((452, 262 + 48 * i), text, font=font, fill=(167, 173, 189))
-    draw.rectangle([452, 240, 452 + 120, 245], fill=(122, 165, 248))  # accent underline
-    bg.save(path, optimize=True)
-
-
-def _nav_click(page, route: str, viewport: tuple) -> None:
-    """Opens ``route``: the bottom bar when narrow, else the side rail."""
-    from strakalari.flet_ui.app import NARROW_MAX_WIDTH, NARROW_TABS, ROUTES
-
-    width, height = viewport
-    if width < NARROW_MAX_WIDTH:
-        if route in MORE_TILES:
-            _nav_click(page, "more", viewport)
-            page.mouse.click(width / 2, MORE_TILES[route])
-        else:
-            page.mouse.click(width * (NARROW_TABS.index(route) + 0.5) / len(NARROW_TABS), height - 40)
-    else:
-        page.mouse.click(50, 45 + 64 * ROUTES.index(route))
-    time.sleep(2.5)
-
-
-def playstore(out_dir: str, theme: str, port: int) -> None:
-    from PIL import Image
-    from playwright.sync_api import sync_playwright
-
-    sys.path.insert(0, ROOT)
-    for lang in ("cs", "en"):
-        dest_dir = os.path.join(out_dir, lang)
-        os.makedirs(dest_dir, exist_ok=True)
-        feature_graphic(os.path.join(dest_dir, "feature-graphic.png"), lang)
-        # The server still holds the folder as its cwd when it is removed (Windows).
-        with tempfile.TemporaryDirectory(prefix=f"strakalari-demo-{lang}-",
-                                         ignore_cleanup_errors=True) as tmp:
-            generate(tmp, lang=lang, theme=theme)
-            server = subprocess.Popen(
-                [sys.executable, os.path.abspath(__file__), "serve", tmp, "--port", str(port)],
-                # The Play build never shows the GitHub update banner.
-                env={**os.environ, "PYTHONIOENCODING": "utf-8", "DEMO_NO_UPDATE_BANNER": "1"},
-            )
-            try:
-                url = f"http://127.0.0.1:{port}"
-                _wait_http(url)
-                with sync_playwright() as p:
-                    browser = p.chromium.launch(
-                        headless=True,
-                        args=["--use-gl=swiftshader", "--enable-unsafe-swiftshader"])
-                    for device, viewport, scale in PLAY_DEVICES:
-                        page = browser.new_page(
-                            viewport={"width": viewport[0], "height": viewport[1]},
-                            device_scale_factor=scale)
-                        page.goto(url)
-                        time.sleep(10)  # CanvasKit start-up + first render
-                        n = 0
-                        for route in PLAY_ROUTES:
-                            _nav_click(page, route, viewport)
-                            page.mouse.move(0, 0)  # no hover tooltip left over the page
-                            time.sleep(1)
-                            n += 1
-                            raw = os.path.join(tmp, f"{device}-{n}.png")
-                            page.screenshot(path=raw)
-                            dest = os.path.join(dest_dir, f"{device}-{n}-{route}.png")
-                            Image.open(raw).convert("RGB").save(dest, optimize=True)
-                            print(f"{dest} ({os.path.getsize(dest) // 1024} KB)")
-                        page.close()
-                    browser.close()
-            finally:
-                server.terminate()
-                server.wait(timeout=15)
-
-
 def _cli() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -444,26 +208,9 @@ def _cli() -> None:
     g.add_argument("--theme", choices=["dark", "light"], default="dark")
     g.add_argument("--tutorials", action="store_true",
                    help="leave the Planner tutorial on (as in the README image)")
-    s = sub.add_parser("serve", help="serve the UI on a demo data folder")
-    s.add_argument("dir")
-    s.add_argument("--port", type=int, default=8561)
-    sh = sub.add_parser("screenshots", help="regenerate the README images")
-    sh.add_argument("--out", default=os.path.join(ROOT, "docs", "images"))
-    sh.add_argument("--theme", choices=["dark", "light"], default="dark")
-    sh.add_argument("--port", type=int, default=8561)
-    ps = sub.add_parser("playstore", help="Play Store screenshots and feature graphic")
-    ps.add_argument("--out", default=os.path.join(ROOT, "dist", "playstore"))
-    ps.add_argument("--theme", choices=["dark", "light"], default="dark")
-    ps.add_argument("--port", type=int, default=8561)
     args = parser.parse_args()
     if args.cmd == "generate":
         print(generate(args.dir, args.lang, args.theme, args.tutorials))
-    elif args.cmd == "serve":
-        serve(args.dir, args.port)
-    elif args.cmd == "playstore":
-        playstore(args.out, args.theme, args.port)
-    else:
-        screenshots(args.out, args.theme, args.port)
 
 
 if __name__ == "__main__":

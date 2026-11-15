@@ -1,11 +1,12 @@
 name: Dart
 
-# Flutter-migration CI. Runs only on the branch; the Python workflow is untouched.
+# Primary CI & release workflow for Strakalari (Flutter + Dart).
 # The owner has limited CI minutes, so always verify locally first and don't
 # use CI as a test runner. Toolchain is pinned to Flutter 3.44.8.
 on:
   push:
     branches:
+      - main
       - flutter-migration
     tags:
       - 'v*'
@@ -75,15 +76,6 @@ jobs:
           flutter-version: '3.44.8'
           cache: true
 
-      # helpers_test.dart has the Python app write files for a byte check.
-      - name: Set up Python 3.11
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
-        with:
-          python-version: '3.11'
-
-      - name: Install the Python app's pinned cryptography
-        run: python -m pip install cryptography==50.0.1
-
       - name: Resolve workspace dependencies
         run: dart pub get --enforce-lockfile
 
@@ -93,17 +85,15 @@ jobs:
         env:
           TZ: Europe/Prague
 
-  # Phase-7 release jobs (Flutter builds; the Python build.yml is
-  # untouched until the phase-10 switch). Same tag/version contract:
+  # Release builds (Flutter). Tag/version contract:
   #   tag v1.2.3        -> version 1.2.3, full release (draft to review)
   #   tag v1.2.3-beta.1 -> version 1.2.3-beta.1, pre-release (at once;
   #                        the in-app "beta" update channel picks it up)
   #   no tag            -> build-only run (artifacts, no release)
-  # Same asset set as build.yml, minus the MSIX (it goes straight to
-  # the Microsoft Store via publish-store, which also signs it; see
-  # docs/STORE.md). Same identity everywhere: Inno AppId
-  # {D94B0B7F-65C1-4D52-9A47-E30D6E26F22B}, the Store identity from
-  # build.yml env, macOS bundle cz.strakalari.app.
+  # Release assets exclude the MSIX (it goes straight to the Microsoft
+  # Store via publish-store below, which also signs it; see docs/STORE.md).
+  # Same identity everywhere: Inno AppId {D94B0B7F-65C1-4D52-9A47-E30D6E26F22B},
+  # Store identity in build-flutter-msix env, macOS bundle cz.strakalari.app.
   meta:
     name: Resolve version
     runs-on: ubuntu-latest
@@ -394,10 +384,10 @@ jobs:
       - name: Resolve workspace dependencies
         run: dart pub get --enforce-lockfile
 
-      # Same secrets, alias and arch as the Python build (build.yml
-      # build-android); the versionCode is Python's build_number, so the
-      # APK installs over the Flet one. build.gradle.kts refuses a prod
-      # release without the key.
+      # Same signing secrets, alias and arch as earlier releases; the
+      # versionCode comes from buildNumber(version), so the APK installs
+      # over earlier builds. build.gradle.kts refuses a prod release
+      # without the key.
       - name: Build APK
         env:
           ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
@@ -483,11 +473,10 @@ jobs:
             Strakalari-*.dmg
           retention-days: 14
 
-  # One job publishes all Flutter assets together (same rule as the
-  # Python release job: parallel jobs creating/updating the release
-  # race into duplicate drafts). The MSIX is deliberately NOT attached
-  # here — it goes straight to the Microsoft Store (publish-store job
-  # in build.yml), which also signs it.
+  # One job publishes all GitHub Release assets together: parallel jobs
+  # creating/updating the release raced into duplicate drafts. The MSIX
+  # is deliberately NOT attached here — it goes straight to the
+  # Microsoft Store (publish-store job below), which also signs it.
   release-flutter:
     name: Publish Flutter GitHub Release
     needs: [dart, dart-macos-locks, meta, build-flutter-windows, build-flutter-linux, build-flutter-macos, build-flutter-android]
@@ -534,3 +523,40 @@ jobs:
             release-assets/SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Stable releases only (Store versions are numeric X.Y.Z with no
+  # pre-release suffix) go to the Microsoft Store; betas stay on GitHub.
+  # The Store signs the package itself, so the unsigned MSIX from
+  # build-flutter-msix is uploaded as-is and never appears in GitHub releases.
+  # Optional: without the STORE_* secrets the job only leaves a notice,
+  # and the MSIX artifact is uploaded in Partner Center by hand.
+  publish-store:
+    name: Publish to Microsoft Store
+    needs: [meta, build-flutter-msix]
+    if: needs.meta.outputs.release == 'true' && needs.meta.outputs.prerelease != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+
+      - name: Download MSIX
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0  # v5.0.0
+        with:
+          name: msix-package
+          path: msix-input
+
+      - name: Submit MSIX to Partner Center
+        env:
+          STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
+          STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
+          STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
+          STORE_APP_ID: ${{ secrets.STORE_APP_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "$STORE_TENANT_ID" ] || [ -z "$STORE_CLIENT_ID" ] || [ -z "$STORE_CLIENT_SECRET" ] || [ -z "$STORE_APP_ID" ]; then
+            echo "::notice::STORE_* secrets not configured; skipping Microsoft Store submission. Upload the msix-package artifact manually in Partner Center (docs/STORE.md)."
+            exit 0
+          fi
+          ls -lh msix-input
+          MSIX=$(ls msix-input/Strakalari-*.msix)
+          python3 tools/store_submit.py "$MSIX" --commit

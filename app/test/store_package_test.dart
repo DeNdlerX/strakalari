@@ -1,8 +1,6 @@
 // Port of tests/test_store_package.py: the Store (MSIX) build has no
 // GitHub update checks, no Run-key autostart, and keeps its data in
 // %LOCALAPPDATA%\Strakalari (copying a classic install's data once).
-// TestMsixVersion and test_store_submit_loads test Python tools that
-// still build and publish the MSIX; they stay in the Python suite.
 import 'dart:convert';
 import 'dart:io';
 
@@ -10,6 +8,46 @@ import 'package:app/platform/desktop/autostart.dart';
 import 'package:app/platform/desktop/store_package.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:strakalari_core/strakalari_core.dart';
+
+File _repoFile(String relPath) {
+  for (final candidate in [
+    File(relPath),
+    File('../$relPath'),
+    File('../../$relPath'),
+  ]) {
+    if (candidate.existsSync()) return candidate;
+  }
+  throw StateError('Cannot locate $relPath from ${Directory.current.path}');
+}
+
+Future<String> _findPython() async {
+  for (final cmd in const ['python3', 'python']) {
+    try {
+      final r = await Process.run(cmd, ['--version'])
+          .timeout(const Duration(seconds: 15));
+      if (r.exitCode == 0) return cmd;
+    } catch (_) {
+      continue;
+    }
+  }
+  fail('No Python 3 executable found on PATH');
+}
+
+Future<ProcessResult> _runToolPython(String toolName, String body) async {
+  final py = await _findPython();
+  final toolPath = _repoFile('tools/$toolName.py').absolute.path;
+  final script = '''
+import importlib.util
+spec = importlib.util.spec_from_file_location(${jsonEncode(toolName)}, ${jsonEncode(toolPath)})
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+$body
+''';
+  return Process.run(py, ['-c', script], environment: {
+    ...Platform.environment,
+    'PYTHONUTF8': '1',
+  }).timeout(const Duration(seconds: 30));
+}
 
 class MemoryKeyStore implements KeyStore {
   final Map<String, String> entries = {};
@@ -182,5 +220,67 @@ void main() {
     test('enabledUnknown', () {
       expect(isAutostartEnabled(), isFalse);
     });
+  });
+
+  group('TestMsixVersion', () {
+    test('threeParts', () async {
+      final r = await _runToolPython(
+        'make_msix',
+        'assert mod.msix_version("0.2.0") == "0.2.0.0"\n'
+            'assert mod.msix_version("v0.10.0") == "0.10.0.0"',
+      );
+      expect(r.exitCode, 0, reason: 'stderr: ${r.stderr}');
+    });
+
+    test('twoParts', () async {
+      final r = await _runToolPython(
+        'make_msix',
+        'assert mod.msix_version("v1.2") == "1.2.0.0"',
+      );
+      expect(r.exitCode, 0, reason: 'stderr: ${r.stderr}');
+    });
+
+    test('prereleaseRefused', () async {
+      final r = await _runToolPython(
+        'make_msix',
+        'try:\n'
+            '    mod.msix_version("0.2.0-beta.1")\n'
+            'except SystemExit:\n'
+            '    print("SYSTEM_EXIT")\n'
+            'else:\n'
+            '    raise AssertionError("expected SystemExit")',
+      );
+      expect(r.exitCode, 0, reason: 'stderr: ${r.stderr}');
+      expect((r.stdout as String).trim(), 'SYSTEM_EXIT');
+    });
+
+    test('manifestTemplateTokens', () {
+      var template = _repoFile('msix/AppxManifest.xml').readAsStringSync();
+      if (template.startsWith('\uFEFF')) {
+        template = template.substring(1);
+      }
+      for (final token in const [
+        '@IDENTITY_NAME@',
+        '@PUBLISHER@',
+        '@VERSION@',
+        '@ARCH@',
+        '@PUBLISHER_DISPLAY@',
+      ]) {
+        expect(template, contains(token));
+      }
+      expect(template, contains('runFullTrust'));
+      expect(template, contains('windows.startupTask'));
+      // Autostart opens the tray, not the window (as the Run value does).
+      expect(template, contains('uap10:Parameters="--minimized"'));
+    });
+  });
+
+  test('storeSubmitLoads', () async {
+    // Stdlib only: the publish job runs it on a bare runner.
+    final r = await _runToolPython(
+      'store_submit',
+      'assert "preprocessing" in mod.COMMITTED_STATES',
+    );
+    expect(r.exitCode, 0, reason: 'stderr: ${r.stderr}');
   });
 }

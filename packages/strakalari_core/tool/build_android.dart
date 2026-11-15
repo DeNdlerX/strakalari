@@ -7,7 +7,7 @@
 //   dart run tool/build_android.dart apk [--version 0.1.0] [--flavor prod]
 //       [--stage DIR] [--out DIR] [-- <extra flutter build args>]
 //
-// The version defaults to strakalari/__init__.py's; the versionCode is
+// The version defaults to app/pubspec.yaml's; the versionCode is
 // `buildNumber(version)` like the Flet build. The result lands in
 // `dist/flutter-android/Strakalari-<version>-android.apk` (or `.aab`).
 // Signing comes from ~/.strakalari-signing/ or the STRAKALARI_SIGNING_*
@@ -40,11 +40,19 @@ Future<void> main(List<String> argv) async {
 
   // packages/strakalari_core/tool/ → the repo root.
   final repo = p.normalize(p.join(p.dirname(Platform.script.toFilePath()), '..', '..', '..'));
-  if (!File(p.join(repo, 'app', 'pubspec.yaml')).existsSync()) _fail('repo root not found at $repo');
-  final version = option('--version') ??
-      RegExp(r'__version__ = "([^"]+)"')
-          .firstMatch(File(p.join(repo, 'strakalari', '__init__.py')).readAsStringSync())!
-          .group(1)!;
+  final pubspecFile = File(p.join(repo, 'app', 'pubspec.yaml'));
+  if (!pubspecFile.existsSync()) _fail('repo root not found at $repo');
+  var version = option('--version');
+  if (version == null) {
+    final m = RegExp(
+      r'^version:\s*(\S+)\+\d+\s*$',
+      multiLine: true,
+    ).firstMatch(pubspecFile.readAsStringSync());
+    if (m == null) {
+      _fail('Could not find version: <ver>+<code> in app/pubspec.yaml');
+    }
+    version = m.group(1)!;
+  }
   final int code;
   try {
     code = buildNumber(version);

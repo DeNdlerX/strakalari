@@ -9,7 +9,7 @@ import 'package:strakalari_core/src/bakalari/timetable.dart';
 import 'fake_bakalari.dart';
 
 List<Object?> fixtureDetails(String name) {
-  final raw = File('../../tests/fixtures/$name').readAsStringSync();
+  final raw = File('test/fixtures/$name').readAsStringSync();
   return (jsonDecode(raw) as List).cast<Object?>();
 }
 

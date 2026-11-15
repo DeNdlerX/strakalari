@@ -40,50 +40,38 @@ Future<String> _tryLockInChild(String lockPath) async {
   return (result.stdout as String).trim();
 }
 
-/// Walks up from the test working dir to the repo root (the dir containing
-/// `strakalari/core/helpers.py`), or null when not found.
-String? _findRepoRoot() {
-  var dir = Directory.current;
-  for (var i = 0; i < 10; i++) {
-    if (File('${dir.path}${Platform.pathSeparator}strakalari'
-            '${Platform.pathSeparator}core'
-            '${Platform.pathSeparator}helpers.py')
-        .existsSync()) {
-      return dir.path;
-    }
-    final parent = dir.parent;
-    if (parent.path == dir.path) return null;
-    dir = parent;
-  }
-  return null;
-}
-
 /// Python body: holds `flock(LOCK_EX)` on `sys.argv[1]` for 60 s.
-///
-/// Loads `strakalari/core/helpers.py` by path (not via the package: the
-/// package `__init__` pulls in the heavy automation engine).
-String _pythonHoldScript(String repoRoot) => '''
-import importlib.util, sys, time
-spec = importlib.util.spec_from_file_location(
-    "b5_helpers", ${jsonEncode('$repoRoot/strakalari/core/helpers.py')})
-helpers = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(helpers)
-lock = helpers.InterProcessLock(sys.argv[1])
-print("held" if lock.acquire(0.0) else "failed", flush=True)
+const String _pythonHoldScript = r'''
+import fcntl, os, sys, time
+path = sys.argv[1]
+os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+fh = open(path, "a+b")
+try:
+    fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+except OSError:
+    fh.close()
+    print("failed", flush=True)
+    sys.exit(0)
+print("held", flush=True)
 time.sleep(60)
 ''';
 
-/// Runs one Python `InterProcessLock.acquire(0.0)` attempt on [lockPath],
-/// returns 'true' or 'false'.
-Future<String> _pythonTryLock(String repoRoot, String lockPath) async {
-  final script = '''
-import importlib.util, sys
-spec = importlib.util.spec_from_file_location(
-    "b5_helpers", ${jsonEncode('$repoRoot/strakalari/core/helpers.py')})
-helpers = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(helpers)
-lock = helpers.InterProcessLock(sys.argv[1])
-print("true" if lock.acquire(0.0) else "false")
+/// Runs one non-blocking `fcntl.flock(LOCK_EX | LOCK_NB)` attempt on
+/// [lockPath], returns 'true' or 'false'.
+Future<String> _pythonTryLock(String lockPath) async {
+  const script = r'''
+import fcntl, os, sys
+path = sys.argv[1]
+os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+fh = open(path, "a+b")
+try:
+    fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+    print("true")
+except OSError:
+    print("false")
+finally:
+    fh.close()
 ''';
   final result = await Process.run('python3', ['-c', script, lockPath])
       .timeout(const Duration(seconds: 60));
@@ -281,11 +269,6 @@ void main() {
     test(
       'matchesPythonFlock',
       () async {
-        final repoRoot = _findRepoRoot();
-        if (repoRoot == null) {
-          markTestSkipped('repo root with strakalari/ not found.');
-          return;
-        }
         try {
           final version = await Process.run('python3', ['--version'])
               .timeout(const Duration(seconds: 30));
@@ -301,7 +284,7 @@ void main() {
         // Python holds -> Dart refuses.
         final holder = await Process.start(
           'python3',
-          ['-c', _pythonHoldScript(repoRoot), lockPath()],
+          ['-c', _pythonHoldScript, lockPath()],
         );
         final stderrText = holder.stderr.transform(utf8.decoder).join();
         try {
@@ -330,11 +313,11 @@ void main() {
         final dartLock = InterProcessLock(lockPath());
         expect(dartLock.acquire(), isTrue);
         try {
-          expect(await _pythonTryLock(repoRoot, lockPath()), 'false');
+          expect(await _pythonTryLock(lockPath()), 'false');
         } finally {
           dartLock.release();
         }
-        expect(await _pythonTryLock(repoRoot, lockPath()), 'true');
+        expect(await _pythonTryLock(lockPath()), 'true');
       },
       // POSIX flock on Linux and macOS (job dart-macos-locks); Windows
       // uses LockFileEx, proven against Python by hand (Checkpoint A).
