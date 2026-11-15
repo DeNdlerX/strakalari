@@ -88,7 +88,7 @@ vývojáře** (Nastavení → Systém → Pro vývojáře):
 
 ```powershell
 cd app; flutter clean; flutter build windows --release; cd ..
-$bundle = "appuild\windowsdunner\Release"
+$bundle = "app\build\windows\x64\runner\Release"
 foreach ($dll in "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll") {
   Copy-Item "$env:SystemRoot\System32\$dll" $bundle -Force
 }
