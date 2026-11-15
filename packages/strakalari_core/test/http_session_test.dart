@@ -50,6 +50,20 @@ void main() {
       expect(formFields(html),
           <(String, String)>[('a', '1'), ('c2', 'on'), ('sel', 'q'), ('t', 'text')]);
     });
+
+    test('surviveScriptsAndStrayCharacters', () {
+      // A `<` inside JavaScript or text is not a tag, and a stray `/` in a
+      // tag must not stall the parser (the phone froze on the real Komens
+      // page: this used to loop forever).
+      const html = '<form id="formbaka">'
+          '<script>if (a<b/2) { x = "<input name=\\"js\\" value=\\"1\\">"; }'
+          '</script>'
+          '<input name="a" value="1" / >'
+          '<p>1 < 2 and <3</p>'
+          '<input name="b" / value="2">'
+          '</form><b';
+      expect(formFields(html), <(String, String)>[('a', '1'), ('b', '2')]);
+    });
   });
 
   group('dxCallbackResult', () {

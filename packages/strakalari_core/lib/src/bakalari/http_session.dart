@@ -102,6 +102,12 @@ class _FormFields {
       }
       final isEnd = i + 1 < n && html[i + 1] == '/';
       var j = i + (isEnd ? 2 : 1);
+      if (j >= n || !_isAsciiLetter(html.codeUnitAt(j))) {
+        // Not a tag (`a < b`, `<3`): plain text, like Python's HTMLParser.
+        text.write('<');
+        i++;
+        continue;
+      }
       var k = j;
       while (k < n && !' \t\r\n/>'.contains(html[k])) {
         k++;
@@ -125,6 +131,12 @@ class _FormFields {
         var a = p;
         while (a < n && !' \t\r\n=/>'.contains(html[a])) {
           a++;
+        }
+        if (a == p && html[p] == '/') {
+          // A stray `/` inside the tag: skip it. Without this the loop
+          // never advanced and the app froze on such a page.
+          p++;
+          continue;
         }
         final name = html.substring(p, a).toLowerCase();
         p = a;
@@ -171,9 +183,23 @@ class _FormFields {
       } else {
         _startTag(tag, attrs);
         if (selfClose) _endTag(tag);
+        if (!selfClose && (tag == 'script' || tag == 'style')) {
+          // Raw text up to the closing tag, like Python's HTMLParser:
+          // a `<` inside JavaScript is not a tag.
+          final end = html.indexOf(_rawTextEnd[tag]!, i);
+          i = end < 0 ? n : end;
+        }
       }
     }
   }
+
+  static final Map<String, RegExp> _rawTextEnd = {
+    'script': RegExp('</script', caseSensitive: false),
+    'style': RegExp('</style', caseSensitive: false),
+  };
+
+  static bool _isAsciiLetter(int c) =>
+      (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A);
 
   void _startTag(String tag, Map<String, String> attrs) {
     if (tag == 'form') {
