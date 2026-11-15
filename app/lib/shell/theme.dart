@@ -188,9 +188,19 @@ class Tokens {
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: surface,
-        indicatorColor: accent.withValues(alpha: 0.2),
-        labelTextStyle: WidgetStatePropertyAll(TextStyle(
-            fontFamily: fontFamily, fontSize: fsSmall, color: text)),
+        indicatorColor: accent.withValues(alpha: 0.24),
+        // Without these the selected icon falls back to the scheme's
+        // near-black "on" color and disappears on the dark bar.
+        iconTheme: WidgetStateProperty.resolveWith((s) => IconThemeData(
+            color: s.contains(WidgetState.selected) ? accent : muted)),
+        labelTextStyle: WidgetStateProperty.resolveWith((s) {
+          final selected = s.contains(WidgetState.selected);
+          return TextStyle(
+              fontFamily: fontFamily,
+              fontSize: fsSmall,
+              color: selected ? accent : muted,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400);
+        }),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: overlay,
