@@ -19,10 +19,10 @@ u běhu workflow) → ty ho nahraješ v Partner Center (nebo, volitelně, job
 2. **Apps and games → New product → MSIX or PWA app** → rezervuj jméno
    Strakaláři.
 3. **Product management → Product identity**: zkopíruj tři hodnoty do
-   `.github/workflows/build.yml` (job `build-msix`, blok `env:`) a commitni.
+   `.github/workflows/dart.yml` (job `build-flutter-msix`, blok `env:`) a commitni.
    Nejsou tajné (jsou vidět v každém nainstalovaném balíčku):
 
-   | Partner Center                          | `build.yml`               |
+   | Partner Center                          | `dart.yml`                |
    |-----------------------------------------|---------------------------|
    | Package/Identity/Name                   | `STORE_IDENTITY_NAME`     |
    | Package/Identity/Publisher (`CN=…`)     | `STORE_PUBLISHER`         |
@@ -87,8 +87,12 @@ Potřeba Windows SDK (`MakeAppx.exe`) a pro instalaci zapnutý **Režim pro
 vývojáře** (Nastavení → Systém → Pro vývojáře):
 
 ```powershell
-pyinstaller strakalari.spec
-python tools/make_msix.py --exe dist/Strakalari.exe --out Strakalari-test.msix `
+cd app; flutter clean; flutter build windows --release; cd ..
+$bundle = "appuild\windowsdunner\Release"
+foreach ($dll in "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll") {
+  Copy-Item "$env:SystemRoot\System32\$dll" $bundle -Force
+}
+python tools/make_msix.py --app-dir $bundle --out Strakalari-test.msix `
   --version 0.2.0 --identity-name "Strakalari.Placeholder" `
   --publisher "CN=Strakalari-Placeholder" --publisher-display "Strakalari" `
   --layout msix-layout
@@ -120,9 +124,9 @@ v tray). Odinstalace: `Get-AppxPackage *Strakalari* | Remove-AppxPackage`.
 
 ## Když něco selže
 
-- `build-msix` warning o identitě → doplň hodnoty z kroku 1.3.
+- `build-flutter-msix` warning o identitě → doplň hodnoty z kroku 1.3.
 - Partner Center odmítne balíček kvůli identitě/publisherovi → hodnoty
-  v `build.yml` neodpovídají *Product identity*.
+  v `dart.yml` neodpovídají *Product identity*.
 - `publish-store`: `401` → expirovaný/špatný client secret nebo aplikace
   nemá v Partner Center roli; „no published submission“ → první
   submission musí projít ručně; „draft submission … is already open“ →
