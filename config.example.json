@@ -49,6 +49,7 @@
   "strava_order_mode": "confirm",
   "automation_paused": false,
   "disclaimer_accepted": false,
+  "wizard_step": -1,
   "lunch_order_cutoff_time": "",
   "gemini_api_key": "",
   "gemini_api_key_encrypted": false,

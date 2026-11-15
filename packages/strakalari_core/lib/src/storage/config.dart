@@ -124,6 +124,9 @@ const Map<String, Object> canonicalDefaults = {
   'strava_order_mode': 'confirm',
   'automation_paused': false,
   'disclaimer_accepted': false,
+  // First-run wizard: the step of an unfinished setup, so it resumes after
+  // an app restart (-1 = no setup in progress).
+  'wizard_step': -1,
   'lunch_order_cutoff_time': '',
   'subject_limits': {},
   // No school is assumed: the wizard (or Settings) picks a preset.
@@ -395,6 +398,10 @@ List<String> validateConfig(Map<String, Object?> data) {
     problems.add("'planner_target_days' must be a whole number.");
   } else if (!(targetDays >= 0 && targetDays <= 200)) {
     problems.add("'planner_target_days' must be within [0, 200].");
+  }
+  final wizardStep = _toIntStrict(data['wizard_step'] ?? -1);
+  if (wizardStep == null || wizardStep < -1) {
+    problems.add("'wizard_step' must be a whole number, -1 or more.");
   }
   if (data['tutorials_done'] is! List) {
     problems.add("'tutorials_done' must be a list of tutorial ids.");

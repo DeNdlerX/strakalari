@@ -108,6 +108,19 @@ void main() {
       expect(problems.any((p) => p.contains('language')), isTrue);
       expect(problems.any((p) => p.contains('gemini_model')), isTrue);
     });
+
+    test('wizardStepMustBeAStepOrMinusOne', () {
+      for (final ok in [-1, 0, 7]) {
+        final data = validationBase()..['wizard_step'] = ok;
+        expect(validateConfig(data), isEmpty, reason: 'wizard_step $ok');
+      }
+      for (final bad in <Object>[-2, 'two', <int>[1]]) {
+        final data = validationBase()..['wizard_step'] = bad;
+        expect(validateConfig(data).any((p) => p.contains('wizard_step')),
+            isTrue,
+            reason: 'wizard_step $bad');
+      }
+    });
   });
 
   group('configManager', () {
