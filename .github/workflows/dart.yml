@@ -553,7 +553,8 @@ jobs:
           STORE_APP_ID: ${{ secrets.STORE_APP_ID }}
         run: |
           set -euo pipefail
-          if [ -z "$STORE_TENANT_ID" ] || [ -z "$STORE_CLIENT_ID" ] || [ -z "$STORE_CLIENT_SECRET" ] || [ -z "$STORE_APP_ID" ]; then
+          # Skip only when none is set; a partly configured Store must fail loudly.
+          if [[ -z "$STORE_APP_ID$STORE_TENANT_ID$STORE_CLIENT_ID$STORE_CLIENT_SECRET" ]]; then
             echo "::notice::STORE_* secrets not configured; skipping Microsoft Store submission. Upload the msix-package artifact manually in Partner Center (docs/STORE.md)."
             exit 0
           fi
