@@ -1,7 +1,7 @@
 # Flutter migration status
 
 Branch: flutter-migration · Flutter: 3.44.8 · Last main commit ported: 0ffdcff
-Current phase: 10 (final review 2026-11-15: PASS WITH FIXES; the merge into `main` is the owner's and reviewer's step) · Next step: Fix every finding in `reviews/checkpoint-D.md`, section "Final review" (F-S1 … F-S4), one commit per finding, then stop for re-review. Never tag, merge or push.
+Current phase: 10 (done: final review **PASS** on 2026-11-15, merged into `main`, not pushed) · Next step: The migration is finished; there is nothing to port. Before any release the owner pushes, starts one build-only CI run and tries the macOS and Linux files (see `reviews/checkpoint-D.md`, "Before a release"). Never tag or push without the owner.
 Phase 2 (clients) is done: Bakaláři + Strava ports are green, and
 `bin/parity_fetch.dart` prints byte-identical JSON to
 `tools/parity/fetch.py` against `tools/bakalari_demo_server.py`.
@@ -929,6 +929,7 @@ Activity screen is live (features/activity/activity_live.dart, snapshot controll
 - 2026-11-14 · Checkpoint D rework: **FIXED** (`D-B1`, `D-M1`…`D-M8`, `D-S1`…`D-S7` addressed in one-finding commits `e264719`…HEAD, including clean Release build, offline dry-run MSIX Windows Sandbox over-install `0.1.0`→`0.1.1`, and `2026-11-14` real-day soak; ready for Checkpoint D re-review before any beta tag or Phase 10).
 - 2026-11-14 · Checkpoint D re-review: **PASS** (every finding fixed; the MSIX Sandbox test repeated by the reviewer; left for the owner: the first CI run with macOS and Linux, the soak-day question, the exact-alarm question) — [docs/flutter-migration/reviews/checkpoint-D.md](docs/flutter-migration/reviews/checkpoint-D.md)
 - 2026-11-15 · Final review (phase 10 and the merge): **PASS WITH FIXES** (phase 10 removed only the Python side, no shipped file changed since the re-review; suites, parity and a third real soak day pass; go for the merge into `main` once the empty untracked `STATUS.md` in the main checkout is deleted; open: 4 should-fix F-S1 … F-S4 in docs and one CI step; no release before the first CI run with macOS and Linux) — [docs/flutter-migration/reviews/checkpoint-D.md](docs/flutter-migration/reviews/checkpoint-D.md#final-review-phase-10-and-the-merge-into-main-2026-11-15)
+- 2026-11-15 · Final review, fixes and merge: **PASS** (F-S1 … F-S4 fixed by the reviewer on the owner's instruction; suites green afterwards; `flutter-migration` merged into `main` by fast-forward, nothing pushed; still owed before a release: the first CI run with macOS and Linux) — [docs/flutter-migration/reviews/checkpoint-D.md](docs/flutter-migration/reviews/checkpoint-D.md#fixes-and-merge-2026-11-15)
 
 ### ⛔ Checkpoint A: core review (phases 1–4)
 

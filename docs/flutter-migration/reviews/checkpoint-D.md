@@ -572,3 +572,27 @@ empty `STATUS.md`). The working tree was clean before and after.
 | Third real soak day (15 Nov): demo server from the branch on localhost, Python from the `4e170da` export, throwaway folders | dry-run refresh `IDENTICAL (modulo ts)`; fetch byte-identical (31195 B); the server saw only logins and reads, no post to the excuse form |
 | Hygiene | no upstream on the branch; both commits by DeNdlerX, no `Co-Authored-By` / `Claude-Session`; no personal file added; `git log flutter-migration..main` empty |
 | Merge | `main` is an ancestor; `git merge-tree --write-tree main flutter-migration` clean; the untracked empty `STATUS.md` in the main checkout found with `git status` |
+
+## Fixes and merge (2026-11-15)
+
+**Verdict: PASS.** On the owner's instruction in the session ("Fix them yourselves and
+merge") the reviewer fixed F-S1 … F-S4 instead of the migrating agent, as at Checkpoint C
+re-review 3. Nobody else reviewed these five commits; they change docs, comments, one CI
+condition and one CI trigger, and no file that ships in the app.
+
+| Finding | Commit | What changed |
+|---|---|---|
+| F-S1 | `934c354`, `d64201e` | `docs/STORE.md` names `dart.yml` / `build-flutter-msix`; the local test builds with `flutter build windows --release`, copies the three VC++ DLLs and packs with `make_msix.py --app-dir`. The second commit repairs the first: it had written a broken bundle path and Windows line endings |
+| F-S2 | `a6427f8` | `dart.yml` `publish-store` skips only when all four `STORE_*` secrets are empty, as `build.yml` did |
+| F-S3 | `22ea4c8` | `docs/BAKALARI_API.md`, `docs/STRAVA_API.md`, `docs/SCHOOL_PRESETS.md` name the Dart files and functions (each name looked up in the code) |
+| F-S4 | `9c6126b` | the `mobile/**` exclude, the `.gitignore` comment, the core package description, the `render_icon.py` note in CONTRIBUTING.md §1, and the `flutter-migration` push trigger in `dart.yml` |
+
+Checked after the fixes: `dart.yml` still parses (10 jobs); `dart pub get --enforce-lockfile`
+passes; core `dart test` 801 passed, 2 skipped; `flutter analyze` clean; `flutter test`
+649 passed, 1 skipped. `dart analyze` at the repository root (what CI runs) reports only
+11 infos on a clean checkout, all in `tools/parity/capture_screens.dart` (it imports
+Flutter packages from outside the app; infos do not fail the job). On this PC it also
+lists untracked local build output under `build/`, which a CI checkout does not have.
+
+Then the empty untracked `STATUS.md` in the main checkout was deleted and
+`flutter-migration` was merged into `main` (fast-forward). Nothing was pushed.
