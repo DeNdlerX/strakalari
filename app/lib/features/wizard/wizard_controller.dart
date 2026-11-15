@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../l10n/strings.dart';
 import '../common/format.dart';
+import '../settings/settings_controller.dart' show SettingsController;
 
 /// First-run setup wizard — a `ChangeNotifier` port of
 /// `views/wizard.py`.
@@ -21,6 +22,10 @@ class WizardController extends ChangeNotifier {
 
   /// Persists config updates. False when the write failed.
   final bool Function(Map<String, Object?> updates) onSave;
+
+  /// Persists config updates without emitting a shell rebuild (used when
+  /// template rows commit during unmount/dispose). Defaults to [onSave].
+  final bool Function(Map<String, Object?> updates) onSaveQuiet;
 
   /// Starts a live connection test for `service`
   /// (`bakalari | strava | ai`) with draft-backed overrides. The shell
@@ -54,6 +59,7 @@ class WizardController extends ChangeNotifier {
   WizardController({
     Map<String, Object?>? config,
     bool Function(Map<String, Object?> updates)? onSave,
+    bool Function(Map<String, Object?> updates)? onSaveQuiet,
     void Function(String service, Map<String, String> overrides)?
         onTestRequest,
     bool Function()? onFinishRefresh,
@@ -68,6 +74,7 @@ class WizardController extends ChangeNotifier {
     this.onVerified,
   })  : config = config ?? {},
         onSave = onSave ?? ((_) => false),
+        onSaveQuiet = onSaveQuiet ?? onSave ?? ((_) => false),
         onTestRequest = onTestRequest ?? ((_, _) {}),
         onFinishRefresh = onFinishRefresh ?? (() => false),
         onOpenUrl = onOpenUrl ?? (() {}),
@@ -417,6 +424,13 @@ class WizardController extends ChangeNotifier {
     });
   }
 
+  bool saveTemplateList(String key, List<Map<String, String>> values) =>
+      SettingsController.commitTemplatesList(
+        current: config[key] ?? const [],
+        values: values,
+        saveCleaned: (cleaned) => _saveQuiet({key: cleaned}),
+      );
+
   bool saveExcuseTemplates() {
     final updates = <String, Object?>{
       for (final e in excuseTemplates.entries)
@@ -689,7 +703,7 @@ class WizardController extends ChangeNotifier {
             finishedMessage: null
           );
         }
-        saveExcuseTemplates();
+        if (excuseTemplates.isNotEmpty) saveExcuseTemplates();
         break;
       default:
         break;
@@ -746,11 +760,19 @@ class WizardController extends ChangeNotifier {
     return true;
   }
 
-  bool _save(Map<String, Object?> updates) {
-    final ok = onSave(updates);
+  bool _persist(
+    Map<String, Object?> updates,
+    bool Function(Map<String, Object?> updates) writer,
+  ) {
+    final ok = writer(updates);
     if (ok) config.addAll(updates);
     return ok;
   }
+
+  bool _save(Map<String, Object?> updates) => _persist(updates, onSave);
+
+  bool _saveQuiet(Map<String, Object?> updates) =>
+      _persist(updates, onSaveQuiet);
 }
 
 /// A selectable school calendar card — preset data resolved by the

@@ -170,15 +170,24 @@ class _AutosaveFieldState extends State<AutosaveField> {
 
 /// One template-list editor (names + texts). Port of common._tpl_editor.
 class TemplateEditor extends StatefulWidget {
-  final SettingsController controller;
+  final SettingsController? controller;
   final String configKey;
   final String titleKey;
+  final Object? Function()? readTemplates;
+  final bool Function(List<Map<String, String>> values)? commitTemplates;
 
   const TemplateEditor(
       {super.key,
-      required this.controller,
+      this.controller,
       required this.configKey,
-      required this.titleKey});
+      required this.titleKey,
+      this.readTemplates,
+      this.commitTemplates})
+      : assert(
+          controller != null ||
+              (readTemplates != null && commitTemplates != null),
+          'Provide controller or both readTemplates and commitTemplates',
+        );
 
   @override
   State<TemplateEditor> createState() => _TemplateEditorState();
@@ -228,7 +237,9 @@ class _TemplateEditorState extends State<TemplateEditor> {
   }
 
   List<Map<String, String>> _load() {
-    final stored = widget.controller.get(widget.configKey, []);
+    final stored = widget.readTemplates != null
+        ? widget.readTemplates!()
+        : widget.controller!.get(widget.configKey, []);
     final out = <Map<String, String>>[];
     if (stored is List) {
       for (final v in stored) {
@@ -315,19 +326,22 @@ class _TemplateEditorState extends State<TemplateEditor> {
     _commit();
   }
 
-  void _commit() {
+  void _saveValues() {
     _syncFromRows();
     _dirty = false;
-    widget.controller.commitTemplates(widget.configKey, values);
+    final commit = widget.commitTemplates;
+    if (commit != null) {
+      commit(values);
+    } else {
+      widget.controller!.commitTemplates(widget.configKey, values);
+    }
   }
+
+  void _commit() => _saveValues();
 
   @override
   void dispose() {
-    if (_dirty) {
-      _syncFromRows();
-      _dirty = false;
-      widget.controller.commitTemplates(widget.configKey, values);
-    }
+    if (_dirty) _saveValues();
     for (final r in _rows) {
       r.dispose();
     }

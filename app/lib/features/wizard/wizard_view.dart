@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../widgets/app_widgets.dart' as w;
 import '../common/app_tokens.dart';
+import '../settings/settings_view.dart' show TemplateEditor;
 import 'wizard_controller.dart';
 
 /// First-run setup wizard — port of `views/wizard.py`.
@@ -602,20 +603,22 @@ final enabled = c.alarmEnabled;
 
   List<Widget> _templateEditors(BuildContext context) {
     final c = controller;
-    const keys = [
-      'late_income_excuses',
-      'left_soon_excuses',
-      'short_absence_excuses',
-      'long_absence_excuses',
+    const entries = [
+      ('late_income_excuses', 'tpl_late'),
+      ('left_soon_excuses', 'tpl_soon'),
+      ('short_absence_excuses', 'tpl_short'),
+      ('long_absence_excuses', 'tpl_long'),
     ];
     return [
-      for (final key in keys)
-        _DraftArea(
-          initial: c.excuseTemplates[key] ?? '',
-          label: key,
-          tokens: tokens,
-          onChanged: (v) =>
-              c.excuseTemplates[key] = v,
+      for (final (key, titleKey) in entries)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: TemplateEditor(
+            configKey: key,
+            titleKey: titleKey,
+            readTemplates: () => c.config[key] ?? const <Object?>[],
+            commitTemplates: (values) => c.saveTemplateList(key, values),
+          ),
         ),
     ];
   }
@@ -709,60 +712,6 @@ class _DraftFieldState extends State<_DraftField> {
           isDense: true,
           filled: true,
           fillColor: widget.tokens.surface,
-        ),
-        onChanged: widget.onChanged,
-      ),
-    );
-  }
-}
-
-/// Multi-line template editor (one template per line).
-class _DraftArea extends StatefulWidget {
-  final String initial;
-  final String label;
-  final AppTokens tokens;
-  final void Function(String value) onChanged;
-
-  const _DraftArea({
-    required this.initial,
-    required this.label,
-    required this.tokens,
-    required this.onChanged,
-  });
-
-  @override
-  State<_DraftArea> createState() => _DraftAreaState();
-}
-
-class _DraftAreaState extends State<_DraftArea> {
-  late final TextEditingController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = TextEditingController(text: widget.initial);
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: TextField(
-        controller: _ctrl,
-        maxLines: 3,
-        minLines: 1,
-        decoration: InputDecoration(
-          labelText: widget.label,
-          isDense: true,
-          filled: true,
-          fillColor: widget.tokens.surface,
-          alignLabelWithHint: true,
         ),
         onChanged: widget.onChanged,
       ),

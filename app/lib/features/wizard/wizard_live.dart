@@ -63,6 +63,7 @@ WizardController wizardControllerFor(AppState s) {
   c = WizardController(
     config: Map<String, Object?>.of(s.config.data),
     onSave: (updates) => s.save(updates),
+    onSaveQuiet: (updates) => s.saveQuiet(updates),
     onTestRequest: (service, overrides) {
       s.testConnection(
         service,
@@ -105,25 +106,6 @@ WizardController wizardControllerFor(AppState s) {
   }
   c.calendarOptions = buildCalendarPresets(lang);
 
-  const tplKeys = [
-    'late_income_excuses',
-    'left_soon_excuses',
-    'short_absence_excuses',
-    'long_absence_excuses',
-  ];
-  final initialTpls = <String, List<String>>{};
-  for (final key in tplKeys) {
-    final raw = s.get(key, const <Object?>[]);
-    final lines = <String>[];
-    if (raw is List) {
-      for (final item in raw) {
-        final text = (item is Map ? '${item['text'] ?? ''}' : '$item').trim();
-        if (text.isNotEmpty) lines.add(text);
-      }
-    }
-    initialTpls[key] = lines;
-  }
-  c.setExcuseTemplatesInitial(initialTpls);
   return c;
 }
 

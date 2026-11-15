@@ -437,9 +437,14 @@ class SettingsController {
   }
 
   // -- template editor -----------------------------------------------------------------
-  /// Commits one template-list edit (port of `_tpl_editor._commit`).
-  bool commitTemplates(String key, List<Map<String, String>> values) {
-    final cleaned = <dynamic>[];
+  /// Normalizes and persists a template list if changed, preserving structured
+  /// `{name, text}` maps and plain strings alike.
+  static bool commitTemplatesList({
+    required Object? current,
+    required List<Map<String, String>> values,
+    required bool Function(List<Object?> cleaned) saveCleaned,
+  }) {
+    final cleaned = <Object?>[];
     for (final v in values) {
       final text = (v['text'] ?? '').trim();
       if (text.isEmpty) continue;
@@ -448,10 +453,17 @@ class SettingsController {
           ? {'name': name, 'text': v['text']}
           : v['text']);
     }
-    final current = get(key, []);
     if (_deepEquals(cleaned, current)) return true; // nothing to save
-    return saveQuiet({key: cleaned});
+    return saveCleaned(cleaned);
   }
+
+  /// Commits one template-list edit (port of `_tpl_editor._commit`).
+  bool commitTemplates(String key, List<Map<String, String>> values) =>
+      commitTemplatesList(
+        current: get(key, []),
+        values: values,
+        saveCleaned: (cleaned) => saveQuiet({key: cleaned}),
+      );
 
   static bool _deepEquals(Object? a, Object? b) {
     if (a is List && b is List) {
