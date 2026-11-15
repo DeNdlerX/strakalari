@@ -702,6 +702,7 @@ Support files (ported as test helpers/fakes, not 1:1 test files): `tests/conftes
 
 ## Questions for the owner / reviewer
 
+- (Answered 2026-11-15 by the owner to the reviewer: the simulated soak days are accepted in place of a third real day; `reviews/checkpoint-D.md` re-review, item 2.)
 - (Answered 2026-11-13: the owner allowed the phone test, done in part, see Checkpoint notes.) **Was:** Phone test (C-M7, 2026-11-12), for the owner: the review asks to install the Flutter `.test` build *over* the Flet `.test` build, so the saved login is checked across the update. That means: uninstall the Flutter `.test` app now on the Pixel (it only holds demo data), build and install the Flet `.test` app, set it up on the demo server in dry run, then install the Flutter `.test` build over it. OK to do that? The real Play Store app is never touched.
 - (Answered 2026-11-12 by the owner: release phone builds come from a neutral folder — done, `tool/build_android.dart`; the APK built that way passes Python's `check_package`, same release key, versionCode 10099.)
 - (Answered 2026-11-13 in `reviews/checkpoint-C.md` CR-S1; fixed in `c474019`.) **Was:** `packaging_privacy_test.dart` scans an APK's raw bytes, so on a release APK it also flags the file *names* `secret.key` and `already_excused_lessons.json` that the compiled code mentions; Python's `check_package` reads the APK's file list (ported in `tool/android_build.dart`, which the release build runs). Should the Dart test use that check instead? I did not change the test.
