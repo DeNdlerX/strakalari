@@ -46,6 +46,18 @@ class TodayView extends StatelessWidget {
   Widget _body(BuildContext context, DateTime now) {
     final c = controller;
     final t = tokens;
+    if (c.demoMode && c.excuseTasks(today: now).isEmpty) {
+      // No data yet: one message with the way out, instead of the same
+      // "no data" line repeated in the header and in every section.
+      return ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          _headerRow(Strings.get('today_title'), ''),
+          SizedBox(height: t.gap),
+          _demoCard(context),
+        ],
+      );
+    }
     final blocks = <Widget>[
       _headerRow(Strings.get('today_title'), c.updatedLabel),
     ];

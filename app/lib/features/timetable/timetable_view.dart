@@ -1,6 +1,6 @@
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
-import 'package:app/widgets/app_widgets.dart' as w show dialogWidth, HeaderRow;
+import 'package:app/widgets/app_widgets.dart' as w show dialogWidth, EmptyState, HeaderRow;
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../l10n/strings.dart';
@@ -62,9 +62,7 @@ final header = _headerRow();
         children: [
           header,
           SizedBox(height: t.gap),
-          _card(Text(Strings.get('no_data'),
-              style:
-                  TextStyle(color: t.faint, fontSize: t.fsBody))),
+          w.EmptyState(text: Strings.get('no_data'), tok: t),
           if (c.demoMode)
             Padding(
               padding: const EdgeInsets.only(top: 8),

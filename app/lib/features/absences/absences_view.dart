@@ -47,9 +47,7 @@ final header = w.HeaderRow(
         children: [
           header,
           SizedBox(height: t.gap),
-          _card(Text(Strings.get('no_data'),
-              style:
-                  TextStyle(color: t.faint, fontSize: t.fsBody))),
+          w.EmptyState(text: Strings.get('no_data'), tok: t),
           if (c.demoMode)
             Padding(
               padding: const EdgeInsets.only(top: 8),
