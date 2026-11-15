@@ -7,10 +7,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:strakalari_core/strakalari_core.dart';
 
 import 'package:app/controllers/app_state.dart';
+import 'package:app/features/common/app_tokens.dart';
 import 'package:app/l10n/strings.dart';
+import 'package:app/main.dart';
 import 'package:app/features/settings/settings_live.dart';
 import 'package:app/features/settings/settings_view.dart';
+import 'package:app/shell/theme.dart';
 import 'package:app/tutorial/tours.dart';
+import 'package:go_router/go_router.dart';
 
 void main() {
   late Directory tmp;
@@ -355,6 +359,95 @@ void main() {
       FocusManager.instance.primaryFocus?.unfocus();
       await tester.pump();
       expect(s.get('late_income_excuses'), ['Druhá', 'Třetí']);
+    });
+  });
+
+  group('B3 light theme switching', () {
+    test('Tokens.toThemeData returns equal ThemeData across calls', () {
+      expect(darkTokens.toThemeData() == darkTokens.toThemeData(), isTrue);
+      expect(lightTokens.toThemeData() == lightTokens.toThemeData(), isTrue);
+      expect(darkTokens.toThemeData() == lightTokens.toThemeData(), isFalse);
+    });
+
+    testWidgets(
+        'switching Vzhled to Svetly and back updates shell, Scaffold, Card, bottom bar and text in one frame',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      File(resolvePath('config.json')).writeAsStringSync(jsonEncode({
+        'theme': 'dark',
+        'language': 'cs',
+        'tutorials_enabled': false,
+        'wizard_done': true,
+      }));
+      Strings.lang = 'cs';
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final appState = container.read(appStateProvider);
+      appState.wizardDismissed = true;
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MyApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final router = GoRouter.of(tester.element(find.byType(Scaffold).first));
+      router.go('/settings');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.palette_outlined));
+      await tester.pumpAndSettle();
+
+      expect(appState.tok.mode, 'dark');
+      final darkScaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+      expect(
+          darkScaffold.backgroundColor ??
+              Theme.of(tester.element(find.byType(SettingsView)))
+                  .scaffoldBackgroundColor,
+          darkTokens.bg);
+
+      await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(Strings.get('theme_light')).last);
+      // Single frame: no AnimatedTheme lag or dark-mode remnant.
+      await tester.pump();
+      await tester.pump();
+
+      expect(appState.tok.mode, 'light');
+      final settingsCtx = tester.element(find.byType(SettingsView));
+      final lightTheme = Theme.of(settingsCtx);
+      expect(lightTheme.brightness, Brightness.light);
+      expect(lightTheme.scaffoldBackgroundColor, lightTokens.bg);
+      expect(lightTheme.cardTheme.color, lightTokens.card);
+      final lightScaffold =
+          tester.widget<Scaffold>(find.byType(Scaffold).first);
+      expect(lightScaffold.backgroundColor ?? lightTheme.scaffoldBackgroundColor,
+          lightTokens.bg);
+      expect(tokensOf(settingsCtx).mode, 'light');
+      expect(tokensOf(settingsCtx).bg, lightTokens.bg);
+      expect(tokensOf(settingsCtx).card, lightTokens.card);
+      expect(tokensOf(settingsCtx).text, lightTokens.text);
+      final navBar = tester.widget<NavigationBar>(find.byType(NavigationBar));
+      expect(navBar.backgroundColor ?? lightTheme.navigationBarTheme.backgroundColor,
+          lightTokens.surface);
+
+      await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(Strings.get('theme_dark')).last);
+      await tester.pump();
+      await tester.pump();
+
+      expect(appState.tok.mode, 'dark');
+      final backCtx = tester.element(find.byType(SettingsView));
+      expect(Theme.of(backCtx).brightness, Brightness.dark);
+      expect(Theme.of(backCtx).scaffoldBackgroundColor, darkTokens.bg);
+      expect(tokensOf(backCtx).bg, darkTokens.bg);
     });
   });
 }

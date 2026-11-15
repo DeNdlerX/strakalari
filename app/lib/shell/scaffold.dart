@@ -284,6 +284,7 @@ class AppScaffold extends ConsumerWidget {
           }
         }
         return Scaffold(
+          backgroundColor: tok.bg,
           body: SafeArea(
             bottom: false,
             child: right,
@@ -313,6 +314,7 @@ class AppScaffold extends ConsumerWidget {
         var sideIndex = tabs.indexOf(route);
         if (sideIndex < 0) sideIndex = tabs.indexOf('more');
         return Scaffold(
+          backgroundColor: tok.bg,
           body: Row(
             children: [
               Container(
@@ -359,6 +361,7 @@ class AppScaffold extends ConsumerWidget {
         var railIndex = shellRoutes.indexOf(route);
         if (railIndex < 0) railIndex = 0;
         return Scaffold(
+          backgroundColor: tok.bg,
           body: Row(
             children: [
               NavigationRail(

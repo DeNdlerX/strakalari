@@ -20,6 +20,7 @@ import 'platform/desktop/store_package.dart';
 import 'platform/notifications.dart';
 import 'platform/startup.dart';
 import 'shell/router.dart';
+import 'shell/theme.dart';
 import 'widgets/error_boundary.dart';
 
 /// Headless Android entry point (PLAN 3.4): `WakeReceiver`/`RefreshReceiver`
@@ -68,9 +69,12 @@ class MyApp extends ConsumerWidget {
     final light = appState.tok.mode == 'light';
     return MaterialApp.router(
       title: Strings.get('app_title'),
-      theme: appState.tok.toThemeData(),
-      darkTheme: appState.tok.toThemeData(),
+      theme: lightTokens.toThemeData(),
+      darkTheme: darkTokens.toThemeData(),
       themeMode: light ? ThemeMode.light : ThemeMode.dark,
+      // Keep Theme.of(context) locked in the same frame as appState.tok so
+      // shell bars and body never split across light and dark during rebuilds.
+      themeAnimationStyle: AnimationStyle.noAnimation,
       locale: Locale(Strings.lang),
       supportedLocales: const [Locale('cs'), Locale('en')],
       localizationsDelegates: const [
