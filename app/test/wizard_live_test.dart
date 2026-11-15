@@ -342,6 +342,111 @@ void main() {
       expect(templateTexts(legacy), equals(legacy));
     });
   });
+
+  group('B7 wizard limits retry snackbar', () {
+    testWidgets(
+        'tapping retry when idle starts refresh without showing already_running snackbar',
+        (tester) async {
+      Strings.lang = 'cs';
+      final s = AppState(configData: {'tutorials_enabled': false});
+      var spawned = 0;
+      s.spawn = (_, _) => spawned++;
+      s.wizardStep = WizardController.stepLimits;
+      s.drafts['wiz:limits_refresh'] = '1';
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LiveWizardView(tokens: AppTokens.dark()),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.text(Strings.get('wiz_limits_retry')));
+      await tester.pump();
+
+      expect(spawned, 1);
+      expect(find.text(Strings.get('already_running')), findsNothing);
+    });
+
+    testWidgets(
+        'tapping retry when a refresh flight is already running shows already_running snackbar',
+        (tester) async {
+      Strings.lang = 'cs';
+      final s = AppState(configData: {'tutorials_enabled': false});
+      var spawned = 0;
+      s.spawn = (_, _) => spawned++;
+      s.wizardStep = WizardController.stepLimits;
+      s.drafts['wiz:limits_refresh'] = '1';
+      expect(s.claimFlight('refresh_running'), isTrue);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LiveWizardView(tokens: AppTokens.dark()),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Pre-fix code checks stale c.refreshRunning == false; simulate a running
+      // refresh after build so only retryLimitsRefresh()'s return value detects it.
+      s.refreshRunning = true;
+      await tester.tap(find.text(Strings.get('wiz_limits_retry')));
+      await tester.pump();
+
+      expect(spawned, 0);
+      expect(find.text(Strings.get('already_running')), findsOneWidget);
+    });
+
+    test('retryLimitsRefresh honors both refreshRunning and callback bool return',
+        () {
+      var calls = 0;
+      final running = WizardController(
+        config: {},
+        onSave: (_) => true,
+        onLimitsRefresh: () {
+          calls++;
+          return true;
+        },
+      )..refreshRunning = true;
+      expect(running.retryLimitsRefresh(), isFalse);
+      expect(calls, 0);
+
+      final busy = WizardController(
+        config: {},
+        onSave: (_) => true,
+        onLimitsRefresh: () {
+          calls++;
+          return false;
+        },
+      )..refreshRunning = false;
+      expect(busy.retryLimitsRefresh(), isFalse);
+      expect(calls, 1);
+
+      final idle = WizardController(
+        config: {},
+        onSave: (_) => true,
+        onLimitsRefresh: () {
+          calls++;
+          return true;
+        },
+      )..refreshRunning = false;
+      expect(idle.retryLimitsRefresh(), isTrue);
+      expect(calls, 2);
+    });
+  });
 }
 
 class _SeededAppStateController extends AppStateController {

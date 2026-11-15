@@ -1,7 +1,7 @@
 # QA & roadmap status
 
 Branch: qa-roadmap · Base: main @ a528acd · Current phase: 1
-Next step: B7 (Wizard limits retry button falsely shows "already running" snackbar)
+Next step: B8 (Wizard _DraftField lacks key/sync and Marks _bandsCard creates TextEditingControllers in build)
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -11,8 +11,8 @@ Next step: B7 (Wizard limits retry button falsely shows "already running" snackb
 | B3 | done | 1f2d027 | `app/test/settings_live_test.dart` (`B3 light theme switching`) | `build/qa-evidence/B3/before_light_phone.png`, `build/qa-evidence/B3/after_light_phone.png`, `build/qa-evidence/B3/after_dark_phone.png` | Cached `ThemeData` per token set, disabled `AnimatedTheme` tween in `MyApp`, set explicit `Scaffold.backgroundColor: tok.bg`; verified on Pixel 7 Pro |
 | B4 | done | f9e7eba | `app/test/activity_view_test.dart` (`B4 run time`) | — | Stores full ISO-8601 timestamp in `finishRun`; `runTime` rejects date-only strings so legacy runs fall back to `finished` rather than `00:00` |
 | B5 | done | 3491a63 | `app/test/settings_sections_test.dart` (`B5 school calendar presets`) | `build/qa-evidence/B5/before_settings_calendar_390.png`, `build/qa-evidence/B5/after_settings_calendar_390.png` | Populates `presetOptions` + `custom` in calendar preset picker, supplies `presetCloses` fallback/hint to `cal:sem1`/`cal:sem2` without writing defaults on blur, omits duplicate label `hintText` on `AutosaveField` |
-| B6 | done | self (B6 commit) | `app/test/settings_sections_test.dart` (`B6 notification event labels`) | `build/qa-evidence/B6/before_settings_notifications_390.png`, `build/qa-evidence/B6/after_settings_notifications_390.png` | Translates all 13 `kNotificationEvents` via `Strings.get('notif_$event')` |
-| B7 | todo | — | — | — | |
+| B6 | done | ef5fdec | `app/test/settings_sections_test.dart` (`B6 notification event labels`) | `build/qa-evidence/B6/before_settings_notifications_390.png`, `build/qa-evidence/B6/after_settings_notifications_390.png` | Translates all 13 `kNotificationEvents` via `Strings.get('notif_$event')` |
+| B7 | done | self (B7 commit) | `app/test/wizard_live_test.dart` (`B7 wizard limits retry snackbar`) | — | Returns `bool` from `retryLimitsRefresh()` and shows `already_running` snackbar only when refresh is already running |
 | B8 | todo | — | — | — | |
 | B9 | todo | — | — | — | |
 | P1 | todo | — | — | — | |

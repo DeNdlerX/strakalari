@@ -44,7 +44,7 @@ class WizardController extends ChangeNotifier {
 
   /// Starts the one-time Bakaláři-only refresh when the limits step
   /// shows with no subjects yet.
-  final void Function() onLimitsRefresh;
+  final Object? Function() onLimitsRefresh;
 
   /// Sets the app language (`cs | en`).
   final void Function(String lang) onSetLanguage;
@@ -65,7 +65,7 @@ class WizardController extends ChangeNotifier {
     bool Function()? onFinishRefresh,
     void Function()? onOpenUrl,
     void Function()? onAlarmPermission,
-    void Function()? onLimitsRefresh,
+    Object? Function()? onLimitsRefresh,
     void Function(String lang)? onSetLanguage,
     this.onDraftChanged,
     this.onClearDrafts,
@@ -79,7 +79,7 @@ class WizardController extends ChangeNotifier {
         onFinishRefresh = onFinishRefresh ?? (() => false),
         onOpenUrl = onOpenUrl ?? (() {}),
         onAlarmPermission = onAlarmPermission ?? (() {}),
-        onLimitsRefresh = onLimitsRefresh ?? (() {}),
+        onLimitsRefresh = onLimitsRefresh ?? (() => null),
         onSetLanguage = onSetLanguage ?? ((_) {});
 
   // -- steps ------------------------------------------------------------------------
@@ -309,6 +309,15 @@ class WizardController extends ChangeNotifier {
   void markLimitsRefreshStarted() {
     drafts['wiz:limits_refresh'] = '1';
     notifyListeners();
+  }
+
+  /// Triggers a limits refresh from the retry button and returns whether a
+  /// new refresh started (false when one is already running).
+  bool retryLimitsRefresh() {
+    if (refreshRunning) return false;
+    final result = onLimitsRefresh();
+    if (result is bool) return result;
+    return true;
   }
 
   /// A limit in percent; null when blank. Throws [FormatException]

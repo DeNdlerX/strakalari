@@ -424,9 +424,8 @@ final rows = <Widget>[
         alignment: Alignment.centerLeft,
         child: OutlinedButton.icon(
           onPressed: () {
-            c.onLimitsRefresh();
-            if (context.mounted &&
-                c.refreshRunning == false) {
+            final started = c.retryLimitsRefresh();
+            if (context.mounted && !started) {
               ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                       content:
