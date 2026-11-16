@@ -422,36 +422,12 @@ class WizardController extends ChangeNotifier {
 
   // -- excuse templates (excuses step) ---------------------------------------------------------------
 
-  /// Joined template texts per config key, edited in memory and saved
-  /// on Continue (one template per non-empty line).
-  final Map<String, String> excuseTemplates = {};
-
-  void setExcuseTemplatesInitial(Map<String, List<String>> initial) {
-    excuseTemplates.clear();
-    initial.forEach((key, lines) {
-      excuseTemplates[key] = lines.join('\n');
-    });
-  }
-
   bool saveTemplateList(String key, List<Map<String, String>> values) =>
       SettingsController.commitTemplatesList(
         current: config[key] ?? const [],
         values: values,
         saveCleaned: (cleaned) => _saveQuiet({key: cleaned}),
       );
-
-  bool saveExcuseTemplates() {
-    final updates = <String, Object?>{
-      for (final e in excuseTemplates.entries)
-        e.key: e.value
-            .split('\n')
-            .map((l) => l.trimRight())
-            .where((l) => l.trim().isNotEmpty)
-            .toList(),
-    };
-    if (updates.isEmpty) return true;
-    return _save(updates);
-  }
 
   // -- live tests ----------------------------------------------------------------------------------------
 
@@ -712,7 +688,6 @@ class WizardController extends ChangeNotifier {
             finishedMessage: null
           );
         }
-        if (excuseTemplates.isNotEmpty) saveExcuseTemplates();
         break;
       default:
         break;
