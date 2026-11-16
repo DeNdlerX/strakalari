@@ -600,6 +600,55 @@ void main() {
       );
     });
   });
+
+  group('P1 wizard disclaimer phone wording', () {
+    testWidgets('uses phone wording on mobile in cs and en', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final wasMobile = Strings.isMobile;
+      final savedLang = Strings.lang;
+      addTearDown(() {
+        Strings.isMobile = wasMobile;
+        Strings.lang = savedLang;
+      });
+      Strings.isMobile = false;
+
+      for (final lang in ['cs', 'en']) {
+        setEnvironmentOverride({
+          'STRAKALARI_DATA_DIR': tmp.path,
+          'STRAKALARI_NO_KEYRING': '1',
+          'FLET_PLATFORM': 'android',
+        });
+        final s = AppState(configData: {'language': lang});
+        s.wizardStep = WizardController.stepDisclaimer;
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+            ],
+            child: MaterialApp(
+              home: Scaffold(
+                body: LiveWizardView(tokens: AppTokens.dark()),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(Strings.isMobile, isTrue, reason: 'lang=$lang');
+        if (lang == 'cs') {
+          expect(find.textContaining('počítači'), findsNothing);
+          expect(find.textContaining('telefonu'), findsOneWidget);
+        } else {
+          expect(find.textContaining('computer'), findsNothing);
+          expect(find.textContaining('phone'), findsOneWidget);
+        }
+      }
+    });
+  });
 }
 
 class _SeededAppStateController extends AppStateController {

@@ -334,6 +334,7 @@ class AppState {
       core.setLanguage(lang);
       Strings.lang = (lang == 'en') ? 'en' : 'cs';
     } catch (_) {}
+    Strings.isMobile = core.isMobile();
   }
 
   // -- config ----------------------------------------------------------------------

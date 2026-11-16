@@ -51,6 +51,7 @@ class StartupContext {
 /// Runs before `runApp`. Exits the process for `--forget-secrets` and for
 /// a second launch (after telling the running one to show its window).
 Future<StartupContext> prepareStartup(List<String> args) async {
+  Strings.isMobile = isMobile();
   if (Platform.isAndroid) {
     final support = await getApplicationSupportDirectory();
     final dataDir = '${support.path}/data';
