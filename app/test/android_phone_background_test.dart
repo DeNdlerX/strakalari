@@ -387,10 +387,7 @@ void main() {
         onAndroid: () => true,
         startNotifier: false,
       );
-      if (!s.setupPending && s.tutorialOffer(firstTourId)) {
-        s.onChanged();
-      }
-      phone.start();
+      startPhoneBackground(s, phone);
       await _settle();
 
       expect(s.tutorial?.$1, firstTourId);

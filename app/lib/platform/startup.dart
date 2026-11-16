@@ -96,6 +96,15 @@ Future<StartupContext> prepareStartup(List<String> args) async {
 /// the window starts hidden.
 bool launchMinimized(List<String> args) => args.contains('--minimized');
 
+/// Offers the first-run tour before starting [PhoneBackground] so Android's
+/// notification permission prompt waits until the intro tour finishes.
+void startPhoneBackground(AppState state, PhoneBackground phone) {
+  if (!state.setupPending && state.tutorialOffer(firstTourId)) {
+    state.onChanged();
+  }
+  phone.start();
+}
+
 /// Starts the scheduler and the platform services once the UI's state
 /// exists. Never throws.
 Future<void> startPlatformServices(
@@ -124,10 +133,7 @@ Future<void> startPlatformServices(
   if (Platform.isAndroid) {
     final phone = PhoneBackground(state, loop, const AndroidChannel());
     container.listen(appStateProvider, (_, _) => phone.notifier.poke());
-    if (!state.setupPending && state.tutorialOffer(firstTourId)) {
-      state.onChanged();
-    }
-    phone.start();
+    startPhoneBackground(state, phone);
     AppLifecycleListener(onStateChange: (s) {
       visible = s == AppLifecycleState.resumed;
       // The engine drops this isolate: no hand-off to its port any more.
