@@ -1072,7 +1072,8 @@ class SettingsView extends StatelessWidget {
                         child: Text(Strings.get('cal_custom_opt'))),
                 ],
                 onChanged: (v) {
-                  c.save({'school_preset_id': v ?? 'custom'});
+                  if (v == null || v == presetId) return;
+                  c.save({'school_preset_id': v});
                   onChanged?.call();
                 },
               ),

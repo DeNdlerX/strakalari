@@ -1,5 +1,11 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:app/controllers/app_state.dart';
+import 'package:app/features/settings/settings_live.dart';
 import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
@@ -429,6 +435,79 @@ void main() {
       expect(updatedSem1.controller?.text, expectedSem1);
       expect(updatedSem2.controller?.text, expectedSem2);
     });
+
+    testWidgets(
+        'M2: opening and closing dropdown without change or re-picking current preset writes nothing',
+        (t) async {
+      Strings.lang = 'cs';
+      final tmp =
+          Directory.systemTemp.createTempSync('strakalari_b5_dropdown_');
+      core.setEnvironmentOverride(
+          {'STRAKALARI_DATA_DIR': tmp.path, 'STRAKALARI_NO_KEYRING': '1'});
+      addTearDown(() {
+        core.setEnvironmentOverride(null);
+        try {
+          tmp.deleteSync(recursive: true);
+        } catch (_) {}
+      });
+
+      final cfgPath = core.resolvePath('config.json');
+      File(cfgPath).writeAsStringSync(jsonEncode({
+        'school_preset_id': 'gekom_2026_2027',
+        'tutorials_enabled': false,
+      }));
+      final beforeText = File(cfgPath).readAsStringSync();
+      final beforeMtime = File(cfgPath).lastModifiedSync();
+
+      final s = AppState();
+      var saveCount = 0;
+      s.configListeners.add(() => saveCount++);
+      s.setSettingsSection('calendar');
+
+      t.view.physicalSize = const Size(800, 4000);
+      t.view.devicePixelRatio = 1.0;
+      addTearDown(t.view.reset);
+
+      await t.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppState(s)),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: LiveSettingsView(narrow: true)),
+          ),
+        ),
+      );
+      await t.pumpAndSettle();
+
+      final dd = find.byType(DropdownButtonFormField<String>).first;
+      final selectedTitle = core
+          .presetOptions('cs')
+          .firstWhere((e) => e.$1 == 'gekom_2026_2027')
+          .$2;
+
+      // (1) Open and dismiss without picking.
+      await t.tap(dd);
+      await t.pumpAndSettle();
+      await t.tapAt(const Offset(5, 5));
+      await t.pumpAndSettle();
+
+      expect(saveCount, 0);
+      expect(s.get('school_preset_id'), 'gekom_2026_2027');
+      expect(File(cfgPath).readAsStringSync(), beforeText);
+      expect(File(cfgPath).lastModifiedSync(), beforeMtime);
+
+      // (2) Open and re-pick the already selected preset.
+      await t.tap(dd);
+      await t.pumpAndSettle();
+      await t.tap(find.text(selectedTitle).last);
+      await t.pumpAndSettle();
+
+      expect(saveCount, 0);
+      expect(s.get('school_preset_id'), 'gekom_2026_2027');
+      expect(File(cfgPath).readAsStringSync(), beforeText);
+      expect(File(cfgPath).lastModifiedSync(), beforeMtime);
+    });
   });
 
   group('B6 notification event labels', () {
@@ -499,4 +578,19 @@ void main() {
       expect(t.widget<SwitchListTile>(switchFinder).value, isTrue);
     });
   });
+}
+
+class _SeededAppState extends AppStateController {
+  final AppState seeded;
+  _SeededAppState(this.seeded);
+
+  @override
+  AppState build() {
+    seeded.onChanged = () {
+      // ignore: avoid_self_assignment
+      state = state;
+    };
+    seeded.onProgress = seeded.onChanged;
+    return seeded;
+  }
 }
