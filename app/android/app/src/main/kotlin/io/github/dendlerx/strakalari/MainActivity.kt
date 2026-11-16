@@ -23,4 +23,16 @@ class MainActivity : FlutterActivity() {
         channel = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        if (channel?.onRequestPermissionsResult(requestCode, permissions, grantResults) == true) {
+            return
+        }
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    }
 }

@@ -845,6 +845,7 @@ class AppState {
 
   void dismissWizard() {
     wizardDismissed = true;
+    tutorialOffer(firstTourId);
     _saveWizardStep(-1);
     _emit();
   }
@@ -860,6 +861,7 @@ class AppState {
     wizardStep = 0;
     drafts.removeWhere((k, _) => k.startsWith('wiz:'));
     wizardVerified.clear();
+    tutorialOffer(firstTourId);
     _saveWizardStep(-1);
     _emit();
   }

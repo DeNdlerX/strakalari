@@ -913,8 +913,10 @@ class SettingsView extends StatelessWidget {
                 contentPadding: EdgeInsets.zero,
                 title: Text(Strings.get('use_strava')),
                 value: c.get('use_strava', true) == true,
-                onChanged: (v) =>
-                    c.saveQuiet({'use_strava': v}),
+                onChanged: (v) {
+                  c.saveQuiet({'use_strava': v});
+                  onChanged?.call();
+                },
               ),
             ],
           ),
@@ -1454,8 +1456,10 @@ class SettingsView extends StatelessWidget {
                   contentPadding: EdgeInsets.zero,
                   title: Text(Strings.get('run_in_background')),
                   value: c.get('run_in_background', true) == true,
-                  onChanged: (v) =>
-                      c.saveQuiet({'run_in_background': v}),
+                  onChanged: (v) {
+                    c.saveQuiet({'run_in_background': v});
+                    onChanged?.call();
+                  },
                 ),
                 _Hint(Strings.get('run_in_background_hint')),
               ],
@@ -1489,7 +1493,10 @@ class SettingsView extends StatelessWidget {
                   contentPadding: EdgeInsets.zero,
                   title: Text(Strings.get('minimize_to_tray')),
                   value: c.get('minimize_to_tray', true) == true,
-                  onChanged: (v) => c.saveQuiet({'minimize_to_tray': v}),
+                  onChanged: (v) {
+                    c.saveQuiet({'minimize_to_tray': v});
+                    onChanged?.call();
+                  },
                 ),
               ],
             ),
@@ -1527,8 +1534,10 @@ class SettingsView extends StatelessWidget {
                     contentPadding: EdgeInsets.zero,
                     title: Text(Strings.get('minimize_to_tray')),
                     value: c.get('minimize_to_tray', true) == true,
-                    onChanged: (v) =>
-                        c.saveQuiet({'minimize_to_tray': v}),
+                    onChanged: (v) {
+                      c.saveQuiet({'minimize_to_tray': v});
+                      onChanged?.call();
+                    },
                   ),
                 ],
               );
@@ -1673,8 +1682,10 @@ class SettingsView extends StatelessWidget {
                 contentPadding: EdgeInsets.zero,
                 title: Text(Strings.get('ai_auto_enable')),
                 value: c.get('gemini_auto_enabled', false) == true,
-                onChanged: (v) =>
-                    c.saveQuiet({'gemini_auto_enabled': v}),
+                onChanged: (v) {
+                  c.saveQuiet({'gemini_auto_enabled': v});
+                  onChanged?.call();
+                },
               ),
               _Hint(Strings.get('ai_auto_hint')),
               AutosaveField(

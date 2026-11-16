@@ -454,4 +454,49 @@ void main() {
       }
     });
   });
+
+  group('B9 background switch rebuilds', () {
+    testWidgets('tapping run_in_background updates switch state immediately',
+        (t) async {
+      Strings.lang = 'cs';
+      t.view.physicalSize = const Size(800, 4000);
+      t.view.devicePixelRatio = 1.0;
+      addTearDown(t.view.reset);
+      final c = _controller({'run_in_background': true});
+      c.settingsSection = 'browser';
+      c.settingsOpen = true;
+      await t.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) => SettingsView(
+                controller: c,
+                narrow: true,
+                platform: 'android',
+                onChanged: () => setState(() {}),
+              ),
+            ),
+          ),
+        ),
+      );
+      await t.pump();
+
+      final switchFinder = find.widgetWithText(
+        SwitchListTile,
+        Strings.get('run_in_background'),
+      );
+      expect(switchFinder, findsOneWidget);
+      expect(t.widget<SwitchListTile>(switchFinder).value, isTrue);
+
+      await t.tap(switchFinder);
+      await t.pump();
+      expect(c.get('run_in_background'), isFalse);
+      expect(t.widget<SwitchListTile>(switchFinder).value, isFalse);
+
+      await t.tap(switchFinder);
+      await t.pump();
+      expect(c.get('run_in_background'), isTrue);
+      expect(t.widget<SwitchListTile>(switchFinder).value, isTrue);
+    });
+  });
 }

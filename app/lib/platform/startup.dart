@@ -25,6 +25,7 @@ import 'package:strakalari_core/strakalari_core.dart';
 
 import '../controllers/app_state.dart';
 import '../l10n/strings.dart';
+import '../tutorial/tours.dart';
 import 'android/android_channel.dart';
 import 'android/android_keystore.dart';
 import 'android/background.dart';
@@ -121,6 +122,12 @@ Future<void> startPlatformServices(
   } catch (_) {}
 
   if (Platform.isAndroid) {
+    final phone = PhoneBackground(state, loop, const AndroidChannel());
+    container.listen(appStateProvider, (_, _) => phone.notifier.poke());
+    if (!state.setupPending && state.tutorialOffer(firstTourId)) {
+      state.onChanged();
+    }
+    phone.start();
     AppLifecycleListener(onStateChange: (s) {
       visible = s == AppLifecycleState.resumed;
       // The engine drops this isolate: no hand-off to its port any more.
@@ -128,12 +135,10 @@ Future<void> startPlatformServices(
       if (s == AppLifecycleState.resumed) {
         // Back from the system's settings or after a while away.
         state.syncAndroidState();
+        unawaited(phone.sync());
         state.onChanged();
       }
     });
-    final phone = PhoneBackground(state, loop, const AndroidChannel());
-    container.listen(appStateProvider, (_, _) => phone.notifier.poke());
-    phone.start();
     loop.start();
     try {
       // A wake while this isolate lives: its runner does the due job on
@@ -235,6 +240,7 @@ class PhoneBackground {
   bool _asked = false;
   bool? _on;
   int? _interval;
+  bool? _allowed;
 
   int _intervalMinutes() {
     // `max(1, int(float(get(...) or 60)))`.
@@ -288,17 +294,23 @@ class PhoneBackground {
   Future<void> sync() async {
     try {
       final on = _isOn();
-      if (on && !_asked && !state.setupPending) {
-        // Android 13+: allow notifications? Not over the setup wizard;
-        // its last save brings us back here.
+      if (on && !_asked && !state.setupPending && state.tutorial == null) {
+        // Android 13+: allow notifications? Not over the setup wizard or the
+        // first tutorial; closing them saves config and brings us back here.
         _asked = true;
         await channel.requestNotificationPermission();
       }
+      final allowed = on ? await channel.notificationsEnabled() : false;
       final interval = _intervalMinutes();
       notifier.poke(); // the overview's items, the language, …
-      if (_on == on && _interval == interval) return;
+      if (_on == on &&
+          _interval == interval &&
+          (!on || _allowed == allowed)) {
+        return;
+      }
       _on = on;
       _interval = interval;
+      _allowed = allowed;
       if (!on) {
         await channel.stopBackground();
         // ignore: avoid_print

@@ -9,6 +9,7 @@ import 'package:app/controllers/app_state.dart';
 import 'package:app/l10n/strings.dart';
 import 'package:app/platform/android/android_channel.dart';
 import 'package:app/platform/startup.dart';
+import 'package:app/tutorial/tours.dart';
 import 'package:clock/clock.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -292,6 +293,171 @@ void main() {
       ]) {
         expect(File(path).existsSync(), isTrue, reason: path);
       }
+    });
+  });
+
+  group('B9 notification permission and background start', () {
+    test('defers permission prompt until intro tutorial finishes', () async {
+      final s = AppState(
+        data: {},
+        configData: {
+          'wizard_step': 0,
+          'run_in_background': true,
+          'tutorials_enabled': true,
+          'tutorials_done': <String>[],
+        },
+      );
+      final runner = PeriodicRunner(intervalMinutes: 60);
+      final phone = PhoneBackground(
+        s,
+        runner,
+        const AndroidChannel(),
+        onAndroid: () => true,
+        startNotifier: false,
+      );
+      phone.start();
+      await _settle();
+
+      // Wizard still open: never ask yet.
+      expect(s.setupPending, isTrue);
+      expect(methods(), isNot(contains('requestNotificationPermission')));
+
+      // Finishing (or dismissing) the wizard offers the intro tour first so
+      // Android's permission prompt does not cover the tutorial (also holds when
+      // a wizard notifications step is skipped in F1).
+      s.wizardFinished();
+      await _settle();
+      expect(s.tutorial?.$1, firstTourId);
+      expect(methods(), isNot(contains('requestNotificationPermission')));
+
+      // Once the tutorial ends/skips, sync asks for notification permission.
+      s.tutorialSkip();
+      await _settle();
+      expect(s.tutorial, isNull);
+      expect(methods(), contains('requestNotificationPermission'));
+    });
+
+    test('dismissWizard defers permission over active intro tutorial', () async {
+      final s = AppState(
+        data: {},
+        configData: {
+          'wizard_step': 0,
+          'run_in_background': true,
+          'tutorials_enabled': true,
+          'tutorials_done': <String>[],
+        },
+      );
+      final runner = PeriodicRunner(intervalMinutes: 60);
+      final phone = PhoneBackground(
+        s,
+        runner,
+        const AndroidChannel(),
+        onAndroid: () => true,
+        startNotifier: false,
+      );
+      phone.start();
+      await _settle();
+
+      s.dismissWizard();
+      await _settle();
+      expect(s.tutorial?.$1, firstTourId);
+      expect(methods(), isNot(contains('requestNotificationPermission')));
+
+      s.tutorialSkip();
+      await _settle();
+      expect(methods(), contains('requestNotificationPermission'));
+    });
+
+    test('cold launch with intro pending defers permission until intro closes',
+        () async {
+      final s = AppState(
+        data: {},
+        configData: {
+          'wizard_step': -1,
+          'run_in_background': true,
+          'tutorials_enabled': true,
+          'tutorials_done': <String>[],
+        },
+      )..wizardDismissed = true;
+      final runner = PeriodicRunner(intervalMinutes: 60);
+      final phone = PhoneBackground(
+        s,
+        runner,
+        const AndroidChannel(),
+        onAndroid: () => true,
+        startNotifier: false,
+      );
+      if (!s.setupPending && s.tutorialOffer(firstTourId)) {
+        s.onChanged();
+      }
+      phone.start();
+      await _settle();
+
+      expect(s.tutorial?.$1, firstTourId);
+      expect(methods(), isNot(contains('requestNotificationPermission')));
+
+      s.tutorialSkip();
+      await _settle();
+      expect(methods(), contains('requestNotificationPermission'));
+    });
+
+    test('starts background service when notifications become enabled without restart',
+        () async {
+      var notificationsAllowed = false;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(AndroidChannel.channel, (call) async {
+        calls.add(call);
+        return switch (call.method) {
+          'notificationsEnabled' => notificationsAllowed,
+          'startBackground' ||
+          'scheduleWake' ||
+          'updateBackgroundNotification' =>
+            true,
+          _ => null,
+        };
+      });
+
+      final s = AppState(
+        data: {},
+        configData: {
+          'wizard_step': -1,
+          'run_in_background': true,
+          'tutorials_enabled': false,
+        },
+      );
+      final runner = PeriodicRunner(intervalMinutes: 60);
+      final phone = PhoneBackground(
+        s,
+        runner,
+        const AndroidChannel(),
+        onAndroid: () => true,
+        startNotifier: false,
+      );
+      phone.start();
+      await _settle();
+
+      // Permission granted asynchronously (e.g. after Allow or System Settings
+      // on resume) while _on and _interval already matched: next sync() starts
+      // the foreground service immediately.
+      calls.clear();
+      notificationsAllowed = true;
+      await phone.sync();
+      await _settle();
+
+      expect(started(), isNotEmpty);
+      expect(methods(), contains('scheduleWake'));
+    });
+
+    test('Android bridge waits for onRequestPermissionsResult before returning', () {
+      final channel = File(
+        'android/app/src/main/java/io/github/dendlerx/strakalari/android/StrakalariChannel.java',
+      ).readAsStringSync();
+      final activity = File(
+        'android/app/src/main/kotlin/io/github/dendlerx/strakalari/MainActivity.kt',
+      ).readAsStringSync();
+      expect(channel, contains('onRequestPermissionsResult'));
+      expect(channel, contains('pendingPermissionResult'));
+      expect(activity, contains('onRequestPermissionsResult'));
     });
   });
 }

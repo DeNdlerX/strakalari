@@ -21,6 +21,7 @@ import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
+import io.flutter.plugin.common.PluginRegistry;
 
 import java.security.KeyStore;
 import java.util.ArrayList;
@@ -57,7 +58,8 @@ import javax.crypto.spec.GCMParameterSpec;
  * are named directly (no lookup problem: this <em>is</em> one of them).
  */
 public class StrakalariChannel implements FlutterPlugin, ActivityAware,
-        MethodChannel.MethodCallHandler {
+        MethodChannel.MethodCallHandler,
+        PluginRegistry.RequestPermissionsResultListener {
     static final String CHANNEL = "strakalari/android";
     static final String ACTION_UPDATE_STATUS =
             "io.github.dendlerx.strakalari.android.ACTION_UPDATE_STATUS";
@@ -88,6 +90,8 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
     private android.app.Activity activity;
     @Nullable
     private MethodChannel channel;
+    @Nullable
+    private MethodChannel.Result pendingPermissionResult;
 
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
@@ -102,6 +106,10 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
     }
 
     public void detach() {
+        if (pendingPermissionResult != null) {
+            pendingPermissionResult.success(null);
+            pendingPermissionResult = null;
+        }
         if (channel != null) {
             channel.setMethodCallHandler(null);
             channel = null;
@@ -128,6 +136,7 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
     @Override
     public void onAttachedToActivity(@NonNull ActivityPluginBinding binding) {
         activity = binding.getActivity();
+        binding.addRequestPermissionsResultListener(this);
     }
 
     @Override
@@ -168,8 +177,7 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
                     result.success(notificationsEnabled());
                     return;
                 case "requestNotificationPermission":
-                    requestNotificationPermission();
-                    result.success(null);
+                    requestNotificationPermission(result);
                     return;
                 case "openNotificationSettings":
                     openNotificationSettings();
@@ -330,14 +338,33 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
         return Notifications.enabled(requireContext());
     }
 
-    private void requestNotificationPermission() {
+    private void requestNotificationPermission(@NonNull MethodChannel.Result result) {
         // Android 13+ asks once; after two declines only the settings help.
         if (Build.VERSION.SDK_INT < 33 || notificationsEnabled() || activity == null) {
+            result.success(null);
             return;
         }
+        if (pendingPermissionResult != null) {
+            pendingPermissionResult.success(null);
+        }
+        pendingPermissionResult = result;
         activity.requestPermissions(
                 new String[]{"android.permission.POST_NOTIFICATIONS"},
                 NOTIFICATION_PERMISSION_REQUEST);
+    }
+
+    @Override
+    public boolean onRequestPermissionsResult(
+            int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        if (requestCode != NOTIFICATION_PERMISSION_REQUEST) {
+            return false;
+        }
+        MethodChannel.Result pending = pendingPermissionResult;
+        pendingPermissionResult = null;
+        if (pending != null) {
+            pending.success(null);
+        }
+        return true;
     }
 
     private void openNotificationSettings() {
