@@ -1,7 +1,7 @@
 # QA & roadmap status
 
 Branch: qa-roadmap · Base: main @ a528acd · Current phase: 2
-Next step: P7 (Známky trend chart with readable line/bars and axis labels).
+Next step: P8 (Obědy send button disabled with reason when Strava isn't configured).
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -20,8 +20,8 @@ Next step: P7 (Známky trend chart with readable line/bars and axis labels).
 | P3 | done | 4021a1d | `app/test/wizard_live_test.dart` (`P3 wizard limits navigation reachability`) | `build/qa-evidence/P3/before_wizard_limits_390.png`, `build/qa-evidence/P3/after_wizard_limits_390.png` | Pins header and navigation footer inside `WizardView` card while scrolling step body inside `Flexible(child: SingleChildScrollView(...))` when height is bounded |
 | P4 | done | b439ce7 | `app/test/wizard_live_test.dart` (`P4 wizard switch thumb contrast`) | `build/qa-evidence/P4/before_wizard_strava_dark_390.png`, `build/qa-evidence/P4/before_wizard_strava_light_390.png`, `build/qa-evidence/P4/after_wizard_strava_dark_390.png`, `build/qa-evidence/P4/after_wizard_strava_light_390.png` | Removes `activeThumbColor: t.accent` from wizard `SwitchListTile`s (Strava, AI, Alarm) so they inherit `theme.dart` `switchTheme` (`accentText` thumb on `accent` track) in both dark and light themes |
 | P5 | done | ed137c9 | `packages/strakalari_core/test/schedule_test.dart` (`identicalRoomChangeSuppressed`), `app/test/today_live_test.dart` (`P5 Today empty excuses and identical room change`) | `build/qa-evidence/P5/before_today_390.png`, `build/qa-evidence/P5/after_today_390.png` | (a) Adds `no_pending_excuses` (`Žádné čekající omluvenky` / `No pending excuses`) in ARBs + `strings.dart` and uses it on empty Today excuses; (b) `tools/bakalari_demo_server.py` had `I - (105)` → `I - (118)` (both shortened to `I`), updated to `III - (310)` / `III - (303)`, and `classifyLesson` now suppresses `RoomChanged` / `Změna místnosti: X (X)` when old == new |
-| P6 | done | self (P6 commit) | `app/test/timetable_live_test.dart` (`P6 timetable phone polish`) | `build/qa-evidence/P6/before_timetable_table_390.png`, `build/qa-evidence/P6/after_timetable_table_390.png`, `build/qa-evidence/P6/after_timetable_list_390.png` | (a) Moves legend above timetable on narrow screens so it never clips at the bottom bar; (b) inserts a `6 px` gap between period number and time range in `_lessonRow` and `_pauseRow`; (c) renders *Tento týden* as `ElevatedButton` when active on the current week |
-| P7 | todo | — | — | — | |
+| P6 | done | c707421 | `app/test/timetable_live_test.dart` (`P6 timetable phone polish`) | `build/qa-evidence/P6/before_timetable_table_390.png`, `build/qa-evidence/P6/after_timetable_table_390.png`, `build/qa-evidence/P6/after_timetable_list_390.png` | (a) Moves legend above timetable on narrow screens so it never clips at the bottom bar; (b) inserts a `6 px` gap between period number and time range in `_lessonRow` and `_pauseRow`; (c) renders *Tento týden* as `ElevatedButton` when active on the current week |
+| P7 | done | self (P7 commit) | `app/test/marks_view_test.dart` (`P7 marks trend chart with axes and labels`) | `build/qa-evidence/P7/before_marks_detail_390.png`, `build/qa-evidence/P7/after_marks_detail_390.png` | Replaces `_trendChart` solid bars with a `CustomPaint` line/area chart (`_TrendChartPainter`), status-colored point markers with tooltips, horizontal grid lines, Y-axis labels (`1/3/5` or `100 %/50 %/0 %`), and X-axis date labels |
 | P8 | todo | — | — | — | |
 | P9 | todo | — | — | — | |
 | P10 | todo | — | — | — | |

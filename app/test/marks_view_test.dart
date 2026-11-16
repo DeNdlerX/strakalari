@@ -419,4 +419,74 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     });
   });
+
+  group('P7 marks trend chart with axes and labels', () {
+    testWidgets('shows CustomPaint line chart with Y and X axis labels for grade and percent',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      Strings.lang = 'cs';
+
+      final gradeState = createState(grades: {
+        'Anglický jazyk': [
+          {'Grade': '1', 'Weight': 10, 'Date': '06.10.2026', 'Caption': 'Unit 2 test'},
+          {'Grade': '1', 'Weight': 5, 'Date': '28.10.2026', 'Caption': 'Vocabulary quiz'},
+          {'Grade': '2', 'Weight': 10, 'Date': '12.11.2026', 'Caption': 'Reading'},
+        ],
+      })..selectMarksSubject('Anglický jazyk');
+
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: MarksView(
+            controller: marksControllerFor(gradeState),
+            tokens: AppTokens.dark(),
+            narrow: true,
+          ),
+        ),
+      ));
+      await tester.pump();
+
+      final chartFinder = find.byKey(const ValueKey('marks:trend_chart'));
+      expect(chartFinder, findsOneWidget);
+      expect(
+        find.descendant(of: chartFinder, matching: find.byType(CustomPaint)),
+        findsOneWidget,
+      );
+      for (final label in ['1', '3', '5', '6. 10.', '12. 11.']) {
+        expect(
+          find.descendant(of: chartFinder, matching: find.text(label)),
+          findsOneWidget,
+          reason: 'grade chart missing axis label $label',
+        );
+      }
+
+      final pctState = createState(grades: {
+        'Chemie': [
+          {'Grade': '53', 'Weight': 5, 'Date': '10.09.2026'},
+          {'Grade': '100', 'Weight': 5, 'Date': '15.09.2026'},
+        ],
+      })..selectMarksSubject('Chemie');
+
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: MarksView(
+            controller: marksControllerFor(pctState),
+            tokens: AppTokens.dark(),
+            narrow: true,
+          ),
+        ),
+      ));
+      await tester.pump();
+
+      expect(chartFinder, findsOneWidget);
+      for (final label in ['100 %', '50 %', '0 %', '10. 9.', '15. 9.']) {
+        expect(
+          find.descendant(of: chartFinder, matching: find.text(label)),
+          findsOneWidget,
+          reason: 'percent chart missing axis label $label',
+        );
+      }
+    });
+  });
 }
