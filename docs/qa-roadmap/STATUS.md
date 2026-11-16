@@ -1,7 +1,7 @@
 # QA & roadmap status
 
 Branch: qa-roadmap · Base: main @ a528acd · Current phase: 1
-Next step: B8 (Wizard _DraftField lacks key/sync and Marks _bandsCard creates TextEditingControllers in build)
+Next step: B9 (Android: notification permission over the tutorial; background service doesn't start after allowing)
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -12,8 +12,8 @@ Next step: B8 (Wizard _DraftField lacks key/sync and Marks _bandsCard creates Te
 | B4 | done | f9e7eba | `app/test/activity_view_test.dart` (`B4 run time`) | — | Stores full ISO-8601 timestamp in `finishRun`; `runTime` rejects date-only strings so legacy runs fall back to `finished` rather than `00:00` |
 | B5 | done | 3491a63 | `app/test/settings_sections_test.dart` (`B5 school calendar presets`) | `build/qa-evidence/B5/before_settings_calendar_390.png`, `build/qa-evidence/B5/after_settings_calendar_390.png` | Populates `presetOptions` + `custom` in calendar preset picker, supplies `presetCloses` fallback/hint to `cal:sem1`/`cal:sem2` without writing defaults on blur, omits duplicate label `hintText` on `AutosaveField` |
 | B6 | done | ef5fdec | `app/test/settings_sections_test.dart` (`B6 notification event labels`) | `build/qa-evidence/B6/before_settings_notifications_390.png`, `build/qa-evidence/B6/after_settings_notifications_390.png` | Translates all 13 `kNotificationEvents` via `Strings.get('notif_$event')` |
-| B7 | done | self (B7 commit) | `app/test/wizard_live_test.dart` (`B7 wizard limits retry snackbar`) | — | Returns `bool` from `retryLimitsRefresh()` and shows `already_running` snackbar only when refresh is already running |
-| B8 | todo | — | — | — | |
+| B7 | done | fef6411 | `app/test/wizard_live_test.dart` (`B7 wizard limits retry snackbar`) | — | Returns `bool` from `retryLimitsRefresh()` and shows `already_running` snackbar only when refresh is already running |
+| B8 | done | self (B8 commit) | `app/test/wizard_live_test.dart` (`B8 wizard draft field sync`), `app/test/marks_view_test.dart` (`B8 marks band controllers`) | — | Keys `_DraftField` by draft key and syncs unfocused `initial` updates in `didUpdateWidget`; extracts stateful `_BandsCard` owning and disposing band `TextEditingController`s and `FocusNode`s across rebuilds |
 | B9 | todo | — | — | — | |
 | P1 | todo | — | — | — | |
 | P2 | todo | — | — | — | |

@@ -376,4 +376,47 @@ void main() {
       2,
     );
   });
+
+  group('B8 marks band controllers', () {
+    testWidgets(
+        'rebuilding MarksView preserves band TextEditingController identity, focus, edit, and cursor position',
+        (tester) async {
+      Strings.lang = 'cs';
+      final state = createState();
+      final controller = marksControllerFor(state);
+
+      await tester.pumpWidget(buildMarksView(controller, tester));
+
+      // Locate the 2nd band TextField inside the bands card (first 4 TextFields
+      // in MarksView's non-dialog tree are the 4 percentage band fields).
+      final bandFields = find.byType(TextField);
+      expect(bandFields, findsNWidgets(4));
+      final secondFieldFinder = bandFields.at(1);
+
+      await tester.tap(secondFieldFinder);
+      await tester.pump();
+      await tester.enterText(secondFieldFinder, '74.5');
+      await tester.pump();
+
+      final beforeCtrl = tester.widget<TextField>(secondFieldFinder).controller!;
+      beforeCtrl.selection = const TextSelection.collapsed(offset: 2);
+      await tester.pump();
+      expect(beforeCtrl.selection.baseOffset, 2);
+
+      // Trigger a controller-driven rebuild (e.g., changing subject sort order).
+      controller.setMarksSort('worst');
+      await tester.pumpWidget(buildMarksView(controller, tester));
+      await tester.pump();
+
+      final afterWidget = tester.widget<TextField>(secondFieldFinder);
+      final afterCtrl = afterWidget.controller!;
+      expect(identical(afterCtrl, beforeCtrl), isTrue);
+      expect(afterCtrl.text, '74.5');
+      expect(afterCtrl.selection.baseOffset, 2);
+      expect(FocusManager.instance.primaryFocus?.hasFocus, isTrue);
+
+      // Verify unmount/dispose runs cleanly without errors.
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  });
 }

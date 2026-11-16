@@ -447,6 +447,96 @@ void main() {
       expect(calls, 2);
     });
   });
+
+  group('B8 wizard draft field sync', () {
+    testWidgets(
+        'moving from Bakalari step to Strava step does not reuse username/password text across shared child slots',
+        (tester) async {
+      tester.view.physicalSize = const Size(1920, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      Strings.lang = 'cs';
+      final s = AppState(configData: {
+        'tutorials_enabled': false,
+        'bakalari_url': 'https://baka.example.cz',
+        'bakalari_username': 'baka_user',
+        'use_strava': true,
+        'strava_username': 'strava_user',
+      });
+      s.wizardStep = WizardController.stepBakalari;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LiveWizardView(tokens: AppTokens.dark()),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.widgetWithText(TextField, 'baka_user'), findsOneWidget);
+
+      // Step forward from Bakalari to Strava without changing drafts: slots 3
+      // and 4 in the step column are both _DraftField in both steps.
+      s.wizardStep = WizardController.stepStrava;
+      s.onChanged();
+      await tester.pump();
+
+      expect(find.widgetWithText(TextField, 'strava_user'), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'baka_user'), findsNothing);
+    });
+
+    testWidgets(
+        'updating config updates unfocused _DraftField when initial changes',
+        (tester) async {
+      tester.view.physicalSize = const Size(1920, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      Strings.lang = 'cs';
+      final s = AppState(configData: {
+        'tutorials_enabled': false,
+        'bakalari_url': 'https://old.example.cz',
+      });
+      s.wizardStep = WizardController.stepBakalari;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LiveWizardView(tokens: AppTokens.dark()),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.widgetWithText(TextField, 'https://old.example.cz'),
+        findsOneWidget,
+      );
+
+      s.config.set('bakalari_url', 'https://new.example.cz');
+      s.onChanged();
+      await tester.pump();
+
+      expect(
+        find.widgetWithText(TextField, 'https://new.example.cz'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(TextField, 'https://old.example.cz'),
+        findsNothing,
+      );
+    });
+  });
 }
 
 class _SeededAppStateController extends AppStateController {

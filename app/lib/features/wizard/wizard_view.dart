@@ -648,6 +648,7 @@ final enabled = c.alarmEnabled;
   Widget _field(String label, String key, String initial,
       {bool password = false, String hint = ''}) {
     return _DraftField(
+      key: ValueKey('draft:$key'),
       label: label,
       initial: initial,
       password: password,
@@ -670,6 +671,7 @@ class _DraftField extends StatefulWidget {
   final void Function(String value) onChanged;
 
   const _DraftField({
+    super.key,
     required this.label,
     required this.initial,
     required this.tokens,
@@ -684,15 +686,28 @@ class _DraftField extends StatefulWidget {
 
 class _DraftFieldState extends State<_DraftField> {
   late final TextEditingController _ctrl;
+  late final FocusNode _focus;
 
   @override
   void initState() {
     super.initState();
     _ctrl = TextEditingController(text: widget.initial);
+    _focus = FocusNode();
+  }
+
+  @override
+  void didUpdateWidget(covariant _DraftField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_focus.hasFocus &&
+        widget.initial != oldWidget.initial &&
+        _ctrl.text != widget.initial) {
+      _ctrl.text = widget.initial;
+    }
   }
 
   @override
   void dispose() {
+    _focus.dispose();
     _ctrl.dispose();
     super.dispose();
   }
@@ -703,6 +718,7 @@ class _DraftFieldState extends State<_DraftField> {
       padding: const EdgeInsets.only(bottom: 8),
       child: TextField(
         controller: _ctrl,
+        focusNode: _focus,
         obscureText: widget.password,
         decoration: InputDecoration(
           labelText: widget.label,
