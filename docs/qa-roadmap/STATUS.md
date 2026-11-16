@@ -1,7 +1,7 @@
 # QA & roadmap status
 
 Branch: qa-roadmap · Base: main @ a528acd · Current phase: 1
-Next step: R1 review before Phase 2 (⛔ Phase 1 complete)
+Next step: Fix every finding in `reviews/phase-1.md` (blockers first), one commit per finding, then stop for re-review.
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -39,6 +39,7 @@ Next step: R1 review before Phase 2 (⛔ Phase 1 complete)
 - **B1 (answered 2026-11-15):** Configs previously saved by the old wizard bug hold plain strings instead of `{name, text}` template objects. Per the plan they are left untouched and load cleanly in Settings and the send path — owner replied `"connected. I dont think any use it."` (no migration needed).
 ## Deviations from the plan (each needs reviewer sign-off)
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
+- **2026-11-16 R1 review: FAIL** — 3 must-fix (M1 template rows lost on rebuild, M2 B5 dropdown test/save, M3 B3 evidence), 6 should-fix. See [`reviews/phase-1.md`](reviews/phase-1.md).
 ### Phase 1 (`B1`–`B9` complete, checkpoint ⛔ R1)
 - **What was done:** Fixed all nine Phase 1 bugs (`B1`–`B9`) on branch `qa-roadmap` one item per commit with regression tests before fixes: structured template editing and blur/unmount saving (`B1`, `B2`), whole-app light/dark switching without theme lerp artifacts (`B3`), full ISO run timestamps in Activity (`B4`), school calendar presets and fallback defaults in Settings (`B5`), localized notification event labels in cs/en (`B6`), accurate retry `already_running` snackbar detection in the wizard (`B7`), keyed wizard draft fields and stateful `_BandsCard` controllers in Marks (`B8`), and Android tutorial-before-permission gating plus immediate `KeepAliveService` start and reactive Settings switches (`B9`).
 - **Deviations / owner decisions:** None outside the plan. Recorded owner decision on `B1` (`"connected. I dont think any use it."`) leaving any previously mis-saved plain-string templates untouched.
