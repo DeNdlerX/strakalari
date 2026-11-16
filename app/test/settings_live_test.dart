@@ -360,6 +360,85 @@ void main() {
       await tester.pump();
       expect(s.get('late_income_excuses'), ['Druhá', 'Třetí']);
     });
+
+    testWidgets(
+        'M1: newly added row and name-only row survive AppState rebuilds while outside changes still apply',
+        (tester) async {
+      final s = AppState(configData: {
+        'tutorials_enabled': false,
+        'late_income_excuses': [
+          {'name': 'Doprava', 'text': 'Zpoždění'},
+        ],
+      });
+      s.setSettingsSection('templates');
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: LiveSettingsView(narrow: true)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // (1) Tap + Přidat, trigger AppState rebuild, verify new row remains and can be filled & saved.
+      await tester.tap(find.text('+ ${Strings.get('add')}').first);
+      await tester.pumpAndSettle();
+      s.onChanged();
+      await tester.pump();
+
+      final newName = find.byKey(const Key('tpl:late_income_excuses:1:name'));
+      final newText = find.byKey(const Key('tpl:late_income_excuses:1:text'));
+      expect(newName, findsOneWidget);
+      expect(newText, findsOneWidget);
+
+      // (2) Type a name only, unfocus, trigger AppState rebuild, verify typed name remains.
+      await tester.enterText(newName, 'Lékař');
+      await tester.pump();
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+      s.onChanged();
+      await tester.pump();
+
+      expect(newName, findsOneWidget);
+      expect(tester.widget<TextField>(newName).controller!.text, 'Lékař');
+
+      // Now fill the text and save it.
+      await tester.enterText(newText, 'Návštěva lékaře');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+      expect(s.get('late_income_excuses'), [
+        {'name': 'Doprava', 'text': 'Zpoždění'},
+        {'name': 'Lékař', 'text': 'Návštěva lékaře'},
+      ]);
+
+      // (3) An outside config save while unfocused & clean still updates the editor.
+      s.save({
+        'late_income_excuses': [
+          {'name': 'Zvenku', 'text': 'Externí změna'},
+        ],
+      });
+      await tester.pumpAndSettle();
+
+      expect(
+          tester
+              .widget<TextField>(
+                  find.byKey(const Key('tpl:late_income_excuses:0:name')))
+              .controller!
+              .text,
+          'Zvenku');
+      expect(
+          tester
+              .widget<TextField>(
+                  find.byKey(const Key('tpl:late_income_excuses:0:text')))
+              .controller!
+              .text,
+          'Externí změna');
+      expect(find.byKey(const Key('tpl:late_income_excuses:1:text')),
+          findsNothing);
+    });
   });
 
   group('B3 light theme switching', () {

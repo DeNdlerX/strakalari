@@ -240,14 +240,20 @@ class _TemplateRow {
 
 class _TemplateEditorState extends State<TemplateEditor> {
   late List<Map<String, String>> values;
+  late List<Map<String, String>> _lastStored;
   final List<_TemplateRow> _rows = [];
   final List<_TemplateRow> _pendingDispose = [];
   bool _dirty = false;
 
+  static List<Map<String, String>> _cloneValues(
+          List<Map<String, String>> src) =>
+      [for (final m in src) Map<String, String>.of(m)];
+
   @override
   void initState() {
     super.initState();
-    values = _load();
+    _lastStored = _load();
+    values = _cloneValues(_lastStored);
     _rebuildRows();
   }
 
@@ -322,8 +328,9 @@ class _TemplateEditorState extends State<TemplateEditor> {
         _rows.any((r) => r.nameFocus.hasFocus || r.textFocus.hasFocus);
     if (!keyChanged && (_dirty || anyFocused)) return;
     final fresh = _load();
-    if (keyChanged || !_sameValues(fresh, values)) {
-      values = fresh;
+    if (keyChanged || !_sameValues(fresh, _lastStored)) {
+      _lastStored = fresh;
+      values = _cloneValues(fresh);
       _dirty = false;
       _rebuildRows();
     }
@@ -343,12 +350,13 @@ class _TemplateEditorState extends State<TemplateEditor> {
 
   void _saveValues() {
     _syncFromRows();
-    _dirty = false;
     final commit = widget.commitTemplates;
-    if (commit != null) {
-      commit(values);
-    } else {
-      widget.controller!.commitTemplates(widget.configKey, values);
+    final ok = commit != null
+        ? commit(values)
+        : widget.controller!.commitTemplates(widget.configKey, values);
+    if (ok) {
+      _dirty = false;
+      _lastStored = _load();
     }
   }
 

@@ -341,6 +341,69 @@ void main() {
       expect(options[0].text, contains('Dobrý den,'));
       expect(templateTexts(legacy), equals(legacy));
     });
+
+    testWidgets(
+        'M1: newly added row and name-only row survive AppState rebuilds in wizard',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final s = AppState(configData: {
+        'language': 'cs',
+        'disclaimer_accepted': true,
+        'your_signature': 'Jan Novák',
+        'late_income_excuses': [
+          {'name': 'Doprava', 'text': 'Zpoždění'},
+        ],
+      });
+      s.wizardStep = WizardController.stepExcuses;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LiveWizardView(tokens: AppTokens.dark()),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // (1) Tap + Přidat, trigger AppState rebuild, verify new row remains.
+      await tester.tap(find.text('+ ${Strings.get('add')}').first);
+      await tester.pumpAndSettle();
+      s.onChanged();
+      await tester.pump();
+
+      final newName = find.byKey(const Key('tpl:late_income_excuses:1:name'));
+      final newText = find.byKey(const Key('tpl:late_income_excuses:1:text'));
+      expect(newName, findsOneWidget);
+      expect(newText, findsOneWidget);
+
+      // (2) Type a name only, unfocus, trigger AppState rebuild, verify typed name remains.
+      await tester.enterText(newName, 'Lékař');
+      await tester.pump();
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+      s.onChanged();
+      await tester.pump();
+
+      expect(newName, findsOneWidget);
+      expect(tester.widget<TextField>(newName).controller!.text, 'Lékař');
+
+      // Fill text and save it.
+      await tester.enterText(newText, 'Návštěva lékaře');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+      expect(s.get('late_income_excuses'), [
+        {'name': 'Doprava', 'text': 'Zpoždění'},
+        {'name': 'Lékař', 'text': 'Návštěva lékaře'},
+      ]);
+    });
   });
 
   group('B7 wizard limits retry snackbar', () {
