@@ -564,4 +564,46 @@ void main() {
       expect(timetable.keys.toList(), ['22.09.2026']);
     });
   });
+
+  group('identicalRoomChangeSuppressed', () {
+    test('roomChangedWithSameOldAndNewRoomIsNotAChangeOrNote', () {
+      final baseline = <Object?, Object?>{
+        (4, 5): SlotBaseline(
+          weekday: 4,
+          period: 5,
+          subject: 'Český jazyk',
+          teacher: 'Mgr. Petr Dvořák',
+          room: 'I',
+          startMin: 710,
+        ),
+      };
+      final sameRoom = <String, Object?>{
+        'subject': 'Český jazyk',
+        'teacher': 'Mgr. Petr Dvořák',
+        'room': 'I',
+        'time': '5 (11:50 - 12:35)',
+        'period': 5,
+        'infoChangeCode': 'RoomChanged',
+        'changeinfo': 'Změna místnosti: I (I)',
+        'notice': 'Změna místnosti: I (I)',
+      };
+      final diffWithBase = classifyLesson(sameRoom, '18.09.2026', baseline);
+      expect(diffWithBase.isChange, isFalse);
+      expect(diffWithBase.note, isEmpty);
+
+      final diffNoBase = classifyLesson(sameRoom, '18.09.2026', null);
+      expect(diffNoBase.isChange, isFalse);
+      expect(diffNoBase.note, isEmpty);
+
+      final realMove = <String, Object?>{
+        ...sameRoom,
+        'room': 'III',
+        'changeinfo': 'Změna místnosti: III (I)',
+        'notice': 'Změna místnosti: III (I)',
+      };
+      final diffReal = classifyLesson(realMove, '18.09.2026', baseline);
+      expect(diffReal.isChange, isTrue);
+      expect(diffReal.changed, contains('room'));
+    });
+  });
 }

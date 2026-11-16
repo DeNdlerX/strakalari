@@ -290,6 +290,92 @@ void main() {
       });
     });
   }
+
+  group('P5 Today empty excuses and identical room change', () {
+    testWidgets(
+        'empty pending excuses uses excuse wording instead of no_changes and hides old=new room change',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final savedLang = Strings.lang;
+      addTearDown(() => Strings.lang = savedLang);
+
+      for (final lang in ['cs', 'en']) {
+        await withClock(Clock.fixed(DateTime(2026, 9, 15, 10, 0)), () async {
+          final s = AppState(
+            configData: {'language': lang},
+            data: {
+              'timetable': {
+                '18.09.2026': [
+                  {
+                    'subject': 'Český jazyk',
+                    'teacher': 'Mgr. Petr Dvořák',
+                    'room': 'I',
+                    'time': '5 (11:50 - 12:35)',
+                    'period': 5,
+                    'infoChangeCode': 'RoomChanged',
+                    'changeinfo': 'Změna místnosti: I (I)',
+                    'notice': 'Změna místnosti: I (I)',
+                  },
+                ],
+              },
+              'timetable_baseline': {
+                '4|5': {
+                  'weekday': 4,
+                  'period': 5,
+                  'subject': 'Český jazyk',
+                  'teacher': 'Mgr. Petr Dvořák',
+                  'room': 'I',
+                  'start_min': 710,
+                  'support': 5,
+                },
+              },
+            },
+          )..demoMode = false;
+
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [
+                appStateProvider.overrideWith(() => FixedAppStateController(s)),
+              ],
+              child: MaterialApp(
+                home: Scaffold(
+                  body: LiveTodayView(
+                    tokens: AppTokens.dark(),
+                    narrow: true,
+                    now: DateTime(2026, 9, 15, 10, 0),
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.pump();
+
+          expect(
+            find.textContaining('Změna místnosti: I (I)'),
+            findsNothing,
+            reason: 'lang=$lang must hide redundant old=new room change',
+          );
+          // Week changes card still shows "Žádné změny" / "No changes" (only 1).
+          // Pending excuses must NOT also show "Žádné změny" / "No changes".
+          expect(
+            find.text(Strings.get('no_changes')),
+            findsOneWidget,
+            reason: 'lang=$lang only week_changes should say no_changes',
+          );
+          expect(
+            find.text(lang == 'cs'
+                ? 'Žádné čekající omluvenky'
+                : 'No pending excuses'),
+            findsOneWidget,
+            reason: 'lang=$lang',
+          );
+        });
+      }
+    });
+  });
 }
 
 class FixedAppStateController extends AppStateController {
