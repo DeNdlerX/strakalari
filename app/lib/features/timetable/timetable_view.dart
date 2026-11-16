@@ -95,7 +95,7 @@ final header = _headerRow();
     }
     final nav = TutorialAnchor(
       anchorKey: 'tt_nav',
-      child: _nav(context, navLabel, showStable),
+      child: _nav(context, navLabel, current, now, showStable),
     );
     final legend = TutorialAnchor(
       anchorKey: 'tt_legend',
@@ -111,12 +111,12 @@ final header = _headerRow();
           SizedBox(height: t.gap),
           nav,
           SizedBox(height: t.gap),
+          legend,
+          SizedBox(height: t.gap),
           if (isTable)
             _tableView(context, weekDays, current, now, showStable)
           else
             ..._listView(context, weekDays, now),
-          SizedBox(height: t.gap),
-          legend,
           const SizedBox(height: 24),
         ],
       );
@@ -165,9 +165,12 @@ final header = _headerRow();
       updated: updatedLabel,
       tok: tokens);
 
-  Widget _nav(BuildContext context, String label, bool showStable) {
+  Widget _nav(BuildContext context, String label, DateTime current, DateTime now,
+      bool showStable) {
     final c = controller;
     final t = tokens;
+    final today = DateTime(now.year, now.month, now.day);
+    final isThisWeek = !showStable && current == weekMonday(today);
 final prev = IconButton(
       tooltip: showStable ? null : Strings.get('prev_week'),
       icon: const Icon(Icons.chevron_left),
@@ -185,6 +188,13 @@ final prev = IconButton(
                 color: t.text,
                 fontSize: t.fsBody,
                 fontWeight: FontWeight.bold)));
+    final thisWeekBtn = isThisWeek
+        ? ElevatedButton(
+            onPressed: () => c.goTimetableWeek(null),
+            child: Text(Strings.get('this_week')))
+        : OutlinedButton(
+            onPressed: () => c.goTimetableWeek(null),
+            child: Text(Strings.get('this_week')));
     final stableBtn = showStable
         ? ElevatedButton(
             onPressed: () => c.setShowStable(false),
@@ -219,9 +229,7 @@ final prev = IconButton(
             spacing: 8,
             runSpacing: 8,
             children: [
-              OutlinedButton(
-                  onPressed: () => c.goTimetableWeek(null),
-                  child: Text(Strings.get('this_week'))),
+              thisWeekBtn,
               stableBtn,
               toggle,
             ],
@@ -235,9 +243,7 @@ final prev = IconButton(
         labelWidget,
         next,
         const SizedBox(width: 8),
-        OutlinedButton(
-            onPressed: () => c.goTimetableWeek(null),
-            child: Text(Strings.get('this_week'))),
+        thisWeekBtn,
         stableBtn,
         const Spacer(),
         toggle,
@@ -920,8 +926,9 @@ final today = DateTime(now.year, now.month, now.day);
                         fontSize: t.fsSmall,
                         fontWeight: FontWeight.bold)),
               ),
+              const SizedBox(width: 6),
               SizedBox(
-                width: 96,
+                width: 90,
                 child: Text(shortTime(look.parsed.time),
                     style: TextStyle(
                         color: t.faint,
@@ -986,8 +993,9 @@ final today = DateTime(now.year, now.month, now.day);
                     fontSize: t.fsSmall,
                     fontWeight: FontWeight.bold)),
           ),
+          const SizedBox(width: 6),
           SizedBox(
-            width: 96,
+            width: 90,
             child: Text(timeLabel,
                 style: TextStyle(
                     color: t.faint, fontSize: t.fsSmall)),
