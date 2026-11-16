@@ -712,6 +712,54 @@ void main() {
       }
     });
   });
+
+  group('P3 wizard limits navigation reachability', () {
+    testWidgets(
+        'Continue and Back stay inside the viewport without scrolling a long subject list',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      Strings.lang = 'cs';
+      final s = AppState(
+        data: {
+          'absence': {
+            for (var i = 0; i < 14; i++) 'Předmět $i': 5.0,
+          },
+        },
+      );
+      s.wizardStep = WizardController.stepLimits;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LiveWizardView(tokens: AppTokens.dark(), narrow: true),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final nextBtn =
+          find.widgetWithText(ElevatedButton, Strings.get('wiz_next'));
+      final backBtn =
+          find.widgetWithText(TextButton, Strings.get('wiz_back'));
+      expect(nextBtn, findsOneWidget);
+      expect(backBtn, findsOneWidget);
+
+      expect(tester.getRect(nextBtn).bottom, lessThanOrEqualTo(844));
+      expect(tester.getRect(backBtn).bottom, lessThanOrEqualTo(844));
+
+      await tester.tap(nextBtn);
+      await tester.pump();
+      expect(s.wizardStep, WizardController.stepStrava);
+    });
+  });
 }
 
 class _SeededAppStateController extends AppStateController {

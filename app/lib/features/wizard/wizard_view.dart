@@ -85,7 +85,7 @@ final step = c.step.clamp(0, WizardController.stepDone);
       ));
     }
 
-    final card = Card(
+    Widget buildCard(bool scrollBody) => Card(
       color: t.card,
       // `components.card`: a 1 px outline in the border colour.
       shape: RoundedRectangleBorder(
@@ -94,6 +94,7 @@ final step = c.step.clamp(0, WizardController.stepDone);
       child: Padding(
         padding: EdgeInsets.all(t.pad),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
@@ -106,7 +107,18 @@ final step = c.step.clamp(0, WizardController.stepDone);
             const SizedBox(height: 8),
             dots,
             const Divider(height: 24),
-            ...content,
+            if (scrollBody)
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: content,
+                  ),
+                ),
+              )
+            else
+              ...content,
             const Divider(height: 24),
             if (narrow)
               Column(
@@ -145,10 +157,12 @@ final step = c.step.clamp(0, WizardController.stepDone);
             width: constraints.maxWidth *
                 _wizardColumns(constraints.maxWidth + (narrow ? 16 : 48)) /
                 12,
-            child: ListView(
-              shrinkWrap: true,
-              children: [card],
-            ),
+            child: constraints.hasBoundedHeight
+                ? buildCard(true)
+                : ListView(
+                    shrinkWrap: true,
+                    children: [buildCard(false)],
+                  ),
           ),
         ),
       ),
