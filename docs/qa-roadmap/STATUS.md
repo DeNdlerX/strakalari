@@ -1,7 +1,7 @@
 # QA & roadmap status
 
 Branch: qa-roadmap · Base: main @ a528acd · Current phase: 1
-Next step: Stop for R1 re-review of Phase 1 (B1–B9 and all R1 review fixes); do not start Phase 2 until Phase 1 passes.
+Next step: Phase 1 passed (2026-11-16). Start phase 2.
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -48,6 +48,7 @@ Next step: Stop for R1 re-review of Phase 1 (B1–B9 and all R1 review fixes); d
 - **S3 (B9):** Added `onChanged?.call()` to four additional `saveQuiet` `SwitchListTile` controls (`use_strava`, both `minimize_to_tray` variants, and `gemini_auto_enabled` in `app/lib/features/settings/settings_view.dart`) for the same missing-redraw bug as `run_in_background`, covered by extended tests in `app/test/settings_sections_test.dart`.
 
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
+- **2026-11-16 R1 re-review: PASS** — all must-fix and should-fix findings fixed and verified; notes N6–N9 only. Baseline for R2: core 803 passed / 2 skipped, app 687 passed / 1 skipped. See [`reviews/phase-1.md`](reviews/phase-1.md#re-review-2026-11-16).
 - **2026-11-16 R1 review fixes (M1–M3, S1–S6, N3):**
   - Fixed M1 (`1ca6ce8`): `_TemplateEditorState` now tracks `_lastStored` separately from unsaved `values` so newly added empty rows and name-only rows survive `AppState` rebuilds while external config updates still reload.
   - Fixed M2 (`dcb6d3e`): `SettingsView` school preset dropdown returns early when `v == null || v == presetId`, with a live `AppState` test verifying zero config saves/mtime changes on dismiss and re-pick.

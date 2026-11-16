@@ -283,3 +283,112 @@ template editor (M1) that B2 introduced and B1 carried into the wizard.
     `main` has no commits the branch lacks.
 13. **Not checked by the reviewer:** the phone itself (the agent's `dumpsys`
     and screenshots were read instead); macOS/iOS builds (not possible here).
+
+---
+
+## Re-review 2026-11-16
+
+Re-reviewed at `qa-roadmap` @ `44c8f65` (base `main` @ `a528acd`; `main`
+still has no commits the branch lacks). Commits since the review (`888e7bd`):
+`1ca6ce8` (M1), `dcb6d3e` (M2), `ec6fb87` (S1), `02ca569` (S3), `df655ab`
+(S5), `88a15c1` and `44c8f65` (STATUS: M3, S2, S4, S6, N3).
+
+### Verdict: **PASS**
+
+Every must-fix and should-fix finding is fixed in the code or in STATUS.md as
+asked, each code fix has a test that fails without it, and nothing else
+changed. All four suites are green with seven more app tests than at the
+review. Phase 1 is done; phase 2 may start.
+
+### Findings
+
+No blocker, must-fix or should-fix findings. Notes only (no action needed):
+
+- **N6 (STATUS, Phase notes):** the original *Phase 1* block lower down still
+  says "Deviations / owner decisions: None outside the plan" and that the
+  `.test` data "was kept intact (not wiped via `pm clear`)". Both are out of
+  date: the *Deviations* section now lists M3, S2 and S3, and the `.test` app
+  was cleared for S4 with the owner's permission. The newer 2026-11-16 entry
+  above it is correct. If you touch STATUS anyway, mark that block as
+  superseded; don't rewrite history otherwise.
+- **N7 (B9, S4 evidence):** in `s4_after_allow_dumpsys.txt` the service has
+  `createTime=-3m0s949ms` and `lastStartId=2`: it was already running (without
+  a visible notification) since the app was launched about three minutes
+  earlier, and **Allow** started it a second time with its notification
+  (`s4_after_allow_shade.png` shows it). So the S4 run proves the notification
+  appears at once on **Allow** after **Dokončit**; the proof that a stopped
+  service starts on grant is the earlier pair `before_dumpsys.txt`
+  (`(nothing)`) / `after_dumpsys.txt` (`createTime=-29s`). Starting the
+  service during setup is unchanged from `main` (`sync()` never gated the
+  start on `setupPending`, only the permission request).
+- **N8 (B2, M1 fix):** `_saveValues` now clears `_dirty` and updates
+  `_lastStored` only when the save succeeded. A failed save therefore keeps the
+  typed text and retries it on the next blur and on leaving, instead of being
+  wiped by the next reload. Accepted as part of M1 (the snapshot must only
+  follow saves that happened).
+- **N9 (B9, S6):** the cause in the B9 row is the most likely mechanism, not
+  confirmed by a log line (the `.test` build isn't debuggable, so the log
+  couldn't be read). Acceptable as written; the retry gap is under
+  *Questions* for the owner, as asked.
+
+### Each earlier finding
+
+| Finding | Fixed? | How the reviewer checked |
+|---|---|---|
+| M1 | ✔ `1ca6ce8` | `_lastStored` snapshot; reload only when the stored list differs from it or the key changes; unsaved rows in `values` never trigger a reload. New tests `M1: newly added row and name-only row survive …` in `settings_live_test.dart` and `wizard_live_test.dart`: both **fail on `888e7bd`** (row `tpl:late_income_excuses:1:name` gone after `s.onChanged()`) and pass on `1ca6ce8`. The Settings test also checks an outside `s.save` still reloads the editor. |
+| M2 | ✔ `dcb6d3e` | `if (v == null \|\| v == presetId) return;` before `c.save`. New test `M2: opening and closing dropdown …` (real `AppState`, seeded `config.json` with `gekom_2026_2027`, counts `configListeners`, compares file text and mtime): step 1 (open + tap outside) passes on the parent, as expected; step 2 (re-pick) **fails on `1ca6ce8`** with `saveCount` 1, passes on `dcb6d3e`. |
+| M3 | ✔ STATUS | B3 row now says the phone bug did not reproduce and what the widget test found; owner question under *Questions*; cross-fade removal under *Deviations*. No code change, as asked. |
+| S1 | ✔ `ec6fb87` | `excuseTemplates`, `setExcuseTemplatesInitial`, `saveExcuseTemplates` and the call in `next()` are gone; nothing in `app/`, `packages/` or `tools/` references them; analyze clean; all B1 tests green. |
+| S2 | ✔ STATUS | Listed under *Deviations* with the reason. Accepted. |
+| S3 | ✔ `02ca569` | Listed under *Deviations*; four new tests `tapping <switch> updates switch state immediately`. Reviewer removed the four `onChanged?.call()` lines at `44c8f65`: **all four tests fail**, the `run_in_background` one still passes. Accepted. |
+| S4 | ✔ evidence | Owner allowed clearing `.test` (quoted in STATUS). Opened `s4_dokoncit_tutorial_no_dialog.png` (22:08:25, *Vítejte ve Strakalářích* right after **Dokončit**, "Spouštím první obnovu dat…" snackbar, no system dialog), `s4_dokoncit_permission_dialog.png` (22:08:49, Android prompt after the tutorial closed), `s4_after_allow_dumpsys.txt` (`KeepAliveService` foreground, `.test` package only) and `s4_after_allow_shade.png` (status notification in the shade). See N7. |
+| S5 | ✔ `df655ab` | `startPhoneBackground(state, phone)` in `startup.dart`, called by `startPlatformServices` and by the cold-launch test. Reviewer swapped the order inside it (`phone.start()` first): the test **fails** (`requestNotificationPermission` called while the intro tour is open). |
+| S6 | ✔ STATUS | Cause written in the B9 row (N9); retry gap under *Questions*; code unchanged, as asked. |
+| N3 | ✔ STATUS | B9 row lists `aeec9f4`. |
+
+### What the reviewer verified, and how
+
+1. **Suites** (worktree, Flutter 3.44.8): `dart pub get --enforce-lockfile`
+   OK; core `dart analyze` no issues, `dart test` **803 passed, 2 skipped**
+   (same as the review); app `flutter analyze` no issues, `flutter test`
+   **687 passed, 1 skipped** (680 at the review + 2 M1 + 1 M2 + 4 S3). Use
+   these as the baseline for R2.
+2. **Tests catch the bugs:** one throwaway worktree in the reviewer's scratch
+   space (removed afterwards): M1 and M2 tests copied onto each fix's parent
+   and run (fail with assertions), and S3 and S5 checked by undoing the fix at
+   `44c8f65` (fail). Results in the table above.
+3. **B1 round trip, again (reviewer's own test):** seeded `config.json` with
+   all four template keys (named multi-line texts, a map with `text` before
+   `name`, a plain multi-line string, names and texts with surrounding spaces,
+   an empty line inside a text); drove `LiveWizardView` from **Vítejte**
+   through the disclaimer, calendar and excuses steps (jumping over the
+   connection-test and limits steps), focused and blurred a template field and
+   forced two `AppState` rebuilds, then pressed **Dokončit** and followed the
+   redirect to `/today`. The four keys in `config.json` matched the seed
+   exactly (`jsonEncode`, key order included) at the last step, after
+   **Dokončit** and after leaving the wizard. The same test **fails on
+   `main`** (templates split into plain lines), so it does catch B1.
+4. **B5:** covered by the agent's M2 test, which the reviewer ran on the
+   parent and the fix (dismiss: no save; re-pick: no save).
+5. **Scope:** the five code commits touch only `TemplateEditor`, the preset
+   dropdown's `onChanged`, the dead wizard template code, and the
+   `startPhoneBackground` extraction, plus their tests. No UI layout or
+   wording changed, so the R1 screen captures still apply.
+6. **Config keys and strings:** `config.example.json`, `config.dart`, the
+   parity fixtures, `packages/` and the ARB files are unchanged on the whole
+   branch. No new UI strings.
+7. **Safety rules:** no diff since the review touches `automation/`,
+   `lunches/`, `strava/`, `bakalari/`, `storage/` or `controllers/`. The
+   `startup.dart` change is a pure extraction; `runRefresh`, the session
+   lock, `sendExcuse`/`HistoryLock`, the audit and `automation_paused` are
+   untouched. No new `catch` in `app/lib`.
+8. **Test integrity:** since the review no test was deleted, skipped or
+   loosened; the only removed test lines are the copied startup code that S5
+   replaced with the real call. The one new `try`/`catch (_)` is the temp
+   folder cleanup in the M2 test's teardown. No new test uses a host.
+9. **Hygiene:** no personal files or screenshots in any branch commit; all
+   commits by the configured user with no `Co-Authored-By`, `Claude-Session`
+   or "Generated with" lines; `qa-roadmap` has no upstream; `main` has no
+   commits the branch lacks.
+10. **Not checked by the reviewer:** the phone itself (the agent's evidence was
+    read instead); macOS/iOS builds (not possible here).
