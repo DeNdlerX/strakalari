@@ -7,6 +7,7 @@
 // `applyFoodFilter`, blacklist edits) back to it.
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../controllers/app_state.dart';
 import '../../l10n/strings.dart';
@@ -39,6 +40,8 @@ LunchController lunchControllerFor(AppState s) {
   c.lunchPrefs = s.lunchPrefs;
   c.aiRunning = s.aiRunning;
   c.stravaOn = s.stravaEnabled();
+  c.stravaConfigured =
+      s.demoMode || core.hasValidCredentials(s.config.data).$2;
   c.demoMode = s.demoMode;
   c.showPastLunches = s.showPastLunches;
   c.lunchToolsOpen = s.lunchToolsOpen;

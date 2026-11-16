@@ -591,6 +591,7 @@
   "strava_done_log": "Strava hotová ({n} dní).",
   "strava_fetch_failed": "Stažení jídelníčku selhalo: {err} — data z Bakalářů jsou uložena.",
   "strava_menu_empty": "Strava nevrátila žádný jídelníček — ponechávám předchozí.",
+  "strava_not_configured": "Nejprve nastavte Stravu v Nastavení → Účty.",
   "strava_skipped_log": "Strava přeskočena — není vyplněné přihlášení.",
   "strava_url": "URL Stravy",
   "subjects_count": "{n} předmětů",

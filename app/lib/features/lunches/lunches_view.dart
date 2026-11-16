@@ -286,6 +286,7 @@ class LunchesView extends StatelessWidget {
 
   Widget _sendButton(BuildContext context) {
     final c = controller;
+    final tok = tokensOf(context);
     var pending = 0;
     for (final e in c.orders.entries) {
       if (e.value.isEmpty ||
@@ -296,31 +297,50 @@ class LunchesView extends StatelessWidget {
       if (!_isOpen(e.key)) continue;
       pending++;
     }
-    return ElevatedButton.icon(
-      onPressed: () async {
-        final payload = {
-          for (final e in c.orders.entries)
-            if (e.value.isNotEmpty &&
-                c.pendingOrders.contains(e.key) &&
-                c.lunchIsChange(e.key))
-              e.key: e.value,
-        };
-        if (onSubmit != null) {
-          final ok = await onSubmit!(payload);
-          if (!context.mounted) return;
-          appSnack(
-            context,
-            ok ? Strings.get('orders_sent') : Strings.get('orders_failed'),
-          );
-        } else if (payload.isEmpty) {
-          appSnack(context, Strings.get('no_changes'));
-        }
-      },
+    final notConfigured =
+        !c.stravaConfigured || '${c.get('strava_status', '')}' == 'no_login';
+    final button = ElevatedButton.icon(
+      onPressed: notConfigured
+          ? null
+          : () async {
+              final payload = {
+                for (final e in c.orders.entries)
+                  if (e.value.isNotEmpty &&
+                      c.pendingOrders.contains(e.key) &&
+                      c.lunchIsChange(e.key))
+                    e.key: e.value,
+              };
+              if (onSubmit != null) {
+                final ok = await onSubmit!(payload);
+                if (!context.mounted) return;
+                appSnack(
+                  context,
+                  ok
+                      ? Strings.get('orders_sent')
+                      : Strings.get('orders_failed'),
+                );
+              } else if (payload.isEmpty) {
+                appSnack(context, Strings.get('no_changes'));
+              }
+            },
       icon: const Icon(Icons.send_outlined, size: 18),
       label: Text(
         '${Strings.get('send_orders')}'
         '${pending > 0 ? ' ($pending)' : ''}',
       ),
+    );
+    if (!notConfigured) return button;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        button,
+        const SizedBox(height: 6),
+        Text(
+          Strings.get('strava_not_configured'),
+          style: TextStyle(color: tok.faint, fontSize: tok.fsSmall),
+        ),
+      ],
     );
   }
 
