@@ -687,6 +687,7 @@ class _DraftField extends StatefulWidget {
 class _DraftFieldState extends State<_DraftField> {
   late final TextEditingController _ctrl;
   late final FocusNode _focus;
+  bool _hidden = true;
 
   @override
   void initState() {
@@ -698,6 +699,9 @@ class _DraftFieldState extends State<_DraftField> {
   @override
   void didUpdateWidget(covariant _DraftField oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.password != oldWidget.password) {
+      _hidden = true;
+    }
     if (!_focus.hasFocus &&
         widget.initial != oldWidget.initial &&
         _ctrl.text != widget.initial) {
@@ -719,7 +723,7 @@ class _DraftFieldState extends State<_DraftField> {
       child: TextField(
         controller: _ctrl,
         focusNode: _focus,
-        obscureText: widget.password,
+        obscureText: widget.password && _hidden,
         decoration: InputDecoration(
           labelText: widget.label,
           hintText:
@@ -727,6 +731,15 @@ class _DraftFieldState extends State<_DraftField> {
           isDense: true,
           filled: true,
           fillColor: widget.tokens.surface,
+          suffixIcon: widget.password
+              ? IconButton(
+                  tooltip: '',
+                  icon: Icon(_hidden
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined),
+                  onPressed: () => setState(() => _hidden = !_hidden),
+                )
+              : null,
         ),
         onChanged: widget.onChanged,
       ),

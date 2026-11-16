@@ -280,7 +280,7 @@ void main() {
             ],
             child: MaterialApp(
               home: Scaffold(
-                body: LiveWizardView(tokens: AppTokens.dark()),
+                body: LiveWizardView(tokens: AppTokens.dark(), narrow: true),
               ),
             ),
           ),
@@ -631,7 +631,7 @@ void main() {
             ],
             child: MaterialApp(
               home: Scaffold(
-                body: LiveWizardView(tokens: AppTokens.dark()),
+                body: LiveWizardView(tokens: AppTokens.dark(), narrow: true),
               ),
             ),
           ),
@@ -646,6 +646,69 @@ void main() {
           expect(find.textContaining('computer'), findsNothing);
           expect(find.textContaining('phone'), findsOneWidget);
         }
+      }
+    });
+  });
+
+  group('P2 wizard password show/hide toggle', () {
+    testWidgets('Bakalari and Strava password fields toggle obscureText',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final s = AppState(configData: {'use_strava': true});
+      for (final (step, draftKey) in [
+        (WizardController.stepBakalari, 'wiz:bakalari_password'),
+        (WizardController.stepStrava, 'wiz:strava_password'),
+      ]) {
+        s.wizardStep = step;
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+            ],
+            child: MaterialApp(
+              home: Scaffold(
+                body: LiveWizardView(tokens: AppTokens.dark(), narrow: true),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        final fieldFinder = find.descendant(
+          of: find.byKey(ValueKey('draft:$draftKey')),
+          matching: find.byType(TextField),
+        );
+        expect(fieldFinder, findsOneWidget, reason: draftKey);
+        expect(tester.widget<TextField>(fieldFinder).obscureText, isTrue);
+
+        final eyeFinder = find.descendant(
+          of: find.byKey(ValueKey('draft:$draftKey')),
+          matching: find.byIcon(Icons.visibility_outlined),
+        );
+        expect(eyeFinder, findsOneWidget, reason: draftKey);
+
+        await tester.tap(eyeFinder);
+        await tester.pump();
+
+        expect(tester.widget<TextField>(fieldFinder).obscureText, isFalse);
+        expect(
+          find.descendant(
+            of: find.byKey(ValueKey('draft:$draftKey')),
+            matching: find.byIcon(Icons.visibility_off_outlined),
+          ),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.descendant(
+          of: find.byKey(ValueKey('draft:$draftKey')),
+          matching: find.byIcon(Icons.visibility_off_outlined),
+        ));
+        await tester.pump();
+
+        expect(tester.widget<TextField>(fieldFinder).obscureText, isTrue);
       }
     });
   });
