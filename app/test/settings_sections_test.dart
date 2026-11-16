@@ -577,6 +577,92 @@ void main() {
       expect(c.get('run_in_background'), isTrue);
       expect(t.widget<SwitchListTile>(switchFinder).value, isTrue);
     });
+
+    for (final spec in [
+      (
+        label: 'use_strava',
+        section: 'accounts',
+        platform: 'windows',
+        storeManaged: false,
+        configKey: 'use_strava',
+        titleKey: 'use_strava',
+        initial: true,
+      ),
+      (
+        label: 'minimize_to_tray (storeManaged)',
+        section: 'browser',
+        platform: 'windows',
+        storeManaged: true,
+        configKey: 'minimize_to_tray',
+        titleKey: 'minimize_to_tray',
+        initial: true,
+      ),
+      (
+        label: 'minimize_to_tray (classic)',
+        section: 'browser',
+        platform: 'windows',
+        storeManaged: false,
+        configKey: 'minimize_to_tray',
+        titleKey: 'minimize_to_tray',
+        initial: true,
+      ),
+      (
+        label: 'gemini_auto_enabled',
+        section: 'ai',
+        platform: 'windows',
+        storeManaged: false,
+        configKey: 'gemini_auto_enabled',
+        titleKey: 'ai_auto_enable',
+        initial: false,
+      ),
+    ]) {
+      testWidgets('tapping ${spec.label} updates switch state immediately',
+          (t) async {
+        Strings.lang = 'cs';
+        t.view.physicalSize = const Size(800, 4000);
+        t.view.devicePixelRatio = 1.0;
+        addTearDown(t.view.reset);
+
+        final c = SettingsController(
+          {spec.configKey: spec.initial},
+          storeManaged: spec.storeManaged,
+        );
+        c.settingsSection = spec.section;
+        c.settingsOpen = true;
+        await t.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: StatefulBuilder(
+                builder: (context, setState) => SettingsView(
+                  controller: c,
+                  narrow: true,
+                  platform: spec.platform,
+                  onChanged: () => setState(() {}),
+                ),
+              ),
+            ),
+          ),
+        );
+        await t.pump();
+
+        final switchFinder = find.widgetWithText(
+          SwitchListTile,
+          Strings.get(spec.titleKey),
+        );
+        expect(switchFinder, findsOneWidget);
+        expect(t.widget<SwitchListTile>(switchFinder).value, spec.initial);
+
+        await t.tap(switchFinder);
+        await t.pump();
+        expect(c.get(spec.configKey), !spec.initial);
+        expect(t.widget<SwitchListTile>(switchFinder).value, !spec.initial);
+
+        await t.tap(switchFinder);
+        await t.pump();
+        expect(c.get(spec.configKey), spec.initial);
+        expect(t.widget<SwitchListTile>(switchFinder).value, spec.initial);
+      });
+    }
   });
 }
 
