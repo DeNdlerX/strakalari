@@ -14,6 +14,7 @@ import 'package:app/features/wizard/wizard_controller.dart';
 import 'package:app/features/wizard/wizard_live.dart';
 import 'package:app/features/wizard/wizard_view.dart';
 import 'package:app/l10n/strings.dart';
+import 'package:app/shell/theme.dart';
 
 void main() {
   late Directory tmp;
@@ -758,6 +759,74 @@ void main() {
       await tester.tap(nextBtn);
       await tester.pump();
       expect(s.wizardStep, WizardController.stepStrava);
+    });
+  });
+
+  group('P4 wizard switch thumb contrast', () {
+    testWidgets(
+        'enabled switches use switchTheme so thumb contrasts with track in both themes',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      for (final tok in [darkTokens, lightTokens]) {
+        final s = AppState(configData: {
+          'theme': tok.mode,
+          'use_strava': true,
+          'wakeup_enabled': true,
+        });
+        s.setDraft('wiz:ai_enabled', '1');
+
+        for (final step in [
+          WizardController.stepStrava,
+          WizardController.stepAi,
+          WizardController.stepAlarm,
+        ]) {
+          s.wizardStep = step;
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [
+                appStateProvider
+                    .overrideWith(() => _SeededAppStateController(s)),
+              ],
+              child: MaterialApp(
+                theme: lightTokens.toThemeData(),
+                darkTheme: darkTokens.toThemeData(),
+                themeMode:
+                    tok.mode == 'light' ? ThemeMode.light : ThemeMode.dark,
+                themeAnimationStyle: AnimationStyle.noAnimation,
+                home: Scaffold(
+                  body: LiveWizardView(tokens: tok, narrow: true),
+                ),
+              ),
+            ),
+          );
+          await tester.pump();
+
+          final tileFinder = find.byType(SwitchListTile);
+          expect(tileFinder, findsOneWidget, reason: '${tok.mode}/step=$step');
+          final tile = tester.widget<SwitchListTile>(tileFinder);
+          expect(tile.value, isTrue, reason: '${tok.mode}/step=$step');
+
+          final swFinder = find.byType(Switch);
+          final sw = tester.widget<Switch>(swFinder);
+          final ctx = tester.element(swFinder);
+          final theme = SwitchTheme.of(ctx);
+          final selected = {WidgetState.selected};
+          final track = sw.trackColor?.resolve(selected) ??
+              sw.activeTrackColor ??
+              theme.trackColor?.resolve(selected);
+          final thumb = sw.thumbColor?.resolve(selected) ??
+              sw.activeThumbColor ??
+              theme.thumbColor?.resolve(selected);
+
+          expect(track, equals(tok.accent), reason: '${tok.mode}/step=$step');
+          expect(thumb, isNotNull, reason: '${tok.mode}/step=$step');
+          expect(thumb, isNot(equals(track)),
+              reason: '${tok.mode}/step=$step thumb must differ from track');
+        }
+      }
     });
   });
 }

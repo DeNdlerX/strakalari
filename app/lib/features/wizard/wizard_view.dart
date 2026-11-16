@@ -281,7 +281,6 @@ switch (step) {
           _p(Strings.get('wiz_strava_p')),
           SwitchListTile(
             value: enabled,
-            activeThumbColor: t.accent,
             contentPadding: EdgeInsets.zero,
             title: Text(Strings.get('use_strava')),
             onChanged: c.setStravaEnabled,
@@ -311,7 +310,6 @@ switch (step) {
           _p(Strings.get('wiz_ai_p')),
           SwitchListTile(
             value: enabled,
-            activeThumbColor: t.accent,
             contentPadding: EdgeInsets.zero,
             title: Text(Strings.get('wiz_use_ai')),
             onChanged: c.setAiEnabled,
@@ -583,7 +581,6 @@ final enabled = c.alarmEnabled;
       _p(Strings.get('wiz_alarm_p')),
       SwitchListTile(
         value: enabled,
-        activeThumbColor: t.accent,
         contentPadding: EdgeInsets.zero,
         title: Text(Strings.get('wakeup_enable')),
         onChanged: c.setAlarmEnabled,
