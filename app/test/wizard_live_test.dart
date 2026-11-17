@@ -123,7 +123,7 @@ void main() {
     });
 
     testWidgets(
-        'advancing past stepExcuses untouched preserves all canonical default templates',
+        'advancing through whole wizard untouched preserves all canonical default templates and gemini keys',
         (tester) async {
       tester.view.physicalSize = const Size(800, 1600);
       tester.view.devicePixelRatio = 1.0;
@@ -131,35 +131,75 @@ void main() {
 
       final s = AppState(configData: {
         'language': 'cs',
-        'disclaimer_accepted': true,
-        'bakalari_url': 'https://skola.bakalari.cz',
-        'bakalari_username': 'novak',
-        'bakalari_password': 'secret',
-        'your_signature': 'Jan Novák',
+        'gemini_api_key': 'AIza-keep',
+        'gemini_model': 'gemini-3.8-flash',
+        'gemini_auto_enabled': true,
+        'gemini_prompt': 'custom prompt',
+        'gemini_interval_days': 5,
       });
-      s.wizardStep = WizardController.stepExcuses;
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => Scaffold(
+              body: LiveWizardView(tokens: AppTokens.dark()),
+            ),
+          ),
+          GoRoute(
+            path: '/today',
+            builder: (_, _) => const Scaffold(body: SizedBox.shrink()),
+          ),
+        ],
+      );
 
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
             appStateProvider.overrideWith(() => _SeededAppStateController(s)),
           ],
-          child: MaterialApp(
-            home: Scaffold(
-              body: LiveWizardView(tokens: AppTokens.dark()),
-            ),
-          ),
+          child: MaterialApp.router(routerConfig: router),
         ),
       );
       await tester.pumpAndSettle();
 
-      final nextBtn = find.widgetWithText(ElevatedButton, Strings.get('wiz_next'));
-      await tester.ensureVisible(nextBtn);
+      // Step 0: Vítejte — accept disclaimer and Continue.
+      await tester.tap(find.byType(CheckboxListTile));
       await tester.pump();
-      await tester.tap(nextBtn);
+      await tester.tap(find.widgetWithText(ElevatedButton, Strings.get('wiz_next')));
       await tester.pumpAndSettle();
+      expect(s.wizardStep, WizardController.stepSchool);
 
+      // Step 1: Škola — skip.
+      await tester.tap(find.text(Strings.get('wiz_skip')));
+      await tester.pumpAndSettle();
+      expect(s.wizardStep, WizardController.stepBakalari);
+
+      // Step 2: Bakaláři — skip.
+      await tester.tap(find.text(Strings.get('wiz_skip')));
+      await tester.pumpAndSettle();
+      expect(s.wizardStep, WizardController.stepStrava);
+
+      // Step 3: Strava — skip.
+      await tester.tap(find.text(Strings.get('wiz_skip')));
+      await tester.pumpAndSettle();
+      expect(s.wizardStep, WizardController.stepExcuses);
+
+      // Step 4: Omluvenky — Pokročilé is collapsed by default; fill signature and Continue.
+      expect(find.byKey(const Key('tpl:late_income_excuses:0:name')), findsNothing);
+      await tester.enterText(
+          find.descendant(
+            of: find.byKey(const ValueKey('draft:wiz:signature')),
+            matching: find.byType(TextField),
+          ),
+          'Jan Novák');
+      await tester.tap(find.widgetWithText(ElevatedButton, Strings.get('wiz_next')));
+      await tester.pumpAndSettle();
+      if (s.wizardStep == WizardController.stepPhone) {
+        await tester.tap(find.text(Strings.get('wiz_skip')));
+        await tester.pumpAndSettle();
+      }
       expect(s.wizardStep, WizardController.stepDone);
+
       final saved = jsonDecode(
           File(s.config.configPath).readAsStringSync()) as Map<String, dynamic>;
       for (final key in [
@@ -171,6 +211,10 @@ void main() {
         expect(saved[key], equals(canonicalDefaults[key]),
             reason: '$key must stay byte-identical when untouched in wizard');
       }
+      expect(saved['gemini_model'], 'gemini-3.8-flash');
+      expect(saved['gemini_auto_enabled'], isTrue);
+      expect(saved['gemini_prompt'], 'custom prompt');
+      expect(saved['gemini_interval_days'], 5);
     });
 
     testWidgets(
@@ -202,6 +246,10 @@ void main() {
           ),
         ),
       );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('wiz:excuses_advanced')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('tpl_group:late_income_excuses')));
       await tester.pumpAndSettle();
 
       final nameField = find.byKey(const Key('tpl:late_income_excuses:0:name'));
@@ -253,6 +301,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('wiz:excuses_advanced')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('tpl_group:late_income_excuses')));
+      await tester.pumpAndSettle();
 
       final textFinder = find.byKey(const Key('tpl:late_income_excuses:0:text'));
       await tester.tap(textFinder);
@@ -298,11 +350,13 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('wiz:excuses_advanced')));
+        await tester.pumpAndSettle();
 
-        expect(find.text(Strings.get('tpl_late')), findsOneWidget);
-        expect(find.text(Strings.get('tpl_soon')), findsOneWidget);
-        expect(find.text(Strings.get('tpl_short')), findsOneWidget);
-        expect(find.text(Strings.get('tpl_long')), findsOneWidget);
+        expect(find.text('${Strings.get('tpl_late')} · 2'), findsOneWidget);
+        expect(find.text('${Strings.get('tpl_soon')} · 2'), findsOneWidget);
+        expect(find.text('${Strings.get('tpl_short')} · 2'), findsOneWidget);
+        expect(find.text('${Strings.get('tpl_long')} · 2'), findsOneWidget);
 
         for (final rawKey in [
           'late_income_excuses',
@@ -339,6 +393,8 @@ void main() {
           ),
         ),
       );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('tpl_group:late_income_excuses')));
       await tester.pumpAndSettle();
 
       final textFinder = find.byKey(const Key('tpl:late_income_excuses:0:text'));
@@ -383,6 +439,10 @@ void main() {
           ),
         ),
       );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('wiz:excuses_advanced')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('tpl_group:late_income_excuses')));
       await tester.pumpAndSettle();
 
       // (1) Tap + Přidat, trigger AppState rebuild, verify new row remains.
@@ -720,6 +780,10 @@ void main() {
         ),
       );
       await tester.pump();
+      await tester.tap(find.byKey(const Key('wiz:excuses_advanced')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('tpl_group:late_income_excuses')));
+      await tester.pumpAndSettle();
 
       final nextBtn =
           find.widgetWithText(ElevatedButton, Strings.get('wiz_next'));
@@ -919,6 +983,126 @@ void main() {
       await tester.tap(nextFinder);
       await tester.pump();
       expect(saved, {'school_preset_id': 'xy_4'});
+    });
+  });
+
+  group('F1 login prefills and Změnit', () {
+    testWidgets(
+        'GEKOM prefills Bakaláři URL and Strava canteen when config is empty, config wins, custom has none',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      Strings.lang = 'cs';
+
+      // 1. GEKOM with empty config: shows prefill rows, Change reveals prefilled field,
+      // and passing fake testConnection saves the prefilled URL and canteen.
+      final saved = <String, Object?>{};
+      late final WizardController c;
+      c = WizardController(
+        config: {
+          'language': 'cs',
+          'school_preset_id': 'gekom_2026_2027',
+          'use_strava': true,
+        },
+        onSave: (u) {
+          saved.addAll(u);
+          return true;
+        },
+        onTestRequest: (service, overrides) {
+          c.recordTestResult(service, true, 'ok');
+          c.consumeAutoAdvance(c.step, service);
+        },
+      )..step = WizardController.stepBakalari;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: WizardView(controller: c, tokens: AppTokens.dark(), narrow: true),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Škola: bakaweb.gekom.cz'), findsOneWidget);
+      expect(find.byKey(const ValueKey('draft:wiz:bakalari_url')), findsNothing);
+
+      await tester.enterText(
+          find.descendant(
+            of: find.byKey(const ValueKey('draft:wiz:bakalari_username')),
+            matching: find.byType(TextField),
+          ),
+          'jan');
+      await tester.enterText(
+          find.descendant(
+            of: find.byKey(const ValueKey('draft:wiz:bakalari_password')),
+            matching: find.byType(TextField),
+          ),
+          'heslo');
+      await tester.tap(
+          find.widgetWithText(ElevatedButton, Strings.get('wiz_test_continue')));
+      await tester.pump();
+
+      expect(saved['bakalari_url'], 'https://bakaweb.gekom.cz');
+      expect(saved['bakalari_username'], 'jan');
+      expect(c.step, WizardController.stepStrava);
+
+      // Strava step shows Canteen: 1950 prefill; tapping Change opens field prefilled with 1950.
+      expect(find.text('Jídelna: 1950'), findsOneWidget);
+      expect(find.byKey(const ValueKey('draft:wiz:strava_canteen_id')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('wiz:change_strava_canteen')));
+      await tester.pump();
+      final canteenField = find.descendant(
+        of: find.byKey(const ValueKey('draft:wiz:strava_canteen_id')),
+        matching: find.byType(TextField),
+      );
+      expect(canteenField, findsOneWidget);
+      expect(tester.widget<TextField>(canteenField).controller!.text, '1950');
+
+      await tester.enterText(
+          find.descendant(
+            of: find.byKey(const ValueKey('draft:wiz:strava_username')),
+            matching: find.byType(TextField),
+          ),
+          'jan.s');
+      await tester.enterText(
+          find.descendant(
+            of: find.byKey(const ValueKey('draft:wiz:strava_password')),
+            matching: find.byType(TextField),
+          ),
+          'heslo2');
+      await tester.tap(
+          find.widgetWithText(ElevatedButton, Strings.get('wiz_test_continue')));
+      await tester.pump();
+
+      expect(saved['strava_canteen_id'], '1950');
+      expect(saved['strava_username'], 'jan.s');
+      expect(c.step, WizardController.stepExcuses);
+
+      // 2. Existing config value always wins over preset.
+      final cExisting = WizardController(
+        config: {
+          'school_preset_id': 'gekom_2026_2027',
+          'bakalari_url': 'https://custom.school.cz',
+          'strava_canteen_id': '9999',
+        },
+        onSave: (_) => true,
+      );
+      expect(cExisting.showBakalariUrlField, isTrue);
+      expect(cExisting.effectiveBakalariUrl(), 'https://custom.school.cz');
+      expect(cExisting.showStravaCanteenField, isTrue);
+      expect(cExisting.effectiveCanteenId(), '9999');
+
+      // 3. Jiná škola (custom) has no prefill.
+      final cCustom = WizardController(
+        config: {'school_preset_id': 'custom'},
+        onSave: (_) => true,
+      );
+      expect(cCustom.presetBakalariUrl(), '');
+      expect(cCustom.presetCanteenId(), '');
+      expect(cCustom.showBakalariUrlField, isTrue);
+      expect(cCustom.showStravaCanteenField, isTrue);
     });
   });
 }

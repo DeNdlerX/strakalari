@@ -4,7 +4,7 @@ import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../widgets/app_widgets.dart' as w;
 import '../common/app_tokens.dart';
-import '../settings/settings_view.dart' show TemplateEditor;
+import '../settings/settings_view.dart' show TemplateGroupsList;
 import 'wizard_controller.dart';
 
 /// Placeholder welcome logo (app icon in an accent badge) so a dedicated logo
@@ -207,7 +207,21 @@ class _WizardViewState extends State<WizardView>
                 ],
               )
             else
-              Row(children: nav),
+              LayoutBuilder(
+                builder: (context, footerConstraints) {
+                  final items = [for (final w in nav) if (w is! Spacer) w];
+                  if (footerConstraints.maxWidth < 560 && items.length > 1) {
+                    return Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: items,
+                    );
+                  }
+                  return Row(children: nav);
+                },
+              ),
           ],
         ),
       ),
@@ -380,9 +394,20 @@ class _WizardViewState extends State<WizardView>
         return [
           _h(Strings.get('wiz_bakalari_h'), 19),
           _p(Strings.get('wiz_bakalari_p')),
-          _field(Strings.get('bakalari_url'), 'wiz:bakalari_url',
-              '${c.config['bakalari_url'] ?? ''}',
-              hint: Strings.get('bakalari_url_hint')),
+          if (!c.showBakalariUrlField)
+            _prefillRow(
+              key: const Key('wiz:change_bakalari_url'),
+              text: Strings.format('wiz_prefill_school',
+                  {'host': _displayHost(c.presetBakalariUrl())}),
+              onChange: () {
+                c.setDraftSilent('wiz:bakalari_url', c.presetBakalariUrl());
+                c.setDraft('wiz:edit_bakalari_url', '1');
+              },
+            )
+          else
+            _field(Strings.get('bakalari_url'), 'wiz:bakalari_url',
+                c.effectiveBakalariUrl(),
+                hint: Strings.get('bakalari_url_hint')),
           _field(Strings.get('username'), 'wiz:bakalari_username',
               '${c.config['bakalari_username'] ?? ''}'),
           _field(
@@ -406,6 +431,21 @@ class _WizardViewState extends State<WizardView>
             onChanged: c.setStravaEnabled,
           ),
           if (enabled) ...[
+            if (!c.showStravaCanteenField)
+              _prefillRow(
+                key: const Key('wiz:change_strava_canteen'),
+                text: Strings.format(
+                    'wiz_prefill_canteen', {'id': c.presetCanteenId()}),
+                onChange: () {
+                  c.setDraftSilent(
+                      'wiz:strava_canteen_id', c.presetCanteenId());
+                  c.setDraft('wiz:edit_strava_canteen', '1');
+                },
+              )
+            else
+              _field(Strings.get('canteen_id'), 'wiz:strava_canteen_id',
+                  c.effectiveCanteenId(),
+                  hint: Strings.get('canteen_id_hint')),
             _field(Strings.get('username'), 'wiz:strava_username',
                 '${c.config['strava_username'] ?? ''}'),
             _field(Strings.get('password'),
@@ -416,22 +456,32 @@ class _WizardViewState extends State<WizardView>
                             .isNotEmpty
                         ? Strings.get('new_password')
                         : Strings.get('secret_empty')),
-            _field(
-                Strings.get('canteen_id'), 'wiz:strava_canteen_id',
-                '${c.config['strava_canteen_id'] ?? ''}',
-                hint: Strings.get('canteen_id_hint')),
             ..._testRows('strava'),
           ],
         ];
       case WizardController.stepExcuses:
         return [
           _h(Strings.get('wiz_excuses_h'), 19),
-          _p(Strings.get('wiz_excuses_p')),
-          _field(Strings.get('signature'), 'wiz:signature',
+          const SizedBox(height: 8),
+          _field(Strings.get('wiz_signature_label'), 'wiz:signature',
               '${c.config['your_signature'] ?? ''}',
               hint: Strings.get('signature_hint')),
-          _hint(Strings.get('wiz_excuses_tpl')),
-          ..._templateEditors(context),
+          _hint(Strings.get('wiz_excuses_p')),
+          const SizedBox(height: 8),
+          ExpansionTile(
+            key: const Key('wiz:excuses_advanced'),
+            initiallyExpanded: false,
+            maintainState: true,
+            tilePadding: EdgeInsets.zero,
+            title: Text(Strings.get('sec_advanced')),
+            children: [
+              TemplateGroupsList(
+                readTemplates: (key) => c.config[key] ?? const <Object?>[],
+                commitTemplates: (key, values) =>
+                    c.saveTemplateList(key, values),
+              ),
+            ],
+          ),
         ];
       case WizardController.stepPhone:
         return _alarmContent();
@@ -678,26 +728,39 @@ final enabled = c.alarmEnabled;
     return rows;
   }
 
-  List<Widget> _templateEditors(BuildContext context) {
-    final c = controller;
-    const entries = [
-      ('late_income_excuses', 'tpl_late'),
-      ('left_soon_excuses', 'tpl_soon'),
-      ('short_absence_excuses', 'tpl_short'),
-      ('long_absence_excuses', 'tpl_long'),
-    ];
-    return [
-      for (final (key, titleKey) in entries)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: TemplateEditor(
-            configKey: key,
-            titleKey: titleKey,
-            readTemplates: () => c.config[key] ?? const <Object?>[],
-            commitTemplates: (values) => c.saveTemplateList(key, values),
+  static String _displayHost(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri != null && uri.host.isNotEmpty) {
+      return uri.hasPort ? '${uri.host}:${uri.port}' : uri.host;
+    }
+    return url.replaceFirst(RegExp(r'^https?://'), '').replaceAll(RegExp(r'/+$'), '');
+  }
+
+  Widget _prefillRow({
+    required Key key,
+    required String text,
+    required VoidCallback onChange,
+  }) {
+    final t = tokens;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(text,
+                style: TextStyle(
+                    color: t.text,
+                    fontSize: t.fsBody,
+                    fontWeight: FontWeight.w500)),
           ),
-        ),
-    ];
+          TextButton(
+            key: key,
+            onPressed: onChange,
+            child: Text(Strings.get('wiz_prefill_change')),
+          ),
+        ],
+      ),
+    );
   }
 
   // -- small builders ---------------------------------------------------------------

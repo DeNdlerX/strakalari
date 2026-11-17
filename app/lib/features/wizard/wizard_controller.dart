@@ -191,12 +191,52 @@ class WizardController extends ChangeNotifier {
   void setDisclaimer(bool ack) =>
       setDraft('wiz:disclaimer', ack ? '1' : '');
 
+  // -- prefills -------------------------------------------------------------------------
+
+  String activePresetId() {
+    final picked = calPreset();
+    if (picked.isNotEmpty) return picked;
+    return '${config['school_preset_id'] ?? ''}'.trim();
+  }
+
+  String presetBakalariUrl() => core.presetBakalariUrl(activePresetId());
+
+  String presetCanteenId() => core.presetCanteenId(activePresetId());
+
+  String effectiveBakalariUrl() {
+    if (drafts.containsKey('wiz:bakalari_url')) {
+      return drafts['wiz:bakalari_url']!.trim();
+    }
+    final cfg = '${config['bakalari_url'] ?? ''}'.trim();
+    if (cfg.isNotEmpty) return cfg;
+    return presetBakalariUrl();
+  }
+
+  String effectiveCanteenId() {
+    if (drafts.containsKey('wiz:strava_canteen_id')) {
+      return drafts['wiz:strava_canteen_id']!.trim();
+    }
+    final cfg = '${config['strava_canteen_id'] ?? ''}'.trim();
+    if (cfg.isNotEmpty) return cfg;
+    return presetCanteenId();
+  }
+
+  bool get showBakalariUrlField =>
+      '${config['bakalari_url'] ?? ''}'.trim().isNotEmpty ||
+      presetBakalariUrl().isEmpty ||
+      drafts['wiz:edit_bakalari_url'] == '1' ||
+      drafts.containsKey('wiz:bakalari_url');
+
+  bool get showStravaCanteenField =>
+      '${config['strava_canteen_id'] ?? ''}'.trim().isNotEmpty ||
+      presetCanteenId().isEmpty ||
+      drafts['wiz:edit_strava_canteen'] == '1' ||
+      drafts.containsKey('wiz:strava_canteen_id');
+
   // -- per-step saves -------------------------------------------------------------------
 
   bool saveBakalari() {
-    final url = draft('wiz:bakalari_url',
-            '${config['bakalari_url'] ?? ''}')
-        .trim();
+    final url = effectiveBakalariUrl();
     final user = draft('wiz:bakalari_username',
             '${config['bakalari_username'] ?? ''}')
         .trim();
@@ -218,9 +258,7 @@ class WizardController extends ChangeNotifier {
             '${config['strava_username'] ?? ''}')
         .trim();
     final pw = draft('wiz:strava_password', '');
-    final cid = draft('wiz:strava_canteen_id',
-            '${config['strava_canteen_id'] ?? ''}')
-        .trim();
+    final cid = effectiveCanteenId();
     final hasPw = pw.trim().isNotEmpty ||
         '${config['strava_password'] ?? ''}'.isNotEmpty;
     if (user.isEmpty || !hasPw || cid.isEmpty) return false;
@@ -366,9 +404,7 @@ class WizardController extends ChangeNotifier {
     switch (service) {
       case 'bakalari':
         final ov = {
-          'bakalari_url': draft('wiz:bakalari_url',
-                  '${config['bakalari_url'] ?? ''}')
-              .trim(),
+          'bakalari_url': effectiveBakalariUrl(),
           'bakalari_username': draft(
                   'wiz:bakalari_username',
                   '${config['bakalari_username'] ?? ''}')
@@ -382,10 +418,7 @@ class WizardController extends ChangeNotifier {
           'strava_username': draft('wiz:strava_username',
                   '${config['strava_username'] ?? ''}')
               .trim(),
-          'strava_canteen_id': draft(
-                  'wiz:strava_canteen_id',
-                  '${config['strava_canteen_id'] ?? ''}')
-              .trim(),
+          'strava_canteen_id': effectiveCanteenId(),
         };
         final pw = draft('wiz:strava_password', '');
         if (pw.trim().isNotEmpty) ov['strava_password'] = pw;

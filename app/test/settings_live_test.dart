@@ -168,6 +168,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('tpl_group:late_income_excuses')));
+      await tester.pumpAndSettle();
 
       final nameField = find.byKey(const Key('tpl:late_income_excuses:0:name'));
       final textField = find.byKey(const Key('tpl:late_income_excuses:0:text'));
@@ -204,6 +206,14 @@ void main() {
           ),
         ),
       );
+      await tester.pumpAndSettle();
+      final shortGroup = find.byKey(const Key('tpl_group:short_absence_excuses'));
+      await tester.scrollUntilVisible(
+        shortGroup,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(shortGroup);
       await tester.pumpAndSettle();
 
       final textField =
@@ -250,6 +260,8 @@ void main() {
           ),
         ),
       );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('tpl_group:late_income_excuses')));
       await tester.pumpAndSettle();
 
       final textFinder = find.byKey(const Key('tpl:late_income_excuses:0:text'));
@@ -302,6 +314,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('tpl_group:late_income_excuses')));
+      await tester.pumpAndSettle();
 
       final nameFinder = find.byKey(const Key('tpl:late_income_excuses:0:name'));
       final textFinder = find.byKey(const Key('tpl:late_income_excuses:0:text'));
@@ -337,6 +351,8 @@ void main() {
           ),
         ),
       );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('tpl_group:late_income_excuses')));
       await tester.pumpAndSettle();
 
       // Focus row 0 and delete it directly.
@@ -381,6 +397,8 @@ void main() {
           ),
         ),
       );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('tpl_group:late_income_excuses')));
       await tester.pumpAndSettle();
 
       // (1) Tap + Přidat, trigger AppState rebuild, verify new row remains and can be filled & saved.

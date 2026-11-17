@@ -190,6 +190,7 @@ class TemplateEditor extends StatefulWidget {
   final String titleKey;
   final Object? Function()? readTemplates;
   final bool Function(List<Map<String, String>> values)? commitTemplates;
+  final bool embedded;
 
   const TemplateEditor(
       {super.key,
@@ -197,7 +198,8 @@ class TemplateEditor extends StatefulWidget {
       required this.configKey,
       required this.titleKey,
       this.readTemplates,
-      this.commitTemplates})
+      this.commitTemplates,
+      this.embedded = false})
       : assert(
           controller != null ||
               (readTemplates != null && commitTemplates != null),
@@ -375,81 +377,141 @@ class _TemplateEditorState extends State<TemplateEditor> {
 
   @override
   Widget build(BuildContext context) {
+    final content = Column(
+      spacing: 20,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!widget.embedded) _CardTitle(Strings.get(widget.titleKey)),
+        for (var i = 0; i < _rows.length; i++)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  spacing: 12,
+                  children: [
+                    TextField(
+                      key: Key('tpl:${widget.configKey}:$i:name'),
+                      decoration: InputDecoration(
+                          labelText:
+                              Strings.format('tpl_name', {'n': i + 1})),
+                      controller: _rows[i].name,
+                      focusNode: _rows[i].nameFocus,
+                      onChanged: (v) {
+                        values[i]['name'] = v;
+                        _dirty = true;
+                      },
+                      onSubmitted: (_) => _commit(),
+                    ),
+                    TextField(
+                      key: Key('tpl:${widget.configKey}:$i:text'),
+                      decoration: InputDecoration(
+                          labelText: Strings.get('tpl_text')),
+                      controller: _rows[i].text,
+                      focusNode: _rows[i].textFocus,
+                      keyboardType: TextInputType.multiline,
+                      minLines: 2,
+                      maxLines: null,
+                      onChanged: (v) {
+                        values[i]['text'] = v;
+                        _dirty = true;
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: Strings.get('delete'),
+                icon: const Icon(Icons.delete_outline),
+                onPressed: () {
+                  setState(() {
+                    values.removeAt(i);
+                    final removed = _rows.removeAt(i);
+                    _pendingDispose.add(removed);
+                  });
+                  _schedulePendingDispose();
+                  _commit();
+                },
+              ),
+            ],
+          ),
+        TextButton(
+          onPressed: () {
+            setState(() {
+              final item = {'name': '', 'text': ''};
+              values.add(item);
+              _rows.add(_makeRow(item));
+            });
+            _commit();
+          },
+          child: Text('+ ${Strings.get('add')}'),
+        ),
+      ],
+    );
+    if (widget.embedded) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+        child: content,
+      );
+    }
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          spacing: 20,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _CardTitle(Strings.get(widget.titleKey)),
-            for (var i = 0; i < _rows.length; i++)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        child: content,
+      ),
+    );
+  }
+}
+
+/// Shared collapsible list of the four excuse-template groups, used in
+/// Settings → Šablony and the wizard's Omluvenky *Pokročilé* section.
+class TemplateGroupsList extends StatelessWidget {
+  final Object? Function(String key) readTemplates;
+  final bool Function(String key, List<Map<String, String>> values)
+      commitTemplates;
+
+  const TemplateGroupsList({
+    super.key,
+    required this.readTemplates,
+    required this.commitTemplates,
+  });
+
+  static const List<(String, String)> groups = [
+    ('late_income_excuses', 'tpl_late'),
+    ('left_soon_excuses', 'tpl_soon'),
+    ('short_absence_excuses', 'tpl_short'),
+    ('long_absence_excuses', 'tpl_long'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      spacing: 8,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final (key, titleKey) in groups)
+          Builder(builder: (context) {
+            final raw = readTemplates(key);
+            final count = raw is List ? raw.length : 0;
+            return Card(
+              child: ExpansionTile(
+                key: Key('tpl_group:$key'),
+                initiallyExpanded: false,
+                maintainState: true,
+                title: Text('${Strings.get(titleKey)} · $count'),
                 children: [
-                  Expanded(
-                    child: Column(
-                      spacing: 12,
-                      children: [
-                        TextField(
-                          key: Key('tpl:${widget.configKey}:$i:name'),
-                          decoration: InputDecoration(
-                              labelText:
-                                  Strings.format('tpl_name', {'n': i + 1})),
-                          controller: _rows[i].name,
-                          focusNode: _rows[i].nameFocus,
-                          onChanged: (v) {
-                            values[i]['name'] = v;
-                            _dirty = true;
-                          },
-                          onSubmitted: (_) => _commit(),
-                        ),
-                        TextField(
-                          key: Key('tpl:${widget.configKey}:$i:text'),
-                          decoration: InputDecoration(
-                              labelText: Strings.get('tpl_text')),
-                          controller: _rows[i].text,
-                          focusNode: _rows[i].textFocus,
-                          keyboardType: TextInputType.multiline,
-                          minLines: 2,
-                          maxLines: null,
-                          onChanged: (v) {
-                            values[i]['text'] = v;
-                            _dirty = true;
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: Strings.get('delete'),
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: () {
-                      setState(() {
-                        values.removeAt(i);
-                        final removed = _rows.removeAt(i);
-                        _pendingDispose.add(removed);
-                      });
-                      _schedulePendingDispose();
-                      _commit();
-                    },
+                  TemplateEditor(
+                    configKey: key,
+                    titleKey: titleKey,
+                    embedded: true,
+                    readTemplates: () => readTemplates(key),
+                    commitTemplates: (values) => commitTemplates(key, values),
                   ),
                 ],
               ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  final item = {'name': '', 'text': ''};
-                  values.add(item);
-                  _rows.add(_makeRow(item));
-                });
-                _commit();
-              },
-              child: Text('+ ${Strings.get('add')}'),
-            ),
-          ],
-        ),
-      ),
+            );
+          }),
+      ],
     );
   }
 }
@@ -1267,22 +1329,10 @@ class SettingsView extends StatelessWidget {
   List<Widget> _templates() {
     final c = controller;
     return [
-      TemplateEditor(
-          controller: c,
-          configKey: 'late_income_excuses',
-          titleKey: 'tpl_late'),
-      TemplateEditor(
-          controller: c,
-          configKey: 'left_soon_excuses',
-          titleKey: 'tpl_soon'),
-      TemplateEditor(
-          controller: c,
-          configKey: 'short_absence_excuses',
-          titleKey: 'tpl_short'),
-      TemplateEditor(
-          controller: c,
-          configKey: 'long_absence_excuses',
-          titleKey: 'tpl_long'),
+      TemplateGroupsList(
+        readTemplates: (key) => c.get(key, const <Object?>[]),
+        commitTemplates: (key, values) => c.commitTemplates(key, values),
+      ),
       Card(
         child: Padding(
           padding: const EdgeInsets.all(12),
