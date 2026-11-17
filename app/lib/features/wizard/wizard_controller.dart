@@ -210,18 +210,16 @@ class WizardController extends ChangeNotifier {
   String presetCanteenId() => core.presetCanteenId(activePresetId());
 
   String effectiveBakalariUrl() {
-    if (drafts.containsKey('wiz:bakalari_url')) {
-      return drafts['wiz:bakalari_url']!.trim();
-    }
+    final d = drafts['wiz:bakalari_url']?.trim();
+    if (d != null && (d.isNotEmpty || showBakalariUrlField)) return d;
     final cfg = '${config['bakalari_url'] ?? ''}'.trim();
     if (cfg.isNotEmpty) return cfg;
     return presetBakalariUrl();
   }
 
   String effectiveCanteenId() {
-    if (drafts.containsKey('wiz:strava_canteen_id')) {
-      return drafts['wiz:strava_canteen_id']!.trim();
-    }
+    final d = drafts['wiz:strava_canteen_id']?.trim();
+    if (d != null && (d.isNotEmpty || showStravaCanteenField)) return d;
     final cfg = '${config['strava_canteen_id'] ?? ''}'.trim();
     if (cfg.isNotEmpty) return cfg;
     return presetCanteenId();

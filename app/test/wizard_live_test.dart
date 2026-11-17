@@ -1282,6 +1282,204 @@ void main() {
       expect(find.text(Strings.get('wiz_strava_p')), findsOneWidget);
       expect(find.text(Strings.get('wiz_strava_p_preset')), findsNothing);
     });
+
+    testWidgets(
+        'clearing typed address after switching custom -> GEKOM uses preset URL on rebuild (R3 M4 path 1)',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      Strings.lang = 'cs';
+
+      final s = AppState(configData: {
+        'language': 'cs',
+        'disclaimer_accepted': true,
+      });
+      s.wizardStep = WizardController.stepSchool;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LiveWizardView(tokens: AppTokens.dark(), narrow: true),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('school:custom')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('wiz:next_btn')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.descendant(
+          of: find.byKey(const ValueKey('draft:wiz:bakalari_url')),
+          matching: find.byType(TextField),
+        ),
+        'http://127.0.0.1:18080',
+      );
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('wiz:back_btn')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('school:GEKOM')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('wiz:next_btn')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.descendant(
+          of: find.byKey(const ValueKey('draft:wiz:bakalari_url')),
+          matching: find.byType(TextField),
+        ),
+        '',
+      );
+      await tester.enterText(
+        find.descendant(
+          of: find.byKey(const ValueKey('draft:wiz:bakalari_username')),
+          matching: find.byType(TextField),
+        ),
+        'jan',
+      );
+      await tester.enterText(
+        find.descendant(
+          of: find.byKey(const ValueKey('draft:wiz:bakalari_password')),
+          matching: find.byType(TextField),
+        ),
+        'heslo',
+      );
+      s.onChanged();
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('draft:wiz:bakalari_url')), findsNothing);
+      await tester.tap(
+          find.widgetWithText(FilledButton, Strings.get('wiz_test_continue')));
+      await tester.pump();
+
+      expect(find.text(Strings.get('wiz_need_bakalari')), findsNothing);
+      expect(s.testing, 'bakalari');
+      expect(
+        wizardControllerFor(s).effectiveBakalariUrl(),
+        'https://bakaweb.gekom.cz',
+      );
+    });
+
+    testWidgets(
+        'erasing address under custom before switching to GEKOM uses preset URL (R3 M4 path 2)',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      Strings.lang = 'cs';
+
+      final s = AppState(configData: {
+        'language': 'cs',
+        'disclaimer_accepted': true,
+      });
+      s.wizardStep = WizardController.stepSchool;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LiveWizardView(tokens: AppTokens.dark(), narrow: true),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('school:custom')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('wiz:next_btn')));
+      await tester.pumpAndSettle();
+
+      final urlField = find.descendant(
+        of: find.byKey(const ValueKey('draft:wiz:bakalari_url')),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(urlField, 'http://127.0.0.1:18080');
+      await tester.pump();
+      await tester.enterText(urlField, '');
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('wiz:back_btn')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('school:GEKOM')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('wiz:next_btn')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('draft:wiz:bakalari_url')), findsNothing);
+      await tester.enterText(
+        find.descendant(
+          of: find.byKey(const ValueKey('draft:wiz:bakalari_username')),
+          matching: find.byType(TextField),
+        ),
+        'jan',
+      );
+      await tester.enterText(
+        find.descendant(
+          of: find.byKey(const ValueKey('draft:wiz:bakalari_password')),
+          matching: find.byType(TextField),
+        ),
+        'heslo',
+      );
+      await tester.tap(
+          find.widgetWithText(FilledButton, Strings.get('wiz_test_continue')));
+      await tester.pump();
+
+      expect(find.text(Strings.get('wiz_need_bakalari')), findsNothing);
+      expect(s.testing, 'bakalari');
+      expect(
+        wizardControllerFor(s).effectiveBakalariUrl(),
+        'https://bakaweb.gekom.cz',
+      );
+    });
+
+    test(
+        'clearing Strava canteen after switching custom -> GEKOM falls back to preset canteen while custom/override stay empty (R3 M4)',
+        () {
+      final c = WizardController(
+        config: {'use_strava': true},
+        onSave: (_) => true,
+      )..schoolOptions = schoolGroups('cs');
+
+      c.selectSchoolGroup(customId);
+      c.setDraftSilent('wiz:strava_canteen_id', '1234');
+      expect(c.effectiveCanteenId(), '1234');
+
+      c.selectSchoolPreset('gekom_2026_2027');
+      expect(c.showStravaCanteenField, isTrue);
+
+      c.setDraftSilent('wiz:strava_canteen_id', '');
+      expect(c.showStravaCanteenField, isFalse);
+      expect(c.effectiveCanteenId(), '1950');
+
+      // Clearing under Jiná škola or an own config override still means empty.
+      c.selectSchoolGroup(customId);
+      expect(c.showStravaCanteenField, isTrue);
+      expect(c.effectiveCanteenId(), '');
+
+      final cOverride = WizardController(
+        config: {
+          'school_preset_id': 'gekom_2026_2027',
+          'bakalari_url': 'http://127.0.0.1:18080',
+        },
+        onSave: (_) => true,
+      );
+      cOverride.setDraftSilent('wiz:bakalari_url', '');
+      expect(cOverride.showBakalariUrlField, isTrue);
+      expect(cOverride.effectiveBakalariUrl(), '');
+    });
   });
 
   group('F1 Telefon step', () {
