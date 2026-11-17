@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:strakalari_core/strakalari_core.dart';
 
 import 'package:app/controllers/app_state.dart';
@@ -42,11 +43,11 @@ void main() {
         'absence': {'Matematika': 10.0},
       },
     );
-    s.wizardStep = WizardController.stepDisclaimer;
+    s.wizardStep = WizardController.stepWelcome;
     s.setDraft('wiz:disclaimer', '1');
 
     final c = wizardControllerFor(s);
-    expect(c.step, WizardController.stepDisclaimer);
+    expect(c.step, WizardController.stepWelcome);
     expect(c.disclaimerOk, isTrue);
     expect(c.calendarOptions.map((p) => p.id), contains('gekom_2026_2027'));
     expect(c.calendarOptions.map((p) => p.id), contains('custom'));
@@ -62,22 +63,32 @@ void main() {
     expect(s.drafts.containsKey('wiz:disclaimer'), isFalse);
   });
 
-  test('an unfinished wizard resumes after the app restarts', () {
-    // The first step already saved a login; leaving the app there must not
-    // count as a finished setup.
+  test('an unfinished wizard resumes under the F1 resume rule', () {
+    // Saved step 6 with disclaimer accepted resumes at stepSchool (1);
+    // without disclaimer accepted resumes at stepWelcome (0).
     final first = AppState()..wizardOpened();
     first.save({
+      'disclaimer_accepted': true,
       'bakalari_url': 'https://skola.bakalari.cz',
       'bakalari_username': 'novak',
       'bakalari_password': 'secret',
     });
-    first.wizardGoto(WizardController.stepStrava, WizardController.stepDone);
+    first.wizardGoto(WizardController.stepDone, WizardController.stepDone);
 
-    final restarted = AppState();
-    expect(restarted.setupPending, isTrue);
-    expect(restarted.wizardStep, WizardController.stepStrava);
+    final restartedWithDisclaimer = AppState();
+    expect(restartedWithDisclaimer.setupPending, isTrue);
+    expect(restartedWithDisclaimer.needsSetup(), isTrue);
+    expect(restartedWithDisclaimer.wizardStep, WizardController.stepSchool);
 
-    restarted.wizardFinished();
+    first.save({'disclaimer_accepted': false});
+    final restartedNoDisclaimer = AppState();
+    expect(restartedNoDisclaimer.setupPending, isTrue);
+    expect(restartedNoDisclaimer.wizardStep, WizardController.stepWelcome);
+
+    first.wizardGoto(0, WizardController.stepDone);
+    expect(AppState().wizardStep, WizardController.stepWelcome);
+
+    restartedWithDisclaimer.wizardFinished();
     expect(AppState().setupPending, isFalse);
   });
 
@@ -407,108 +418,68 @@ void main() {
     });
   });
 
-  group('B7 wizard limits retry snackbar', () {
+  group('B7 adapted wizard finish refresh snackbar', () {
+    Widget routerApp(AppState s) {
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => Scaffold(
+              body: LiveWizardView(tokens: AppTokens.dark()),
+            ),
+          ),
+          GoRoute(
+            path: '/today',
+            builder: (_, _) => const Scaffold(body: SizedBox.shrink()),
+          ),
+        ],
+      );
+      return ProviderScope(
+        overrides: [
+          appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      );
+    }
+
     testWidgets(
-        'tapping retry when idle starts refresh without showing already_running snackbar',
+        'pressing Finish when idle starts refresh with wiz_finishing_refresh snackbar',
         (tester) async {
       Strings.lang = 'cs';
       final s = AppState(configData: {'tutorials_enabled': false});
       var spawned = 0;
       s.spawn = (_, _) => spawned++;
-      s.wizardStep = WizardController.stepLimits;
-      s.drafts['wiz:limits_refresh'] = '1';
+      s.wizardStep = WizardController.stepDone;
 
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            appStateProvider.overrideWith(() => _SeededAppStateController(s)),
-          ],
-          child: MaterialApp(
-            home: Scaffold(
-              body: LiveWizardView(tokens: AppTokens.dark()),
-            ),
-          ),
-        ),
-      );
+      await tester.pumpWidget(routerApp(s));
       await tester.pump();
 
-      await tester.tap(find.text(Strings.get('wiz_limits_retry')));
+      await tester.tap(find.text(Strings.get('wiz_finish')));
       await tester.pump();
 
       expect(spawned, 1);
+      expect(find.text(Strings.get('wiz_finishing_refresh')), findsOneWidget);
       expect(find.text(Strings.get('already_running')), findsNothing);
     });
 
     testWidgets(
-        'tapping retry when a refresh flight is already running shows already_running snackbar',
+        'pressing Finish when a refresh flight is already running shows already_running snackbar',
         (tester) async {
       Strings.lang = 'cs';
       final s = AppState(configData: {'tutorials_enabled': false});
       var spawned = 0;
       s.spawn = (_, _) => spawned++;
-      s.wizardStep = WizardController.stepLimits;
-      s.drafts['wiz:limits_refresh'] = '1';
+      s.wizardStep = WizardController.stepDone;
       expect(s.claimFlight('refresh_running'), isTrue);
 
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            appStateProvider.overrideWith(() => _SeededAppStateController(s)),
-          ],
-          child: MaterialApp(
-            home: Scaffold(
-              body: LiveWizardView(tokens: AppTokens.dark()),
-            ),
-          ),
-        ),
-      );
+      await tester.pumpWidget(routerApp(s));
       await tester.pump();
 
-      // Pre-fix code checks stale c.refreshRunning == false; simulate a running
-      // refresh after build so only retryLimitsRefresh()'s return value detects it.
-      s.refreshRunning = true;
-      await tester.tap(find.text(Strings.get('wiz_limits_retry')));
+      await tester.tap(find.text(Strings.get('wiz_finish')));
       await tester.pump();
 
       expect(spawned, 0);
       expect(find.text(Strings.get('already_running')), findsOneWidget);
-    });
-
-    test('retryLimitsRefresh honors both refreshRunning and callback bool return',
-        () {
-      var calls = 0;
-      final running = WizardController(
-        config: {},
-        onSave: (_) => true,
-        onLimitsRefresh: () {
-          calls++;
-          return true;
-        },
-      )..refreshRunning = true;
-      expect(running.retryLimitsRefresh(), isFalse);
-      expect(calls, 0);
-
-      final busy = WizardController(
-        config: {},
-        onSave: (_) => true,
-        onLimitsRefresh: () {
-          calls++;
-          return false;
-        },
-      )..refreshRunning = false;
-      expect(busy.retryLimitsRefresh(), isFalse);
-      expect(calls, 1);
-
-      final idle = WizardController(
-        config: {},
-        onSave: (_) => true,
-        onLimitsRefresh: () {
-          calls++;
-          return true;
-        },
-      )..refreshRunning = false;
-      expect(idle.retryLimitsRefresh(), isTrue);
-      expect(calls, 2);
     });
   });
 
@@ -602,8 +573,9 @@ void main() {
     });
   });
 
-  group('P1 wizard disclaimer phone wording', () {
-    testWidgets('uses phone wording on mobile in cs and en', (tester) async {
+  group('P1 adapted wizard disclaimer wording & welcome gating', () {
+    testWidgets('uses neutral device wording on mobile in cs and en and gates Continue on ack',
+        (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
@@ -623,10 +595,11 @@ void main() {
           'FLET_PLATFORM': 'android',
         });
         final s = AppState(configData: {'language': lang});
-        s.wizardStep = WizardController.stepDisclaimer;
+        s.wizardStep = WizardController.stepWelcome;
 
         await tester.pumpWidget(
           ProviderScope(
+            key: ValueKey('p1:$lang'),
             overrides: [
               appStateProvider.overrideWith(() => _SeededAppStateController(s)),
             ],
@@ -637,16 +610,24 @@ void main() {
             ),
           ),
         );
-        await tester.pump();
+        await tester.pumpAndSettle();
 
         expect(Strings.isMobile, isTrue, reason: 'lang=$lang');
+        expect(find.byType(WelcomeLogo), findsOneWidget);
         if (lang == 'cs') {
           expect(find.textContaining('počítači'), findsNothing);
-          expect(find.textContaining('telefonu'), findsOneWidget);
+          expect(find.textContaining('zařízení'), findsOneWidget);
         } else {
           expect(find.textContaining('computer'), findsNothing);
-          expect(find.textContaining('phone'), findsOneWidget);
+          expect(find.textContaining('device'), findsOneWidget);
         }
+
+        final nextFinder =
+            find.widgetWithText(ElevatedButton, Strings.get('wiz_next'));
+        expect(tester.widget<ElevatedButton>(nextFinder).onPressed, isNull);
+        await tester.tap(find.byType(CheckboxListTile));
+        await tester.pump();
+        expect(tester.widget<ElevatedButton>(nextFinder).onPressed, isNotNull);
       }
     });
   });
@@ -714,23 +695,17 @@ void main() {
     });
   });
 
-  group('P3 wizard limits navigation reachability', () {
+  group('P3 adapted wizard navigation reachability', () {
     testWidgets(
-        'Continue and Back stay inside the viewport without scrolling a long subject list',
+        'Continue and Back stay inside the viewport without scrolling a long step',
         (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
 
       Strings.lang = 'cs';
-      final s = AppState(
-        data: {
-          'absence': {
-            for (var i = 0; i < 14; i++) 'Předmět $i': 5.0,
-          },
-        },
-      );
-      s.wizardStep = WizardController.stepLimits;
+      final s = AppState();
+      s.wizardStep = WizardController.stepExcuses;
 
       await tester.pumpWidget(
         ProviderScope(
@@ -756,13 +731,13 @@ void main() {
       expect(tester.getRect(nextBtn).bottom, lessThanOrEqualTo(844));
       expect(tester.getRect(backBtn).bottom, lessThanOrEqualTo(844));
 
-      await tester.tap(nextBtn);
+      await tester.tap(backBtn);
       await tester.pump();
       expect(s.wizardStep, WizardController.stepStrava);
     });
   });
 
-  group('P4 wizard switch thumb contrast', () {
+  group('P4 adapted wizard switch thumb contrast', () {
     testWidgets(
         'enabled switches use switchTheme so thumb contrasts with track in both themes',
         (tester) async {
@@ -776,12 +751,10 @@ void main() {
           'use_strava': true,
           'wakeup_enabled': true,
         });
-        s.setDraft('wiz:ai_enabled', '1');
 
         for (final step in [
           WizardController.stepStrava,
-          WizardController.stepAi,
-          WizardController.stepAlarm,
+          WizardController.stepPhone,
         ]) {
           s.wizardStep = step;
           await tester.pumpWidget(

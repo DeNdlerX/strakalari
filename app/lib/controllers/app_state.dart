@@ -130,7 +130,11 @@ class AppState {
       return (v == 'table' || v == 'list') ? v : 'table';
     }();
     final savedStep = _savedWizardStep;
-    if (savedStep > 0) wizardStep = savedStep;
+    if (savedStep > 0) {
+      wizardStep = config.get('disclaimer_accepted', false) == true
+          ? (savedStep > 1 ? 1 : savedStep)
+          : 0;
+    }
     try {
       final cached = loadCached(updateChannel);
       if (cached != null &&

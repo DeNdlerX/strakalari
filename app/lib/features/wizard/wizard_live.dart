@@ -9,7 +9,6 @@ import '../../controllers/app_state.dart';
 import '../../l10n/strings.dart';
 
 import '../common/app_tokens.dart';
-import '../common/open_url.dart';
 import 'wizard_controller.dart';
 import 'wizard_view.dart';
 
@@ -77,13 +76,11 @@ WizardController wizardControllerFor(AppState s) {
       );
     },
     onFinishRefresh: () => s.startRefresh(),
-    onLimitsRefresh: () => s.startRefresh('bakalari'),
     onSetLanguage: (l) => s.setLanguage(l),
     onDraftChanged: (key, value) => s.setDraft(key, value),
     onClearDrafts: (prefix) => s.clearDrafts(prefix),
     onStepChanged: (step) => s.wizardGoto(step, WizardController.stepDone),
     onFinished: () => s.wizardFinished(),
-    onOpenUrl: () => openUrl(aiStudioUrl),
     onVerified: (service, fp) {
       s.wizardVerified[service] = fp;
     },
@@ -95,15 +92,6 @@ WizardController wizardControllerFor(AppState s) {
   c.lastTest = Map<String, Object?>.of(s.lastTest);
   c.verified.addAll(s.wizardVerified);
   c.drafts.addAll(s.drafts);
-  c.limitSubjectsInput = s.limitSubjects() ?? [];
-  c.absenceKeys = s.absence().keys.toList();
-  c.refreshRunning = s.refreshRunning;
-  c.refreshStep = s.currentStep;
-  try {
-    c.hasCredentials = core.hasValidCredentials(s.config.data).$1;
-  } catch (_) {
-    c.hasCredentials = false;
-  }
   c.calendarOptions = buildCalendarPresets(lang);
 
   return c;

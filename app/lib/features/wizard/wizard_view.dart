@@ -6,15 +6,51 @@ import '../common/app_tokens.dart';
 import '../settings/settings_view.dart' show TemplateEditor;
 import 'wizard_controller.dart';
 
-/// First-run setup wizard — port of `views/wizard.py`.
+/// Placeholder welcome logo (app icon in an accent badge) so a dedicated logo
+/// asset can later replace it in one place.
+class WelcomeLogo extends StatelessWidget {
+  final AppTokens tokens;
+  final double size;
+
+  const WelcomeLogo({
+    super.key,
+    required this.tokens,
+    this.size = 72,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = tokens;
+    return Container(
+      width: size,
+      height: size,
+      padding: EdgeInsets.all(size * 0.16),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: tintColor(t.accent, 0.16),
+        border: Border.all(color: tintColor(t.accent, 0.45), width: 1.5),
+      ),
+      child: ClipOval(
+        child: Image.asset(
+          'assets/tray-icon.png',
+          fit: BoxFit.contain,
+          errorBuilder: (_, _, _) => Icon(
+            Icons.school_outlined,
+            size: size * 0.5,
+            color: t.accent,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// First-run setup wizard.
 ///
-/// Full-screen card with a step indicator: welcome, disclaimer,
-/// Bakaláři login, subject limits, Strava login, AI key, school
-/// calendar, wake-up alarm (Android only), excuses, done. Credential
-/// steps run a live test on Continue and advance only on success.
-/// Stateless; state lives in [WizardController] via
-/// [ListenableBuilder].
-class WizardView extends StatelessWidget {
+/// Steps: welcome (+ language & disclaimer), school, Bakaláři login, Strava
+/// login, excuses, phone (Android only), done. Credential steps run a live
+/// test on Continue and advance only on success.
+class WizardView extends StatefulWidget {
   final WizardController controller;
   final AppTokens tokens;
   final bool narrow;
@@ -27,6 +63,47 @@ class WizardView extends StatelessWidget {
   });
 
   @override
+  State<WizardView> createState() => _WizardViewState();
+}
+
+class _WizardViewState extends State<WizardView>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _welcomeCtrl;
+  bool _welcomeStarted = false;
+
+  WizardController get controller => widget.controller;
+  AppTokens get tokens => widget.tokens;
+  bool get narrow => widget.narrow;
+
+  @override
+  void initState() {
+    super.initState();
+    _welcomeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_welcomeStarted) return;
+    _welcomeStarted = true;
+    if (MediaQuery.disableAnimationsOf(context) ||
+        controller.step != WizardController.stepWelcome) {
+      _welcomeCtrl.value = 1.0;
+    } else {
+      _welcomeCtrl.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _welcomeCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: controller,
@@ -37,13 +114,7 @@ class WizardView extends StatelessWidget {
   Widget _body(BuildContext context) {
     final c = controller;
     final t = tokens;
-final step = c.step.clamp(0, WizardController.stepDone);
-
-    // The subjects are loading: stay here (Skip still leaves).
-    if (step == WizardController.stepLimits && c.limitsNeedsRefresh) {
-      c.markLimitsRefreshStarted();
-      c.onLimitsRefresh();
-    }
+    final step = c.step.clamp(0, WizardController.stepDone);
 
     final content = _stepContent(context, step);
     final shown = c.shownSteps();
@@ -59,17 +130,14 @@ final step = c.step.clamp(0, WizardController.stepDone);
 
     final nextLabel = c.nextLabel();
     final nav = <Widget>[];
-    if (step > 0 &&
-        !(step == WizardController.stepLimits &&
-            c.refreshRunning)) {
+    if (step > 0) {
       nav.add(TextButton(
           onPressed: c.pressBack,
           child: Text(Strings.get('wiz_back'))));
     }
     nav.add(const Spacer());
     if (step < WizardController.stepDone) {
-      if (step != WizardController.stepWelcome &&
-          step != WizardController.stepDisclaimer) {
+      if (c.canSkip) {
         nav.add(TextButton(
             onPressed: c.pressSkip,
             child: Text(Strings.get('wiz_skip'))));
@@ -209,51 +277,104 @@ final step = c.step.clamp(0, WizardController.stepDone);
 
   // -- step content ---------------------------------------------------------------
 
-  List<Widget> _stepContent(BuildContext context, int step) {
+  Widget _welcomeSlide(double begin, double end, Widget child) {
+    final fade = CurvedAnimation(
+      parent: _welcomeCtrl,
+      curve: Interval(begin, end, curve: Curves.easeOutCubic),
+    );
+    final slide = Tween<Offset>(
+      begin: const Offset(0, 0.16),
+      end: Offset.zero,
+    ).animate(fade);
+    return FadeTransition(
+      opacity: fade,
+      child: SlideTransition(position: slide, child: child),
+    );
+  }
+
+  List<Widget> _welcomeContent() {
     final c = controller;
     final t = tokens;
-switch (step) {
+    final lang = '${c.config['language'] ?? 'cs'}';
+    final logoFade = CurvedAnimation(
+      parent: _welcomeCtrl,
+      curve: const Interval(0.0, 0.45, curve: Curves.easeOut),
+    );
+    final logoScale = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _welcomeCtrl,
+        curve: const Interval(0.0, 0.65, curve: Curves.easeOutBack),
+      ),
+    );
+    return [
+      Center(
+        child: FadeTransition(
+          opacity: logoFade,
+          child: ScaleTransition(
+            scale: logoScale,
+            child: WelcomeLogo(tokens: t),
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
+      _welcomeSlide(0.42, 0.76, _h(Strings.get('wiz_welcome_h'), 22)),
+      const SizedBox(height: 6),
+      _welcomeSlide(0.55, 0.88, _p(Strings.get('wiz_welcome_p'))),
+      const SizedBox(height: 16),
+      _welcomeSlide(
+        0.65,
+        0.95,
+        Wrap(
+          spacing: 8,
+          children: [
+            lang != 'cs'
+                ? w.GhostButton(
+                    label: 'Čeština',
+                    tok: t,
+                    onPressed: () => c.onSetLanguage('cs'))
+                : w.PrimaryButton(
+                    label: 'Čeština', tok: t, onPressed: () {}),
+            lang != 'en'
+                ? w.GhostButton(
+                    label: 'English',
+                    tok: t,
+                    onPressed: () => c.onSetLanguage('en'))
+                : w.PrimaryButton(
+                    label: 'English', tok: t, onPressed: () {}),
+          ],
+        ),
+      ),
+      const SizedBox(height: 16),
+      _welcomeSlide(
+        0.72,
+        1.0,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(Strings.get('wiz_disclaimer_p'),
+                style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
+            const SizedBox(height: 8),
+            CheckboxListTile(
+              value: c.disclaimerOk,
+              activeColor: t.accent,
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: Text(Strings.get('wiz_disclaimer_ack')),
+              onChanged: (v) => c.setDisclaimer(v ?? false),
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _stepContent(BuildContext context, int step) {
+    final c = controller;
+    switch (step) {
       case WizardController.stepWelcome:
-        final lang = '${c.config['language'] ?? 'cs'}';
-        return [
-          _h(Strings.get('wiz_welcome_h'), 22),
-          _p(Strings.get('wiz_welcome_p')),
-          Wrap(
-            spacing: 8,
-            children: [
-              lang != 'cs'
-                  ? w.GhostButton(
-                      label: 'Čeština',
-                      tok: t,
-                      onPressed: () => c.onSetLanguage('cs'))
-                  : w.PrimaryButton(
-                      label: 'Čeština', tok: t, onPressed: () {}),
-              lang != 'en'
-                  ? w.GhostButton(
-                      label: 'English',
-                      tok: t,
-                      onPressed: () => c.onSetLanguage('en'))
-                  : w.PrimaryButton(
-                      label: 'English', tok: t, onPressed: () {}),
-            ],
-          ),
-        ];
-      case WizardController.stepDisclaimer:
-        return [
-          _h(Strings.get('wiz_disclaimer_h'), 19),
-          _p(Strings.get('wiz_disclaimer_p')),
-          _p(Strings.get('wiz_disclaimer_rules')),
-          CheckboxListTile(
-            value: c.disclaimerOk,
-            activeColor: t.accent,
-            contentPadding: EdgeInsets.zero,
-            controlAffinity:
-                ListTileControlAffinity.leading,
-            title: Text(Strings.get('wiz_disclaimer_ack')),
-            onChanged: (v) =>
-                c.setDisclaimer(v ?? false),
-          ),
-        ];
+        return _welcomeContent();
+      case WizardController.stepSchool:
+        return _calendarContent();
       case WizardController.stepBakalari:
         return [
           _h(Strings.get('wiz_bakalari_h'), 19),
@@ -272,8 +393,6 @@ switch (step) {
                   : Strings.get('secret_empty')),
           ..._testRows('bakalari'),
         ];
-      case WizardController.stepLimits:
-        return _limitsContent(context);
       case WizardController.stepStrava:
         final enabled = c.stravaEnabled;
         return [
@@ -303,45 +422,6 @@ switch (step) {
             ..._testRows('strava'),
           ],
         ];
-      case WizardController.stepAi:
-        final enabled = c.aiEnabled;
-        return [
-          _h(Strings.get('wiz_ai_h'), 19),
-          _p(Strings.get('wiz_ai_p')),
-          SwitchListTile(
-            value: enabled,
-            contentPadding: EdgeInsets.zero,
-            title: Text(Strings.get('wiz_use_ai')),
-            onChanged: c.setAiEnabled,
-          ),
-          if (enabled) ...[
-            _field(Strings.get('gemini_key'), 'wiz:ai_key', '',
-                password: true,
-                hint: '${c.config['gemini_api_key'] ?? ''}'
-                        .isNotEmpty
-                    ? Strings.get('new_password')
-                    : Strings.get('secret_empty')),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                onPressed: c.onOpenUrl,
-                icon: const Icon(
-                    Icons.open_in_new, size: 16),
-                label: Text(Strings.get('ai_key_link')),
-              ),
-            ),
-            _hint(Strings.get('ai_key_steps')),
-            _field(
-                Strings.get('gemini_model'), 'wiz:ai_model',
-                '${c.config['gemini_model'] ?? 'gemini-3.8-flash'}'),
-            _hint(Strings.get('ai_model_hint')),
-            ..._testRows('ai'),
-          ],
-        ];
-      case WizardController.stepCalendar:
-        return _calendarContent();
-      case WizardController.stepAlarm:
-        return _alarmContent();
       case WizardController.stepExcuses:
         return [
           _h(Strings.get('wiz_excuses_h'), 19),
@@ -352,11 +432,12 @@ switch (step) {
           _hint(Strings.get('wiz_excuses_tpl')),
           ..._templateEditors(context),
         ];
+      case WizardController.stepPhone:
+        return _alarmContent();
       default:
         return [
           _h(Strings.get('wiz_done_h'), 19),
           _p(Strings.get('wiz_done_p')),
-          _hint(Strings.get('wiz_done_next')),
         ];
     }
   }
@@ -397,69 +478,6 @@ if (c.testing == service) {
       ];
     }
     return [];
-  }
-
-  List<Widget> _limitsContent(BuildContext context) {
-    final c = controller;
-    final t = tokens;
-final rows = <Widget>[
-      _h(Strings.get('wiz_limits_h'), 19),
-      _p(Strings.get('wiz_limits_p')),
-    ];
-    if (c.refreshRunning) {
-      // No inputs while loading: every progress tick rebuilds.
-      rows.add(Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                  strokeWidth: 2, color: t.accent)),
-          const SizedBox(width: 8),
-          Text(Strings.get('wiz_limits_loading'),
-              style:
-                  TextStyle(color: t.muted, fontSize: t.fsSmall)),
-        ],
-      ));
-      if (c.refreshStep.isNotEmpty) {
-        rows.add(Text(c.refreshStep,
-            style: TextStyle(
-                color: t.faint, fontSize: t.fsSmall)));
-      }
-      return rows;
-    }
-    final subjects = c.limitSubjects();
-    if (subjects.isEmpty) {
-      rows.add(_hint(Strings.get('wiz_limits_none')));
-      rows.add(Align(
-        alignment: Alignment.centerLeft,
-        child: OutlinedButton.icon(
-          onPressed: () {
-            final started = c.retryLimitsRefresh();
-            if (context.mounted && !started) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                      content:
-                          Text(Strings.get('already_running'))));
-            }
-          },
-          icon: const Icon(Icons.refresh, size: 18),
-          label: Text(Strings.get('wiz_limits_retry')),
-        ),
-      ));
-      return rows;
-    }
-    final limits =
-        (c.config['subject_limits'] as Map?) ?? const {};
-    rows.add(_field(Strings.get('default_limit'), 'wiz:limit_default',
-        '${c.config['absence_critical_pct'] ?? 25.0}'));
-    rows.add(_hint(Strings.get('limit_subject_hint')));
-    for (final subject in subjects) {
-      rows.add(_field(subject, 'wiz:limit:$subject',
-          '${limits[subject] ?? ''}'));
-    }
-    return rows;
   }
 
   List<Widget> _calendarContent() {

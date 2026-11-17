@@ -9,13 +9,13 @@ import '../settings/settings_controller.dart' show SettingsController;
 /// `views/wizard.py`.
 ///
 /// Shown full-screen by the shell while setup is needed. Each
-/// credential step (Bakaláři, Strava, AI key) runs a live test when
+/// credential step (Bakaláři, Strava) runs a live test when
 /// the user presses Continue — the wizard only advances on success.
 /// Finishing kicks off the first data refresh.
 ///
 /// Config keys and file formats are unchanged; the shell provides
 /// persistence ([onSave]), live tests ([onTestRequest]) and side
-/// effects ([onFinishRefresh], [onOpenUrl], [onAlarmPermission]).
+/// effects ([onFinishRefresh], [onAlarmPermission]).
 class WizardController extends ChangeNotifier {
 /// Reads config values.
   final Map<String, Object?> config;
@@ -28,7 +28,7 @@ class WizardController extends ChangeNotifier {
   final bool Function(Map<String, Object?> updates) onSaveQuiet;
 
   /// Starts a live connection test for `service`
-  /// (`bakalari | strava | ai`) with draft-backed overrides. The shell
+  /// (`bakalari | strava`) with draft-backed overrides. The shell
   /// reports back via [recordTestResult].
   final void Function(
       String service, Map<String, String> overrides) onTestRequest;
@@ -36,15 +36,8 @@ class WizardController extends ChangeNotifier {
   /// Runs the first refresh after Finish; true when started.
   final bool Function() onFinishRefresh;
 
-  /// Opens the AI Studio key page.
-  final void Function() onOpenUrl;
-
   /// Requests the exact-alarm permission (Android only).
   final void Function() onAlarmPermission;
-
-  /// Starts the one-time Bakaláři-only refresh when the limits step
-  /// shows with no subjects yet.
-  final Object? Function() onLimitsRefresh;
 
   /// Sets the app language (`cs | en`).
   final void Function(String lang) onSetLanguage;
@@ -63,9 +56,7 @@ class WizardController extends ChangeNotifier {
     void Function(String service, Map<String, String> overrides)?
         onTestRequest,
     bool Function()? onFinishRefresh,
-    void Function()? onOpenUrl,
     void Function()? onAlarmPermission,
-    Object? Function()? onLimitsRefresh,
     void Function(String lang)? onSetLanguage,
     this.onDraftChanged,
     this.onClearDrafts,
@@ -77,32 +68,28 @@ class WizardController extends ChangeNotifier {
         onSaveQuiet = onSaveQuiet ?? onSave ?? ((_) => false),
         onTestRequest = onTestRequest ?? ((_, _) {}),
         onFinishRefresh = onFinishRefresh ?? (() => false),
-        onOpenUrl = onOpenUrl ?? (() {}),
         onAlarmPermission = onAlarmPermission ?? (() {}),
-        onLimitsRefresh = onLimitsRefresh ?? (() => null),
         onSetLanguage = onSetLanguage ?? ((_) {});
 
   // -- steps ------------------------------------------------------------------------
 
-  static const int stepsTotal = 10;
+  static const int stepsTotal = 7;
   static const int stepWelcome = 0;
-  static const int stepDisclaimer = 1;
+  static const int stepSchool = 1;
   static const int stepBakalari = 2;
-  static const int stepLimits = 3;
-  static const int stepStrava = 4;
-  static const int stepAi = 5;
-  static const int stepCalendar = 6;
-  static const int stepAlarm = 7;
-  static const int stepExcuses = 8;
-  static const int stepDone = 9;
+  static const int stepStrava = 3;
+  static const int stepExcuses = 4;
+  static const int stepPhone = 5;
+  static const int stepDone = 6;
 
   int step = 0;
   bool dismissed = false;
 
-  /// Whether the wake-up alarm step is part of the flow (Android only).
+  /// Whether the Phone step (alarm + notification permission) is part of the
+  /// flow (Android only).
   bool isAndroid = false;
 
-  /// Service currently being tested (`bakalari | strava | ai`), if any.
+  /// Service currently being tested (`bakalari | strava`), if any.
   String? testing;
 
   /// Last test result: `{service, ok, at, message}`.
@@ -116,10 +103,6 @@ class WizardController extends ChangeNotifier {
 
   /// Last user-facing message (snackbar text equivalent).
   String lastMessage = '';
-
-  /// The limits refresh was already triggered once.
-  bool get limitsRefreshStarted =>
-      drafts.containsKey('wiz:limits_refresh');
 
   String draft(String key, [String fallback = '']) =>
       drafts[key] ?? fallback;
@@ -147,7 +130,7 @@ class WizardController extends ChangeNotifier {
 
   List<int> shownSteps() => [
         for (var i = 0; i < stepsTotal; i++)
-          if (i != stepAlarm || isAndroid) i
+          if (i != stepPhone || isAndroid) i
       ];
 
   int stepAfter(int from) {
@@ -188,12 +171,6 @@ class WizardController extends ChangeNotifier {
     return (config['use_strava'] ?? true) == true;
   }
 
-  bool get aiEnabled {
-    final raw = drafts['wiz:ai_enabled'];
-    if (raw != null) return raw == '1';
-    return '${config['gemini_api_key'] ?? ''}'.isNotEmpty;
-  }
-
   bool get alarmEnabled {
     final raw = drafts['wiz:wakeup_enabled'];
     if (raw != null) return raw == '1';
@@ -206,9 +183,6 @@ class WizardController extends ChangeNotifier {
 
   void setStravaEnabled(bool on) =>
       setDraft('wiz:strava_enabled', on ? '1' : '');
-
-  void setAiEnabled(bool on) =>
-      setDraft('wiz:ai_enabled', on ? '1' : '');
 
   void setAlarmEnabled(bool on) =>
       setDraft('wiz:wakeup_enabled', on ? '1' : '');
@@ -258,107 +232,9 @@ class WizardController extends ChangeNotifier {
     return _save(updates);
   }
 
-  bool saveAi() {
-    if (!aiEnabled) {
-      // Disabling must stick: clear the stored key (encrypt("") reads
-      // back falsy), otherwise the old key silently re-enables AI.
-      return _save(
-          {'gemini_api_key': '', 'gemini_api_key_encrypted': false});
-    }
-    final key = draft('wiz:ai_key', '').trim();
-    final hasKey = key.isNotEmpty ||
-        '${config['gemini_api_key'] ?? ''}'.isNotEmpty;
-    if (!hasKey) return false;
-    final updates = <String, Object?>{};
-    if (key.isNotEmpty) updates['gemini_api_key'] = key;
-    final model = draft('wiz:ai_model',
-            '${config['gemini_model'] ?? 'gemini-3.8-flash'}')
-        .trim();
-    if (model.isNotEmpty) updates['gemini_model'] = model;
-    if (updates.isEmpty) return true;
-    return _save(updates);
-  }
-
-  // -- limits -------------------------------------------------------------------------------
-
-  /// Subjects the limits step lists (shell: stable + tracked, else
-  /// absence keys) — like `wizard._limit_subjects`.
-  List<String> limitSubjectsInput = [];
-  List<String> absenceKeys = [];
-
-  List<String> limitSubjects() => limitSubjectsInput.isNotEmpty
-      ? List<String>.of(limitSubjectsInput)
-      : (List<String>.of(absenceKeys)..sort());
-
-  /// Whether the limits step must trigger the one-time Bakaláři-only
-  /// refresh — like `wizard._start_limits_refresh`.
-  bool get limitsNeedsRefresh =>
-      !limitsRefreshStarted &&
-      !refreshRunning &&
-      hasCredentials &&
-      limitSubjects().isEmpty;
-
-  bool refreshRunning = false;
-  String refreshStep = '';
-  bool hasCredentials = false;
-
   /// Android exact-alarm status: show the "exact alarms off" hint and
   /// the allow button when true (shell: available && !allowed).
   bool alarmExactOff = false;
-
-  void markLimitsRefreshStarted() {
-    drafts['wiz:limits_refresh'] = '1';
-    notifyListeners();
-  }
-
-  /// Triggers a limits refresh from the retry button and returns whether a
-  /// new refresh started (false when one is already running).
-  bool retryLimitsRefresh() {
-    if (refreshRunning) return false;
-    final result = onLimitsRefresh();
-    if (result is bool) return result;
-    return true;
-  }
-
-  /// A limit in percent; null when blank. Throws [FormatException]
-  /// when invalid — like `wizard._limit_value`.
-  static double? limitValue(String raw) {
-    final text = raw.trim().replaceAll(',', '.');
-    if (text.isEmpty) return null;
-    final num = double.parse(text); // throws when invalid
-    if (num < 0 || num > 100) throw FormatException(raw);
-    return num;
-  }
-
-  /// Config updates for the limits step; null when a value is invalid.
-  /// A blank subject falls back to the default limit (no own entry).
-  Map<String, Object?>? limitsUpdates() {
-    try {
-      final defaultLimit = limitValue(draft('wiz:limit_default',
-          '${config['absence_critical_pct'] ?? 25.0}'));
-      final limits = <String, double>{
-        for (final e in ((config['subject_limits'] as Map?) ?? const {})
-            .entries)
-          '${e.key}': (e.value as num).toDouble(),
-      };
-      for (final subject in limitSubjects()) {
-        final value = limitValue(draft('wiz:limit:$subject',
-            '${limits[subject] ?? ''}'));
-        if (value == null) {
-          limits.remove(subject);
-        } else {
-          limits[subject] = value;
-        }
-      }
-      final updates = <String, Object?>{'subject_limits': limits};
-      if (defaultLimit != null) {
-        updates['absence_critical_pct'] = defaultLimit;
-      }
-      return updates;
-    } on FormatException {
-      return null;
-    }
-  }
 
   // -- calendar -------------------------------------------------------------------------------
 
@@ -460,14 +336,7 @@ class WizardController extends ChangeNotifier {
         if (pw.trim().isNotEmpty) ov['strava_password'] = pw;
         return ov;
       default:
-        final ov = <String, String>{};
-        final key = draft('wiz:ai_key', '').trim();
-        if (key.isNotEmpty) ov['gemini_api_key'] = key;
-        final model = draft('wiz:ai_model',
-                '${config['gemini_model'] ?? 'gemini-3.8-flash'}')
-            .trim();
-        if (model.isNotEmpty) ov['gemini_model'] = model;
-        return ov;
+        return {};
     }
   }
 
@@ -497,16 +366,8 @@ class WizardController extends ChangeNotifier {
         (ov['strava_canteen_id']?.isNotEmpty == true);
   }
 
-  bool readyAi() {
-    if (!aiEnabled) return true;
-    final ov = overridesFor('ai');
-    return (ov['gemini_api_key']?.isNotEmpty == true) ||
-        '${config['gemini_api_key'] ?? ''}'.isNotEmpty;
-  }
-
   bool _testNeeded(String service) {
     if (service == 'strava' && !stravaEnabled) return false;
-    if (service == 'ai' && !aiEnabled) return false;
     return verified[service] != fingerprintFor(service);
   }
 
@@ -535,7 +396,7 @@ class WizardController extends ChangeNotifier {
       case 'strava':
         return saveStrava();
       default:
-        return saveAi();
+        return false;
     }
   }
 
@@ -590,6 +451,29 @@ class WizardController extends ChangeNotifier {
   ({bool advanced, String? snack, String? finishedMessage}) pressNext() {
     final atStep = step.clamp(0, stepDone);
     switch (atStep) {
+      case stepWelcome:
+        if (!disclaimerOk) {
+          return (
+            advanced: false,
+            snack: Strings.get('wiz_disclaimer_need'),
+            finishedMessage: null
+          );
+        }
+        if (config['disclaimer_accepted'] != true) {
+          _save({'disclaimer_accepted': true});
+        }
+        break;
+      case stepSchool:
+        if (!saveCalendar()) {
+          return (
+            advanced: false,
+            snack: Strings.get(calPreset().isEmpty
+                ? 'wiz_cal_pick'
+                : 'save_failed'),
+            finishedMessage: null
+          );
+        }
+        break;
       case stepBakalari:
         final snack = continueTestStep(
             'bakalari', atStep, readyBakalari(), 'wiz_need_bakalari');
@@ -613,77 +497,23 @@ class WizardController extends ChangeNotifier {
         final snack = continueTestStep(
             'strava', atStep, readyStrava(), 'wiz_need_strava');
         return (advanced: false, snack: snack, finishedMessage: null);
-      case stepAi:
-        if (!aiEnabled) {
-          if (saveAi()) {
-            goTo(stepAfter(atStep));
-            return (
-              advanced: true,
-              snack: null,
-              finishedMessage: null
-            );
-          }
-          return (
-            advanced: false,
-            snack: Strings.get('save_failed'),
-            finishedMessage: null
-          );
-        }
-        final snack = continueTestStep(
-            'ai', atStep, readyAi(), 'wiz_need_ai_key');
-        return (advanced: false, snack: snack, finishedMessage: null);
-      case stepLimits:
-        final updates = limitsUpdates();
-        if (updates == null || !_save(updates)) {
-          return (
-            advanced: false,
-            snack: Strings.get(updates == null
-                ? 'wiz_limits_invalid'
-                : 'save_failed'),
-            finishedMessage: null
-          );
-        }
-        break;
-      case stepDisclaimer:
-        if (!disclaimerOk) {
-          return (
-            advanced: false,
-            snack: Strings.get('wiz_disclaimer_need'),
-            finishedMessage: null
-          );
-        }
-        if (config['disclaimer_accepted'] != true) {
-          _save({'disclaimer_accepted': true});
-        }
-        break;
-      case stepCalendar:
-        if (!saveCalendar()) {
-          return (
-            advanced: false,
-            snack: Strings.get(calPreset().isEmpty
-                ? 'wiz_cal_pick'
-                : 'save_failed'),
-            finishedMessage: null
-          );
-        }
-        break;
-      case stepAlarm:
-        if (!saveAlarm()) {
-          return (
-            advanced: false,
-            snack: Strings.get(alarmMinutes() == null
-                ? 'wakeup_minutes_invalid'
-                : 'save_failed'),
-            finishedMessage: null
-          );
-        }
-        break;
       case stepExcuses:
         if (!saveSignature()) {
           return (
             advanced: false,
             snack: Strings.get(signature().isEmpty
                 ? 'wiz_need_signature'
+                : 'save_failed'),
+            finishedMessage: null
+          );
+        }
+        break;
+      case stepPhone:
+        if (!saveAlarm()) {
+          return (
+            advanced: false,
+            snack: Strings.get(alarmMinutes() == null
+                ? 'wakeup_minutes_invalid'
                 : 'save_failed'),
             finishedMessage: null
           );
@@ -718,7 +548,6 @@ class WizardController extends ChangeNotifier {
     const tested = {
       stepBakalari: 'bakalari',
       stepStrava: 'strava',
-      stepAi: 'ai',
     };
     final service = tested[step];
     if (service != null && _testNeeded(service)) {
@@ -727,20 +556,18 @@ class WizardController extends ChangeNotifier {
     return Strings.get('wiz_next');
   }
 
-  /// Whether Skip is offered on this step (welcome has nothing to
-  /// skip; the disclaimer must be accepted).
+  /// Whether Skip is offered on this step (welcome includes the required
+  /// disclaimer and cannot be skipped).
   bool get canSkip =>
       step != stepWelcome &&
-      step != stepDisclaimer &&
       step < stepDone;
 
-  /// Whether Continue is enabled (calendar needs a pick, disclaimer
-  /// an ack, and no advance while a test or the limits load runs).
+  /// Whether Continue is enabled (welcome needs disclaimer ack, school
+  /// needs a pick, and no advance while a test runs).
   bool get nextEnabled {
-    if (step == stepCalendar && calPreset().isEmpty) return false;
-    if (step == stepDisclaimer && !disclaimerOk) return false;
+    if (step == stepWelcome && !disclaimerOk) return false;
+    if (step == stepSchool && calPreset().isEmpty) return false;
     if (testing != null) return false;
-    if (step == stepLimits && refreshRunning) return false;
     return true;
   }
 

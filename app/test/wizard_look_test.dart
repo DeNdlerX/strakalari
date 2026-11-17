@@ -48,7 +48,7 @@ void main() {
   testWidgets('the current step dot is yellow, done ones green, rest faint',
       (t) async {
     final c = await pump(t);
-    c.step = WizardController.stepDisclaimer;
+    c.step = WizardController.stepSchool;
     c.notifyListeners();
     await t.pumpAndSettle();
     Color dotColor(Element e) =>
@@ -67,5 +67,26 @@ void main() {
     expect(dots, contains(tokens.yellow));
     expect(dots, isNot(contains(tokens.accent)));
     expect(Strings.get('wiz_next'), isNotEmpty);
+  });
+
+  testWidgets('Vítejte shows WelcomeLogo and skips entrance animation when disableAnimations is on',
+      (t) async {
+    t.view.physicalSize = const Size(1280, 800);
+    t.view.devicePixelRatio = 1.0;
+    addTearDown(t.view.reset);
+    final c = WizardController(config: {'language': 'cs'}, onSave: (_) => true)
+      ..calendarOptions = buildCalendarPresets('cs')
+      ..step = WizardController.stepWelcome;
+    await t.pumpWidget(MediaQuery(
+      data: const MediaQueryData(disableAnimations: true),
+      child: MaterialApp(
+        theme: tokensFor('dark').toThemeData(),
+        home: Scaffold(body: WizardView(controller: c, tokens: tokens)),
+      ),
+    ));
+    // First frame already shows final state without waiting for animation.
+    expect(find.byType(WelcomeLogo), findsOneWidget);
+    final fades = t.widgetList<FadeTransition>(find.byType(FadeTransition));
+    expect(fades.every((f) => f.opacity.value == 1.0), isTrue);
   });
 }
