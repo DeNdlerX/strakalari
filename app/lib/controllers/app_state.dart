@@ -130,10 +130,17 @@ class AppState {
       return (v == 'table' || v == 'list') ? v : 'table';
     }();
     final savedStep = _savedWizardStep;
-    if (savedStep > 0) {
-      wizardStep = config.get('disclaimer_accepted', false) == true
-          ? (savedStep > 1 ? 1 : savedStep)
-          : 0;
+    if (savedStep >= 0) {
+      if (savedStep > 0) {
+        wizardStep = config.get('disclaimer_accepted', false) == true
+            ? (savedStep > 1 ? 1 : savedStep)
+            : 0;
+      }
+      final savedPreset = '${config.get('school_preset_id', '')}'.trim();
+      if (savedPreset.isNotEmpty &&
+          (savedStep > 1 || savedPreset != core.customId)) {
+        drafts['wiz:cal_preset'] = savedPreset;
+      }
     }
     try {
       final cached = loadCached(updateChannel);

@@ -357,6 +357,7 @@ class WizardController extends ChangeNotifier {
     if (preset.isEmpty || !_knownSchoolPresetIds().contains(preset)) {
       return false;
     }
+    if ('${config['school_preset_id'] ?? ''}' == preset) return true;
     return _save({'school_preset_id': preset});
   }
 

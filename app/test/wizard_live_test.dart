@@ -986,6 +986,56 @@ void main() {
       await tester.pump();
       expect(saved, {'school_preset_id': 'xy_4'});
     });
+
+    test('resumed wizard keeps saved school picked and writes nothing new on Continue',
+        () {
+      final first = AppState()..wizardOpened();
+      first.save({
+        'disclaimer_accepted': true,
+        'school_preset_id': 'gekom_2026_2027',
+      });
+      first.wizardGoto(WizardController.stepBakalari, WizardController.stepDone);
+
+      final restarted = AppState();
+      expect(restarted.wizardStep, WizardController.stepSchool);
+      final c = wizardControllerFor(restarted);
+      expect(c.calPreset(), 'gekom_2026_2027');
+      expect(c.selectedSchoolGroup(), 'GEKOM');
+      expect(c.nextEnabled, isTrue);
+
+      final cfgFile = File('${tmp.path}/config.json');
+      final beforeJson = cfgFile.readAsStringSync();
+      final res = c.pressNext();
+      expect(res.advanced, isTrue);
+      expect(restarted.wizardStep, WizardController.stepBakalari);
+      // Only wizard_step may update on Continue; school_preset_id is not rewritten.
+      expect(cfgFile.readAsStringSync().contains('"school_preset_id": "gekom_2026_2027"'),
+          isTrue);
+      final savedOnContinue = <String, Object?>{};
+      final cNoWrite = WizardController(
+        config: Map<String, Object?>.of(restarted.config.data),
+        onSave: (u) {
+          savedOnContinue.addAll(u);
+          return true;
+        },
+      )
+        ..step = WizardController.stepSchool
+        ..schoolOptions = schoolGroups('cs')
+        ..drafts.addAll(restarted.drafts);
+      expect(cNoWrite.pressNext().advanced, isTrue);
+      expect(savedOnContinue, isEmpty);
+      expect(beforeJson, isNotEmpty);
+
+      // Fresh install with no saved step still requires an explicit pick.
+      final freshDir = Directory.systemTemp.createTempSync('strakalari_fresh_');
+      addTearDown(() => freshDir.deleteSync(recursive: true));
+      setEnvironmentOverride(
+          {'STRAKALARI_DATA_DIR': freshDir.path, 'STRAKALARI_NO_KEYRING': '1'});
+      final fresh = AppState();
+      final cFresh = wizardControllerFor(fresh);
+      expect(cFresh.calPreset(), isEmpty);
+      expect(cFresh.nextEnabled, isFalse);
+    });
   });
 
   group('F1 login prefills and Změnit', () {
