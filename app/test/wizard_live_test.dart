@@ -1081,6 +1081,27 @@ void main() {
       again.wizardOpened();
       expect(wizardControllerFor(again).calPreset(), customId);
     });
+
+    test(
+        'stale school draft is not seeded when no wizard is open (R3 M3)',
+        () {
+      AppState().save({
+        'disclaimer_accepted': true,
+        'school_preset_id': 'gekom_2026_2027',
+        'bakalari_url': 'http://127.0.0.1:18080',
+        'bakalari_username': 'demo',
+      });
+      final s = AppState();
+      expect(s.needsSetup(), isFalse);
+      s.save({'school_preset_id': 'custom'});
+      s.save({'bakalari_username': ''});
+      expect(s.needsSetup(), isTrue);
+      s.wizardOpened();
+      final c = wizardControllerFor(s)..step = WizardController.stepSchool;
+      expect(c.calPreset(), isNot('gekom_2026_2027'));
+      c.pressNext();
+      expect(s.config.get('school_preset_id', ''), 'custom');
+    });
   });
 
   group('F1 login prefills and Změnit', () {

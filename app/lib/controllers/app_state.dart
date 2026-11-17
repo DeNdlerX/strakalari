@@ -135,7 +135,7 @@ class AppState {
           ? (savedStep > 1 ? 1 : savedStep)
           : 0;
     }
-    _seedSchoolPresetDraft(savedStep);
+    if (savedStep >= 0) _seedSchoolPresetDraft(savedStep);
     try {
       final cached = loadCached(updateChannel);
       if (cached != null &&
