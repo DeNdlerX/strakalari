@@ -9,5 +9,6 @@
     android:drawablePadding="4dp"
     android:ellipsize="end"
     android:gravity="center_vertical"
+    android:includeFontPadding="false"
     android:maxLines="1"
     android:textAppearance="@android:style/TextAppearance.Material.Notification" />

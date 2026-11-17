@@ -186,4 +186,19 @@ void main() {
     final code = File('lib/platform/android/background.dart').readAsStringSync();
     expect(code, contains('AppState()..spawn = AppState.liveSpawn'));
   });
+
+  test('N1 collapsed notification layout wraps cleanly without Notification.Title', () {
+    final collapsed =
+        File('android/app/src/main/res/layout/strakalari_status_collapsed.xml')
+            .readAsStringSync();
+    expect(collapsed, contains('android:layout_height="wrap_content"'));
+    expect(collapsed, isNot(contains('android:layout_height="match_parent"')));
+    expect(collapsed, isNot(contains('TextAppearance.Material.Notification.Title')));
+    expect(collapsed, contains('android:includeFontPadding="false"'));
+    expect(collapsed, contains('android:orientation="horizontal"'));
+    for (final chip in ['strakalari_status_chip_wrap.xml', 'strakalari_status_chip_fill.xml']) {
+      final xml = File('android/app/src/main/res/layout/$chip').readAsStringSync();
+      expect(xml, contains('android:includeFontPadding="false"'));
+    }
+  });
 }

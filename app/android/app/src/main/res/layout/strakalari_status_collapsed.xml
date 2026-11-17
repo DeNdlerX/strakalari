@@ -3,7 +3,7 @@
      first row on its own line, the others side by side below it. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
+    android:layout_height="wrap_content"
     android:gravity="center_vertical"
     android:orientation="vertical">
 
@@ -14,13 +14,15 @@
         android:drawablePadding="6dp"
         android:ellipsize="end"
         android:gravity="center_vertical"
+        android:includeFontPadding="false"
         android:maxLines="1"
-        android:textAppearance="@android:style/TextAppearance.Material.Notification.Title" />
+        android:textAppearance="@android:style/TextAppearance.Material.Notification"
+        android:textStyle="bold" />
 
     <LinearLayout
         android:id="@+id/strakalari_status_rest"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
+        android:layout_marginTop="1dp"
         android:orientation="horizontal" />
 </LinearLayout>
