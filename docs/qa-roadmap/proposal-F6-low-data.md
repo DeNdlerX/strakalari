@@ -16,16 +16,20 @@ review before any code, because it changes the refresh pipeline.
   plus the permanent timetable, all sent excuses, all marks and the absence
   page. Almost none of it changes between two refreshes.
 - **Idea:** every 5 minutes, only a **quick check** of one small list,
-  the school's own list of timetable changes (~5 KB). The big pages come
-  only when something changed, or on a slower clock (marks hourly, past
-  weeks daily). Nothing at night.
+  the school's own list of timetable changes (~5 KB) and a small signal
+  for new marks (to be found, step 0). The big pages come only when
+  something changed, or on a slower clock (past weeks daily). Nothing at
+  night.
 - **Estimate:** every 5 minutes during school hours for about **4–6 MB a
   day**. That is less than today's hourly refresh. Once the login is
   reused (step 3), it also means fewer requests to the school server than
   today (~300 a day instead of ~670).
-- **Trade-off:** timetable changes arrive within 5 minutes. New marks and
-  absences arrive within your chosen slower interval (for example 30–60
-  minutes), unless a cheap way to spot them is found (step 5).
+- **Owner's answer (D6, 2026-11-17):** new marks must show up within 5
+  minutes, "thats kinda the point". So the quick check must also spot a
+  new mark, and do it cheaply: the marks page is 185 KB, and loading it
+  every 5 minutes alone would be ~18 MB a day. Finding the smallest way is
+  now **step 0**, research on the real Bakaláři with the owner logged in
+  (`PROMPT-F6-research.md`). It comes before the design note.
 
 ---
 
@@ -93,6 +97,18 @@ Other facts from the code:
 Each step is its own commit(s) with tests, and is measured again with the
 owner's measuring build before the next one.
 
+### Step 0: research on the real Bakaláři (before the design note)
+
+- A research agent goes through the real GEKOM Bakaláři web, read-only,
+  in the built-in browser where the owner has logged in. The prompt is
+  `PROMPT-F6-research.md`.
+- It finds the smallest web requests that show a new mark, a timetable
+  change and a new absence, and how long a session stays alive. It also
+  lists new things the web offers that the app could use.
+- It writes `research-F6-bakalari-web.md` and updates §2, §4, §5 and §8
+  here.
+- Steps 2 and 5 below depend on its result.
+
 ### Step 1: free wins (same data, same freshness, ~45 % less)
 
 Nothing the user sees changes. Every refresh still brings everything that
@@ -116,7 +132,7 @@ and next week, marks, absence and the outbox.
 | **Quick** | every `check_interval_minutes` (e.g. 5) during school hours | substitution feed only (`/Timetable/substitutions/dates`) | ~5 KB + login/TLS |
 | **Week** | when the feed's entries for a week changed (hash per week), and every 30 min in school hours as a safety net | that week's `GetContentData` (this week, next week) | ~72 KB per week |
 | **Absence** | every 15–30 min in school hours | `GetAbsenceBySubjects` (cached date range, step 1) | ~3 KB |
-| **Marks** | every 60 min in school hours, plus once in the evening (D6) | `prubzna.aspx` | ~185 KB |
+| **Marks** | every quick tick (D6: within 5 minutes) | the cheap change signal from step 0; `prubzna.aspx` only when it changed. Fallback if no signal exists: `prubzna.aspx` every quick tick | signal: to be measured; page: ~185 KB |
 | **Strava** | every 30 min in the day, and before each order cutoff | as today | ~4 KB |
 | **Full** | first run of the day, and twice a day | everything, including the Komens outbox; **only here do auto excuses run** | ~550 KB after step 1 |
 | **Night** | 22:00–6:00 (D6) | nothing, except one quick tick 30 min before the Budík alarm | — |
@@ -157,14 +173,13 @@ and next week, marks, absence and the outbox.
 - Optional (D6): the 5-minute rhythm only on Wi-Fi, and 15 minutes on
   mobile data.
 
-### Step 5 (research): a cheaper way to spot new marks
+### Step 5: the marks signal in code
 
-- Marks are the biggest item left (185 KB per check).
-- Look for the smallest **web** request that changes when a mark is added:
-  the dashboard's "new marks" part, a callback of the marks page, or a
-  Komens notification.
-- This needs a few real saved pages, with personal data removed (D6).
-  Without them, marks stay on the hourly clock.
+- Build the cheap marks signal that step 0 found into the quick tier, with
+  a fake-server test that a new mark is noticed after one quick tick.
+- If step 0 finds no cheap signal, the fallback is the marks page on every
+  quick tick (§5, second total). The owner then decides between the data
+  cost and a slower marks check.
 
 ---
 
@@ -179,13 +194,15 @@ ticks), and hourly on the rest of the day until 22:00.
 | Quick ticks, rest of the day (~6 × ~15 KB) | ~0.1 MB |
 | Week refetches (≈ 16 safety-net + a few real changes × 72 KB) | ~1.4 MB |
 | Absence (32 × ~5 KB) | ~0.2 MB |
-| Marks (9 × 185 KB) | ~1.7 MB |
+| Marks: a cheap signal every quick tick (96 × ≤ 5 KB, assumed) + the page when a mark arrived (~3 × 185 KB) | ~1.0 MB |
 | Strava (~30 × ~6 KB) | ~0.2 MB |
 | Full runs (3 × ~550 KB) | ~1.6 MB |
-| **Total** | **~6 MB a day**; ~4 MB with both a cheap marks check (step 5) and the week safety net every 60 min |
+| **Total, with a cheap marks signal** | **~6 MB a day** |
+| **Total, without one** (marks page every quick tick, 96 × 185 KB ≈ 17.8 MB) | **~23 MB a day**: about today's hourly use, but every 5 minutes |
 
-These are estimates from one measured run. The measuring build checks
-them after each step.
+These are estimates from one measured run, and the size of the marks
+signal is an assumption until step 0 measures it. The measuring build
+checks them after each step.
 
 ---
 
@@ -203,6 +220,7 @@ them after each step.
   - `automation_paused` stops every tier's auto phase;
   - a failed tier keeps its cached data and shows its own stamp;
   - a feed change for next week fetches next week only;
+  - a new mark is noticed and notified after one quick tick (D6);
   - the night pause and the before-alarm tick.
 - Pixel (`.test` only): the rhythm with the screen off and battery
   measured as in step 4, with evidence in `build/qa-evidence/F6/`.
@@ -236,8 +254,8 @@ them after each step.
 |---|---|
 | Go for F6? Before or after F2 (excuse history)? | After F2, because both change the Komens read. Step 1 (except the Komens part) can come any time. |
 | School hours: from the timetable, or fixed (e.g. 7:00–16:00)? | From the timetable |
-| How quickly must new **marks** and **absences** show up? | Absence 15–30 min, marks 60 min |
+| How quickly must new **marks** and **absences** show up? | **Answered 2026-11-17 for marks:** "I want new marks to be visible in the 5 minutes, thats kinda the point." Absence: still open (suggestion 15–30 min, or 5 min if step 0 finds a cheap signal) |
 | Night pause 22:00–6:00? | Yes, with one tick before the Budík alarm |
 | May the session cookie be stored encrypted for background runs (step 3b)? | Only if 3a isn't enough |
 | 5 minutes on mobile data too, or only on Wi-Fi (15 min on mobile)? | Your call: ~6 MB a day is small for most plans |
-| Can you save a few real pages (marks page, dashboard), personal data removed, for step 5? | Optional |
+| Can you save a few real pages (marks page, dashboard), personal data removed, for step 5? | **Answered 2026-11-17:** the owner logs in to the built-in browser for the step 0 research agent instead. |

@@ -34,7 +34,7 @@ Next step: Fix every finding in `reviews/phase-3.md` (blockers first), one commi
 | F3 | todo | — | — | — | Blocked until R4 + D3 |
 | F4 | todo | — | — | — | Blocked until R5 + D4 |
 | F5 | todo | — | — | — | Blocked until R6 + D5 |
-| F6 | proposal | — | — | — | Owner (2026-11-17): low-data refresh, towards every 5 minutes. Not in PLAN; proposal in `proposal-F6-low-data.md`. Don't start it until the owner says "go" and answers D6 (proposal §8); then write a design note `design-F6.md` and stop for review before any code. |
+| F6 | proposal | — | — | — | Owner (2026-11-17): low-data refresh, towards every 5 minutes. Not in PLAN; proposal in `proposal-F6-low-data.md`. Don't start it until the owner says "go" and answers D6 (proposal §8); then write a design note `design-F6.md` and stop for review before any code. Step 0 first: research on the real Bakaláři by a separate agent (`PROMPT-F6-research.md`, owner logged in, read-only), run only while the implementing agent is stopped. The implementing agent doesn't do step 0. |
 
 ## Owner decisions (answers word for word, with date)
 - **B1 (2026-11-15):** "connected. I dont think any use it."
@@ -52,6 +52,7 @@ Next step: Fix every finding in `reviews/phase-3.md` (blockers first), one commi
 - **O1 refresh notifications (2026-11-17, at the R3 re-review):** "And also make the notification about successful and unsuccessful refresh disabled by default"
 - **O2 / F1 prefill rows (2026-11-17, at the R3 re-review 2):** "You may also remove the canteen number text as well as the url, its set from the preset."
 - **F6 low-data refresh (2026-11-17, after the R3 re-review 2):** "Ok, but could you create a plan for saving the bandwith? I would like it to be as small as possible, possibly getting to the every 5 minute refresh frequency." → `proposal-F6-low-data.md` (a plan only; no "go" yet).
+- **F6 marks within 5 minutes (2026-11-17):** "I want new marks to be visible in the 5 minutes, thats kinda the point. If you want real bakalari instance, I can log into your browser and you can go through it and find the most optimal ways, along with perhaps some new stuff that we could use. But maybe write me a continuation prompt for this for a new agent that will do it." → D6 marks answered; research prompt `PROMPT-F6-research.md`.
 
 ## Questions for the owner / reviewer
 - **B1 (answered 2026-11-15):** Configs previously saved by the old wizard bug hold plain strings instead of `{name, text}` template objects. Per the plan they are left untouched and load cleanly in Settings and the send path — owner replied `"connected. I dont think any use it."` (no migration needed).
