@@ -44,6 +44,7 @@ Next step: Connect Pixel 7 Pro (`2C221FDH3002NZ`), build and install `.test` APK
 - **D1 / F1 simplicity (2026-11-17, given at the R3a review):** "One note: I want the app to be as simple as possible, the smaller the amount of startup screens and text, the better. I might be against displaying the gemini stuff, because we might create a subscription for this later, so leave it only in settings for power users, but not display it in the wizard. And the disclaimer can be shortened as well. Just really rework it to make it AAA."
 - **D1 / F1 (2026-11-17):** "And about the adresses, gekom uses bakalari bakaweb.gekom.cz, and strava strava.cz and number 1950. Also, gekom only uses percentage now. And the grade is not editable, only in settings under school option where you get to change stuff related to the preset I guess."
 - **D1 / Q1 (2026-11-17, given at the R3 review):** "And yes, the url is bakaweb.gekom.cz"
+- **D1 / F1 prefill link (2026-11-17):** "One thing, I wouldnt give them the option to change the link"
 
 ## Questions for the owner / reviewer
 - **B1 (answered 2026-11-15):** Configs previously saved by the old wizard bug hold plain strings instead of `{name, text}` template objects. Per the plan they are left untouched and load cleanly in Settings and the send path — owner replied `"connected. I dont think any use it."` (no migration needed).
@@ -53,6 +54,7 @@ Next step: Connect Pixel 7 Pro (`2C221FDH3002NZ`), build and install `.test` APK
 - **R2 M1 / N1 (2026-11-17):** Have you ever actually seen the second line of the background notification cut off, and if so, where (phone font size, lock screen, pop-up)? None of the screenshots show it, before or after the change.
 - **Budík buttons (owner, 2026-11-17, not in the plan):** On Více → Budík, *Povolit přesné budíky*, *Tento den nebudit* and *Otevřít v Budíku telefonu* are flat text buttons and don't look like buttons. Should they get a visible button style (e.g. outlined)? Left unchanged until the owner says so.
 - **F1 / R3a (answered 2026-11-17 at R3):** Q2–Q6 answered in the rewritten `design-F1.md`. **Q1** Is the Bakaláři address exactly `https://bakaweb.gekom.cz` (no path after it)? Owner: "And yes, the url is bakaweb.gekom.cz".
+- **F1 / Strava canteen Change button (2026-11-17):** Removed *Změnit* from the Bakaláři link per your instruction ("One thing, I wouldnt give them the option to change the link"). Should *Změnit* also be removed from the Strava canteen number (`Jídelna: 1950`), or stay there?
 
 ## Deviations from the plan (each needs reviewer sign-off)
 - **M3 (B3):** Disabled the `MaterialApp` theme cross-fade (`themeAnimationStyle: AnimationStyle.noAnimation` in `app/lib/main.dart:77`) so `Theme.of(context)` switches in the same frame as `appState.tok` and cannot lag or restart an animation on rapid rebuilds.
@@ -67,6 +69,7 @@ Next step: Connect Pixel 7 Pro (`2C221FDH3002NZ`), build and install `.test` APK
   - `testLimitsStepUpdates` (`app/test/wizard_setup_full_test.dart`): removed with the wizard limits step; the limits editor is the Settings one moved unchanged (`LimitsEditorContent`) and is tested in `absences_view_test.dart`.
   - `testLimitsStepLoadsSubjectsOnce` (`app/test/wizard_setup_full_test.dart`): removed with the wizard limits step and `onLimitsRefresh`; the limits editor is the Settings one moved unchanged (`LimitsEditorContent`) and is tested in `absences_view_test.dart`.
   - `retryLimitsRefresh honors both refreshRunning and callback bool return` (`app/test/wizard_live_test.dart`): removed with the wizard limits step and `retryLimitsRefresh`; the B7 `already_running` snackbar check is covered at *Dokončit* in `wizard_live_test.dart`.
+- **F1 (preset Bakaláři link not editable):** Removed the *Změnit* button from the preset Bakaláři row (*Škola: bakaweb.gekom.cz*) in `wizard_view.dart` per the owner's 2026-11-17 decision ("One thing, I wouldnt give them the option to change the link"); *Změnit* remains on Strava canteen (`Jídelna: 1950`).
 - **F1 (Android phone verification method):** Cleared only `.test` (`io.github.dendlerx.strakalari.test`, under the owner's standing S4 permission; Play app untouched), verified F1 resume rule (interrupted step 2 resumes at Škola), walked through GEKOM → demo Bakaláři → Strava prefill → Omluvenky → Telefon (`POST_NOTIFICATIONS` Allow) → Dokončit, and captured `KeepAliveService` (`foregroundId=7301`).
 
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)

@@ -1092,6 +1092,7 @@ void main() {
       expect(find.text('Škola: bakaweb.gekom.cz'), findsOneWidget);
       expect(find.text(Strings.get('wiz_bakalari_p_preset')), findsOneWidget);
       expect(find.text(Strings.get('wiz_bakalari_p')), findsNothing);
+      expect(find.text(Strings.get('wiz_prefill_change')), findsNothing);
       expect(find.byKey(const ValueKey('draft:wiz:bakalari_url')), findsNothing);
 
       await tester.enterText(

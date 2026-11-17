@@ -230,7 +230,6 @@ class WizardController extends ChangeNotifier {
   bool get showBakalariUrlField =>
       '${config['bakalari_url'] ?? ''}'.trim().isNotEmpty ||
       presetBakalariUrl().isEmpty ||
-      drafts['wiz:edit_bakalari_url'] == '1' ||
       drafts.containsKey('wiz:bakalari_url');
 
   bool get showStravaCanteenField =>

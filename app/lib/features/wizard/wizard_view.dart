@@ -596,13 +596,8 @@ class _WizardViewState extends State<WizardView>
           const SizedBox(height: 16),
           if (!c.showBakalariUrlField)
             _prefillRow(
-              key: const Key('wiz:change_bakalari_url'),
               text: Strings.format('wiz_prefill_school',
                   {'host': _displayHost(c.presetBakalariUrl())}),
-              onChange: () {
-                c.setDraftSilent('wiz:bakalari_url', c.presetBakalariUrl());
-                c.setDraft('wiz:edit_bakalari_url', '1');
-              },
             )
           else
             _field(Strings.get('bakalari_url'), 'wiz:bakalari_url',
@@ -922,9 +917,9 @@ if (c.testing == service) {
   }
 
   Widget _prefillRow({
-    required Key key,
+    Key? key,
     required String text,
-    required VoidCallback onChange,
+    VoidCallback? onChange,
   }) {
     final t = tokens;
     return Padding(
@@ -938,11 +933,12 @@ if (c.testing == service) {
                     fontSize: t.fsBody,
                     fontWeight: FontWeight.w500)),
           ),
-          TextButton(
-            key: key,
-            onPressed: onChange,
-            child: Text(Strings.get('wiz_prefill_change')),
-          ),
+          if (onChange != null)
+            TextButton(
+              key: key,
+              onPressed: onChange,
+              child: Text(Strings.get('wiz_prefill_change')),
+            ),
         ],
       ),
     );
