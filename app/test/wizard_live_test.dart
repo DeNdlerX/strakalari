@@ -281,7 +281,7 @@ void main() {
             ],
             child: MaterialApp(
               home: Scaffold(
-                body: LiveWizardView(tokens: AppTokens.dark(), narrow: true),
+                body: LiveWizardView(tokens: AppTokens.dark()),
               ),
             ),
           ),
