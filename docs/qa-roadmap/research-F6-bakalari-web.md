@@ -165,7 +165,7 @@ for this week and the next two):
   in the week. The day widget showed that lesson as `absent`.
 - **Not in the feed:** whole free days (`Days[].DayOff`, e.g. today's
   holiday). A free day added at short notice would therefore only show in
-  the week safety net, or in the events calendar (§8.1). The student's own
+  the week safety net, or in the events calendar (§10). The student's own
   absence and lesson topics aren't in it either (not needed quickly).
 
 **Verdict:** the feed is enough for the 5-minute tick. Fetch a week again
