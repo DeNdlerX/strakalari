@@ -1,7 +1,7 @@
 # QA & roadmap status
 
 Branch: qa-roadmap · Base: main @ a528acd · Current phase: 2
-Next step: R2 review of Phase 2 (P1–P10, N1) before starting Phase 3.
+Next step: Fix every finding in `reviews/phase-2.md` (blockers first), one commit per finding, then stop for re-review.
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -52,6 +52,7 @@ Next step: R2 review of Phase 2 (P1–P10, N1) before starting Phase 3.
 
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
 ### Phase 2 (`P1`–`P10`, `N1` complete, checkpoint ⛔ R2)
+- **2026-11-17 R2 review: FAIL**: 2 must-fix (M1 N1 bug not reproduced and after-evidence lacks the multi-chip row, M2 P8 send button still enabled before the first refresh), 4 should-fix. See [`reviews/phase-2.md`](reviews/phase-2.md).
 - **What was done:** Completed all ten phone-polish items (`P1`–`P10`) and the Android collapsed notification fix (`N1`) on branch `qa-roadmap`, one commit per item (`0a397bf`, `401dc6b`, `4021a1d`, `b439ce7`, `ed137c9`, `c707421`, `1b5ddcf`, `8db060e`, `a9b29a1`, `0bfe108`, `553e8e7`):
   - `P1`–`P4` (Wizard): mobile wording via `Strings.isMobile`, password show/hide eye toggle, pinned header/footer navigation on the long Limits list, and theme `switchTheme` thumb contrast in dark and light themes.
   - `P5`–`P7` (Dnes, Rozvrh, Známky): empty excuses copy (`no_pending_excuses`), suppressed old=new room changes (`schedule.dart` + demo server fix), legend placement above the table on phones, `6 px` period/time gap in list view, active `ElevatedButton` highlight on *Tento týden*, and `CustomPaint` trend line chart (`_TrendChartPainter`) with axis labels and markers.
