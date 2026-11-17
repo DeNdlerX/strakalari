@@ -1,10 +1,17 @@
+import 'dart:io';
+
+import 'package:app/controllers/app_state.dart';
 import 'package:app/features/absences/absences_controller.dart';
+import 'package:app/features/absences/absences_live.dart';
 import 'package:app/features/absences/absences_view.dart';
 import 'package:app/features/common/app_tokens.dart';
+import 'package:app/features/settings/settings_view.dart';
 import 'package:app/l10n/strings.dart';
 import 'package:app/widgets/app_widgets.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:strakalari_core/strakalari_core.dart' as core;
 
 /// Checkpoint B BR3-M2: Absences looks like `views/absences.py`:
 /// the percentage right of every bar (`components.meter`, track 140 px),
@@ -104,4 +111,74 @@ void main() {
     expect(heights[1], heights[0]);
     expect(heights[2], heights[0]);
   });
+
+  testWidgets(
+      'F1 Absence tab shows no-limits hint and opens shared limits editor that saves to config',
+      (t) async {
+    final tmp = Directory.systemTemp.createTempSync('strakalari_abs_lim_');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    core.setEnvironmentOverride(
+        {'STRAKALARI_DATA_DIR': tmp.path, 'STRAKALARI_NO_KEYRING': '1'});
+    Strings.lang = 'cs';
+
+    final s = AppState(
+      configData: {
+        'language': 'cs',
+        'tutorials_enabled': false,
+        'subject_limits': <String, double>{},
+        'absence_critical_pct': 25.0,
+      },
+      data: {
+        'absence': {'Matematika': 10.0},
+      },
+    );
+
+    await t.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appStateProvider.overrideWith(() => _SeededAbsAppState(s)),
+        ],
+        child: MaterialApp(
+          theme: AppTokens.dark().toThemeData(),
+          home: Scaffold(
+            body: LiveAbsencesView(tokens: AppTokens.dark(), narrow: true),
+          ),
+        ),
+      ),
+    );
+    await t.pump();
+
+    expect(find.byKey(const Key('abs:limits_btn')), findsOneWidget);
+    expect(find.byKey(const Key('abs:no_limits_banner')), findsOneWidget);
+    expect(find.text(Strings.get('abs_no_limits')), findsOneWidget);
+
+    await t.tap(find.byKey(const Key('abs:no_limits_btn')));
+    await t.pumpAndSettle();
+
+    expect(find.byType(LimitsEditorContent), findsOneWidget);
+    final matField = find.byKey(const Key('lim:subj:Matematika'));
+    await t.ensureVisible(matField);
+    await t.enterText(matField, '18');
+    await t.tap(find.byKey(const Key('abs:limits_done')));
+    await t.pumpAndSettle();
+
+    expect(s.get('subject_limits'), {'Matematika': 18.0});
+    expect(find.byKey(const Key('abs:no_limits_banner')), findsNothing);
+    expect(find.byKey(const Key('abs:limits_btn')), findsOneWidget);
+  });
+}
+
+class _SeededAbsAppState extends AppStateController {
+  final AppState seeded;
+  _SeededAbsAppState(this.seeded);
+
+  @override
+  AppState build() {
+    seeded.onChanged = () {
+      // ignore: avoid_self_assignment
+      state = state;
+    };
+    seeded.onProgress = seeded.onChanged;
+    return seeded;
+  }
 }

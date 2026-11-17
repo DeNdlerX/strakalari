@@ -2,6 +2,7 @@ import '../../l10n/strings.dart';
 import 'package:flutter/material.dart';
 
 import '../../widgets/app_widgets.dart' as w;
+import '../../widgets/marks_bands_card.dart';
 
 import '../../tutorial/tutorial_ui.dart';
 import '../common/app_tokens.dart';
@@ -73,7 +74,7 @@ final hasGrades = c.grades.isNotEmpty;
       if (selected != null) {
         blocks.addAll(_detail(context, selected, bands));
       } else {
-        blocks.add(_scaleToggle());
+        if (!c.hasPresetScale) blocks.add(_scaleToggle());
         blocks.add(_stats(items, bands));
         final banner = _predictionBanner(context);
         if (banner != null) blocks.add(banner);
@@ -204,7 +205,9 @@ final hasGrades = c.grades.isNotEmpty;
       heading: Strings.get('marks_title'),
       updated: controller.updatedLabel,
       tok: tokens,
-      actions: [if (hasGrades && !narrow) _scaleToggle()],
+      actions: [
+        if (hasGrades && !narrow && !controller.hasPresetScale) _scaleToggle(),
+      ],
     );
   }
 
@@ -601,7 +604,7 @@ final out = <Widget>[
     ];
     final planned = _plannedMarks(context, items);
     if (planned != null) out.add(planned);
-    out.add(_bandsCard(context));
+    if (!controller.hasPresetBands) out.add(_bandsCard(context));
     return out;
   }
 
@@ -760,12 +763,19 @@ final entries = <(DateTime?, SubjectSummary, Map<String, Object?>)>[];
       parseCzDate(mark['TestDate'] ?? mark['Date']);
 
   Widget _bandsCard(BuildContext context) {
-    final (bands, source) = controller.marksBandsSource();
-    return _BandsCard(
-      controller: controller,
+    final c = controller;
+    final (bands, source) = c.marksBandsSource();
+    return MarksBandsCard(
       tokens: tokens,
       bands: bands,
       source: source,
+      presetBands: c.presetBands,
+      presetTitle: c.presetTitle,
+      readDraft: c.draft,
+      writeDraft: c.setDraft,
+      clearDrafts: c.clearDrafts,
+      onSaveBands: (b) => c.setMarksBands(b),
+      currentBands: c.marksBands,
       onSnack: _snack,
       sectionBuilder: _section,
     );
@@ -834,7 +844,7 @@ final head = Row(
     );
     final top = <Widget>[
       head,
-      _scalePicker(summary),
+      if (!c.hasPresetScale) _scalePicker(summary),
       _detailStats(summary, bands)
     ];
     final chart = _trendChart(summary, bands);
@@ -1578,199 +1588,6 @@ final rows = <Widget>[];
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
-  }
-}
-
-/// Stateful grade bands card owning its four [TextEditingController]s and
-/// [FocusNode]s across parent rebuilds.
-class _BandsCard extends StatefulWidget {
-  final MarksController controller;
-  final AppTokens tokens;
-  final List<double> bands;
-  final String source;
-  final void Function(BuildContext context, String message) onSnack;
-  final Widget Function(String title, List<Widget> controls,
-      {IconData? icon}) sectionBuilder;
-
-  const _BandsCard({
-    required this.controller,
-    required this.tokens,
-    required this.bands,
-    required this.source,
-    required this.onSnack,
-    required this.sectionBuilder,
-  });
-
-  @override
-  State<_BandsCard> createState() => _BandsCardState();
-}
-
-class _BandsCardState extends State<_BandsCard> {
-  late final List<TextEditingController> _fields;
-  late final List<FocusNode> _focusNodes;
-  bool _syncing = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _focusNodes = List.generate(4, (_) => FocusNode());
-    _fields = List.generate(4, (i) {
-      final key = 'marks:band:${i + 1}';
-      final ctrl = TextEditingController(
-        text: widget.controller.draft(key, gFormat(widget.bands[i])),
-      );
-      ctrl.addListener(() {
-        if (!_syncing) {
-          widget.controller.setDraft(key, ctrl.text);
-        }
-      });
-      return ctrl;
-    });
-  }
-
-  void _syncField(int index, String value) {
-    _syncing = true;
-    try {
-      _fields[index].text = value;
-    } finally {
-      _syncing = false;
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _BandsCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    for (var i = 0; i < 4; i++) {
-      if (_focusNodes[i].hasFocus) continue;
-      final key = 'marks:band:${i + 1}';
-      final desired = widget.controller.draft(key, gFormat(widget.bands[i]));
-      if (_fields[i].text != desired) {
-        _syncField(i, desired);
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    for (final f in _fields) {
-      f.dispose();
-    }
-    for (final n in _focusNodes) {
-      n.dispose();
-    }
-    super.dispose();
-  }
-
-  void _save(BuildContext context) {
-    final c = widget.controller;
-    List<double>? parsed;
-    try {
-      parsed = [
-        for (final f in _fields)
-          double.parse(f.text.replaceAll(',', '.').trim())
-      ];
-    } catch (_) {
-      parsed = null;
-    }
-    if (parsed != null && c.setMarksBands(parsed)) {
-      c.clearDrafts('marks:band:');
-      final updated = c.marksBands();
-      for (var i = 0; i < 4; i++) {
-        _syncField(i, gFormat(updated[i]));
-      }
-      widget.onSnack(context, Strings.get('marks_bands_saved'));
-    } else {
-      widget.onSnack(context, Strings.get('marks_bands_invalid'));
-    }
-  }
-
-  void _reset() {
-    final c = widget.controller;
-    c.clearDrafts('marks:band:');
-    c.setMarksBands(null);
-    final updated = c.marksBands();
-    for (var i = 0; i < 4; i++) {
-      _syncField(i, gFormat(updated[i]));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = widget.controller;
-    final t = widget.tokens;
-    final bands = widget.bands;
-    final source = widget.source;
-
-    final cells = <Widget>[
-      for (var i = 0; i < 4; i++)
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(Strings.format('marks_band_label', {'grade': i + 2}),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: t.muted, fontSize: t.fsTiny)),
-              const SizedBox(height: 4),
-              TextField(
-                controller: _fields[i],
-                focusNode: _focusNodes[i],
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: InputDecoration(
-                  isDense: true,
-                  filled: true,
-                  fillColor: t.surface,
-                  suffixText: '%',
-                ),
-              ),
-            ],
-          ),
-        ),
-    ];
-
-    final buttons = <Widget>[
-      TextButton.icon(
-          onPressed: () => _save(context),
-          icon: const Icon(Icons.check, size: 18),
-          label: Text(Strings.get('marks_save'))),
-    ];
-    if (source == 'user') {
-      buttons.add(TextButton(
-          onPressed: _reset,
-          child: Text(
-              c.presetBands != null
-                  ? Strings.get('marks_bands_use_school')
-                  : Strings.get('marks_bands_default'),
-              style: TextStyle(color: t.muted))));
-    }
-
-    return widget.sectionBuilder(
-        Strings.get('marks_bands'),
-        [
-          Row(
-            children: [
-              Icon(
-                  source == 'preset' ? Icons.school_outlined : Icons.tune,
-                  size: 14,
-                  color: t.accent),
-              const SizedBox(width: 6),
-              Expanded(
-                  child: Text(c.bandsSourceText(source),
-                      style: TextStyle(color: t.accent, fontSize: t.fsSmall))),
-            ],
-          ),
-          Text(MarksController.bandsRanges(bands),
-              style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
-          Text(Strings.get('marks_bands_hint'),
-              style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(spacing: 8, children: cells),
-          ),
-          Wrap(spacing: 8, children: buttons),
-        ],
-        icon: Icons.percent);
   }
 }
 

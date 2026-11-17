@@ -14,12 +14,23 @@ const List<String> marksSorts = ['name', 'average', 'recent'];
 /// Pure marks logic. Port of `MarksMixin` (Flet bits dropped).
 extension MarksLogic on AppState {
   // -- persisted preferences ------------------------------------------------
+  String? presetScale() =>
+      presetMarksScale('${get('school_preset_id', '')}');
+
+  bool get hasPresetScale => presetScale() != null;
+
+  bool get hasPresetBands =>
+      presetMarksBands('${get('school_preset_id', '')}') != null;
+
   String marksScale() {
+    final preset = presetScale();
+    if (preset != null) return preset;
     final value = '${get('marks_scale', 'auto')}';
     return scaleChoices.contains(value) ? value : 'auto';
   }
 
   Map<String, String> marksSubjectScales() {
+    if (hasPresetScale) return {};
     final raw = get('marks_subject_scales', {});
     if (raw is! Map) return {};
     return {

@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../controllers/app_state.dart';
 
 import '../common/app_tokens.dart';
+import '../settings/settings_live.dart';
 import 'absences_controller.dart';
 import 'absences_view.dart';
 
@@ -17,6 +18,10 @@ AbsencesController absencesControllerFor(AppState s) {
   final c = AbsencesController();
   c.demoMode = s.demoMode;
   c.updatedLabel = s.updatedLabel;
+  final rawLimits = s.get('subject_limits', {});
+  c.hasSubjectLimits = rawLimits is Map && rawLimits.isNotEmpty;
+  c.createLimitsController = () => settingsControllerFor(s);
+  c.onLimitsUpdated = () => s.save(const {});
   final (states, _) = s.subjectStates();
   c.subjects = [
     for (final st in states)

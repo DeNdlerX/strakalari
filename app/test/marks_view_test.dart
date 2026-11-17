@@ -350,22 +350,13 @@ void main() {
     expect(source, 'preset');
     expect(bands, [87.0, 72.0, 55.0, 40.0]);
 
+    // Under F1 a preset defining bands + scale hides both controls in Známky
+    // (bands live in Settings → Škola) while still converting grades with them.
     final controller = marksControllerFor(state);
     await tester.pumpWidget(buildMarksView(controller, tester));
     final texts = extractTexts(tester);
-    expect(
-      texts,
-      contains(
-        Strings.format(
-          'marks_bands_src_preset',
-          {'school': 'GEKOM 2026/2027'},
-        ),
-      ),
-    );
-    expect(
-      texts,
-      contains('1: 100–87 · 2: 87–72 · 3: 72–55 · 4: 55–40 · 5: 40–0 %'),
-    );
+    expect(texts, isNot(contains(Strings.get('marks_bands'))));
+    expect(find.text(Strings.get('marks_scale_auto')), findsNothing);
     final chem = state.marksSummaries().first;
     expect(
       core.finalGrade(chem.average, chem.scale, state.marksBands()),
@@ -487,6 +478,74 @@ void main() {
           reason: 'percent chart missing axis label $label',
         );
       }
+    });
+  });
+
+  group('F1 preset scale and hidden bands', () {
+    testWidgets(
+        'preset marks_scale overrides user scale & per-subject scales without overwriting config, and hides switches in Známky (wide, narrow, detail)',
+        (tester) async {
+      final state = createState(
+        config: {
+          'school_preset_id': 'gekom_2026_2027',
+          'marks_scale': 'grade',
+          'marks_subject_scales': {'Chemie': 'grade'},
+        },
+        grades: {
+          'Chemie': [
+            {'Grade': '88', 'Weight': 1, 'Date': '01.09.2026'},
+          ],
+        },
+      );
+
+      expect(state.marksScale(), 'percent');
+      expect(state.marksSubjectScales(), isEmpty);
+      expect(state.get('marks_scale'), 'grade');
+      expect(state.get('marks_subject_scales'), {'Chemie': 'grade'});
+
+      // Switching back to custom restores user choices untouched.
+      expect(state.save({'school_preset_id': 'custom'}), isTrue);
+      expect(state.marksScale(), 'grade');
+      expect(state.marksSubjectScales(), {'Chemie': 'grade'});
+
+      // Back to GEKOM: UI hides global, narrow list, and detail scale switches.
+      expect(state.save({'school_preset_id': 'gekom_2026_2027'}), isTrue);
+      state.selectMarksSubject('Chemie');
+      for (final narrow in [false, true]) {
+        tester.view.physicalSize =
+            narrow ? const Size(390, 844) : const Size(1280, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+            body: MarksView(
+              controller: marksControllerFor(state),
+              tokens: AppTokens.dark(),
+              narrow: narrow,
+            ),
+          ),
+        ));
+        await tester.pump();
+
+        expect(find.text(Strings.get('marks_scale_auto')), findsNothing);
+        expect(find.text(Strings.get('marks_scale_label')), findsNothing);
+      }
+    });
+
+    testWidgets('custom school keeps scale switches and bands card visible',
+        (tester) async {
+      final state = createState(
+        config: {'school_preset_id': 'custom'},
+        grades: {
+          'Chemie': [
+            {'Grade': '88', 'Weight': 1, 'Date': '01.09.2026'},
+          ],
+        },
+      );
+      await tester.pumpWidget(buildMarksView(marksControllerFor(state), tester));
+      expect(find.text(Strings.get('marks_scale_auto')), findsOneWidget);
+      expect(find.text(Strings.get('marks_bands').toUpperCase()), findsOneWidget);
     });
   });
 }

@@ -1,5 +1,6 @@
 import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import 'package:app/features/settings/settings_controller.dart';
@@ -8,6 +9,7 @@ import 'package:app/features/common/app_tokens.dart';
 import 'package:app/features/common/open_url.dart';
 import 'package:app/platform/scheduler_jobs.dart' show checkIntervalMinutes;
 import 'package:app/widgets/app_widgets.dart' as w;
+import 'package:app/widgets/marks_bands_card.dart';
 import 'package:app/widgets/overlays.dart';
 
 const List<String> kNotificationEvents = [
@@ -842,9 +844,9 @@ class SettingsView extends StatelessWidget {
   List<Widget> _section(BuildContext context, String section) {
     switch (section) {
       case 'limits':
-        return _limits();
+        return _limits(context);
       case 'calendar':
-        return _calendar();
+        return _calendar(context);
       case 'alarm':
         return _alarm();
       case 'templates':
@@ -1017,83 +1019,25 @@ class SettingsView extends StatelessWidget {
   }
 
   // -- limits ----------------------------------------------------------------------
-  List<Widget> _limits() {
-    final c = controller;
-    double? num_(String raw) {
-      try {
-        return double.parse(raw.replaceAll(',', '.'));
-      } catch (_) {
-        return null;
-      }
-    }
-
-    final subjects = () {
-      final raw = c.get('absence', {});
-      if (raw is Map) return raw.keys.map((k) => '$k').toList()..sort();
-      return <String>[];
-    }();
-    final limits = c.get('subject_limits', {});
+  List<Widget> _limits(BuildContext context) {
     return [
       Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
-              spacing: 20,
+            spacing: 16,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              AutosaveField(
-                controller: c,
-                label: Strings.get('default_limit'),
-                draftKey: 'lim:default',
-                configKey: 'absence_critical_pct',
-                fallback: '${c.get('absence_critical_pct', 25.0)}',
-                parse: (raw) => num_(raw) ?? 25.0,
-              ),
-              AutosaveField(
-                controller: c,
-                label: Strings.get('warn_limit'),
-                draftKey: 'lim:warn',
-                configKey: 'absence_warn_pct',
-                fallback: '${c.get('absence_warn_pct', 15.0)}',
-                parse: (raw) => num_(raw) ?? 15.0,
-              ),
-              AutosaveField(
-                controller: c,
-                label: Strings.get('reserve_limit'),
-                draftKey: 'lim:reserve',
-                configKey: 'absence_plan_reserve_pct',
-                fallback:
-                    '${c.get('absence_plan_reserve_pct', 10.0)}',
-                parse: (raw) {
-                  final v = num_(raw) ?? 10.0;
-                  return v.clamp(0.0, 99.9);
+              _CardTitle(Strings.get('sec_limits')),
+              _Hint(Strings.get('limits_in_absences_p')),
+              FilledButton.icon(
+                key: const Key('settings:go_absences_limits'),
+                onPressed: () {
+                  GoRouter.maybeOf(context)?.go('/absences');
                 },
+                icon: const Icon(Icons.arrow_forward),
+                label: Text(Strings.get('open_absences')),
               ),
-              _Hint(Strings.get('reserve_hint')),
-              for (final subject in subjects)
-                AutosaveField(
-                  key: Key('lim:subj:$subject'),
-                  controller: c,
-                  label: subject,
-                  draftKey: 'lim:subj:$subject',
-                  configKey: 'subject_limits:$subject',
-                  fallback: limits is Map
-                      ? '${limits[subject] ?? ''}'
-                      : '',
-                  parse: (raw) => raw.trim().isEmpty
-                      ? '__blank__'
-                      : num_(raw),
-                  onSaved: (v) {
-                    final current = Map.of(
-                        c.get('subject_limits', {}) ?? {});
-                    if (v == '__blank__') {
-                      current.remove(subject);
-                    } else {
-                      current[subject] = v;
-                    }
-                    c.saveQuiet({'subject_limits': current});
-                  },
-                ),
-              _Hint(Strings.get('limit_subject_hint')),
             ],
           ),
         ),
@@ -1102,8 +1046,9 @@ class SettingsView extends StatelessWidget {
   }
 
   // -- calendar ----------------------------------------------------------------------
-  List<Widget> _calendar() {
+  List<Widget> _calendar(BuildContext context) {
     final c = controller;
+    final tok = tokensOf(context);
     final presetOpts = core.presetOptions(Strings.lang);
     final rawPreset = '${c.get('school_preset_id', 'custom')}';
     final knownIds = {for (final (id, _) in presetOpts) id, 'custom'};
@@ -1113,6 +1058,12 @@ class SettingsView extends StatelessWidget {
     final rawSem2 = '${c.get('sem2_close', '')}';
     final days = c.userFreeDays();
     days.sort((a, b) => '${a['date']}'.compareTo('${b['date']}'));
+    final resolvedBands =
+        core.resolveMarksBands(c.config.cast<String, Object?>());
+    final presetBands = core.presetMarksBands(presetId);
+    final preset = core.getPreset(presetId);
+    final presetTitle =
+        preset != null ? core.presetTitle(preset, Strings.lang) : '';
     return [
       Card(
         child: Padding(
@@ -1135,6 +1086,7 @@ class SettingsView extends StatelessWidget {
                 ],
                 onChanged: (v) {
                   if (v == null || v == presetId) return;
+                  c.clearDrafts('marks:band:');
                   c.save({'school_preset_id': v});
                   onChanged?.call();
                 },
@@ -1174,6 +1126,31 @@ class SettingsView extends StatelessWidget {
             ],
           ),
         ),
+      ),
+      MarksBandsCard(
+        key: ValueKey('cal:bands:$presetId'),
+        tokens: tok,
+        bands: resolvedBands.bands,
+        source: resolvedBands.source,
+        presetBands: presetBands,
+        presetTitle: presetTitle,
+        readDraft: c.draft,
+        writeDraft: c.setDraft,
+        clearDrafts: c.clearDrafts,
+        onSaveBands: (b) {
+          if (b == null) {
+            final ok = c.save({'marks_percent_bands': <double>[]});
+            if (ok) onChanged?.call();
+            return ok;
+          }
+          if (!core.bandsValid(b)) return false;
+          final ok = c.save({'marks_percent_bands': List<double>.of(b)});
+          if (ok) onChanged?.call();
+          return ok;
+        },
+        currentBands: () =>
+            core.resolveMarksBands(c.config.cast<String, Object?>()).bands,
+        onSnack: appSnack,
       ),
       Card(
         child: Padding(
@@ -1984,5 +1961,86 @@ class SettingsView extends StatelessWidget {
         ),
       ),
     ];
+  }
+}
+
+/// Shared attendance limits editor used by the Absences screen dialog.
+class LimitsEditorContent extends StatelessWidget {
+  final SettingsController controller;
+
+  const LimitsEditorContent({super.key, required this.controller});
+
+  static double? _parseNum(String raw) {
+    try {
+      return double.parse(raw.replaceAll(',', '.'));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = controller;
+    final subjects = () {
+      final raw = c.get('absence', {});
+      if (raw is Map) return raw.keys.map((k) => '$k').toList()..sort();
+      return <String>[];
+    }();
+    final limits = c.get('subject_limits', {});
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: 20,
+      children: [
+        AutosaveField(
+          controller: c,
+          label: Strings.get('default_limit'),
+          draftKey: 'lim:default',
+          configKey: 'absence_critical_pct',
+          fallback: '${c.get('absence_critical_pct', 25.0)}',
+          parse: (raw) => _parseNum(raw) ?? 25.0,
+        ),
+        AutosaveField(
+          controller: c,
+          label: Strings.get('warn_limit'),
+          draftKey: 'lim:warn',
+          configKey: 'absence_warn_pct',
+          fallback: '${c.get('absence_warn_pct', 15.0)}',
+          parse: (raw) => _parseNum(raw) ?? 15.0,
+        ),
+        AutosaveField(
+          controller: c,
+          label: Strings.get('reserve_limit'),
+          draftKey: 'lim:reserve',
+          configKey: 'absence_plan_reserve_pct',
+          fallback: '${c.get('absence_plan_reserve_pct', 10.0)}',
+          parse: (raw) {
+            final v = _parseNum(raw) ?? 10.0;
+            return v.clamp(0.0, 99.9);
+          },
+        ),
+        _Hint(Strings.get('reserve_hint')),
+        for (final subject in subjects)
+          AutosaveField(
+            key: Key('lim:subj:$subject'),
+            controller: c,
+            label: subject,
+            draftKey: 'lim:subj:$subject',
+            configKey: 'subject_limits:$subject',
+            fallback: limits is Map ? '${limits[subject] ?? ''}' : '',
+            parse: (raw) => raw.trim().isEmpty ? '__blank__' : _parseNum(raw),
+            onSaved: (v) {
+              final current = Map.of(c.get('subject_limits', {}) ?? {});
+              if (v == '__blank__') {
+                current.remove(subject);
+              } else {
+                current[subject] = v;
+              }
+              c.saveQuiet({'subject_limits': current});
+            },
+          ),
+        _Hint(Strings.get('limit_subject_hint')),
+      ],
+    );
   }
 }

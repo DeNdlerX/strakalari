@@ -664,6 +664,85 @@ void main() {
       });
     }
   });
+
+  group('F1 Settings → Škola & limits link', () {
+    testWidgets(
+        'sec_calendar is localized as Škola/School and hosts MarksBandsCard saving & resetting bands',
+        (t) async {
+      final prevLang = Strings.lang;
+      addTearDown(() => Strings.lang = prevLang);
+
+      Strings.lang = 'cs';
+      expect(Strings.get('sec_calendar'), 'Škola');
+      Strings.lang = 'en';
+      expect(Strings.get('sec_calendar'), 'School');
+      Strings.lang = 'cs';
+
+      final c = _controller({
+        'school_preset_id': 'gekom_2026_2027',
+        'marks_percent_bands': <double>[],
+        'user_free_days': [],
+      });
+      t.view.physicalSize = const Size(800, 4000);
+      t.view.devicePixelRatio = 1.0;
+      addTearDown(t.view.reset);
+      c.settingsSection = 'calendar';
+      c.settingsOpen = true;
+      await t.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) => SettingsView(
+                controller: c,
+                narrow: true,
+                onChanged: () => setState(() {}),
+              ),
+            ),
+          ),
+        ),
+      );
+      await t.pump();
+
+      // GEKOM preset bands displayed.
+      expect(
+        find.text(Strings.format(
+            'marks_bands_src_preset', {'school': 'GEKOM 2026/2027'})),
+        findsOneWidget,
+      );
+      expect(find.text('1: 100–87 · 2: 87–72 · 3: 72–55 · 4: 55–40 · 5: 40–0 %'),
+          findsOneWidget);
+
+      // Edit first boundary and save -> writes marks_percent_bands and shows Reset.
+      await t.enterText(find.byKey(const Key('marks:band:1')), '90');
+      await t.tap(find.byKey(const Key('marks:bands_save')));
+      await t.pumpAndSettle();
+
+      expect(c.get('marks_percent_bands'), [90.0, 72.0, 55.0, 40.0]);
+      expect(find.text(Strings.get('marks_bands_src_user')), findsOneWidget);
+
+      // Reset with "Podle školy" clears marks_percent_bands.
+      await t.tap(find.byKey(const Key('marks:bands_reset')));
+      await t.pumpAndSettle();
+      expect(c.get('marks_percent_bands'), isEmpty);
+      expect(
+        find.text(Strings.format(
+            'marks_bands_src_preset', {'school': 'GEKOM 2026/2027'})),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+        'Settings → limits shows link to Absences instead of duplicate editor',
+        (t) async {
+      Strings.lang = 'cs';
+      final c = _controller({'absence': {'Matematika': 10.0}});
+      await _openSection(t, c, 'limits');
+
+      expect(find.byKey(const Key('settings:go_absences_limits')), findsOneWidget);
+      expect(find.byType(LimitsEditorContent), findsNothing);
+      expect(find.byType(AutosaveField), findsNothing);
+    });
+  });
 }
 
 class _SeededAppState extends AppStateController {

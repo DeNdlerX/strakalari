@@ -20,6 +20,8 @@ class Strings {
   static bool isMobile = false;
 
   static const Map<String, String> _cs = {
+    "abs_limits_btn": "Limity",
+    "abs_no_limits": "Zatím nejsou nastavené limity",
     "absence_title": "Absence",
     "account_bakalari": "Bakaláři",
     "account_strava": "Strava",
@@ -315,6 +317,7 @@ class Strings {
     "lessons_many": "{n} hodin",
     "lessons_one": "{n} hodina",
     "limit_subject_hint": "Prázdné = platí výchozí limit výše.",
+    "limits_in_absences_p": "Limity docházky a předmětů nastavíte přímo v záložce Absence.",
     "live_log": "Živý protokol",
     "log_copy_tooltip": "Zkopírovat protokol (bez hesel)",
     "log_errors": "Chyby: {n}",
@@ -462,6 +465,7 @@ class Strings {
     "or_one_by_one": "Nebo jednotlivě ({n})",
     "order_mode_label": "Objednávání obědů",
     "ordered": "Objednáno",
+    "open_absences": "Otevřít Absenci",
     "orders_dry_run": "Nanečisto — nic nebylo odesláno",
     "orders_failed": "Objednávky se nepodařilo odeslat",
     "orders_sending": "Objednávky se odesílají…",
@@ -555,7 +559,7 @@ class Strings {
     "sec_alarm": "Budík",
     "sec_appearance": "Vzhled",
     "sec_browser": "Běh na pozadí",
-    "sec_calendar": "Školní kalendář",
+    "sec_calendar": "Škola",
     "sec_diagnostics": "Diagnostika",
     "sec_group_advanced": "Pokročilé",
     "sec_group_app": "Aplikace",
@@ -820,6 +824,8 @@ class Strings {
   };
 
   static const Map<String, String> _en = {
+    "abs_limits_btn": "Limits",
+    "abs_no_limits": "No limits set yet",
     "absence_title": "Absences",
     "account_bakalari": "Bakaláři",
     "account_strava": "Strava",
@@ -1115,6 +1121,7 @@ class Strings {
     "lessons_many": "{n} lessons",
     "lessons_one": "{n} lesson",
     "limit_subject_hint": "Empty = the default limit above applies.",
+    "limits_in_absences_p": "Attendance and subject limits are set directly in the Absences tab.",
     "live_log": "Live log",
     "log_copy_tooltip": "Copy the log (passwords removed)",
     "log_errors": "Errors: {n}",
@@ -1262,6 +1269,7 @@ class Strings {
     "or_one_by_one": "Or one by one ({n})",
     "order_mode_label": "Ordering lunches",
     "ordered": "Ordered",
+    "open_absences": "Open Absences",
     "orders_dry_run": "Dry run — nothing was ordered",
     "orders_failed": "Could not send the orders",
     "orders_sending": "Sending orders…",
@@ -1355,7 +1363,7 @@ class Strings {
     "sec_alarm": "Wake-up alarm",
     "sec_appearance": "Appearance",
     "sec_browser": "Background",
-    "sec_calendar": "School calendar",
+    "sec_calendar": "School",
     "sec_diagnostics": "Diagnostics",
     "sec_group_advanced": "Advanced",
     "sec_group_app": "App",

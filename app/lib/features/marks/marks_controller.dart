@@ -32,8 +32,15 @@ class MarksController extends ChangeNotifier {
   /// `{subject: {Grade, Note}}` (`quarterly_marks()`).
   Map<String, Map<String, Object?>> quarterlyMarks = {};
 
+  /// School preset scale (`presetMarksScale()`), null when none.
+  String? presetScale;
+
   /// School preset bands (`preset_marks_bands()`), null when none.
   List<double>? presetBands;
+
+  bool get hasPresetScale => presetScale == 'grade' || presetScale == 'percent';
+
+  bool get hasPresetBands => presetBands != null && bandsValid(presetBands);
 
   /// Preset title for the bands source line.
   String presetTitle = '';
@@ -66,11 +73,13 @@ class MarksController extends ChangeNotifier {
   // -- persisted preferences ----------------------------------------------------------
 
   String marksScale() {
+    if (hasPresetScale) return presetScale!;
     final value = '${config['marks_scale'] ?? 'auto'}';
     return scaleChoices.contains(value) ? value : 'auto';
   }
 
   Map<String, String> marksSubjectScales() {
+    if (hasPresetScale) return {};
     final raw = config['marks_subject_scales'];
     if (raw is! Map) return {};
     return {

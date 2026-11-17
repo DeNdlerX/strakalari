@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../l10n/strings.dart';
 import '../common/format.dart';
+import '../settings/settings_controller.dart';
 
 /// One subject's absence state — the fields `views/absences.py` reads
 /// off `SubjectState` (`name`, `current_pct`, `status`, `limit_pct`,
@@ -58,6 +59,15 @@ AbsencesController();
 
   /// `updated_label` text (unused by the layout but kept for parity).
   String updatedLabel = '';
+
+  /// Whether at least one per-subject limit is set in `subject_limits`.
+  bool hasSubjectLimits = false;
+
+  /// Builds a [SettingsController] to edit limits from this screen.
+  SettingsController Function()? createLimitsController;
+
+  /// Called after closing the limits dialog so UI/limits re-sync.
+  VoidCallback? onLimitsUpdated;
 
   /// Mean of subject percents — like `sum(s.current_pct) / len(states)`.
   double get average => subjects.isEmpty

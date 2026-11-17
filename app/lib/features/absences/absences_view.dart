@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../tutorial/tutorial_ui.dart';
 import '../../widgets/app_widgets.dart' as w;
 import '../common/app_tokens.dart';
+import '../settings/settings_view.dart' show LimitsEditorContent;
 import 'absences_controller.dart';
 
 /// Absences (Absence) screen — port of `views/absences.py`.
@@ -29,23 +30,97 @@ class AbsencesView extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: controller,
-      builder: (context, _) => _body(),
+      builder: (context, _) => _body(context),
     );
   }
 
-  Widget _body() {
+  Future<void> _openLimitsDialog(BuildContext context) async {
+    final builder = controller.createLimitsController;
+    if (builder == null) return;
+    final limitsCtrl = builder();
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(Strings.get('sec_limits')),
+        content: SizedBox(
+          width: 480,
+          child: SingleChildScrollView(
+            child: LimitsEditorContent(controller: limitsCtrl),
+          ),
+        ),
+        actions: [
+          FilledButton(
+            key: const Key('abs:limits_done'),
+            onPressed: () {
+              FocusManager.instance.primaryFocus?.unfocus();
+              Navigator.of(ctx).pop();
+            },
+            child: Text(Strings.get('close')),
+          ),
+        ],
+      ),
+    );
+    controller.onLimitsUpdated?.call();
+  }
+
+  Widget? _noLimitsBanner(BuildContext context) {
+    final c = controller;
+    if (c.hasSubjectLimits || c.createLimitsController == null) return null;
+    final t = tokens;
+    return Card(
+      key: const Key('abs:no_limits_banner'),
+      color: t.card,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(t.radiusMd),
+        side: BorderSide(color: t.border),
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: t.pad, vertical: 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(Strings.get('abs_no_limits'),
+                  style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              key: const Key('abs:no_limits_btn'),
+              onPressed: () => _openLimitsDialog(context),
+              child: Text(Strings.get('abs_limits_btn')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _body(BuildContext context) {
     final c = controller;
     final t = tokens;
-final header = w.HeaderRow(
+    final header = w.HeaderRow(
       heading: Strings.get('absence_title'),
       updated: c.updatedLabel,
       tok: t,
+      actions: [
+        if (c.createLimitsController != null)
+          OutlinedButton.icon(
+            key: const Key('abs:limits_btn'),
+            onPressed: () => _openLimitsDialog(context),
+            icon: const Icon(Icons.tune, size: 18),
+            label: Text(Strings.get('abs_limits_btn')),
+          ),
+      ],
     );
+    final noLimits = _noLimitsBanner(context);
     if (c.subjects.isEmpty) {
       return ListView(
         padding: EdgeInsets.zero,
         children: [
           header,
+          if (noLimits != null) ...[
+            SizedBox(height: t.gap),
+            noLimits,
+          ],
           SizedBox(height: t.gap),
           w.EmptyState(text: Strings.get('no_data'), tok: t),
           if (c.demoMode)
@@ -99,6 +174,10 @@ final header = w.HeaderRow(
         padding: EdgeInsets.zero,
         children: [
           header,
+          if (noLimits != null) ...[
+            SizedBox(height: (t.gap ~/ 2) + 2.0),
+            noLimits,
+          ],
           SizedBox(height: (t.gap ~/ 2) + 2.0),
           stats,
           // `absences.py`: every block and row `tok.gap // 2 + 2` apart.
@@ -116,6 +195,10 @@ final header = w.HeaderRow(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           header,
+          if (noLimits != null) ...[
+            SizedBox(height: t.gap),
+            noLimits,
+          ],
           SizedBox(height: t.gap),
           stats,
           SizedBox(height: t.gap),
