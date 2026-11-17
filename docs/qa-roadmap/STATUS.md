@@ -1,7 +1,7 @@
 # QA & roadmap status
 
-Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3 (checkpoint ⛔ R3 ready for re-review)
-Next step: Have the reviewer check R3 (M4 fixed at `bba4886`). After R3 passes, do O1 and start F1b with `design-F1b.md`.
+Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3 (R3 re-review 4: PASS)
+Next step: Phase 3 passed (2026-11-17). Do O1 (one commit, as its row says), then write `design-F1b.md` and stop for its review (`reviews/phase-3b-design.md`) before any F1b code. Start phase 4 (F2) once the owner's go and answers (D2) are in STATUS.md.
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -85,6 +85,7 @@ Next step: Have the reviewer check R3 (M4 fixed at `bba4886`). After R3 passes, 
 
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
 ### Phase 3 (`F1` complete, checkpoint ⛔ R3)
+- **2026-11-17 R3 re-review 4: PASS**: M4 is fixed with the change asked for. A hidden address or canteen field now always means the school's own value, and the three new tests fail without the fix. No finding is left. Baseline for the next review: core 808 passed / 2 skipped, app 718 passed / 1 skipped. See [`reviews/phase-3.md`](reviews/phase-3.md#re-review-4-2026-11-17).
 - **2026-11-17 R3 M4 fix (`bba4886`):**
   - **M4 (`bba4886`):** Updated `effectiveBakalariUrl()` and `effectiveCanteenId()` in `app/lib/features/wizard/wizard_controller.dart` so an empty draft is ignored when the corresponding field is hidden (`!showBakalariUrlField` / `!showStravaCanteenField`), falling back to `config` or the preset value while keeping cleared visible fields under *Jiná škola* or own config overrides empty. Added the three R3 M4 tests in `app/test/wizard_live_test.dart` (path 1 live, path 2 live, and Strava canteen + custom/override empty cases; verified all 3 failed before the fix and pass after).
   - **Checks after final edit:** `dart pub get --enforce-lockfile`, `packages/strakalari_core` (`dart analyze` clean, `dart test` 808 passed, 2 pre-existing POSIX/macOS skipped), `app` (`flutter analyze` clean, `flutter test` 718 passed, 1 pre-existing skipped).

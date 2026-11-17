@@ -994,3 +994,102 @@ stuck on step 3. The fix is four lines, and the reviewer tested it (below).
       Flutter line-ending churn.
 11. **Not checked:** macOS and iOS builds (not possible here), and the
     phone (not connected).
+
+---
+
+## Re-review 4 (2026-11-17)
+
+Re-reviewed at `qa-roadmap` @ `606565d` (base `main` @ `f8d5582`; `main`
+still has no commits the branch lacks). Commits since re-review 3
+(`4375fee`):
+
+- `bba4886` (M4);
+- `606565d` (STATUS only).
+
+### Verdict: **PASS**
+
+M4 is fixed in the code, with exactly the change the review asked for. A
+hidden address or canteen field now always means the school's own value
+is used. A GEKOM student who first typed something under *Jiná škola* no
+longer gets stuck on Bakaláři or Strava. The three new tests fail on the
+old code with real assertion errors and pass on the fix. All four suites
+are green, with three more app tests than at re-review 3. Nothing else
+changed. No finding is left open, so phase 3 (F1) passes.
+
+### Notes (no action needed)
+
+- **N17 (M4, intended behaviour):** under GEKOM, a user who clears an
+  address of their own now gets the school's address. The field goes away
+  at the next rebuild. That is what O2 and M4 asked for ("a hidden field
+  always means the preset value is used"). Under *Jiná škola*, or with an
+  own address saved in the config, clearing still means "empty", and the
+  user has to type one (checked, see below).
+- **N18 (evidence, from N15):** `phone_2_bakalari_prefill.png` and
+  `phone_3_strava.png` still show the rows from before O2. M4 changes no
+  screen, and the reviewer's 390 / 1280 px captures from re-review 3
+  cover O2. Retake both the next time the phone is in use.
+- **N12 and N15 (STATUS):** both are done in `606565d`. The *Unsure* list
+  marks Q1 answered, and *How to verify* no longer names
+  `phone_welcome.mp4`.
+
+### Each earlier finding
+
+| Finding | Fixed? | How the reviewer checked |
+|---|---|---|
+| M4 | ✔ `bba4886` | `effectiveBakalariUrl()` and `effectiveCanteenId()` now use a draft only when it is non-empty or the field is shown, exactly as the review asked. Nothing else in `wizard_controller.dart` changed. Every reader of the two values (`saveBakalari`, `saveStrava`, `overridesFor`, so also `readyBakalari`, `readyStrava` and the test fingerprint) goes through these two functions (grep). The three new tests in `F1 login prefills` (path 1 live, path 2 live, Strava canteen plus the *Jiná škola* and own-config cases) **fail on `4375fee`**: paths 1 and 2 show *Vyplňte adresu, jméno i heslo Bakalářů.*, and the canteen is `''` instead of `1950`. All three pass on `bba4886`. |
+
+### What the reviewer verified, and how
+
+1. **Suites** (worktree, Flutter 3.44.8 / Dart 3.12.2):
+   - `dart pub get --enforce-lockfile`: OK.
+   - Core: `dart analyze` no issues; `dart test` **808 passed, 2
+     skipped**. The skips are the old POSIX ones.
+   - App: `flutter analyze` no issues; `flutter test` **718 passed, 1
+     skipped**. That is 715 plus the three M4 tests.
+   - Use these counts as the baseline for the next review.
+2. **The tests catch the bug:**
+   - One throwaway worktree in the reviewer's scratch space, removed
+     afterwards.
+   - `bba4886`'s `wizard_live_test.dart` was copied onto the parent
+     `4375fee`. The three M4 tests fail there with assertions (above). On
+     `bba4886` they pass.
+3. **Reviewer's own tests** (not committed), run on `4375fee` and
+   `bba4886`:
+   - **Every combination**, for the address and the canteen: GEKOM or
+     *Jiná škola* picked × config value none, empty, the preset's or an
+     own one × draft none, empty, spaces, the preset's or an own one.
+     Wherever the field is hidden, the value used is the preset's.
+     Wherever it is shown, the typed draft is used as before. Fails on
+     `4375fee` (GEKOM, empty draft, value `''`), passes on `bba4886`.
+   - **Saved values:** GEKOM with an empty hidden draft is ready, and
+     *Pokračovat* saves `bakalari_url` `https://bakaweb.gekom.cz` and
+     `strava_canteen_id` `1950`. Fails on `4375fee`, passes on `bba4886`.
+   - ***Jiná škola* with an empty address** is still not ready and saves
+     nothing (passes on both, as it should).
+4. **Scope:** `bba4886` touches only the two functions and their tests.
+   `606565d` touches only STATUS. No UI change, so no new screen captures
+   were needed. O1, F1b and phase 4 weren't started.
+5. **Config keys and strings:** no key and no string added, removed or
+   renamed. `config.example.json`, `config.dart` and `test/parity/` match
+   `main`.
+6. **Safety rules:**
+   - Nothing changed in core `lib/` or `app/lib/controllers/`.
+   - `runRefresh`, the session lock, `sendExcuse` / `HistoryLock`, the
+     audit and `automation_paused` are untouched. No new `catch`.
+   - The fix only changes which address or canteen number the wizard
+     tests and saves. It is always the one shown, or the school's own.
+7. **Test integrity:** no test line removed, no `skip:`, no `try`/`catch`
+   around assertions. The only hosts in the new tests are
+   `http://127.0.0.1:18080` and the preset value under test. No test
+   touches the network.
+8. **Phone:** not checked. `adb devices` showed only a stale offline
+   emulator; the Pixel wasn't connected. This round has no phone item.
+9. **Hygiene:**
+   - No personal files or screenshots in the new commits.
+   - Both commits are by the configured user, with no `Co-Authored-By`,
+     `Claude-Session` or "Generated with" lines.
+   - `qa-roadmap` has no upstream, so nothing was pushed.
+   - The worktree's uncommitted `generated_plugin*` files are the known
+     Flutter line-ending churn.
+10. **Not checked:** macOS and iOS builds (not possible here), and the
+    phone (not connected).
