@@ -1077,6 +1077,8 @@ void main() {
       await tester.pump();
 
       expect(find.text('Škola: bakaweb.gekom.cz'), findsOneWidget);
+      expect(find.text(Strings.get('wiz_bakalari_p_preset')), findsOneWidget);
+      expect(find.text(Strings.get('wiz_bakalari_p')), findsNothing);
       expect(find.byKey(const ValueKey('draft:wiz:bakalari_url')), findsNothing);
 
       await tester.enterText(
@@ -1101,10 +1103,14 @@ void main() {
 
       // Strava step shows Canteen: 1950 prefill; tapping Change opens field prefilled with 1950.
       expect(find.text('Jídelna: 1950'), findsOneWidget);
+      expect(find.text(Strings.get('wiz_strava_p_preset')), findsOneWidget);
+      expect(find.text(Strings.get('wiz_strava_p')), findsNothing);
       expect(find.byKey(const ValueKey('draft:wiz:strava_canteen_id')), findsNothing);
 
       await tester.tap(find.byKey(const Key('wiz:change_strava_canteen')));
       await tester.pump();
+      expect(find.text(Strings.get('wiz_strava_p')), findsOneWidget);
+      expect(find.text(Strings.get('wiz_strava_p_preset')), findsNothing);
       final canteenField = find.descendant(
         of: find.byKey(const ValueKey('draft:wiz:strava_canteen_id')),
         matching: find.byType(TextField),
@@ -1146,15 +1152,37 @@ void main() {
       expect(cExisting.showStravaCanteenField, isTrue);
       expect(cExisting.effectiveCanteenId(), '9999');
 
-      // 3. Jiná škola (custom) has no prefill.
+      // 3. Jiná škola (custom) has no prefill and uses the full copy.
       final cCustom = WizardController(
-        config: {'school_preset_id': 'custom'},
+        config: {'school_preset_id': 'custom', 'use_strava': true},
         onSave: (_) => true,
-      );
+      )..step = WizardController.stepBakalari;
       expect(cCustom.presetBakalariUrl(), '');
       expect(cCustom.presetCanteenId(), '');
       expect(cCustom.showBakalariUrlField, isTrue);
       expect(cCustom.showStravaCanteenField, isTrue);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: WizardView(
+                key: const ValueKey('wiz_custom'),
+                controller: cCustom,
+                tokens: AppTokens.dark(),
+                narrow: true),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(Strings.get('wiz_bakalari_p')), findsOneWidget);
+      expect(find.text(Strings.get('wiz_bakalari_p_preset')), findsNothing);
+
+      cCustom.step = WizardController.stepStrava;
+      // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+      cCustom.notifyListeners();
+      await tester.pumpAndSettle();
+      expect(find.text(Strings.get('wiz_strava_p')), findsOneWidget);
+      expect(find.text(Strings.get('wiz_strava_p_preset')), findsNothing);
     });
   });
 

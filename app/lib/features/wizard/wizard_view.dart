@@ -590,7 +590,9 @@ class _WizardViewState extends State<WizardView>
       case WizardController.stepBakalari:
         return [
           if (includeHeading) _h(Strings.get('wiz_bakalari_h'), 19),
-          _p(Strings.get('wiz_bakalari_p')),
+          _p(Strings.get(c.showBakalariUrlField
+              ? 'wiz_bakalari_p'
+              : 'wiz_bakalari_p_preset')),
           const SizedBox(height: 16),
           if (!c.showBakalariUrlField)
             _prefillRow(
@@ -621,7 +623,9 @@ class _WizardViewState extends State<WizardView>
         final enabled = c.stravaEnabled;
         return [
           if (includeHeading) _h(Strings.get('wiz_strava_h'), 19),
-          _p(Strings.get('wiz_strava_p')),
+          _p(Strings.get(c.showStravaCanteenField
+              ? 'wiz_strava_p'
+              : 'wiz_strava_p_preset')),
           const SizedBox(height: 16),
           SwitchListTile(
             value: enabled,
