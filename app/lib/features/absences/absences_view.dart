@@ -60,24 +60,27 @@ final header = w.HeaderRow(
     }
     final stats = TutorialAnchor(
       anchorKey: 'abs_stats',
-      child: Row(
-        spacing: t.gap,
-        children: [
-          w.StatCard(
-              label: Strings.get('avg_absence'),
-              value: '${c.average.toStringAsFixed(1)} %',
-              tok: t),
-          w.StatCard(
-              label: Strings.get('warn_subjects'),
-              value: '${c.warnCount}',
-              tok: t,
-              kind: c.warnCount > 0 ? 'warning' : 'ok'),
-          w.StatCard(
-              label: Strings.get('crit_subjects'),
-              value: '${c.critCount}',
-              tok: t,
-              kind: c.critCount > 0 ? 'critical' : 'ok'),
-        ],
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          spacing: t.gap,
+          children: [
+            w.StatCard(
+                label: Strings.get('avg_absence'),
+                value: '${c.average.toStringAsFixed(1)} %',
+                tok: t),
+            w.StatCard(
+                label: Strings.get('warn_subjects'),
+                value: '${c.warnCount}',
+                tok: t,
+                kind: c.warnCount > 0 ? 'warning' : 'ok'),
+            w.StatCard(
+                label: Strings.get('crit_subjects'),
+                value: '${c.critCount}',
+                tok: t,
+                kind: c.critCount > 0 ? 'critical' : 'ok'),
+          ],
+        ),
       ),
     );
     final rows = [

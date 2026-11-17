@@ -123,14 +123,35 @@ class ShellBackScope extends ConsumerWidget {
       canPop: subpage.isEmpty && target == null,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        if (subpage.isNotEmpty) {
-          closeSubpage(route: route, narrow: narrow, state: appState);
-        } else if (target != null) {
-          context.go(routeLocation(target));
-        }
+        _stepBackOnPhone(
+          context,
+          route: route,
+          narrow: narrow,
+          state: appState,
+          target: target,
+        );
       },
       child: child,
     );
+  }
+}
+
+void _stepBackOnPhone(
+  BuildContext context, {
+  required String route,
+  required bool narrow,
+  required AppState state,
+  String? target,
+}) {
+  if (subpageOpen(route: route, narrow: narrow, state: state).isNotEmpty) {
+    closeSubpage(route: route, narrow: narrow, state: state);
+    return;
+  }
+  final dest =
+      target ??
+      backTarget(route: route, narrow: narrow, wizardShown: state.wizardShown);
+  if (dest != null) {
+    context.go(routeLocation(dest));
   }
 }
 
@@ -239,6 +260,7 @@ class AppScaffold extends ConsumerWidget {
       appState: appState,
       tok: tok,
       narrow: narrow,
+      route: route,
     );
 
     final paddedContent = Padding(
@@ -413,6 +435,7 @@ class AppScaffold extends ConsumerWidget {
     required AppState appState,
     required Tokens tok,
     required bool narrow,
+    required String route,
   }) {
     final statusKind = appState.statusKind();
     final Color dotColor = switch (statusKind) {
@@ -602,10 +625,25 @@ class AppScaffold extends ConsumerWidget {
       }
     }
 
+    final backBtn = (narrow && moreRoutes.contains(route))
+        ? IconButton(
+            key: const ValueKey('topbar_back_btn'),
+            icon: Icon(Icons.arrow_back, color: tok.muted),
+            tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+            onPressed: () => _stepBackOnPhone(
+              context,
+              route: route,
+              narrow: narrow,
+              state: appState,
+            ),
+          )
+        : null;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
         children: [
+          ?backBtn,
           Expanded(child: statusPill),
           if (updateControl != null) ...[
             const SizedBox(width: 8),

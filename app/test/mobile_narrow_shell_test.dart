@@ -248,5 +248,45 @@ void main() {
       closeSubpage(route: 'lunches', narrow: true, state: state);
       expect(state.lunchToolsOpen, isFalse);
     });
+
+    testWidgets(
+        'P9c More subpages show top-bar back button on phone and navigate back to More',
+        (tester) async {
+      setViewport(tester, 390, 844);
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final state = container.read(appStateProvider);
+      state.wizardDismissed = true;
+      state.setTutorialsEnabled(false);
+
+      // Top-level tabs must NOT show back button.
+      await tester.pumpWidget(
+        buildShellHarness(container: container, initialLocation: '/today'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('topbar_back_btn')), findsNothing);
+
+      // Visiting each More subpage on phone shows top-bar back button -> /more.
+      for (final loc in ['/absences', '/planner', '/activity', '/settings']) {
+        final c = ProviderContainer();
+        addTearDown(c.dispose);
+        final s = c.read(appStateProvider);
+        s.wizardDismissed = true;
+        s.setTutorialsEnabled(false);
+
+        await tester.pumpWidget(
+          buildShellHarness(container: c, initialLocation: loc),
+        );
+        await tester.pumpAndSettle();
+
+        final backBtn = find.byKey(const ValueKey('topbar_back_btn'));
+        expect(backBtn, findsOneWidget, reason: '$loc must have back button');
+        await tester.tap(backBtn);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const ValueKey('topbar_back_btn')), findsNothing,
+            reason: 'after tapping back from $loc, /more has no back button');
+      }
+    });
   });
 }
