@@ -534,6 +534,43 @@ void main() {
     });
   });
 
+  group('O1 notification defaults', () {
+    testWidgets(
+        'refresh_done and refresh_failed default to off while other events stay on',
+        (t) async {
+      const offByDefault = {'refresh_done', 'refresh_failed'};
+
+      for (final initial in [null, <String, dynamic>{}]) {
+        final c = _controller({'notifications': initial});
+        await _openSection(t, c, 'notifications');
+
+        for (final event in kNotificationEvents) {
+          final tile = t.widget<SwitchListTile>(
+            find.byKey(Key('notif:$event')),
+          );
+          expect(
+            tile.value,
+            offByDefault.contains(event) ? isFalse : isTrue,
+            reason: '$event with $initial',
+          );
+        }
+      }
+
+      final enabled = _controller({
+        'notifications': {'refresh_done': true, 'refresh_failed': true},
+      });
+      await _openSection(t, enabled, 'notifications');
+      expect(
+        t.widget<SwitchListTile>(find.byKey(const Key('notif:refresh_done'))).value,
+        isTrue,
+      );
+      expect(
+        t.widget<SwitchListTile>(find.byKey(const Key('notif:refresh_failed'))).value,
+        isTrue,
+      );
+    });
+  });
+
   group('B9 background switch rebuilds', () {
     testWidgets('tapping run_in_background updates switch state immediately',
         (t) async {

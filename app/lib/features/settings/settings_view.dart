@@ -1846,8 +1846,11 @@ class SettingsView extends StatelessWidget {
   // -- notifications ----------------------------------------------------------------------------
   List<Widget> _notifications() {
     final c = controller;
-    final prefs =
-        Map.of(c.get('notifications', {}) ?? {});
+    final raw = c.get('notifications', {});
+    final prefs = <String, Object?>{
+      if (raw is Map)
+        for (final e in raw.entries) '${e.key}': e.value,
+    };
     return [
       Card(
         child: Padding(
@@ -1861,11 +1864,11 @@ class SettingsView extends StatelessWidget {
                   contentPadding: EdgeInsets.zero,
                   key: Key('notif:$event'),
                   title: Text(Strings.get('notif_$event')),
-                  value: (prefs[event] ?? true) == true,
+                  value: core.isEnabled(prefs, event),
                   onChanged: (v) {
                     prefs[event] = v;
                     c.saveQuiet(
-                        {'notifications': Map.of(prefs)});
+                        {'notifications': Map<String, Object?>.of(prefs)});
                     onChanged?.call();
                   },
                 ),
