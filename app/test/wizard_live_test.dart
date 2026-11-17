@@ -802,6 +802,125 @@ void main() {
       }
     });
   });
+
+  group('F1 Škola step', () {
+    testWidgets(
+        'GEKOM shows no category line, writes only school_preset_id, and Skip writes nothing',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      Strings.lang = 'cs';
+
+      final s = AppState(configData: {'language': 'cs'});
+      s.wizardStep = WizardController.stepSchool;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LiveWizardView(tokens: AppTokens.dark(), narrow: true),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('GEKOM'), findsOneWidget);
+      expect(find.text(Strings.get('wiz_cal_custom')), findsOneWidget);
+      expect(find.byType(RadioListTile<String>), findsNothing);
+
+      // Continue is disabled until a school is picked.
+      final nextFinder =
+          find.widgetWithText(ElevatedButton, Strings.get('wiz_next'));
+      expect(tester.widget<ElevatedButton>(nextFinder).onPressed, isNull);
+
+      // Skipping writes nothing and advances.
+      await tester.tap(find.text(Strings.get('wiz_skip')));
+      await tester.pump();
+      expect(s.wizardStep, WizardController.stepBakalari);
+      expect(s.get('school_preset_id'), 'custom');
+
+      // Go back, pick GEKOM, continue -> writes only school_preset_id.
+      await tester.tap(find.text(Strings.get('wiz_back')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('school:GEKOM')));
+      await tester.pump();
+      expect(find.text(Strings.get('wiz_school_preset_p')), findsOneWidget);
+      expect(find.byType(RadioListTile<String>), findsNothing);
+      expect(tester.widget<ElevatedButton>(nextFinder).onPressed, isNotNull);
+
+      final beforeCfg = Map<String, Object?>.of(s.config.data);
+      await tester.tap(nextFinder);
+      await tester.pump();
+
+      expect(s.wizardStep, WizardController.stepBakalari);
+      expect(s.get('school_preset_id'), 'gekom_2026_2027');
+      for (final k in beforeCfg.keys) {
+        if (k == 'school_preset_id' || k == 'wizard_step') continue;
+        expect(s.config.data[k], beforeCfg[k], reason: 'key $k must not change');
+      }
+    });
+
+    testWidgets(
+        'multi-preset school shows category radio list once picked and requires a preset choice',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      Strings.lang = 'cs';
+
+      final saved = <String, Object?>{};
+      final c = WizardController(
+        config: {'language': 'cs'},
+        onSave: (u) {
+          saved.addAll(u);
+          return true;
+        },
+      )
+        ..step = WizardController.stepSchool
+        ..schoolOptions = const [
+          (
+            name: 'Gymnázium XY',
+            presets: [
+              (id: 'xy_1', title: 'Gymnázium XY 1', category: '1. ročník'),
+              (id: 'xy_4', title: 'Gymnázium XY 4', category: 'Maturitní'),
+            ],
+          ),
+        ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: WizardView(controller: c, tokens: AppTokens.dark(), narrow: true),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(RadioListTile<String>), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('school:Gymnázium XY')));
+      await tester.pump();
+
+      expect(find.byType(RadioListTile<String>), findsNWidgets(2));
+      expect(find.text('1. ročník'), findsOneWidget);
+      expect(find.text('Maturitní'), findsOneWidget);
+      final nextFinder =
+          find.widgetWithText(ElevatedButton, Strings.get('wiz_next'));
+      expect(tester.widget<ElevatedButton>(nextFinder).onPressed, isNull);
+
+      await tester.tap(find.byKey(const ValueKey('preset:xy_4')));
+      await tester.pump();
+      expect(tester.widget<ElevatedButton>(nextFinder).onPressed, isNotNull);
+
+      await tester.tap(nextFinder);
+      await tester.pump();
+      expect(saved, {'school_preset_id': 'xy_4'});
+    });
+  });
 }
 
 class _SeededAppStateController extends AppStateController {

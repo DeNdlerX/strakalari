@@ -1,5 +1,6 @@
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
+import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../l10n/strings.dart';
 import '../common/format.dart';
@@ -236,26 +237,80 @@ class WizardController extends ChangeNotifier {
   /// the allow button when true (shell: available && !allowed).
   bool alarmExactOff = false;
 
-  // -- calendar -------------------------------------------------------------------------------
+  // -- school / calendar ---------------------------------------------------------------------
 
-  /// Selectable school calendars (shipped + user presets, then custom).
+  /// Grouped school presets for the Škola step (`schoolGroups`).
+  List<core.SchoolGroup> schoolOptions = [];
+
+  /// Selectable school calendars (legacy flat list used by tests).
   List<CalendarPreset> calendarOptions = [];
+
+  Set<String> _knownSchoolPresetIds() => {
+        for (final g in schoolOptions)
+          for (final p in g.presets) p.id,
+        for (final p in calendarOptions) p.id,
+        if (schoolOptions.isNotEmpty) core.customId,
+      };
 
   /// The explicitly picked card (`wiz:cal_preset`), or ''.
   String calPreset() {
     final raw = drafts['wiz:cal_preset'];
-    if (raw == null) return '';
-    if (raw.isNotEmpty &&
-        calendarOptions.any((p) => p.id == raw)) {
-      return raw;
+    if (raw == null || raw.isEmpty) return '';
+    if (_knownSchoolPresetIds().contains(raw)) return raw;
+    return '';
+  }
+
+  /// Selected school card name (`SchoolGroup.name` or `core.customId`), or ''.
+  String selectedSchoolGroup() {
+    final rawGroup = drafts['wiz:school_group'];
+    if (rawGroup != null && rawGroup.isNotEmpty) {
+      if (rawGroup == core.customId ||
+          schoolOptions.any((g) => g.name == rawGroup)) {
+        return rawGroup;
+      }
+    }
+    final picked = calPreset();
+    if (picked == core.customId) return core.customId;
+    for (final g in schoolOptions) {
+      if (g.presets.any((p) => p.id == picked)) return g.name;
     }
     return '';
   }
 
+  void selectSchoolGroup(String groupName) {
+    setDraftSilent('wiz:school_group', groupName);
+    if (groupName == core.customId) {
+      setDraft('wiz:cal_preset', core.customId);
+      return;
+    }
+    final match = schoolOptions.where((g) => g.name == groupName).toList();
+    if (match.isEmpty) {
+      notifyListeners();
+      return;
+    }
+    final group = match.first;
+    if (group.presets.length == 1) {
+      setDraft('wiz:cal_preset', group.presets.single.id);
+    } else if (group.presets.any((p) => p.id == calPreset())) {
+      notifyListeners();
+    } else {
+      setDraft('wiz:cal_preset', '');
+    }
+  }
+
+  void selectSchoolPreset(String presetId) {
+    for (final g in schoolOptions) {
+      if (g.presets.any((p) => p.id == presetId)) {
+        setDraftSilent('wiz:school_group', g.name);
+        break;
+      }
+    }
+    setDraft('wiz:cal_preset', presetId);
+  }
+
   bool saveCalendar() {
     final preset = calPreset();
-    if (preset.isEmpty ||
-        !calendarOptions.any((p) => p.id == preset)) {
+    if (preset.isEmpty || !_knownSchoolPresetIds().contains(preset)) {
       return false;
     }
     return _save({'school_preset_id': preset});

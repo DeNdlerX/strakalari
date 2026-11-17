@@ -1,5 +1,6 @@
 import '../../l10n/strings.dart';
 import 'package:flutter/material.dart';
+import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../widgets/app_widgets.dart' as w;
 import '../common/app_tokens.dart';
@@ -374,7 +375,7 @@ class _WizardViewState extends State<WizardView>
       case WizardController.stepWelcome:
         return _welcomeContent();
       case WizardController.stepSchool:
-        return _calendarContent();
+        return _schoolContent();
       case WizardController.stepBakalari:
         return [
           _h(Strings.get('wiz_bakalari_h'), 19),
@@ -480,113 +481,161 @@ if (c.testing == service) {
     return [];
   }
 
-  List<Widget> _calendarContent() {
+  List<Widget> _schoolContent() {
     final c = controller;
     final t = tokens;
-final preset = c.calPreset();
-    Widget card(CalendarPreset p) {
-      final selected = preset == p.id;
-      return InkWell(
-        onTap: () => c.setDraft('wiz:cal_preset', p.id),
-        borderRadius: BorderRadius.circular(t.radiusMd),
-        child: Container(
-          width: narrow ? null : 280,
-          decoration: BoxDecoration(
-            color: t.card,
-            border: Border.all(
-                color: selected ? t.accent : t.border,
-                width: selected ? 2 : 1),
-            borderRadius:
-                BorderRadius.circular(t.radiusMd),
+    final selectedGroup = c.selectedSchoolGroup();
+    final pickedPreset = c.calPreset();
+
+    Widget schoolCard(core.SchoolGroup group) {
+      final isSelected = selectedGroup == group.name;
+      final multi = group.presets.length > 1;
+      final hasPreset =
+          pickedPreset.isNotEmpty && group.presets.any((p) => p.id == pickedPreset);
+      return SizedBox(
+        width: narrow ? null : 280,
+        child: Material(
+          color: t.card,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(t.radiusMd),
+            side: BorderSide(
+                color: isSelected ? t.accent : t.border,
+                width: isSelected ? 2 : 1),
           ),
-          padding: EdgeInsets.all(t.pad),
-          child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-            children: [
-              Row(
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            key: ValueKey('school:${group.name}'),
+            onTap: () => c.selectSchoolGroup(group.name),
+            child: Padding(
+              padding: EdgeInsets.all(t.pad),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                      child: Text(p.title,
-                          style: TextStyle(
-                              color: t.text,
-                              fontWeight: FontWeight.bold))),
-                  Icon(
-                      selected
-                          ? Icons.check_circle
-                          : Icons.radio_button_unchecked,
-                      color: selected
-                          ? t.accent
-                          : t.faint,
-                      size: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(group.name,
+                            style: TextStyle(
+                                color: t.text, fontWeight: FontWeight.bold)),
+                      ),
+                      Icon(
+                        isSelected
+                            ? Icons.check_circle
+                            : Icons.radio_button_unchecked,
+                        color: isSelected ? t.accent : t.faint,
+                        size: 20,
+                      ),
+                    ],
+                  ),
+                  if (isSelected && multi) ...[
+                    const SizedBox(height: 8),
+                    RadioGroup<String>(
+                      groupValue: hasPreset ? pickedPreset : null,
+                      onChanged: (v) {
+                        if (v != null) c.selectSchoolPreset(v);
+                      },
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (final opt in group.presets)
+                            RadioListTile<String>(
+                              key: ValueKey('preset:${opt.id}'),
+                              value: opt.id,
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              activeColor: t.accent,
+                              title: Text(opt.category,
+                                  style: TextStyle(
+                                      color: t.text, fontSize: t.fsSmall)),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (isSelected && hasPreset) ...[
+                    const SizedBox(height: 6),
+                    Text(Strings.get('wiz_school_preset_p'),
+                        style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
+                  ],
                 ],
               ),
-              const SizedBox(height: 4),
-              if (!p.custom) ...[
-                Text(
-                    Strings.format('cal_closes', {
-                      'a': p.closesA.isEmpty
-                          ? Strings.get('cal_auto')
-                          : p.closesA,
-                      'b': p.closesB.isEmpty
-                          ? Strings.get('cal_auto')
-                          : p.closesB,
-                    }),
-                    style: TextStyle(
-                        color: t.muted,
-                        fontSize: t.fsSmall)),
-                Text(
-                    Strings.format('wiz_cal_days', {
-                      'n': p.totalDays,
-                      'end': p.endText.isEmpty
-                          ? Strings.get('cal_auto')
-                          : p.endText,
-                    }),
-                    style: TextStyle(
-                        color: t.text,
-                        fontSize: t.fsSmall,
-                        fontWeight: FontWeight.bold)),
-                Text(
-                    p.groups
-                        .map((g) =>
-                            '${g.label} ${g.count}')
-                        .join(' · '),
-                    style: TextStyle(
-                        color: t.muted,
-                        fontSize: t.fsSmall)),
-                Text(Strings.get('wiz_cal_only_school'),
-                    style: TextStyle(
-                        color: t.faint,
-                        fontSize: t.fsSmall)),
-              ] else
-                Text(Strings.get('wiz_cal_custom_p'),
-                    style: TextStyle(
-                        color: t.muted,
-                        fontSize: t.fsSmall)),
-            ],
+            ),
           ),
         ),
       );
     }
 
-    final cards = [for (final p in c.calendarOptions) card(p)];
+    Widget customCard() {
+      final isSelected = selectedGroup == core.customId;
+      return SizedBox(
+        width: narrow ? null : 280,
+        child: Material(
+          color: t.card,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(t.radiusMd),
+            side: BorderSide(
+                color: isSelected ? t.accent : t.border,
+                width: isSelected ? 2 : 1),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            key: const ValueKey('school:custom'),
+            onTap: () => c.selectSchoolGroup(core.customId),
+            child: Padding(
+              padding: EdgeInsets.all(t.pad),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(Strings.get('wiz_cal_custom'),
+                            style: TextStyle(
+                                color: t.text, fontWeight: FontWeight.bold)),
+                      ),
+                      Icon(
+                        isSelected
+                            ? Icons.check_circle
+                            : Icons.radio_button_unchecked,
+                        color: isSelected ? t.accent : t.faint,
+                        size: 20,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(Strings.get('wiz_cal_custom_p'),
+                      style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final cards = [
+      for (final g in c.schoolOptions) schoolCard(g),
+      customCard(),
+    ];
     return [
       _h(Strings.get('wiz_cal_h'), 19),
       _p(Strings.get('wiz_cal_p')),
+      const SizedBox(height: 8),
       narrow
           ? Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.stretch,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 for (var i = 0; i < cards.length; i++) ...[
                   cards[i],
-                  if (i != cards.length - 1)
-                    const SizedBox(height: 8),
+                  if (i != cards.length - 1) const SizedBox(height: 8),
                 ],
               ],
             )
           : Wrap(spacing: 8, runSpacing: 8, children: cards),
-      if (preset.isEmpty) _hint(Strings.get('wiz_cal_pick')),
+      if (pickedPreset.isEmpty) ...[
+        const SizedBox(height: 8),
+        _hint(Strings.get('wiz_cal_pick')),
+      ],
     ];
   }
 

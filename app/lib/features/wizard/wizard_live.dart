@@ -92,6 +92,7 @@ WizardController wizardControllerFor(AppState s) {
   c.lastTest = Map<String, Object?>.of(s.lastTest);
   c.verified.addAll(s.wizardVerified);
   c.drafts.addAll(s.drafts);
+  c.schoolOptions = core.schoolGroups(lang);
   c.calendarOptions = buildCalendarPresets(lang);
 
   return c;
