@@ -797,9 +797,22 @@ void main() {
       expect(tester.getRect(nextBtn).bottom, lessThanOrEqualTo(844));
       expect(tester.getRect(backBtn).bottom, lessThanOrEqualTo(844));
 
-      await tester.tap(backBtn);
+      await tester.enterText(
+        find.descendant(
+          of: find.byKey(const ValueKey('draft:wiz:signature')),
+          matching: find.byType(TextField),
+        ),
+        'Jan Novák',
+      );
       await tester.pump();
-      expect(s.wizardStep, WizardController.stepStrava);
+
+      await tester.tap(nextBtn);
+      await tester.pumpAndSettle();
+      expect(s.wizardStep, WizardController.stepDone);
+
+      await tester.tap(find.widgetWithText(TextButton, Strings.get('wiz_back')));
+      await tester.pumpAndSettle();
+      expect(s.wizardStep, WizardController.stepExcuses);
     });
   });
 
