@@ -1104,17 +1104,17 @@ void main() {
     });
   });
 
-  group('F1 login prefills and Změnit', () {
+  group('F1 login prefills', () {
     testWidgets(
-        'GEKOM prefills Bakaláři URL and Strava canteen when config is empty, config wins, custom has none',
+        'GEKOM hides Bakaláři URL and Strava canteen when config is empty or equals preset, config override wins, custom shows both',
         (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
       Strings.lang = 'cs';
 
-      // 1. GEKOM with empty config: shows prefill rows, Change reveals prefilled field,
-      // and passing fake testConnection saves the prefilled URL and canteen.
+      // 1. GEKOM with empty config: hides address/canteen rows and Change button,
+      // and passing fake testConnection saves the preset URL and canteen.
       final saved = <String, Object?>{};
       late final WizardController c;
       c = WizardController(
@@ -1142,10 +1142,10 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('Škola: bakaweb.gekom.cz'), findsOneWidget);
+      expect(find.textContaining('bakaweb.gekom.cz'), findsNothing);
+      expect(find.text('Změnit'), findsNothing);
       expect(find.text(Strings.get('wiz_bakalari_p_preset')), findsOneWidget);
       expect(find.text(Strings.get('wiz_bakalari_p')), findsNothing);
-      expect(find.text(Strings.get('wiz_prefill_change')), findsNothing);
       expect(find.byKey(const ValueKey('draft:wiz:bakalari_url')), findsNothing);
 
       await tester.enterText(
@@ -1168,22 +1168,13 @@ void main() {
       expect(saved['bakalari_username'], 'jan');
       expect(c.step, WizardController.stepStrava);
 
-      // Strava step shows Canteen: 1950 prefill; tapping Change opens field prefilled with 1950.
-      expect(find.text('Jídelna: 1950'), findsOneWidget);
+      // Strava step hides canteen row and Change button; saves preset canteen 1950.
+      expect(find.textContaining('1950'), findsNothing);
+      expect(find.text('Změnit'), findsNothing);
+      expect(find.byKey(const Key('wiz:change_strava_canteen')), findsNothing);
       expect(find.text(Strings.get('wiz_strava_p_preset')), findsOneWidget);
       expect(find.text(Strings.get('wiz_strava_p')), findsNothing);
       expect(find.byKey(const ValueKey('draft:wiz:strava_canteen_id')), findsNothing);
-
-      await tester.tap(find.byKey(const Key('wiz:change_strava_canteen')));
-      await tester.pump();
-      expect(find.text(Strings.get('wiz_strava_p')), findsOneWidget);
-      expect(find.text(Strings.get('wiz_strava_p_preset')), findsNothing);
-      final canteenField = find.descendant(
-        of: find.byKey(const ValueKey('draft:wiz:strava_canteen_id')),
-        matching: find.byType(TextField),
-      );
-      expect(canteenField, findsOneWidget);
-      expect(tester.widget<TextField>(canteenField).controller!.text, '1950');
 
       await tester.enterText(
           find.descendant(
@@ -1205,7 +1196,45 @@ void main() {
       expect(saved['strava_username'], 'jan.s');
       expect(c.step, WizardController.stepExcuses);
 
-      // 2. Existing config value always wins over preset.
+      // 2. Resumed wizard whose saved config equals the preset hides both fields too.
+      final cResumedPreset = WizardController(
+        config: {
+          'language': 'cs',
+          'school_preset_id': 'gekom_2026_2027',
+          'bakalari_url': 'https://bakaweb.gekom.cz',
+          'use_strava': true,
+          'strava_canteen_id': '1950',
+        },
+        onSave: (_) => true,
+      )..step = WizardController.stepBakalari;
+      expect(cResumedPreset.showBakalariUrlField, isFalse);
+      expect(cResumedPreset.showStravaCanteenField, isFalse);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: WizardView(
+                key: const ValueKey('wiz_resumed_preset'),
+                controller: cResumedPreset,
+                tokens: AppTokens.dark(),
+                narrow: true),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('draft:wiz:bakalari_url')), findsNothing);
+      expect(find.textContaining('bakaweb.gekom.cz'), findsNothing);
+      expect(find.text(Strings.get('wiz_bakalari_p_preset')), findsOneWidget);
+
+      cResumedPreset.step = WizardController.stepStrava;
+      // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+      cResumedPreset.notifyListeners();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('draft:wiz:strava_canteen_id')), findsNothing);
+      expect(find.textContaining('1950'), findsNothing);
+      expect(find.text(Strings.get('wiz_strava_p_preset')), findsOneWidget);
+
+      // 3. Existing config value differing from preset wins and shows the field.
       final cExisting = WizardController(
         config: {
           'school_preset_id': 'gekom_2026_2027',
@@ -1219,7 +1248,7 @@ void main() {
       expect(cExisting.showStravaCanteenField, isTrue);
       expect(cExisting.effectiveCanteenId(), '9999');
 
-      // 3. Jiná škola (custom) has no prefill and uses the full copy.
+      // 4. Jiná škola (custom) shows both fields and uses the full copy.
       final cCustom = WizardController(
         config: {'school_preset_id': 'custom', 'use_strava': true},
         onSave: (_) => true,
@@ -1241,6 +1270,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('draft:wiz:bakalari_url')), findsOneWidget);
       expect(find.text(Strings.get('wiz_bakalari_p')), findsOneWidget);
       expect(find.text(Strings.get('wiz_bakalari_p_preset')), findsNothing);
 
@@ -1248,6 +1278,7 @@ void main() {
       // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
       cCustom.notifyListeners();
       await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('draft:wiz:strava_canteen_id')), findsOneWidget);
       expect(find.text(Strings.get('wiz_strava_p')), findsOneWidget);
       expect(find.text(Strings.get('wiz_strava_p_preset')), findsNothing);
     });

@@ -227,16 +227,23 @@ class WizardController extends ChangeNotifier {
     return presetCanteenId();
   }
 
-  bool get showBakalariUrlField =>
-      '${config['bakalari_url'] ?? ''}'.trim().isNotEmpty ||
-      presetBakalariUrl().isEmpty ||
-      drafts.containsKey('wiz:bakalari_url');
+  bool get showBakalariUrlField {
+    final preset = presetBakalariUrl();
+    if (preset.isEmpty) return true;
+    final cfg = '${config['bakalari_url'] ?? ''}'.trim();
+    if (cfg.isNotEmpty && cfg != preset) return true;
+    final d = drafts['wiz:bakalari_url']?.trim();
+    return d != null && d.isNotEmpty && d != preset;
+  }
 
-  bool get showStravaCanteenField =>
-      '${config['strava_canteen_id'] ?? ''}'.trim().isNotEmpty ||
-      presetCanteenId().isEmpty ||
-      drafts['wiz:edit_strava_canteen'] == '1' ||
-      drafts.containsKey('wiz:strava_canteen_id');
+  bool get showStravaCanteenField {
+    final preset = presetCanteenId();
+    if (preset.isEmpty) return true;
+    final cfg = '${config['strava_canteen_id'] ?? ''}'.trim();
+    if (cfg.isNotEmpty && cfg != preset) return true;
+    final d = drafts['wiz:strava_canteen_id']?.trim();
+    return d != null && d.isNotEmpty && d != preset;
+  }
 
   // -- per-step saves -------------------------------------------------------------------
 

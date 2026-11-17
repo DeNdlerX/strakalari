@@ -594,12 +594,7 @@ class _WizardViewState extends State<WizardView>
               ? 'wiz_bakalari_p'
               : 'wiz_bakalari_p_preset')),
           const SizedBox(height: 16),
-          if (!c.showBakalariUrlField)
-            _prefillRow(
-              text: Strings.format('wiz_prefill_school',
-                  {'host': _displayHost(c.presetBakalariUrl())}),
-            )
-          else
+          if (c.showBakalariUrlField)
             _field(Strings.get('bakalari_url'), 'wiz:bakalari_url',
                 c.effectiveBakalariUrl(),
                 hint: Strings.get('bakalari_url_hint')),
@@ -630,18 +625,7 @@ class _WizardViewState extends State<WizardView>
           ),
           if (enabled) ...[
             const SizedBox(height: 12),
-            if (!c.showStravaCanteenField)
-              _prefillRow(
-                key: const Key('wiz:change_strava_canteen'),
-                text: Strings.format(
-                    'wiz_prefill_canteen', {'id': c.presetCanteenId()}),
-                onChange: () {
-                  c.setDraftSilent(
-                      'wiz:strava_canteen_id', c.presetCanteenId());
-                  c.setDraft('wiz:edit_strava_canteen', '1');
-                },
-              )
-            else
+            if (c.showStravaCanteenField)
               _field(Strings.get('canteen_id'), 'wiz:strava_canteen_id',
                   c.effectiveCanteenId(),
                   hint: Strings.get('canteen_id_hint')),
@@ -906,42 +890,6 @@ if (c.testing == service) {
         onChanged: c.setAlarmEnabled,
       ),
     ];
-  }
-
-  static String _displayHost(String url) {
-    final uri = Uri.tryParse(url);
-    if (uri != null && uri.host.isNotEmpty) {
-      return uri.hasPort ? '${uri.host}:${uri.port}' : uri.host;
-    }
-    return url.replaceFirst(RegExp(r'^https?://'), '').replaceAll(RegExp(r'/+$'), '');
-  }
-
-  Widget _prefillRow({
-    Key? key,
-    required String text,
-    VoidCallback? onChange,
-  }) {
-    final t = tokens;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(text,
-                style: TextStyle(
-                    color: t.text,
-                    fontSize: t.fsBody,
-                    fontWeight: FontWeight.w500)),
-          ),
-          if (onChange != null)
-            TextButton(
-              key: key,
-              onPressed: onChange,
-              child: Text(Strings.get('wiz_prefill_change')),
-            ),
-        ],
-      ),
-    );
   }
 
   // -- small builders ---------------------------------------------------------------
