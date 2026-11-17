@@ -35,6 +35,10 @@ const Map<String, Object> gekom20262027 = {
   'title_cs': 'GEKOM 2026/2027',
   'title_en': 'GEKOM 2026/2027',
   'version': 1,
+  // Wizard prefills + default marking scale.
+  'bakalari_url': 'https://bakaweb.gekom.cz',
+  'strava_canteen_id': '1950',
+  'marks_scale': 'percent',
   // Absence/marks closure dates (final year ends sooner).
   'sem1_close': '25.01.2027',
   'sem2_close': '26.04.2027',
@@ -119,6 +123,43 @@ List<String> validatePreset(Object? data) {
     if (!bandsValid(bands)) {
       problems.add('\'marks_percent_bands\' must be four decreasing percentages '
           'within (0, 100] (the top of grades 2–5)');
+    }
+  }
+  final rawUrl = data['bakalari_url'];
+  if (rawUrl != null) {
+    if (rawUrl is! String) {
+      problems.add('\'bakalari_url\' must be a string URL');
+    } else {
+      final url = rawUrl.trim();
+      final lower = url.toLowerCase();
+      if (url.isNotEmpty &&
+          (!(lower.startsWith('http://') || lower.startsWith('https://')) ||
+              !url.contains('.'))) {
+        problems.add(
+            '\'bakalari_url\' must start with http:// or https:// and contain \'.\'');
+      }
+    }
+  }
+  final rawCanteen = data['strava_canteen_id'];
+  if (rawCanteen != null) {
+    if (rawCanteen is! String) {
+      problems.add('\'strava_canteen_id\' must be a digits-only string');
+    } else {
+      final canteen = rawCanteen.trim();
+      if (canteen.isNotEmpty && !RegExp(r'^\d+$').hasMatch(canteen)) {
+        problems.add('\'strava_canteen_id\' must contain digits only');
+      }
+    }
+  }
+  final rawScale = data['marks_scale'];
+  if (rawScale != null) {
+    if (rawScale is! String) {
+      problems.add('\'marks_scale\' must be \'grade\' or \'percent\'');
+    } else {
+      final scale = rawScale.trim();
+      if (scale.isNotEmpty && scale != 'grade' && scale != 'percent') {
+        problems.add('\'marks_scale\' must be \'grade\' or \'percent\'');
+      }
     }
   }
   final days = data['days'];
@@ -208,6 +249,55 @@ Map<String, Map<String, Object?>> allPresets() {
 String presetTitle(Map<String, Object?> preset, [String language = 'cs']) {
   final key = language == 'en' ? 'title_en' : 'title_cs';
   return '${preset[key] ?? preset['title_cs'] ?? preset['title_en'] ?? preset['id'] ?? '?'}';
+}
+
+/// Category label for a preset inside a multi-preset school card.
+/// Falls back across `category_<lang>`, `year`, then [presetTitle].
+String presetCategory(Map<String, Object?> preset, [String language = 'cs']) {
+  final key = language == 'en' ? 'category_en' : 'category_cs';
+  for (final cand in [
+    preset[key],
+    preset['category_cs'],
+    preset['category_en'],
+    preset['year'],
+  ]) {
+    final text = '${cand ?? ''}'.trim();
+    if (text.isNotEmpty) return text;
+  }
+  return presetTitle(preset, language);
+}
+
+typedef SchoolPresetOption = ({String id, String title, String category});
+typedef SchoolGroup = ({String name, List<SchoolPresetOption> presets});
+
+/// Presets grouped by `school` for the wizard school picker (excludes `custom`).
+/// Presets without `school` form their own single-preset group titled with [presetTitle].
+List<SchoolGroup> schoolGroups([String language = 'cs']) {
+  final grouped = <String, ({String name, List<SchoolPresetOption> presets})>{};
+  for (final preset in allPresets().values) {
+    final pid = '${preset['id'] ?? ''}';
+    final school = '${preset['school'] ?? ''}'.trim();
+    final key = school.isNotEmpty ? 'school:${school.toLowerCase()}' : 'id:$pid';
+    final name = school.isNotEmpty ? school : presetTitle(preset, language);
+    final option = (
+      id: pid,
+      title: presetTitle(preset, language),
+      category: presetCategory(preset, language),
+    );
+    grouped.putIfAbsent(key, () => (name: name, presets: [])).presets.add(option);
+  }
+  final out = <SchoolGroup>[];
+  for (final g in grouped.values) {
+    g.presets.sort((a, b) {
+      final cmp = a.category.toLowerCase().compareTo(b.category.toLowerCase());
+      if (cmp != 0) return cmp;
+      final tCmp = a.title.toLowerCase().compareTo(b.title.toLowerCase());
+      return tCmp != 0 ? tCmp : a.id.compareTo(b.id);
+    });
+    out.add((name: g.name, presets: List.unmodifiable(g.presets)));
+  }
+  out.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  return out;
 }
 
 /// `[(id, title)]` for pickers: presets by title, then `custom` last.
@@ -319,6 +409,41 @@ List<double>? presetMarksBands(String? presetId) {
     return null;
   }
   return normalizeBands(preset['marks_percent_bands']);
+}
+
+/// Marking scale (`'grade'` or `'percent'`) from the preset, else null.
+String? presetMarksScale(String? presetId) {
+  final preset = getPreset(presetId);
+  if (preset == null) return null;
+  final raw = preset['marks_scale'];
+  if (raw is! String) return null;
+  final scale = raw.trim();
+  return (scale == 'grade' || scale == 'percent') ? scale : null;
+}
+
+/// Default Bakaláři URL from the preset, else ''.
+String presetBakalariUrl(String? presetId) {
+  final preset = getPreset(presetId);
+  if (preset == null) return '';
+  final raw = preset['bakalari_url'];
+  if (raw is! String) return '';
+  final url = raw.trim();
+  final lower = url.toLowerCase();
+  if (!(lower.startsWith('http://') || lower.startsWith('https://')) ||
+      !url.contains('.')) {
+    return '';
+  }
+  return url;
+}
+
+/// Default Strava canteen ID from the preset, else ''.
+String presetCanteenId(String? presetId) {
+  final preset = getPreset(presetId);
+  if (preset == null) return '';
+  final raw = preset['strava_canteen_id'];
+  if (raw is! String) return '';
+  final canteen = raw.trim();
+  return RegExp(r'^\d+$').hasMatch(canteen) ? canteen : '';
 }
 
 /// (bands, source): the user's own bands, then the preset's, else the

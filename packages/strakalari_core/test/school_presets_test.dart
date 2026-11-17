@@ -50,6 +50,23 @@ void main() {
       expect(presetMarksBands('gekom_2026_2027'), [87.0, 72.0, 55.0, 40.0]);
       expect(presetMarksBands('custom'), isNull);
     });
+
+    test('shipsDefaultsAndHelpers', () {
+      expect(presetBakalariUrl('gekom_2026_2027'), 'https://bakaweb.gekom.cz');
+      expect(presetCanteenId('gekom_2026_2027'), '1950');
+      expect(presetMarksScale('gekom_2026_2027'), 'percent');
+
+      expect(presetBakalariUrl('custom'), '');
+      expect(presetCanteenId('custom'), '');
+      expect(presetMarksScale('custom'), isNull);
+
+      expect(presetBakalariUrl('unknown-id'), '');
+      expect(presetCanteenId('unknown-id'), '');
+      expect(presetMarksScale('unknown-id'), isNull);
+      expect(presetBakalariUrl(null), '');
+      expect(presetCanteenId(null), '');
+      expect(presetMarksScale(null), isNull);
+    });
   });
 
   group('effectiveCalendar', () {
@@ -238,6 +255,153 @@ void main() {
           isNotEmpty);
       expect(validatePreset({...base, 'marks_percent_bands': '87,72'}),
           isNotEmpty);
+    });
+
+    test('newFieldsAcceptedAndRejectedOneByOne', () {
+      final base = <String, Object?>{'id': 'x', 'title_cs': 'X'};
+      expect(
+          validatePreset({
+            ...base,
+            'school': 'Gymnasium XY',
+            'category_cs': 'Maturitní ročník',
+            'category_en': 'Final year',
+            'bakalari_url': 'https://baka.example.cz',
+            'strava_canteen_id': '1234',
+            'marks_scale': 'percent',
+          }),
+          isEmpty);
+      expect(validatePreset({...base, 'marks_scale': 'grade'}), isEmpty);
+      expect(
+          validatePreset({
+            ...base,
+            'bakalari_url': '',
+            'strava_canteen_id': '',
+            'marks_scale': '',
+          }),
+          isEmpty);
+
+      expect(
+          validatePreset({...base, 'bakalari_url': 'baka.example.cz'}),
+          isNotEmpty);
+      expect(
+          validatePreset({...base, 'bakalari_url': 'https://localhost'}),
+          isNotEmpty);
+      expect(validatePreset({...base, 'bakalari_url': 123}), isNotEmpty);
+
+      expect(validatePreset({...base, 'strava_canteen_id': '19a0'}),
+          isNotEmpty);
+      expect(validatePreset({...base, 'strava_canteen_id': '-1'}), isNotEmpty);
+      expect(validatePreset({...base, 'strava_canteen_id': 1950}), isNotEmpty);
+
+      expect(validatePreset({...base, 'marks_scale': 'auto'}), isNotEmpty);
+      expect(validatePreset({...base, 'marks_scale': 'points'}), isNotEmpty);
+      expect(validatePreset({...base, 'marks_scale': 1}), isNotEmpty);
+    });
+
+    test('presetCategoryFallbackOrder', () {
+      expect(
+          presetCategory({
+            'id': 'p1',
+            'title_cs': 'Titul CS',
+            'title_en': 'Title EN',
+            'year': '2026/2027',
+            'category_cs': 'Kategorie CS',
+            'category_en': 'Category EN',
+          }, 'cs'),
+          'Kategorie CS');
+      expect(
+          presetCategory({
+            'id': 'p1',
+            'title_cs': 'Titul CS',
+            'title_en': 'Title EN',
+            'year': '2026/2027',
+            'category_cs': 'Kategorie CS',
+            'category_en': 'Category EN',
+          }, 'en'),
+          'Category EN');
+      expect(
+          presetCategory({
+            'id': 'p1',
+            'title_cs': 'Titul CS',
+            'year': '2026/2027',
+            'category_cs': 'Kategorie CS',
+          }, 'en'),
+          'Kategorie CS');
+      expect(
+          presetCategory({
+            'id': 'p1',
+            'title_cs': 'Titul CS',
+            'year': '2026/2027',
+          }, 'cs'),
+          '2026/2027');
+      expect(
+          presetCategory({
+            'id': 'p1',
+            'title_cs': 'Titul CS',
+            'title_en': 'Title EN',
+          }, 'en'),
+          'Title EN');
+    });
+
+    test('schoolGroupsAndLegacyUserPreset', () {
+      final tmp = Directory.systemTemp.createTempSync('school_groups_test_');
+      setEnvironmentOverride({'STRAKALARI_DATA_DIR': tmp.path});
+      try {
+        // Legacy user preset without any new fields loads cleanly and gets its own card.
+        writeUserPreset(tmp, 'legacy.json', {
+          'id': 'legacy_school',
+          'title_cs': 'Stará škola',
+          'title_en': 'Legacy School',
+          'sem1_close': '20.01.2027',
+        });
+        // Multi-preset school grouping.
+        writeUserPreset(tmp, 'alpha_a.json', {
+          'id': 'alpha_1',
+          'school': 'Alpha',
+          'category_cs': '1. ročník',
+          'category_en': 'Year 1',
+          'title_cs': 'Alpha 1',
+          'bakalari_url': 'https://alpha.example.cz',
+          'strava_canteen_id': '4242',
+          'marks_scale': 'grade',
+        });
+        writeUserPreset(tmp, 'alpha_b.json', {
+          'id': 'alpha_4',
+          'school': 'Alpha',
+          'category_cs': '4. ročník',
+          'category_en': 'Year 4',
+          'title_cs': 'Alpha 4',
+        });
+
+        expect(presetBakalariUrl('legacy_school'), '');
+        expect(presetCanteenId('legacy_school'), '');
+        expect(presetMarksScale('legacy_school'), isNull);
+        expect(presetBakalariUrl('alpha_1'), 'https://alpha.example.cz');
+        expect(presetCanteenId('alpha_1'), '4242');
+        expect(presetMarksScale('alpha_1'), 'grade');
+
+        final groupsCs = schoolGroups('cs');
+        expect(groupsCs.map((g) => g.name).toList(),
+            ['Alpha', 'GEKOM', 'Stará škola']);
+        final alpha = groupsCs.firstWhere((g) => g.name == 'Alpha');
+        expect(alpha.presets.map((p) => (p.id, p.category)).toList(), [
+          ('alpha_1', '1. ročník'),
+          ('alpha_4', '4. ročník'),
+        ]);
+        final legacy = groupsCs.firstWhere((g) => g.name == 'Stará škola');
+        expect(legacy.presets.length, 1);
+        expect(legacy.presets.single.id, 'legacy_school');
+
+        final groupsEn = schoolGroups('en');
+        expect(groupsEn.map((g) => g.name).toList(),
+            ['Alpha', 'GEKOM', 'Legacy School']);
+        final alphaEn = groupsEn.firstWhere((g) => g.name == 'Alpha');
+        expect(alphaEn.presets.map((p) => p.category).toList(),
+            ['Year 1', 'Year 4']);
+      } finally {
+        setEnvironmentOverride(null);
+        if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+      }
     });
   });
 }

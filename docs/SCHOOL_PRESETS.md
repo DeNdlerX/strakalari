@@ -7,17 +7,18 @@ calendar used by the Planner and the lunch cutoff:
 - holidays and other days off,
 - the absence closure dates of both semesters,
 - the lunch ordering deadline (time on the previous business day),
-- how percentages turn into grades on the Marks tab.
+- how percentages turn into grades (and the default marking scale) on the Marks tab,
+- optional default Bakaláři URL and Strava canteen number for first-run setup.
 
-A **preset** fills these in automatically. Without one, choose **Custom days**
-(first-run wizard or *Settings → School calendar*) and enter the dates yourself —
+A **preset** fills these in automatically. Without one, choose **Custom** / **Jiná škola**
+(first-run wizard or *Settings → School*) and enter the settings yourself —
 everything else works the same.
 
 Presets shipped with the app:
 
-| id | School | Year |
-|----|--------|------|
-| `gekom_2026_2027` | GEKOM | 2026/2027 |
+| id | School | Year | Bakaláři URL | Canteen | Marks scale |
+|----|--------|------|--------------|---------|-------------|
+| `gekom_2026_2027` | GEKOM | 2026/2027 | `https://bakaweb.gekom.cz` | `1950` | `percent` |
 
 ## Adding a preset without changing the code
 
@@ -28,8 +29,14 @@ folder (the folder that holds `config.json`), e.g.
 ```json
 {
   "id": "gymxy_2026_2027",
+  "school": "Gymnázium XY",
+  "category_cs": "Maturitní ročník",
+  "category_en": "Final year",
   "title_cs": "Gymnázium XY 2026/2027",
   "title_en": "Gymnázium XY 2026/2027",
+  "bakalari_url": "https://baka.gymxy.cz",
+  "strava_canteen_id": "1234",
+  "marks_scale": "percent",
   "sem1_close": "25.01.2027",
   "sem2_close": "25.06.2027",
   "lunch_cutoff_time": "13:00",
@@ -46,6 +53,18 @@ folder (the folder that holds `config.json`), e.g.
 
 - `id`: letters, digits, `_` or `-`; must not be `custom` or an id shipped
   with the app.
+- `school`: optional school display name. Presets sharing the same `school`
+  value are grouped into a single school card in the wizard; presets without
+  `school` appear as their own card using `title_cs`/`title_en`.
+- `category_cs`, `category_en`: optional sub-label shown inside a school card
+  when that school has multiple presets (falls back to `year`, then title).
+- `bakalari_url`: optional default Bakaláři URL prefilled in the wizard (must
+  start with `http://` or `https://` and contain `.`).
+- `strava_canteen_id`: optional default Strava canteen number prefilled in the
+  wizard (digits only).
+- `marks_scale`: optional default marking scale (`"grade"` or `"percent"`).
+  While active, it fixes the Marks tab scale (overriding `marks_scale` and
+  `marks_subject_scales` without erasing them).
 - Dates are `DD.MM.YYYY`; `ranges` are inclusive.
 - `lunch_cutoff_time` is optional (`HH:MM`); without it the default is 12:00.
   Check your canteen's real deadline — Strava rejects late orders anyway,
