@@ -605,3 +605,173 @@ logins. The saved school is still lost in that case. Nothing else changed.
       `Claude-Session` or "Generated with" lines.
     - `qa-roadmap` has no upstream, so nothing was pushed.
 11. **Not checked:** macOS and iOS builds (not possible here).
+
+---
+
+## Re-review 2 (2026-11-17)
+
+Re-reviewed at `qa-roadmap` @ `af17c27` (base `main` @ `f8d5582`; `main`
+still has no commits the branch lacks). Commits since the re-review
+(`9bc4301`): `0fd3017` (S5), and `daa1c67` / `af17c27` (STATUS only).
+
+### Verdict: **FAIL**
+
+S5 is fixed: a wizard shown again after finishing without logins now keeps
+the saved school. But the fix also puts the saved school into the wizard
+draft at **every** app start, even when no wizard is shown. That draft is
+never refreshed, so it can go stale and later be written back over a newer
+choice (M3). The fix is one line, and the reviewer tested it (below).
+
+The owner also decided a small F1 change in this session (O2, below). It is
+not a finding, but it belongs in the same round.
+
+### Must-fix
+
+#### M3 (F1, `0fd3017`): a stale school pick can overwrite the school chosen in Settings
+
+- **Where:** `app/lib/controllers/app_state.dart:138`
+  (`_seedSchoolPresetDraft(savedStep);` in the constructor, which since
+  `0fd3017` runs outside the `savedStep >= 0` check).
+- **What is wrong:**
+  - A set-up app (logins saved, no wizard in progress) now puts the saved
+    school into the draft `wiz:cal_preset` at start-up, though no wizard
+    is shown.
+  - Nothing refreshes that draft. If the user then changes the school in
+    Settings → Škola, the draft still holds the old one.
+  - If the logins are then cleared in the same session (Settings → Účty,
+    Bakaláři username emptied, no Strava login), `needsSetup()` turns
+    true and the wizard takes over the screen (`scaffold.dart:231`).
+  - Škola shows the **old** school picked, and *Pokračovat* writes it back
+    over the Settings choice. That silently brings back the old grade
+    conversion, lunch cutoff and free days.
+  - Reviewer's test at `af17c27`:
+    - setup: GEKOM and a Bakaláři login saved, new `AppState`;
+    - then: save `custom`, clear the username, `wizardOpened()`;
+    - result: Škola shows `gekom_2026_2027`, and *Pokračovat* saves
+      `school_preset_id: gekom_2026_2027`.
+    - The same test at `9bc4301`: Škola shows nothing, and nothing is
+      written.
+- **What correct looks like:** one commit, `F1: seed the school only for a
+  wizard on screen (R3 M3)`.
+  - In the constructor, seed only for a wizard in progress, as `bedcf60`
+    did: `if (savedStep >= 0) _seedSchoolPresetDraft(savedStep);`.
+    Settings can't be reached while a wizard is in progress. Keep the
+    seed in `wizardOpened()`. It reads the config at the moment the wizard
+    appears, which covers S5.
+  - The reviewer tried exactly this change:
+    - the stale case below writes nothing;
+    - the S5 test and all of `wizard_live_test.dart` pass;
+    - a live-view test passes: `LiveWizardView` on the reopened state,
+      then Škola shows GEKOM picked with *Pokračovat* enabled.
+  - Add the stale case to `wizard_live_test.dart` (it must fail on
+    `af17c27`):
+    ```dart
+    AppState().save({
+      'disclaimer_accepted': true,
+      'school_preset_id': 'gekom_2026_2027',
+      'bakalari_url': 'http://127.0.0.1:18080',
+      'bakalari_username': 'demo',
+    });
+    final s = AppState();
+    expect(s.needsSetup(), isFalse);
+    s.save({'school_preset_id': 'custom'});   // Settings → Škola
+    s.save({'bakalari_username': ''});        // Settings → Účty
+    expect(s.needsSetup(), isTrue);
+    s.wizardOpened();
+    final c = wizardControllerFor(s)..step = WizardController.stepSchool;
+    expect(c.calPreset(), isNot('gekom_2026_2027'));
+    c.pressNext();
+    expect(s.config.get('school_preset_id', ''), 'custom');
+    ```
+
+### Owner change for this round: O2 (F1, not a finding)
+
+The owner said, word for word: "You may also remove the canteen number text
+as well as the url, its set from the preset." This also answers the open
+question about Strava's *Změnit*.
+
+- **What:** when the preset supplies the value, the wizard shows neither the
+  address row (*Škola: bakaweb.gekom.cz*) on Bakaláři, nor the canteen
+  row (*Jídelna: 1950*) and its *Změnit* on Strava. The values are still
+  used for the connection test and saved as today (draft, then config,
+  then preset).
+- **Resumed wizard too:**
+  - Today `showBakalariUrlField` and `showStravaCanteenField`
+    (`wizard_controller.dart:230–239`) show the editable field as soon as
+    the config holds a value. So on a resumed wizard, the GEKOM address
+    saved earlier comes back as an editable field.
+  - Hide the field also when the config value equals the preset value.
+  - Show the normal field only when there is no preset value (*Jiná
+    škola*), or when the config holds a different value of the user's
+    own.
+- **Clean-up:**
+  - Remove `_prefillRow` and the `wiz:edit_strava_canteen` draft.
+  - Remove the strings `wiz_prefill_school`, `wiz_prefill_canteen` and
+    `wiz_prefill_change` from both ARB files and `strings.dart`, unless
+    something else still uses them.
+  - The S1 short texts stay: they don't mention the address or canteen.
+- **Unchanged:** Settings → Účty keeps both fields as they are.
+- **Tests:** adapt `GEKOM prefills Bakaláři URL and Strava canteen …`:
+  - with GEKOM: no address row, no canteen row, no *Změnit*;
+  - after a passing fake test, the saved config holds the preset values;
+  - a resumed wizard whose config equals the preset shows no field;
+  - a config with a different value of the user's own still shows the
+    field;
+  - *Jiná škola* shows both fields.
+  - The *Změnit* tap goes with the button. List that under *Deviations*,
+    with the owner's words.
+- **Evidence:** Bakaláři and Strava with GEKOM at 390 px (capture or
+  phone).
+- **Commit:** one commit, `F1: hide the preset address and canteen in the
+  wizard (owner)`.
+
+### Notes (no action needed)
+
+- **N13 (`af17c27`, measurement):**
+  - STATUS says the owner ran a separate measuring build with the real
+    logins, outside the repository. Nothing from it is in the branch:
+    `af17c27` adds one STATUS line, with endpoint names and sizes only.
+  - `C:\strakalari-measure` holds program files only. The reviewer
+    looked for `config.json`, cache, log and key files by name and found
+    none.
+  - If the run used a copy of the real config anywhere else, delete it
+    when you're done.
+  - Its result (about 1 MB per routine refresh, ~25 MB a day hourly)
+    agrees with the reviewer's reading of the phone's own counter (about
+    30 MB a day).
+
+### Each earlier finding
+
+| Finding | Fixed? | How the reviewer checked |
+|---|---|---|
+| S5 | ✔ `0fd3017`, but it caused M3 | `_seedSchoolPresetDraft` runs at start-up and in `wizardOpened()`, never over an existing draft. The new test **fails on `9bc4301`** (`calPreset()` `''`) and passes on `0fd3017`. It also passes with the `wizardOpened()` seed removed, because it is carried by the start-up seed. After M3's change it is carried by the `wizardOpened()` seed (the reviewer checked). |
+
+### What the reviewer verified, and how
+
+1. **Suites** (worktree, Flutter 3.44.8 / Dart 3.12.2):
+   - `dart pub get --enforce-lockfile`: OK.
+   - Core: `dart analyze` no issues; `dart test` **808 passed, 2
+     skipped**.
+   - App: `flutter analyze` no issues; `flutter test` **714 passed, 1
+     skipped**. That is 713 plus the S5 test.
+2. **Test before and after:** in a throwaway worktree (removed afterwards),
+   the S5 test from `0fd3017` was run on `9bc4301` (fails with an
+   assertion) and on `0fd3017` (passes).
+3. **Reviewer's own tests** (not committed):
+   - the stale case at `af17c27` (M3) and at `9bc4301` (no write);
+   - the suggested one-line change against the stale case, the S5 test,
+     the whole `wizard_live_test.dart` and the live-view test (all pass).
+4. **Scope:** `0fd3017` touches only `app_state.dart` and its test. There
+   is no UI change, so no new screen captures.
+5. **Safety rules:**
+   - `runRefresh`, the session lock, `sendExcuse` / `HistoryLock`, the
+     audit and `automation_paused` are untouched. No new `catch`.
+   - M3 is a config write of a stale value through the normal wizard
+     save, not a new write path.
+6. **Test integrity:** no removed test lines, no `skip:`, no
+   `try`/`catch` around assertions.
+7. **Hygiene:**
+   - No personal data in the commits.
+   - No `Co-Authored-By`, `Claude-Session` or "Generated with" lines.
+   - `qa-roadmap` has no upstream.
+8. **Not checked:** macOS and iOS builds (not possible here).
