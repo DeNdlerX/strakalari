@@ -292,5 +292,32 @@ void main() {
             reason: 'back from $loc must land on More');
       }
     });
+
+    testWidgets(
+        'P9c an open Settings section shows only its own back arrow, not a second one in the top bar',
+        (tester) async {
+      setViewport(tester, 390, 844);
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final state = container.read(appStateProvider);
+      state.wizardDismissed = true;
+      state.setTutorialsEnabled(false);
+
+      await tester.pumpWidget(
+        buildShellHarness(container: container, initialLocation: '/settings'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('topbar_back_btn')), findsOneWidget);
+
+      state.setSettingsSection('wakeup');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('topbar_back_btn')), findsNothing);
+      expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+      expect(state.settingsOpen, isFalse);
+      expect(find.byKey(const ValueKey('topbar_back_btn')), findsOneWidget);
+    });
   });
 }

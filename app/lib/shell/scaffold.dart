@@ -625,7 +625,10 @@ class AppScaffold extends ConsumerWidget {
       }
     }
 
-    final backBtn = (narrow && moreRoutes.contains(route))
+    // An open Settings section has its own back arrow: don't show a second.
+    final backBtn = (narrow &&
+            moreRoutes.contains(route) &&
+            subpageOpen(route: route, narrow: narrow, state: appState).isEmpty)
         ? IconButton(
             key: const ValueKey('topbar_back_btn'),
             icon: Icon(Icons.arrow_back, color: tok.muted),
