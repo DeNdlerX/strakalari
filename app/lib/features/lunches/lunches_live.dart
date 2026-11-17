@@ -40,8 +40,7 @@ LunchController lunchControllerFor(AppState s) {
   c.lunchPrefs = s.lunchPrefs;
   c.aiRunning = s.aiRunning;
   c.stravaOn = s.stravaEnabled();
-  c.stravaConfigured =
-      s.demoMode || core.hasValidCredentials(s.config.data).$2;
+  c.stravaConfigured = core.hasValidCredentials(s.config.data).$2;
   c.demoMode = s.demoMode;
   c.showPastLunches = s.showPastLunches;
   c.lunchToolsOpen = s.lunchToolsOpen;
