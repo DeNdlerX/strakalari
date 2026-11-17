@@ -503,5 +503,56 @@ void main() {
 
       expect(st.tutorialCurrent(), isNull);
     });
+
+    testWidgets(
+        'F1 skips marks_scale step when active preset provides marks_scale',
+        (tester) async {
+      final st = marksState(
+          freshState({'school_preset_id': 'gekom_2026_2027'}));
+      st.tutorialOffer('marks');
+      expect(st.tutorial, ('marks', 0));
+      expect(st.tutorialVisibleStepIndices(tours['marks']!), [0, 1, 2, 3]);
+
+      st.tutorialNext(); // 1
+      st.selectMarksSubject('Matematika'); // -> 2
+      st.tutorialNext(); // -> 3 (marks_predict, last visible step)
+      expect(st.tutorial, ('marks', 3));
+
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          appStateProvider.overrideWith(() => FixedAppStateController(st)),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TutorialBubble(
+                state: st,
+                tour: tours['marks']!,
+                index: 3,
+                step: tours['marks']!.steps[3],
+                tok: tokensFor('dark'),
+              ),
+            ),
+          ),
+        ),
+      ));
+      expect(find.text(Strings.get('tut_later')), findsOneWidget);
+
+      // Completing prediction finishes the tour directly without marks_scale.
+      expect(st.predictAdd('Matematika', '1', 10), isTrue);
+      expect(st.tutorialCurrent(), isNull);
+      expect(st.tutorialsDone(), contains('marks'));
+    });
+  });
+
+  test('F1 tut_settings_intro mentions grade conversion under School', () {
+    final prev = Strings.lang;
+    addTearDown(() => Strings.lang = prev);
+    Strings.lang = 'cs';
+    expect(Strings.get('tut_settings_intro_body'), contains('Škola'));
+    expect(Strings.get('tut_settings_intro_body_narrow'), contains('Škola'));
+    Strings.lang = 'en';
+    expect(Strings.get('tut_settings_intro_body'), contains('School'));
+    expect(Strings.get('tut_settings_intro_body_narrow'), contains('School'));
   });
 }

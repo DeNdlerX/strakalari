@@ -102,6 +102,14 @@ extension TutorialLogic on AppState {
     tutorialOffer(firstTourId);
   }
 
+  bool tutorialStepSkipped(TourStep step) =>
+      step.key == 'marks_scale' && hasPresetScale;
+
+  List<int> tutorialVisibleStepIndices(Tour tour) => [
+        for (var i = 0; i < tour.steps.length; i++)
+          if (!tutorialStepSkipped(tour.steps[i])) i,
+      ];
+
   /// Starts [tourId] when nothing else runs and it was never done.
   /// Views call it while rendering (the moment the tour's content is
   /// on screen), so it never emits. Port of `tutorial_offer()`.
@@ -115,7 +123,14 @@ extension TutorialLogic on AppState {
     if (tourId != firstTourId && !tutorialsDone().contains(firstTourId)) {
       return false; // the welcome tour always comes first
     }
-    tutorial = (tourId, 0);
+    final tour = tours[tourId]!;
+    var start = 0;
+    while (start < tour.steps.length &&
+        tutorialStepSkipped(tour.steps[start])) {
+      start++;
+    }
+    if (start >= tour.steps.length) return false;
+    tutorial = (tourId, start);
     return true;
   }
 
@@ -129,13 +144,18 @@ extension TutorialLogic on AppState {
     final current = tutorialCurrent();
     if (current == null) return;
     final (tour, _, _) = current;
-    if (index >= tour.steps.length) {
+    var next = index < 0 ? 0 : index;
+    while (next < tour.steps.length &&
+        tutorialStepSkipped(tour.steps[next])) {
+      next++;
+    }
+    if (next >= tour.steps.length) {
       tutorial = null;
       rememberTutorialDone(tour.id, quiet);
       if (!quiet) _emit();
       return;
     }
-    tutorial = (tour.id, index < 0 ? 0 : index);
+    tutorial = (tour.id, next);
     if (!quiet) _emit();
   }
 
@@ -146,7 +166,13 @@ extension TutorialLogic on AppState {
 
   void tutorialBack() {
     final current = tutorialCurrent();
-    if (current != null && current.$2 > 0) tutorialGoto(current.$2 - 1);
+    if (current == null) return;
+    final (tour, idx, _) = current;
+    var prev = idx - 1;
+    while (prev >= 0 && tutorialStepSkipped(tour.steps[prev])) {
+      prev--;
+    }
+    if (prev >= 0) tutorialGoto(prev);
   }
 
   /// Ends the active tour for good ("Skip tutorial").
