@@ -182,6 +182,10 @@ independent for this note; the code review at R3 will be.
 
 No code changed since the review, so the test run above still holds.
 
+- Owner follow-up (same day): limits leave the wizard and are edited in the
+  Absence tab (note §2, §6, §9). Joining Absence and Plánovač is out of F1,
+  tracked as F1b with its own design note.
+
 ### Verdict: PASS
 
 The agent may write F1's code as the note says.

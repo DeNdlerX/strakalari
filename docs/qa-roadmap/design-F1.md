@@ -14,7 +14,7 @@ shows the B1/B2 template editor), the owner's words win.
 
 ## 1. What changes, in one paragraph
 
-Setup gets shorter: **6 screens on a PC, 7 on Android** (the first draft had 9 and 11).
+Setup gets shorter: **5 screens on a PC, 6 on Android** (the first draft had 9 and 11).
 The first screen holds the language and a three-sentence disclaimer. Next the
 user picks the **school**; GEKOM fills in the Bakaláři address, the Strava
 canteen, the calendar, the grade conversion and the marking scale, so the
@@ -36,18 +36,16 @@ grade/percent switches (D1); the grade conversion is edited in
 | 1 | **Škola** | all | 6 | `school_preset_id` |
 | 2 | **Bakaláři** (+ signature) | all | 2, part of 8 | `bakalari_url`, `bakalari_username`, `bakalari_password`, `your_signature` |
 | 3 | **Strava** | all | 4 | `use_strava`, `strava_username`, `strava_password`, `strava_canteen_id` |
-| 4 | **Limity absence** | all | 3 | `subject_limits`, `absence_critical_pct` |
-| 5 | **Telefon** | Android | 7 | `run_in_background`, `wakeup_enabled` |
-| 6 | **Hotovo** | all | 9 | nothing; *Dokončit* starts the first refresh |
+| 4 | **Telefon** | Android | 7 | `run_in_background`, `wakeup_enabled` |
+| 5 | **Hotovo** | all | 9 | nothing; *Dokončit* starts the first refresh |
 
-Removed from the wizard: **AI doporučení** (old 5) and **Omluvenky** (old
-8). Gemini stays in Settings unchanged; templates keep their defaults
+Removed from the wizard: **Limity absence** (old 3), **AI doporučení** (old
+5) and **Omluvenky** (old 8). Limits move to the Absence tab (§6). Gemini stays in Settings unchanged; templates keep their defaults
 (`config.dart` l.57–103) and stay editable in Settings → Šablony. The
 wizard writes no `gemini_*` key and no template key.
 
 Why this order: the school supplies the defaults the login steps show; the
-two logins follow each other; Limity needs the Bakaláři login (its subject
-list comes from the Bakaláři-only refresh, `onLimitsRefresh`, unchanged).
+two logins follow each other.
 
 Unchanged: Bakaláři and Strava run their live test on *Otestovat a
 pokračovat* and move on only after it passes; *Přeskočit* moves one step and
@@ -108,9 +106,7 @@ only if the string-table tests allow; otherwise they are removed too.
 Bakaláři address: *Jídelna: 1950* with *Změnit* when the preset has
 `strava_canteen_id` and the config has none. Username and password as now.
 
-**4 Limity.** As now (skippable, P3 pinned buttons).
-
-**5 Telefon** (Android only).
+**4 Telefon** (Android only).
 - One line: *Strakaláři mohou kontrolovat Bakaláře a Stravu na pozadí a
   budit vás před první hodinou.*
 - Switch *Běžet na pozadí* (`run_in_background`, default on).
@@ -125,7 +121,7 @@ Bakaláři address: *Jídelna: 1950* with *Změnit* when the preset has
 - *Přeskočit* saves and asks nothing; B9's after-tour ask still holds. The
   service starts when `PhoneBackground.sync` runs after setup (B9 (b)).
 
-**6 Hotovo.** Heading and one sentence (`wiz_done_p`, merged with
+**5 Hotovo.** Heading and one sentence (`wiz_done_p`, merged with
 `wiz_done_next` into one shorter line). No summary.
 
 ---
@@ -188,6 +184,15 @@ so walking Škola–Bakaláři again loses nothing. `needsSetup` gating
 
 ## 6. Other screens
 
+**Absence** (owner, 2026-11-17: limits belong in the Absence tab). The
+subject limits and the critical percentage (`subject_limits`,
+`absence_critical_pct`, unchanged keys) are edited there: a *Limity* button
+in the Absence header opens the existing limits editor from Settings, moved
+into a shared widget. While no limit is set, Absence shows one line *Zatím
+nejsou nastavené limity* with that button. Settings keeps a link to it, not a
+second editor. The wizard's `onLimitsRefresh` path and its strings are
+removed; Absence lists subjects from the normal data refresh.
+
 **Známky.** The *Převod procent na známky* card is hidden when the active
 preset has `marks_percent_bands`; the grade/percent switches (header, phone
 list, subject detail) are hidden when it has `marks_scale`. Jiná škola: both
@@ -248,7 +253,10 @@ rejected one by one; GEKOM valid with D1 values; a user preset without the
 new fields loads; helpers return values, or empty/null for `custom`.
 
 **App:**
-- Exact step list on desktop (6) and Android (7).
+- Exact step list on desktop (5) and Android (6).
+- Absence: *Limity* opens the editor; an edit saves `subject_limits`; the
+  empty-limits line shows while none is set; no limit editor left in the
+  wizard.
 - Vítejte: *Pokračovat* disabled until the checkbox is ticked; disclaimer
   strings in cs and en.
 - Škola writes only `school_preset_id`; nothing on *Přeskočit*.
@@ -266,7 +274,8 @@ new fields loads; helpers return values, or empty/null for `custom`.
 
 **Adapted, not deleted** (listed in each commit message and under
 *Deviations* in STATUS.md): wizard tests that drive the removed AI and
-Omluvenky steps (B1 wizard template tests, P1 disclaimer wording, P4
+Omluvenky steps, and the limits step (B7 retry snackbar, P3 pinned buttons:
+P3 moves to a long step that remains, e.g. Škola with many presets, B1 wizard template tests, P1 disclaimer wording, P4
 switches on the AI step). Each keeps checking its behaviour where it still
 exists (Settings `TemplateEditor` tests stay unchanged) and the round-trip
 guarantee above.
@@ -279,12 +288,12 @@ permission dialog on Telefon and `dumpsys activity services` showing
 
 **Commits** (each `F1:`, each green, each with its tests):
 1. preset fields and helpers (core, docs)
-2. new step list, merged Vítejte, short disclaimer, resume rule
+2. new step list (limits out), merged Vítejte, short disclaimer, resume rule
 3. Škola step
 4. prefills and signature on Bakaláři
 5. Telefon step
 6. phone layout
-7. Známky / Settings → Škola
+7. Známky / Settings → Škola, limits in Absence
 8. tutorials
 
 ---
