@@ -14,13 +14,15 @@ shows the B1/B2 template editor), the owner's words win.
 
 ## 1. What changes, in one paragraph
 
-Setup gets shorter: **5 screens on a PC, 6 on Android** (the first draft had 9 and 11).
+Setup gets shorter: **6 screens on a PC, 7 on Android** (the first draft had 9 and 11).
 The first screen holds the language and a three-sentence disclaimer. Next the
 user picks the **school**; GEKOM fills in the Bakaláři address, the Strava
 canteen, the calendar, the grade conversion and the marking scale, so the
-user types only their logins. AI and excuse templates leave the wizard; they
-stay in Settings. On Android one *Telefon* screen holds the background and
-alarm switches and asks for the notification permission there, on purpose.
+user types only their logins. One short screen asks for the name under
+excuses; the templates hide under a collapsed *Pokročilé*. AI and absence
+limits leave the wizard (Settings and the Absence tab). On Android one
+*Telefon* screen holds the alarm switch and asks for the notification
+permission there, on purpose; running in the background is on by default.
 On phones the wizard fills the screen with a pinned header and button bar.
 While a school preset is active, Známky shows no grade conversion card and no
 grade/percent switches (D1); the grade conversion is edited in
@@ -34,13 +36,14 @@ grade/percent switches (D1); the grade conversion is edited in
 |---|---|---|---|---|
 | 0 | **Vítejte** (language + disclaimer) | all | 0, 1 | `language` (on tap, as now), `disclaimer_accepted` |
 | 1 | **Škola** | all | 6 | `school_preset_id` |
-| 2 | **Bakaláři** (+ signature) | all | 2, part of 8 | `bakalari_url`, `bakalari_username`, `bakalari_password`, `your_signature` |
+| 2 | **Bakaláři** | all | 2 | `bakalari_url`, `bakalari_username`, `bakalari_password` |
 | 3 | **Strava** | all | 4 | `use_strava`, `strava_username`, `strava_password`, `strava_canteen_id` |
-| 4 | **Telefon** | Android | 7 | `run_in_background`, `wakeup_enabled` |
-| 5 | **Hotovo** | all | 9 | nothing; *Dokončit* starts the first refresh |
+| 4 | **Omluvenky** (name + collapsed advanced templates) | all | 8 | `your_signature`; templates only if edited (they save themselves, B1/B2) |
+| 5 | **Telefon** | Android | 7 | `wakeup_enabled` |
+| 6 | **Hotovo** | all | 9 | nothing; *Dokončit* starts the first refresh |
 
 Removed from the wizard: **Limity absence** (old 3), **AI doporučení** (old
-5) and **Omluvenky** (old 8). Limits move to the Absence tab (§6). Gemini stays in Settings unchanged; templates keep their defaults
+5). Limits move to the Absence tab (§6). Gemini stays in Settings unchanged; templates keep their defaults
 (`config.dart` l.57–103) and stay editable in Settings → Šablony. The
 wizard writes no `gemini_*` key and no template key.
 
@@ -98,30 +101,39 @@ only if the string-table tests allow; otherwise they are removed too.
   test and the save is draft, then config, then preset. A `bakalari_url`
   already in the config always wins.
 - Username and password (P2 eye toggle) as now.
-- New, below them: optional field *Podpis pod omluvenky* (`your_signature`,
-  existing key, existing string `wiz_signature` or the Settings label).
-  Saved together with the login when the test passes.
 
 **3 Strava.** *Používat Stravu* switch as now. Canteen number like the
 Bakaláři address: *Jídelna: 1950* with *Změnit* when the preset has
 `strava_canteen_id` and the config has none. Username and password as now.
 
-**4 Telefon** (Android only).
-- One line: *Strakaláři mohou kontrolovat Bakaláře a Stravu na pozadí a
-  budit vás před první hodinou.*
-- Switch *Běžet na pozadí* (`run_in_background`, default on).
+**4 Omluvenky.**
+- One field: *Vaše jméno pod omluvenkami* (`your_signature`), with one hint
+  line. Skippable.
+- Below it a collapsed **Pokročilé** section (`ExpansionTile`, closed by
+  default). Opened, it shows the four template groups, each itself a
+  collapsed row with its human label and a count (*Pozdní příchod · 3*);
+  opening a group shows the B1/B2 `TemplateEditor` rows for it. Nothing
+  else on the step.
+- The same collapsed layout replaces today's long list in Settings →
+  Šablony (one shared widget), so it is shorter there too. `TemplateEditor`'s
+  saving (B2) is unchanged.
+
+**5 Telefon** (Android only).
+- No *Běžet na pozadí* switch: `run_in_background` is on by default
+  (`config.dart:112`) and stays in Settings.
+- One line: *Strakaláři vás mohou budit před první hodinou.*
 - Switch *Budík* (`wakeup_enabled`, default off). Minutes before and other
   options stay in Settings → Budík; the wizard doesn't write
   `wakeup_minutes_before`.
-- *Pokračovat* saves both. If either switch is on, it then asks for the
-  notification permission (`requestNotificationPermission`, which waits for
+- *Pokračovat* saves `wakeup_enabled`. If `run_in_background` or the alarm
+  is on (by default always), it then asks for the notification permission (`requestNotificationPermission`, which waits for
   the answer since B9) and moves on after the answer, either way. The ask is
   recorded in `AppState` for this run, so `PhoneBackground.sync` doesn't ask
   again after the intro tour.
 - *Přeskočit* saves and asks nothing; B9's after-tour ask still holds. The
   service starts when `PhoneBackground.sync` runs after setup (B9 (b)).
 
-**5 Hotovo.** Heading and one sentence (`wiz_done_p`, merged with
+**6 Hotovo.** Heading and one sentence (`wiz_done_p`, merged with
 `wiz_done_next` into one shorter line). No summary.
 
 ---
@@ -241,6 +253,7 @@ wizard has no tour.
 | Notification category switches | Only *Běžet na pozadí* (+ *Budík*) | Owner: less clutter; Settings → Oznámení has them. |
 | AI step kept | Removed from the wizard | Owner: Gemini only in Settings. |
 | Summary / signature preview | None | Owner: less text. |
+| Background switch in the wizard | None (default on) | Owner: "No need to have that there". |
 | School/lunch system pickers | None | One choice each. |
 | Settings → Škola overrides for URLs, cutoff, free days | Only the grade conversion added | PLAN: only as far as D1 approves. |
 
@@ -253,7 +266,10 @@ rejected one by one; GEKOM valid with D1 values; a user preset without the
 new fields loads; helpers return values, or empty/null for `custom`.
 
 **App:**
-- Exact step list on desktop (5) and Android (6).
+- Exact step list on desktop (6) and Android (7).
+- Omluvenky: only the name field visible; *Pokročilé* closed by default;
+  opening it and a group shows the editor; an edit saves (B2 behaviour);
+  Settings → Šablony uses the same collapsed widget.
 - Absence: *Limity* opens the editor; an edit saves `subject_limits`; the
   empty-limits line shows while none is set; no limit editor left in the
   wizard.
@@ -262,8 +278,8 @@ new fields loads; helpers return values, or empty/null for `custom`.
 - Škola writes only `school_preset_id`; nothing on *Přeskočit*.
 - Prefills: preset value when the config is empty, config value otherwise,
   nothing for Jiná škola; saved config holds the prefills after a passing
-  fake `testConnection` (no network). Signature saved with the Bakaláři step.
-- Telefon: *Pokračovat* with a switch on asks once; `PhoneBackground` doesn't
+  fake `testConnection` (no network). Signature saved on the Omluvenky step.
+- Telefon: no background switch; *Pokračovat* asks once; `PhoneBackground` doesn't
   ask again; *Přeskočit* keeps B9's after-tour ask (B9 tests unchanged).
 - Resume: saved `wizard_step` 6 → Škola; 0, or disclaimer not accepted →
   Vítejte; `needsSetup` gating unchanged.
@@ -273,8 +289,8 @@ new fields loads; helpers return values, or empty/null for `custom`.
   Settings → Škola: bands editor saves `marks_percent_bands`.
 
 **Adapted, not deleted** (listed in each commit message and under
-*Deviations* in STATUS.md): wizard tests that drive the removed AI and
-Omluvenky steps, and the limits step (B7 retry snackbar, P3 pinned buttons:
+*Deviations* in STATUS.md): wizard tests that drive the removed AI
+and limits steps (B7 retry snackbar, P3 pinned buttons:
 P3 moves to a long step that remains, e.g. Škola with many presets, B1 wizard template tests, P1 disclaimer wording, P4
 switches on the AI step). Each keeps checking its behaviour where it still
 exists (Settings `TemplateEditor` tests stay unchanged) and the round-trip
@@ -290,7 +306,7 @@ permission dialog on Telefon and `dumpsys activity services` showing
 1. preset fields and helpers (core, docs)
 2. new step list (limits out), merged Vítejte, short disclaimer, resume rule
 3. Škola step
-4. prefills and signature on Bakaláři
+4. prefills, Omluvenky step and collapsed template editor
 5. Telefon step
 6. phone layout
 7. Známky / Settings → Škola, limits in Absence

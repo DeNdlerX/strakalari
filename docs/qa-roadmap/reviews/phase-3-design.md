@@ -185,6 +185,9 @@ No code changed since the review, so the test run above still holds.
 - Owner follow-up (same day): limits leave the wizard and are edited in the
   Absence tab (note §2, §6, §9). Joining Absence and Plánovač is out of F1,
   tracked as F1b with its own design note.
+- Owner follow-up 2: a short Omluvenky step (name, templates under a
+  collapsed *Pokročilé*, the same shorter widget in Settings → Šablony);
+  no background switch in the wizard (on by default). Note §2, §3, §9.
 
 ### Verdict: PASS
 
