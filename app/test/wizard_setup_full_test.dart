@@ -100,6 +100,38 @@ void main() {
       expect(saved['use_strava'], isTrue);
     });
 
+    test('testWizardGotoClampsAndFinishClears', () {
+      final c = WizardController(
+        config: {},
+        onSave: (_) => true,
+      );
+      c.goTo(99);
+      expect(c.step, equals(WizardController.stepDone));
+      c.goTo(-3);
+      expect(c.step, equals(0));
+      c.setDraft('wiz:bakalari_username', 'novak');
+      expect(c.draft('wiz:bakalari_username'), equals('novak'));
+      c.finishWizard();
+      expect(c.dismissed, isTrue);
+      expect(c.draft('wiz:bakalari_username'), isEmpty);
+    });
+
+    test('testSkipMovesOneStepOnly', () {
+      final saved = <String, Object?>{};
+      final c = WizardController(
+        config: {},
+        onSave: (updates) {
+          saved.addAll(updates);
+          return true;
+        },
+      );
+      c.goTo(WizardController.stepBakalari);
+      c.pressSkip();
+      expect(c.step, equals(WizardController.stepBakalari + 1));
+      expect(c.dismissed, isFalse);
+      expect(saved.containsKey('bakalari_username'), isFalse);
+    });
+
     test('testNoSkipWhereNothingMayBeSkipped', () {
       final c = WizardController(
         config: {},
