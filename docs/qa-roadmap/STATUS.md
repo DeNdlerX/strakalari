@@ -1,7 +1,7 @@
 # QA & roadmap status
 
-Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3b design (F1b design note ready; O1 done)
-Next step: Have the reviewer check `design-F1b.md` (and `O1` `4eea335`) into `reviews/phase-3b-design.md` before writing any F1b code. Start phase 4 (F2) once the owner's go and answers (D2) are in STATUS.md.
+Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3b design (R3b review: FAIL)
+Next step: Fix every finding in `reviews/phase-3b-design.md` (blockers first), one commit per finding, then stop for re-review.
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -86,6 +86,7 @@ Next step: Have the reviewer check `design-F1b.md` (and `O1` `4eea335`) into `re
 
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
 ### Phase 3b design note (`F1b` + `O1`, checkpoint ⛔ before F1b code)
+- **2026-11-17 R3b design review: FAIL**: O1 lets a failed automatic send pass without any notification when a fetch also failed in the same refresh (M1, must-fix, a few lines in `activity.dart`, tested by the reviewer). The F1b note misses two test files and doesn't say whether `PlannerView` stays (M2, must-fix), plus seven should-fix gaps (S1–S7: empty states, subject card, tutorial, strings, README, Android *Více* list, *Done when*). No F1b code yet. Baseline: core 809 passed / 2 skipped, app 719 passed / 1 skipped. See [`reviews/phase-3b-design.md`](reviews/phase-3b-design.md).
 - **What was done:**
   - Completed **O1** (`4eea335`): set `refresh_done` and `refresh_failed` to `false` in `packages/strakalari_core/lib/src/platform/notifier.dart` (`defaults`) and made `isEnabled` and `app/lib/features/settings/settings_view.dart` (`_notifications`) fall back to `defaults` via `core.isEnabled`. Verified tests failed before the fix and pass after (`strakalari_core`: `dart analyze` clean, `dart test` 809 passed / 2 skipped; `app`: `flutter analyze` clean, `flutter test` 719 passed / 1 skipped).
   - Wrote `docs/qa-roadmap/design-F1b.md` (no F1b code written yet): merges Absence and Plánovač into `/absences` (7 desktop rail items, 3 phone *More* items + *Budík* on Android, `/planner` redirect to `/absences`), replaces the duplicated subject list with one unified subject/budget list, consolidates the KPI row to 4 cards + a compact horizon/tightest line, merges the `absences` and `planner` tutorials, and lists all affected tests and strings.
