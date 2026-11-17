@@ -1,7 +1,7 @@
 # QA & roadmap status
 
 Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3 (design)
-Next step: ⛔ R3a — wait for review of `docs/qa-roadmap/design-F1.md` (`reviews/phase-3-design.md`) and answers to Q1–Q6 before writing any F1 code.
+Next step: Fix every finding in `reviews/phase-3-design.md` (blockers first), one commit per finding, then stop for re-review. (Design phase: the fixes are edits to `design-F1.md`; still no F1 code.)
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -37,6 +37,7 @@ Next step: ⛔ R3a — wait for review of `docs/qa-roadmap/design-F1.md` (`revie
 - **S4 / B9 (2026-11-16):** "You may do anything with the .test app. I leave the rest on you, you can decide/test"
 - **Go for F1 (2026-11-17):** "Go for phase 3"
 - **D1 / F1 clarification (2026-11-17, refines "not editable" below):** "Also when I mean not editable, dont display it at all, its not needed, just bloating everything up. The same with the percentage/marks selectors. If a school has a preset, keep it"
+- **D1 / F1 simplicity (2026-11-17, given at the R3a review):** "One note: I want the app to be as simple as possible, the smaller the amount of startup screens and text, the better. I might be against displaying the gemini stuff, because we might create a subscription for this later, so leave it only in settings for power users, but not display it in the wizard. And the disclaimer can be shortened as well. Just really rework it to make it AAA."
 - **D1 / F1 (2026-11-17):** "And about the adresses, gekom uses bakalari bakaweb.gekom.cz, and strava strava.cz and number 1950. Also, gekom only uses percentage now. And the grade is not editable, only in settings under school option where you get to change stuff related to the preset I guess."
 
 ## Questions for the owner / reviewer
@@ -64,6 +65,7 @@ Next step: ⛔ R3a — wait for review of `docs/qa-roadmap/design-F1.md` (`revie
 
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
 ### Phase 3 design note (`F1`, checkpoint ⛔ R3a)
+- **2026-11-17 R3a review: FAIL**: rework the note to the owner's new simplicity direction — 6 wizard steps on desktop / 7 on Android (welcome + short disclaimer on one screen, no AI step, no templates step, signature on Bakaláři, background + Budík on one Telefon step, no summary), shorter disclaimer, safe `wizard_step` resume, one line on Škola. 5 must-fix, 2 should-fix. See [`reviews/phase-3-design.md`](reviews/phase-3-design.md).
 - **What was done:** Merged `main` @ `f8d5582` into `qa-roadmap` (`7e92c7d`, tree unchanged) and wrote `docs/qa-roadmap/design-F1.md` covering the new 9/11-step wizard order (school before logins, new Android background/notifications step, final summary), per-step UI & saved config keys (no new/removed/renamed config keys), optional preset fields (`school`, `category_cs`/`category_en`, `bakalari_url`, `strava_canteen_id`, `marks_scale`) with D1's GEKOM values, hiding the grade conversion card & scale switches in Známky when a preset sets them, moving the editable bands card into Settings → Škola, phone full-screen layout with pinned header/footer, and tutorial adjustments. No code has been written yet.
 - **Deviations from the plan / report:** None from PLAN §6 Phase 3. Differences from report §3.1 (explained in `design-F1.md` §8): flat optional preset fields instead of nested classes, keeping Welcome and Disclaimer separate, `AnimatedSwitcher` instead of `PageView`, hiding Známky bands/scale controls completely per D1 clarification, only *Běžet na pozadí* in the wizard notifications step, no single-option school/lunch system pickers, and limiting Settings → Škola additions to the grade conversion card per PLAN.
 - **Unsure:** Open design questions Q1–Q6 in `design-F1.md` §10 (and copied under *Questions for the owner / reviewer*).
