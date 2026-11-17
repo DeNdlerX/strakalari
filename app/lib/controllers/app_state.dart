@@ -130,18 +130,12 @@ class AppState {
       return (v == 'table' || v == 'list') ? v : 'table';
     }();
     final savedStep = _savedWizardStep;
-    if (savedStep >= 0) {
-      if (savedStep > 0) {
-        wizardStep = config.get('disclaimer_accepted', false) == true
-            ? (savedStep > 1 ? 1 : savedStep)
-            : 0;
-      }
-      final savedPreset = '${config.get('school_preset_id', '')}'.trim();
-      if (savedPreset.isNotEmpty &&
-          (savedStep > 1 || savedPreset != core.customId)) {
-        drafts['wiz:cal_preset'] = savedPreset;
-      }
+    if (savedStep > 0) {
+      wizardStep = config.get('disclaimer_accepted', false) == true
+          ? (savedStep > 1 ? 1 : savedStep)
+          : 0;
     }
+    _seedSchoolPresetDraft(savedStep);
     try {
       final cached = loadCached(updateChannel);
       if (cached != null &&
@@ -849,10 +843,20 @@ class AppState {
     return wizardShown || needsSetup();
   }
 
+  void _seedSchoolPresetDraft(int savedStep) {
+    if (drafts.containsKey('wiz:cal_preset')) return;
+    final savedPreset = '${config.get('school_preset_id', '')}'.trim();
+    if (savedPreset.isEmpty) return;
+    if (savedStep > 1 || savedPreset != core.customId) {
+      drafts['wiz:cal_preset'] = savedPreset;
+    }
+  }
+
   /// The wizard is on screen: remember it across app restarts.
   void wizardOpened() {
     if (wizardDismissed) return;
     wizardShown = true;
+    _seedSchoolPresetDraft(_savedWizardStep);
     _saveWizardStep(wizardStep);
   }
 

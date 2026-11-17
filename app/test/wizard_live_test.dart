@@ -1049,6 +1049,38 @@ void main() {
       expect(cFresh.calPreset(), isEmpty);
       expect(cFresh.nextEnabled, isFalse);
     });
+
+    test(
+        'reopened wizard after finishing without logins keeps saved real preset picked',
+        () {
+      final first = AppState()..wizardOpened();
+      first.save({
+        'disclaimer_accepted': true,
+        'school_preset_id': 'gekom_2026_2027',
+      });
+      first.wizardGoto(WizardController.stepDone, WizardController.stepDone);
+      first.wizardFinished();
+
+      final cfgFile = File('${tmp.path}/config.json');
+      final beforeCfg = cfgFile.readAsStringSync();
+
+      final again = AppState();
+      expect(again.needsSetup(), isTrue);
+      expect(again.wizardStep, WizardController.stepWelcome);
+      expect(cfgFile.readAsStringSync(), beforeCfg);
+
+      again.wizardOpened();
+      final c = wizardControllerFor(again);
+      expect(c.calPreset(), 'gekom_2026_2027');
+      expect(c.selectedSchoolGroup(), 'GEKOM');
+      c.step = WizardController.stepSchool;
+      expect(c.nextEnabled, isTrue);
+
+      // Explicitly picking Jiná škola is not overwritten by wizardOpened().
+      c.selectSchoolGroup(customId);
+      again.wizardOpened();
+      expect(wizardControllerFor(again).calPreset(), customId);
+    });
   });
 
   group('F1 login prefills and Změnit', () {
