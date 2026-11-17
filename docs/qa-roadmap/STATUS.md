@@ -36,6 +36,7 @@ Next step: Phase 2 passed (2026-11-17). Start phase 3 once the owner's go and an
 - **B1 (2026-11-15):** "connected. I dont think any use it."
 - **S4 / B9 (2026-11-16):** "You may do anything with the .test app. I leave the rest on you, you can decide/test"
 - **Go for F1 (2026-11-17):** "Go for phase 3"
+- **D1 / F1 clarification (2026-11-17, refines "not editable" below):** "Also when I mean not editable, dont display it at all, its not needed, just bloating everything up. The same with the percentage/marks selectors. If a school has a preset, keep it"
 - **D1 / F1 (2026-11-17):** "And about the adresses, gekom uses bakalari bakaweb.gekom.cz, and strava strava.cz and number 1950. Also, gekom only uses percentage now. And the grade is not editable, only in settings under school option where you get to change stuff related to the preset I guess."
 
 ## Questions for the owner / reviewer
