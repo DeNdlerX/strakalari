@@ -161,3 +161,27 @@ never wraps at 390 px in cs (the longest labels).
 - Core: `dart analyze` no issues; `dart test` 804 passed, 2 skipped.
 - App: `flutter analyze` no issues; `flutter test` 703 passed, 1 skipped.
 - Same counts as the R2 re-review baseline: nothing deleted or skipped.
+
+## Re-review 2026-11-17
+
+At the owner's request ("Can you rewrite it?") the reviewer rewrote
+`design-F1.md` itself, as in the R2 re-review. The review is therefore not
+independent for this note; the code review at R3 will be.
+
+- **M1** fixed: §2 has 6 steps on desktop, 7 on Android, as listed here.
+- **M2** fixed: §3a holds the three-sentence cs/en disclaimer; P1 override
+  and `wiz_disclaimer_rules` go; `wiz_welcome_p` drops AI.
+- **M3** fixed: AI and Omluvenky steps removed; signature on Bakaláři;
+  §9 lists the tests to adapt (not delete) and keeps the B1 round trip,
+  extended to `gemini_*` keys.
+- **M4** fixed: §5 resume rule `min(saved, 1)`, 0 without the disclaimer.
+- **M5** fixed: one line on Škola; no category line for a single preset.
+- **S1** fixed: Q2–Q6 answered in the note; only Q1 left for the owner.
+- **S2** fixed: §7, *Přeskočit* only on skippable steps, no wrap at 390 px.
+- **N2** taken in §4 (`marks_scale` beats `auto`).
+
+No code changed since the review, so the test run above still holds.
+
+### Verdict: PASS
+
+The agent may write F1's code as the note says.

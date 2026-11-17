@@ -1,7 +1,7 @@
 # QA & roadmap status
 
 Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3 (design)
-Next step: Fix every finding in `reviews/phase-3-design.md` (blockers first), one commit per finding, then stop for re-review. (Design phase: the fixes are edits to `design-F1.md`; still no F1 code.)
+Next step: Design note for phase 3 passed (2026-11-17). Write phase 3's code as the note says.
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -47,13 +47,7 @@ Next step: Fix every finding in `reviews/phase-3-design.md` (blockers first), on
 - **S6 / B9 (2026-11-16):** In `app/lib/platform/startup.dart` (`PhoneBackground.sync`), `_on`, `_interval`, and `_allowed` are still recorded before `await channel.startBackground(...)`, so if `startBackground` throws once it is not retried until a setting or permission state changes. Left unchanged per R1 S6 ("don't change it without the owner's go, because it changes when the service is started") unless requested after R1.
 - **R2 M1 / N1 (2026-11-17):** Have you ever actually seen the second line of the background notification cut off, and if so, where (phone font size, lock screen, pop-up)? None of the screenshots show it, before or after the change.
 - **Budík buttons (owner, 2026-11-17, not in the plan):** On Více → Budík, *Povolit přesné budíky*, *Tento den nebudit* and *Otevřít v Budíku telefonu* are flat text buttons and don't look like buttons. Should they get a visible button style (e.g. outlined)? Left unchanged until the owner says so.
-- **F1 / R3a (2026-11-17, see `design-F1.md` §10):**
-  - **Q1:** Is the Bakaláři address exactly `https://bakaweb.gekom.cz` (no path after it)?
-  - **Q2:** Is *Maturitní ročník 2026/2027* the right category label for the current GEKOM preset?
-  - **Q3:** With GEKOM active, is switching to *Jiná škola* enough if someone ever wanted 1–5 grades instead of percent, or should Settings → Škola offer a scale override?
-  - **Q4:** Should a user who already typed custom grade bands keep them (editable in Settings → Škola, with *Podle školy* to reset)?
-  - **Q5:** Is having only the *Běžet na pozadí* switch on the wizard notifications step (and pointing to Settings → Oznámení for individual events) OK?
-  - **Q6 (reviewer):** Splitting F1 into ~8 green `F1:` commits instead of one large commit — OK?
+- **F1 / R3a (2026-11-17):** Q2–Q6 answered in the rewritten `design-F1.md`. Open for the owner: **Q1** Is the Bakaláři address exactly `https://bakaweb.gekom.cz` (no path after it)?
 
 ## Deviations from the plan (each needs reviewer sign-off)
 - **M3 (B3):** Disabled the `MaterialApp` theme cross-fade (`themeAnimationStyle: AnimationStyle.noAnimation` in `app/lib/main.dart:77`) so `Theme.of(context)` switches in the same frame as `appState.tok` and cannot lag or restart an animation on rapid rebuilds.
@@ -66,6 +60,7 @@ Next step: Fix every finding in `reviews/phase-3-design.md` (blockers first), on
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
 ### Phase 3 design note (`F1`, checkpoint ⛔ R3a)
 - **2026-11-17 R3a review: FAIL**: rework the note to the owner's new simplicity direction — 6 wizard steps on desktop / 7 on Android (welcome + short disclaimer on one screen, no AI step, no templates step, signature on Bakaláři, background + Budík on one Telefon step, no summary), shorter disclaimer, safe `wizard_step` resume, one line on Škola. 5 must-fix, 2 should-fix. See [`reviews/phase-3-design.md`](reviews/phase-3-design.md).
+- **2026-11-17 R3a re-review: PASS**: at the owner's request the reviewer rewrote `design-F1.md` to the findings (6 steps desktop / 7 Android). See [`reviews/phase-3-design.md`](reviews/phase-3-design.md#re-review-2026-11-17).
 - **What was done:** Merged `main` @ `f8d5582` into `qa-roadmap` (`7e92c7d`, tree unchanged) and wrote `docs/qa-roadmap/design-F1.md` covering the new 9/11-step wizard order (school before logins, new Android background/notifications step, final summary), per-step UI & saved config keys (no new/removed/renamed config keys), optional preset fields (`school`, `category_cs`/`category_en`, `bakalari_url`, `strava_canteen_id`, `marks_scale`) with D1's GEKOM values, hiding the grade conversion card & scale switches in Známky when a preset sets them, moving the editable bands card into Settings → Škola, phone full-screen layout with pinned header/footer, and tutorial adjustments. No code has been written yet.
 - **Deviations from the plan / report:** None from PLAN §6 Phase 3. Differences from report §3.1 (explained in `design-F1.md` §8): flat optional preset fields instead of nested classes, keeping Welcome and Disclaimer separate, `AnimatedSwitcher` instead of `PageView`, hiding Známky bands/scale controls completely per D1 clarification, only *Běžet na pozadí* in the wizard notifications step, no single-option school/lunch system pickers, and limiting Settings → Škola additions to the grade conversion card per PLAN.
 - **Unsure:** Open design questions Q1–Q6 in `design-F1.md` §10 (and copied under *Questions for the owner / reviewer*).
