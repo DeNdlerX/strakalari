@@ -1092,6 +1092,15 @@ class LessonDiff {
       );
 }
 
+bool _sameRoomChangeNote(String note) {
+  final m = RegExp(
+    r'^(?:Změna místnosti|Room change)\s*:\s*(.+?)\s*\(([^()]+)\)\s*$',
+    caseSensitive: false,
+  ).firstMatch(note.trim());
+  if (m == null) return false;
+  return _normText(m.group(1)!) == _normText(m.group(2)!);
+}
+
 /// Compares one lesson against the stable baseline.
 ///
 /// A bare teacher note (description) with identical subject/teacher/room/
@@ -1106,15 +1115,6 @@ class LessonDiff {
 /// ``added`` change even without signals. Without a complete baseline an
 /// empty slot only means "no data", so the notice-keyword heuristic
 /// decides instead.
-bool _sameRoomChangeNote(String note) {
-  final m = RegExp(
-    r'^(?:Změna místnosti|Room change)\s*:\s*(.+?)\s*\(([^()]+)\)\s*$',
-    caseSensitive: false,
-  ).firstMatch(note.trim());
-  if (m == null) return false;
-  return _normText(m.group(1)!) == _normText(m.group(2)!);
-}
-
 LessonDiff classifyLesson(Map<Object?, Object?>? raw,
     [Object? day, Map<Object?, Object?>? baseline, bool complete = false]) {
   final parsed = Lesson.fromLegacy(_readMap(raw), day);
@@ -1197,9 +1197,7 @@ LessonDiff classifyLesson(Map<Object?, Object?>? raw,
     if (d.length < best.length) best = d;
   }
   if (best.isEmpty) {
-    final suppressedRoomFlag =
-        infoCode == 'roomchanged' && variants.length == 1 && note.isEmpty;
-    if (flagged && !suppressedRoomFlag) {
+    if (flagged) {
       return LessonDiff(isChange: true, changed: ['notice'], note: note);
     }
     return LessonDiff(isChange: false, changed: [], note: note);
