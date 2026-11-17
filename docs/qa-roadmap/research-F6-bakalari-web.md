@@ -423,13 +423,68 @@ also carry (listed per row).
 |---|---|---|---|---|
 | **School calendar: events, tests, trips, free days** | `GET /core/Events/Api/Agenda/Load?filterParameters={"CurrentView":"agenda","DateFrom":…,"DateTo":…,"ClassIds":[],"TeacherIds":[],"RoomIds":[],"EventTypeIds":[],"ShowOnlyMyEvents":true}` → list of `{Id, Name, DateFrom, DateTo, IsAllDay, Type, PublishedDate, Detail{…}}`; `Type` 2 = event, 3 = national holiday, 4 = school holiday | **4 KB** for 4 weeks with `ShowOnlyMyEvents: true` (46 KB for the whole school) | upcoming trips and events, and the school's own free days, so the app needn't guess them (it would also feed F6 "school hours" and the before-alarm tick) | yes (GET). Never `…/Insert`, `…/Update`, `…/Delete`, `…/SendEmails` |
 | **New Komens messages + unread count** | inbox list callback (`/next/komens.aspx`, `hfListType` = `prijate`) with `onlyUnread: true`, using cached fields as in §6 | ~0.9 KB gzip when empty; ~2–3 KB gzip for a month of messages (measured on Odeslané: 1 message 1.9 KB, 10 messages 2.9 KB) | "new message from the class teacher" notification without opening Bakaláři | yes, **list only**: never call `GetMessageDataAsync` for a received message, since opening marks it read (*unverified* whether the detail call alone does; assume it does) |
-| **Homework** | `POST /HomeWorks/Student/LoadHomeworks` `{"homeworkState":3,"onlyUnfinishedHomeworks":false}` (3 = current, 4 = after deadline, 2 = closed); `GET /HomeWorks/Widget` | 37 B (no homework at GEKOM for this student); widget 149 B | a list of what's due, with deadlines | yes. Never `/HomeWorks/MarkAsFinished` (a write). Reply shape *unverified* (empty) |
+| **Notice board (*Nástěnka*): new posts** | `POST /Noticeboard/GetPostsPageAsync` (§10.1) | **12 KB** for all 11 current posts; **1.8 KB** for the newest one only | GEKOM posts its news here (owner): a notification for a new school or class post, and the posts in the app | yes, list only (§10.1) |
+| Homework | `POST /HomeWorks/Student/LoadHomeworks` `{"homeworkState":3,"onlyUnfinishedHomeworks":false}` (3 = current, 4 = after deadline, 2 = closed); `GET /HomeWorks/Widget` | 37 B (empty); widget 149 B | a list of what's due | **not for GEKOM**: the school doesn't use Bakaláři homework (owner). Never `/HomeWorks/MarkAsFinished` (a write). Reply shape *unverified* |
 | "Nové známky" badge | `GET /Dashboard/NoticesWidget` | 0.4 KB | the same count the web shows | yes |
 | Behaviour notes (*Výchovná opatření*) | `GET /next/vychovna.aspx`, server-rendered | 46 KB | notify a new praise or reprimand | yes, daily read; HTML parsing |
-| Class notice board (*Nástěnka*) | `GET /next/nastenky.aspx` | 61 KB | school notices | yes, daily read |
 | Absence per lesson | already in `GetContentData` (`absenceType`); `GET /Timetable/Widget?date=` (14 KB, `absent` class) | — | the app has it already | — |
 | Absence calendar | `GET /Absence/Continuous/GetAbsenceOverview` | 40 KB | a month-by-month heat map | yes, low value |
 | Failed logins warning | `GET /Dashboard/GetBadLogins` | 81 B | "someone tried your password" | yes, low value |
+
+**Owner's pick (2026-11-17):** "we could do calendar and homeworks and
+the notification, but our school adds new stuff to the nástěnka instead.
+And we have no homeworks in our school on bakalari". So the candidates are
+the **school calendar**, the **Komens new-message notification** and
+**new Nástěnka posts**. Homework is dropped for GEKOM. These are ideas
+for later, not part of F6.
+
+### 10.1 Nástěnka
+
+The page `GET /next/nastenky.aspx` (61 KB) holds only the frame. The posts
+come from its own JSON request, which the page sends on load and on every
+tab switch:
+
+```text
+POST /Noticeboard/GetPostsPageAsync     (application/json)
+{"board": <one board object>, "page": 1, "pageSize": 21, "onlyValidForMe": true}
+```
+
+- **Boards** are in the page's script (`BoardsTab.cpTabs`), one object per
+  tab: `{id, kod, kodtridy, nazev, poradi, typ}`. GEKOM has three: `_all`
+  (`typ` 0, *Vše*), the school board (`typ` 1) and the class board
+  (`typ` 3). The **whole object** must be sent: `{"id":"_all"}` alone
+  answered `success: true` with an **empty list**. So an empty reply
+  doesn't prove "no posts". The app keeps the board objects from one page
+  load (they change at most with the class, i.e. per school year), and
+  loads the page again when `_all` suddenly comes back empty.
+- **Reply:** envelope, `data` = posts, newest first (by date and by `Id`):
+
+  ```text
+  { Id: "12345", CaptionText, MessageText (HTML), DateSendText: "11. 11. 2026",
+    BoardName, NoticeBoardKind: "nassko" (school) | "nastri" (class),
+    SenderFullName, SenderType ("S" | "U"), CetlJsem (read by me), IsActive,
+    Files [], pocetfiles }
+  ```
+
+  The list already carries the full text, so the app never needs the
+  detail request `POST /Noticeboard/GetMessageDataAsync {'idmsg': …}`.
+  Opening a post on the web uses that, and it probably sets `CetlJsem`.
+- **Sizes:** all 11 current posts 12.2 KB (texts ~0.8 KB each), `pageSize:
+  1` 1.8 KB (the newest post only). Uncompressed, `Cache-Control: private,
+  s-maxage=0`, no `ETag`, never `304`. `onlyValidForMe: false` gave the
+  same 11 posts.
+- **Change signal:** the newest `Id`. A cheap check is `_all` with
+  `pageSize: 1` (1.8 KB). When its `Id` is new, load the full list
+  (12 KB) and notify the new posts. Hourly is plenty for a notice board
+  (~16 × 2.8 KB with headers ≈ 45 KB a day). In every 5-minute tick it
+  would add ~0.3 MB a school day.
+- **Read flag:** all 11 posts were already `CetlJsem: true`, so it
+  couldn't be checked whether the list itself marks anything read
+  (*unverified*). The web page loads the same list on every visit, so the
+  list should be as harmless as a visit. Never call `GetMessageDataAsync`
+  or `/Noticeboard/DeleteMessageAsync` (a write).
+- *Unverified:* whether an unread post also shows as a line in
+  `/Dashboard/NoticesWidget` (none was unread).
 
 Seen but not used: `/next/vyuka.aspx` (lesson topics, 225 KB),
 `/PortalMessages` (42 KB), `/next/opravne.aspx` (45 KB),
