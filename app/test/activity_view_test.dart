@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:app/controllers/app_state.dart' show ActivityLogic, AppState;
 import 'package:app/features/activity/activity_live.dart';
+import 'package:app/features/common/app_tokens.dart';
 import 'package:app/l10n/strings.dart';
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
@@ -281,6 +282,55 @@ void main() {
       expect(find.textContaining('00:00'), findsNothing);
       expect(find.textContaining('14:35'), findsAtLeastNWidgets(1));
       expect(find.text('14.11. 16:20'), findsOneWidget);
+    });
+  });
+
+  group('P10 narrow hero full-width controls', () {
+    testWidgets(
+        'scope chips and refresh button span card width instead of right-aligning',
+        (t) async {
+      t.view.physicalSize = const Size(390, 844);
+      t.view.devicePixelRatio = 1.0;
+      addTearDown(t.view.reset);
+
+      final savedLang = Strings.lang;
+      addTearDown(() => Strings.lang = savedLang);
+      Strings.lang = 'cs';
+
+      final tok = AppTokens.dark();
+      final c = _controller()
+        ..runs = [
+          {'ok': true, 'scope': 'all', 'at': '2026-11-15T18:56:00', 'detail': '10 předmětů'},
+        ];
+      await t.pumpWidget(MaterialApp(
+        theme: tok.toThemeData(),
+        home: Scaffold(
+          body: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: ActivityView(controller: c, narrow: true),
+          ),
+        ),
+      ));
+      await t.pump();
+
+      final segFinder = find.byType(SegmentedButton<String>);
+      final refreshFinder = find.ancestor(
+        of: find.text(Strings.get('refresh_data')),
+        matching: find.byWidgetPredicate((w) => w is ElevatedButton),
+      );
+      expect(segFinder, findsOneWidget);
+      expect(refreshFinder, findsOneWidget);
+
+      // Card inner width: 390 - 2*12 (page pad) - 2*tok.pad (card pad).
+      final expectedInnerWidth = 390.0 - 24.0 - 2 * tok.pad;
+      final expectedLeft = 12.0 + tok.pad;
+
+      final segRect = t.getRect(segFinder);
+      final btnRect = t.getRect(refreshFinder);
+      expect(segRect.left, closeTo(expectedLeft, 2.0));
+      expect(segRect.width, closeTo(expectedInnerWidth, 2.0));
+      expect(btnRect.left, closeTo(expectedLeft, 2.0));
+      expect(btnRect.width, closeTo(expectedInnerWidth, 2.0));
     });
   });
 }
