@@ -7,6 +7,7 @@ import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../controllers/app_state.dart';
 import '../../l10n/strings.dart';
+import '../../platform/android/android_channel.dart';
 
 import '../common/app_tokens.dart';
 import 'wizard_controller.dart';
@@ -76,6 +77,10 @@ WizardController wizardControllerFor(AppState s) {
       );
     },
     onFinishRefresh: () => s.startRefresh(),
+    onRequestNotificationPermission: () async {
+      s.notificationPermissionAsked = true;
+      await const AndroidChannel().requestNotificationPermission();
+    },
     onSetLanguage: (l) => s.setLanguage(l),
     onDraftChanged: (key, value) => s.setDraft(key, value),
     onClearDrafts: (prefix) => s.clearDrafts(prefix),

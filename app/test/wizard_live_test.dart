@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -15,6 +16,7 @@ import 'package:app/features/wizard/wizard_controller.dart';
 import 'package:app/features/wizard/wizard_live.dart';
 import 'package:app/features/wizard/wizard_view.dart';
 import 'package:app/l10n/strings.dart';
+import 'package:app/platform/android/android_channel.dart';
 import 'package:app/shell/theme.dart';
 
 void main() {
@@ -1103,6 +1105,117 @@ void main() {
       expect(cCustom.presetCanteenId(), '');
       expect(cCustom.showBakalariUrlField, isTrue);
       expect(cCustom.showStravaCanteenField, isTrue);
+    });
+  });
+
+  group('F1 Telefon step', () {
+    testWidgets(
+        'shows only wakeup switch (no background switch), asks permission on Continue and advances after answer',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      Strings.lang = 'cs';
+
+      final permissionCompleter = Completer<void>();
+      var permissionCalls = 0;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(AndroidChannel.channel, (call) async {
+        if (call.method == 'requestNotificationPermission') {
+          permissionCalls++;
+          await permissionCompleter.future;
+        }
+        return null;
+      });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(AndroidChannel.channel, null);
+      });
+
+      final s = AppState(configData: {'language': 'cs'});
+      s.wizardStep = WizardController.stepPhone;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LiveWizardView(tokens: AppTokens.dark(), narrow: true),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(SwitchListTile), findsOneWidget);
+      expect(find.text(Strings.get('wakeup_enable')), findsOneWidget);
+      expect(find.text(Strings.get('run_in_background')), findsNothing);
+      expect(find.text(Strings.get('wakeup_minutes')), findsNothing);
+
+      // Toggle alarm on and press Continue -> saves wakeup_enabled, does not write
+      // wakeup_minutes_before, asks permission and waits before advancing.
+      await tester.tap(find.byType(SwitchListTile));
+      await tester.pump();
+      await tester.tap(
+          find.widgetWithText(ElevatedButton, Strings.get('wiz_next')));
+      await tester.pump();
+
+      expect(permissionCalls, 1);
+      expect(s.get('wakeup_enabled'), isTrue);
+      expect(s.notificationPermissionAsked, isTrue);
+      expect(s.wizardStep, WizardController.stepPhone);
+
+      permissionCompleter.complete();
+      await tester.pumpAndSettle();
+      expect(s.wizardStep, WizardController.stepDone);
+    });
+
+    testWidgets('Skip on Telefon saves nothing and asks no permission',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      Strings.lang = 'cs';
+
+      var permissionCalls = 0;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(AndroidChannel.channel, (call) async {
+        if (call.method == 'requestNotificationPermission') permissionCalls++;
+        return null;
+      });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(AndroidChannel.channel, null);
+      });
+
+      final s = AppState(configData: {'language': 'cs'});
+      s.wizardStep = WizardController.stepPhone;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LiveWizardView(tokens: AppTokens.dark(), narrow: true),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byType(SwitchListTile));
+      await tester.pump();
+      await tester.tap(find.text(Strings.get('wiz_skip')));
+      await tester.pumpAndSettle();
+
+      expect(permissionCalls, 0);
+      expect(s.notificationPermissionAsked, isFalse);
+      expect(s.get('wakeup_enabled'), isFalse);
+      expect(s.wizardStep, WizardController.stepDone);
     });
   });
 }

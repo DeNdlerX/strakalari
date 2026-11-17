@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../l10n/strings.dart';
-import '../common/format.dart';
 import '../settings/settings_controller.dart' show SettingsController;
 
 /// First-run setup wizard — a `ChangeNotifier` port of
@@ -40,6 +39,9 @@ class WizardController extends ChangeNotifier {
   /// Requests the exact-alarm permission (Android only).
   final void Function() onAlarmPermission;
 
+  /// Requests Android notification permission when continuing from Telefon.
+  final Future<void> Function()? onRequestNotificationPermission;
+
   /// Sets the app language (`cs | en`).
   final void Function(String lang) onSetLanguage;
 
@@ -58,6 +60,7 @@ class WizardController extends ChangeNotifier {
         onTestRequest,
     bool Function()? onFinishRefresh,
     void Function()? onAlarmPermission,
+    this.onRequestNotificationPermission,
     void Function(String lang)? onSetLanguage,
     this.onDraftChanged,
     this.onClearDrafts,
@@ -92,6 +95,9 @@ class WizardController extends ChangeNotifier {
 
   /// Service currently being tested (`bakalari | strava`), if any.
   String? testing;
+
+  /// True while awaiting Android's notification permission prompt on Telefon.
+  bool requestingPermission = false;
 
   /// Last test result: `{service, ok, at, message}`.
   Map<String, Object?> lastTest = {};
@@ -354,28 +360,14 @@ class WizardController extends ChangeNotifier {
     return _save({'school_preset_id': preset});
   }
 
-  // -- alarm + signature --------------------------------------------------------------------------
+  // -- phone + signature --------------------------------------------------------------------------
 
-  /// Typed minutes (clamped 1–720), null when not a number —
-  /// like `wizard._alarm_minutes`.
-  int? alarmMinutes() {
-    final stored = clampWakeupMinutes(config['wakeup_minutes_before']);
-    final raw = draft('wiz:wakeup_minutes', '$stored')
-        .trim()
-        .replaceAll(',', '.');
-    if (double.tryParse(raw) == null) return null;
-    return clampWakeupMinutes(raw);
-  }
+  bool get shouldAskNotificationPermission =>
+      (config['run_in_background'] ?? true) == true || alarmEnabled;
 
-  bool saveAlarm() {
-    if (!alarmEnabled) return _save({'wakeup_enabled': false});
-    final minutes = alarmMinutes();
-    if (minutes == null) return false;
-    if (!_save(
-        {'wakeup_enabled': true, 'wakeup_minutes_before': minutes})) {
-      return false;
-    }
-    onAlarmPermission();
+  bool savePhone() {
+    if (!_save({'wakeup_enabled': alarmEnabled})) return false;
+    if (alarmEnabled) onAlarmPermission();
     return true;
   }
 
@@ -597,14 +589,24 @@ class WizardController extends ChangeNotifier {
         }
         break;
       case stepPhone:
-        if (!saveAlarm()) {
+        if (!savePhone()) {
           return (
             advanced: false,
-            snack: Strings.get(alarmMinutes() == null
-                ? 'wakeup_minutes_invalid'
-                : 'save_failed'),
+            snack: Strings.get('save_failed'),
             finishedMessage: null
           );
+        }
+        final ask = onRequestNotificationPermission;
+        if (shouldAskNotificationPermission && ask != null) {
+          if (!requestingPermission) {
+            requestingPermission = true;
+            notifyListeners();
+            ask().whenComplete(() {
+              requestingPermission = false;
+              goTo(stepAfter(atStep));
+            });
+          }
+          return (advanced: false, snack: null, finishedMessage: null);
         }
         break;
       default:
@@ -655,7 +657,7 @@ class WizardController extends ChangeNotifier {
   bool get nextEnabled {
     if (step == stepWelcome && !disclaimerOk) return false;
     if (step == stepSchool && calPreset().isEmpty) return false;
-    if (testing != null) return false;
+    if (testing != null || requestingPermission) return false;
     return true;
   }
 

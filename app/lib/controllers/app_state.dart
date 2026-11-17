@@ -208,6 +208,7 @@ class AppState {
   bool tutorialAnchored = false;
   bool wizardDismissed = false;
   bool wizardShown = false;
+  bool notificationPermissionAsked = false;
   final Map<String, String> wizardVerified = {};
 
   // -- marks UI memory (predictions are what-ifs, never saved) --------------

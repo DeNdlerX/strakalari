@@ -484,7 +484,7 @@ class _WizardViewState extends State<WizardView>
           ),
         ];
       case WizardController.stepPhone:
-        return _alarmContent();
+        return _phoneContent();
       default:
         return [
           _h(Strings.get('wiz_done_h'), 19),
@@ -689,43 +689,20 @@ if (c.testing == service) {
     ];
   }
 
-  List<Widget> _alarmContent() {
+  List<Widget> _phoneContent() {
     final c = controller;
-    final t = tokens;
-final enabled = c.alarmEnabled;
-    final rows = <Widget>[
-      _h(Strings.get('wiz_alarm_h'), 19),
-      _p(Strings.get('wiz_alarm_p')),
+    return [
+      _h(Strings.get('wiz_phone_h'), 19),
+      const SizedBox(height: 6),
+      _p(Strings.get('wiz_phone_p')),
+      const SizedBox(height: 8),
       SwitchListTile(
-        value: enabled,
+        value: c.alarmEnabled,
         contentPadding: EdgeInsets.zero,
         title: Text(Strings.get('wakeup_enable')),
         onChanged: c.setAlarmEnabled,
       ),
     ];
-    if (enabled) {
-      final minutes = c.alarmMinutes() ?? 60;
-      rows.add(_field(Strings.get('wakeup_minutes'),
-          'wiz:wakeup_minutes', '$minutes'));
-      rows.add(_hint(Strings.format('wakeup_hint', {'n': minutes})));
-      if (c.alarmExactOff) {
-        rows.add(Text(Strings.get('wakeup_exact_off'),
-            style: TextStyle(
-                color: t.yellow,
-                fontSize: t.fsSmall)));
-        rows.add(Align(
-          alignment: Alignment.centerLeft,
-          child: OutlinedButton.icon(
-            onPressed: c.onAlarmPermission,
-            icon:
-                const Icon(Icons.alarm_on, size: 18),
-            label: Text(Strings.get('wakeup_exact_allow')),
-          ),
-        ));
-      }
-    }
-    rows.add(_hint(Strings.get('wiz_alarm_later')));
-    return rows;
   }
 
   static String _displayHost(String url) {

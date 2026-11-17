@@ -301,10 +301,15 @@ class PhoneBackground {
   Future<void> sync() async {
     try {
       final on = _isOn();
-      if (on && !_asked && !state.setupPending && state.tutorial == null) {
+      if (on &&
+          !_asked &&
+          !state.notificationPermissionAsked &&
+          !state.setupPending &&
+          state.tutorial == null) {
         // Android 13+: allow notifications? Not over the setup wizard or the
         // first tutorial; closing them saves config and brings us back here.
         _asked = true;
+        state.notificationPermissionAsked = true;
         await channel.requestNotificationPermission();
       }
       final allowed = on ? await channel.notificationsEnabled() : false;

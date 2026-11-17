@@ -445,6 +445,38 @@ void main() {
       expect(methods(), contains('scheduleWake'));
     });
 
+    test('does not re-ask notification permission when Telefon step already asked',
+        () async {
+      final s = AppState(
+        data: {},
+        configData: {
+          'wizard_step': 5,
+          'run_in_background': true,
+          'tutorials_enabled': true,
+          'tutorials_done': <String>[],
+        },
+      );
+      final runner = PeriodicRunner(intervalMinutes: 60);
+      final phone = PhoneBackground(
+        s,
+        runner,
+        const AndroidChannel(),
+        onAndroid: () => true,
+        startNotifier: false,
+      );
+      phone.start();
+      await _settle();
+
+      // Simulate Telefon step having asked and recorded the ask before finish.
+      s.notificationPermissionAsked = true;
+      s.wizardFinished();
+      await _settle();
+      s.tutorialSkip();
+      await _settle();
+
+      expect(methods(), isNot(contains('requestNotificationPermission')));
+    });
+
     test('Android bridge waits for onRequestPermissionsResult before returning', () {
       final channel = File(
         'android/app/src/main/java/io/github/dendlerx/strakalari/android/StrakalariChannel.java',

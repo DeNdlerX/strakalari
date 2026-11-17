@@ -240,7 +240,7 @@ void main() {
       expect(cAndroid.stepBefore(WizardController.stepDone), equals(WizardController.stepPhone));
     });
 
-    test('testAlarmStepSavesTheAlarm', () {
+    test('testPhoneStepSavesWakeupWithoutMinutes', () {
       final saved = <String, Object?>{};
       var askedPermission = false;
       final c = WizardController(
@@ -253,20 +253,17 @@ void main() {
           askedPermission = true;
         },
       );
-      // Off by default: Continue saves false, no permission asked
-      expect(c.saveAlarm(), isTrue);
+      // Off by default: Continue saves false, no alarm permission asked,
+      // and never writes wakeup_minutes_before.
+      expect(c.savePhone(), isTrue);
       expect(saved['wakeup_enabled'], isFalse);
+      expect(saved.containsKey('wakeup_minutes_before'), isFalse);
       expect(askedPermission, isFalse);
 
       c.setAlarmEnabled(true);
-      c.setDraft('wiz:wakeup_minutes', 'abc');
-      expect(c.saveAlarm(), isFalse); // not a valid number
-      expect(saved['wakeup_enabled'], isFalse);
-
-      c.setDraft('wiz:wakeup_minutes', '45');
-      expect(c.saveAlarm(), isTrue);
+      expect(c.savePhone(), isTrue);
       expect(saved['wakeup_enabled'], isTrue);
-      expect(saved['wakeup_minutes_before'], equals(45));
+      expect(saved.containsKey('wakeup_minutes_before'), isFalse);
       expect(askedPermission, isTrue);
     });
   });
