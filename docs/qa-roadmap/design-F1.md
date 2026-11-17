@@ -58,7 +58,14 @@ saves nothing; Vítejte can't be skipped.
 
 ## 3. What each step shows
 
-**0 Vítejte.** Heading, one line (`wiz_welcome_p`, shortened, no mention of
+**0 Vítejte.** On top, a **logo with an entrance animation**: the logo
+fades in and scales from 80 % to 100 % with a slight bounce (~700 ms,
+`Curves.easeOutBack`), then the heading and text slide up and fade in one
+after the other (~150 ms apart). For now the logo is a placeholder: the
+app's current icon in a round accent-coloured badge, built by one widget
+(`WelcomeLogo`) so the real logo can later replace it in one place. The
+animation runs once per wizard opening and is skipped when
+`MediaQuery.disableAnimations` is on. Then: heading, one line (`wiz_welcome_p`, shortened, no mention of
 AI), the Čeština / English buttons, the disclaimer (§3a) and one checkbox
 *Rozumím* (`wiz_disclaimer_ack`). *Pokračovat* is enabled only when it is
 ticked. 16 px between text and buttons.
@@ -228,11 +235,13 @@ wizard has no tour.
 
 ## 7. Layout
 
-- **Phone (narrow):** no card border; full-height `Column` in a `SafeArea`:
+- **Phone (narrow):** the wizard fills the whole screen; no card border; full-height `Column` in a `SafeArea`:
   pinned header (*Krok i z n*, `LinearProgressIndicator`, step heading),
   scrolling body, pinned button bar (*Zpět* left, *Přeskočit* only on
   skippable steps, *Pokračovat* as `FilledButton` taking the rest), kept
-  above the keyboard. The bar must not wrap at 390 px in cs.
+  above the keyboard. The bar is **fixed at the bottom on every step**:
+  it never scrolls away, short steps don't leave it floating mid-screen, and
+  it must not wrap at 390 px in cs.
 - **Desktop (wide):** the centred card stays, with P3's pinned header and
   buttons.
 - **Step change:** 250 ms slide + fade (`AnimatedSwitcher`, keyed by step),
@@ -267,6 +276,11 @@ new fields loads; helpers return values, or empty/null for `custom`.
 
 **App:**
 - Exact step list on desktop (6) and Android (7).
+- Phone (390 px): on every step the button bar's bottom edge sits at the
+  bottom of the safe area, also on a long step scrolled to its end and with
+  the keyboard open.
+- Vítejte: `WelcomeLogo` is shown; with `disableAnimations` the final state
+  is there on the first frame.
 - Omluvenky: only the name field visible; *Pokročilé* closed by default;
   opening it and a group shows the editor; an edit saves (B2 behaviour);
   Settings → Šablony uses the same collapsed widget.
@@ -297,7 +311,8 @@ exists (Settings `TemplateEditor` tests stay unchanged) and the round-trip
 guarantee above.
 
 **Evidence** in `build/qa-evidence/F1/`: every step at 390 and 1280 px, cs
-and en, dark and light for Vítejte and Škola; Známky and Settings → Škola
+and en, dark and light for Vítejte and Škola; a short phone screen recording of
+the Vítejte animation; Známky and Settings → Škola
 with GEKOM and `custom`; on the phone (`.test` app, demo server) the
 permission dialog on Telefon and `dumpsys activity services` showing
 `KeepAliveService` after *Dokončit*.
