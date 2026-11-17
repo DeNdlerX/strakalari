@@ -267,3 +267,91 @@ reason, before the first data refresh (M2).
 12. **Not checked by the reviewer:** the phone shade itself (the agent's
     screenshots and `dumpsys` were read instead); macOS/iOS builds (not
     possible here).
+
+---
+
+## Re-review 2026-11-17
+
+Re-reviewed at `qa-roadmap` @ `d7e3a78` (base `main` @ `a528acd`; `main`
+still has no commits the branch lacks). Commits since the review (`3a3c67d`):
+`19666da` (M2), `873788c` (S1), `b71ef20` (S2), `bbf3b68` (S4), `d7e3a78`
+(new finding R1 below).
+
+**Who fixed what:** the owner asked the reviewer to make the fixes itself
+("Can you do those yourself? And mark them as reviewed? After you test them? I
+trust you with this"). So, unlike R1, the fixes weren't made by the
+implementing agent, and this re-review isn't independent of them. To make up
+for that, every code fix has a test that fails without it, and the
+reviewer's own mistake (S3) is written down below.
+
+### Verdict: **PASS**
+
+Both must-fix findings and the three valid should-fix findings are fixed;
+S3 is withdrawn; one new defect found while re-reviewing (R1) is fixed. All
+four suites are green. Phase 2 is done.
+
+### Each earlier finding
+
+| Finding | Fixed? | How the reviewer checked |
+|---|---|---|
+| M1 | ✔ evidence and STATUS | On the `.test` app only, against the demo server, with the owner's go (the owner unlocked the phone): switched on its wake-up alarm, so the status notification had three items (next lesson; excuses and alarm on the second row). `after_shade_collapsed_multi.png`: both collapsed rows complete, nothing cut off. `after_shade_expanded_multi.png`: all three items in full. `after_dumpsys_test_multi.txt`: only the `.test` record (no Play-app lines). Then switched the alarm off again (`multi_test_alarm_off_again.png`), and the notification went back to two items. A lunch item can't appear in `.test`, because the demo server has no Strava. The N1 row now says no clipping was reproduced before and what changed, the Play-app comparison sentence is gone, the empty `before_ui.xml` is deleted, and a question for the owner is under *Questions*. No code change. |
+| M2 | ✔ `19666da` | `stravaConfigured = core.hasValidCredentials(...).$2`, without the `demoMode` exception. New test `P8 lunches send disabled with reason before the first refresh (no data yet)`: a fresh `AppState` (no data, so `demoMode` is true), `use_strava` on, no login, cs and en. It **fails before the fix** (button enabled) and passes after. |
+| S1 | ✔ `873788c` | `suppressedRoomFlag` removed (back to `if (flagged)`), and `_sameRoomChangeNote` moved above `classifyLesson`'s doc block. The P5 change to `schedule.dart` is now only the same-room note check. The P5 core and app tests are green. |
+| S2 | ✔ `b71ef20` | The B1 label test is back in the wide layout. Compared with the start of the phase, `wizard_live_test.dart` has no removed lines. |
+| S3 | **withdrawn** | The reviewer's experiment was wrong: its script removed the overflow filter from the first matching block in `timetable_live_test.dart`, which belongs to an older test, not to the P6 test. With the P6 test's own filter removed, the test reports overflows in the table's period header (`timetable_view.dart:529`) and in the list's "Dnes" title row (`:835`). P6 didn't touch either. They come from the wide test font, the same reason the older tests give. The row P6 resized doesn't overflow, and the 112 real-font captures show no overflow anywhere. The filter is legitimate; the test stays as the agent wrote it. |
+| S4 | ✔ `bbf3b68` | The test now asserts the route is `/more` after the arrow, for all four subpages. The reviewer made Back go to Today instead: the test **fails** (`'/today'`). |
+| Notes N1–N7 | — | Still stand; no action needed. |
+
+### New finding while re-reviewing (fixed)
+
+- **R1 (P9): two back arrows on an open Settings section.** On the phone,
+  Více → Budík (and every Settings section) showed P9's new top-bar arrow
+  **and** the section's own arrow (`settings_view.dart:677`), one above the
+  other. The owner saw this on the phone. Fixed in `d7e3a78`
+  (`app/lib/shell/scaffold.dart:628`): the top-bar arrow is hidden while a
+  phone subpage is open. Among the More screens only a Settings section can
+  be one, and it has its own arrow. New test `P9c an open Settings section
+  shows only its own back arrow, not a second one in the top bar`: it
+  **fails before the fix** (top-bar arrow still there) and passes after. It
+  also checks that the section's arrow closes the section and the top-bar
+  arrow comes back. `android_back_test.dart` (hardware Back) is green.
+
+### Owner's observation (outside the plan, not changed)
+
+- On Více → Budík, *Povolit přesné budíky*, *Tento den nebudit* and
+  *Otevřít v Budíku telefonu* are flat text buttons and don't look like
+  buttons. That isn't a plan item, so it's under *Questions* in STATUS for
+  the owner to decide; nothing was changed.
+
+### What the reviewer verified, and how
+
+1. **Suites** (worktree, Flutter 3.44.8 / Dart 3.12.2):
+   `dart pub get --enforce-lockfile` OK. Core: `dart analyze` no issues,
+   `dart test` **804 passed, 2 skipped**. App: `flutter analyze` no issues,
+   `flutter test` **703 passed, 1 skipped** (701 at the review + the M2 test
+   + the R1 test). Use these counts as the baseline for R3.
+2. **Each fix's test fails without the fix:** M2 and R1 tests run before the
+   code change (fail) and after (pass); S4 checked by sending Back to Today
+   (fails); S1 and S2 are removals or restores, checked by diff against the
+   start of the phase.
+3. **Phone:** only `io.github.dendlerx.strakalari.test`. Changes made for the
+   capture (wake-up alarm on) were undone right after (alarm off, the
+   notification back to two items). The Play app wasn't opened, changed or
+   reinstalled. The demo server was stopped afterwards.
+4. **Scope:** the five commits touch `lunches_live.dart` (one line),
+   `scaffold.dart` (the arrow condition), `schedule.dart` (the S1 removal) and
+   their tests, nothing else.
+5. **Safety rules:** nothing in `automation/`, `lunches/`, `strava/`,
+   `bakalari/`, `storage/` or `controllers/` changed. `submitOrders` and the
+   order path are untouched; M2 only disables the button. No new `catch`.
+6. **Config keys and strings:** none added, removed or renamed; no new UI
+   strings.
+7. **Test integrity:** since the review, the only removed test line is the S2
+   restore, back to the original. No `skip:`, nothing loosened, two tests
+   added.
+8. **Hygiene:** all commits by the configured user with plain messages, no
+   `Co-Authored-By`, `Claude-Session` or "Generated with" lines;
+   `qa-roadmap` has no upstream (nothing pushed); `main` has no commits the
+   branch lacks.
+9. **Not checked:** macOS/iOS builds (not possible here); a lunch item in the
+   status notification (needs Strava, which the demo setup doesn't have).
