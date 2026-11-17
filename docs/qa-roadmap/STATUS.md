@@ -1,7 +1,7 @@
 # QA & roadmap status
 
-Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3 (done — waiting for ⛔ R3 review)
-Next step: ⛔ R3 review of F1 (see `docs/qa-roadmap/design-F1.md`; `F1b` starts only after R3 with its own design note).
+Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3 (⛔ R3 review: FAIL, fixing findings)
+Next step: Fix every finding in `reviews/phase-3.md` (blockers first), one commit per finding, then stop for re-review.
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -43,6 +43,7 @@ Next step: ⛔ R3 review of F1 (see `docs/qa-roadmap/design-F1.md`; `F1b` starts
 - **D1 / F1 limits and tabs (2026-11-17, at the R3a re-review):** "perhaps absence limits in the absence tab? I would also join absence and planner tab. They do very similar stuff"
 - **D1 / F1 simplicity (2026-11-17, given at the R3a review):** "One note: I want the app to be as simple as possible, the smaller the amount of startup screens and text, the better. I might be against displaying the gemini stuff, because we might create a subscription for this later, so leave it only in settings for power users, but not display it in the wizard. And the disclaimer can be shortened as well. Just really rework it to make it AAA."
 - **D1 / F1 (2026-11-17):** "And about the adresses, gekom uses bakalari bakaweb.gekom.cz, and strava strava.cz and number 1950. Also, gekom only uses percentage now. And the grade is not editable, only in settings under school option where you get to change stuff related to the preset I guess."
+- **D1 / Q1 (2026-11-17, given at the R3 review):** "And yes, the url is bakaweb.gekom.cz"
 
 ## Questions for the owner / reviewer
 - **B1 (answered 2026-11-15):** Configs previously saved by the old wizard bug hold plain strings instead of `{name, text}` template objects. Per the plan they are left untouched and load cleanly in Settings and the send path — owner replied `"connected. I dont think any use it."` (no migration needed).
@@ -51,7 +52,7 @@ Next step: ⛔ R3 review of F1 (see `docs/qa-roadmap/design-F1.md`; `F1b` starts
 - **S6 / B9 (2026-11-16):** In `app/lib/platform/startup.dart` (`PhoneBackground.sync`), `_on`, `_interval`, and `_allowed` are still recorded before `await channel.startBackground(...)`, so if `startBackground` throws once it is not retried until a setting or permission state changes. Left unchanged per R1 S6 ("don't change it without the owner's go, because it changes when the service is started") unless requested after R1.
 - **R2 M1 / N1 (2026-11-17):** Have you ever actually seen the second line of the background notification cut off, and if so, where (phone font size, lock screen, pop-up)? None of the screenshots show it, before or after the change.
 - **Budík buttons (owner, 2026-11-17, not in the plan):** On Více → Budík, *Povolit přesné budíky*, *Tento den nebudit* and *Otevřít v Budíku telefonu* are flat text buttons and don't look like buttons. Should they get a visible button style (e.g. outlined)? Left unchanged until the owner says so.
-- **F1 / R3a (2026-11-17):** Q2–Q6 answered in the rewritten `design-F1.md`. Open for the owner: **Q1** Is the Bakaláři address exactly `https://bakaweb.gekom.cz` (no path after it)?
+- **F1 / R3a (answered 2026-11-17 at R3):** Q2–Q6 answered in the rewritten `design-F1.md`. **Q1** Is the Bakaláři address exactly `https://bakaweb.gekom.cz` (no path after it)? Owner: "And yes, the url is bakaweb.gekom.cz".
 
 ## Deviations from the plan (each needs reviewer sign-off)
 - **M3 (B3):** Disabled the `MaterialApp` theme cross-fade (`themeAnimationStyle: AnimationStyle.noAnimation` in `app/lib/main.dart:77`) so `Theme.of(context)` switches in the same frame as `appState.tok` and cannot lag or restart an animation on rapid rebuilds.
@@ -65,6 +66,7 @@ Next step: ⛔ R3 review of F1 (see `docs/qa-roadmap/design-F1.md`; `F1b` starts
 
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
 ### Phase 3 (`F1` complete, checkpoint ⛔ R3)
+- **2026-11-17 R3 review: FAIL**: 1 blocker (X1 parity fixture `school_presets.json` edited), 2 must-fix (M1 two still-valid wizard tests deleted, M2 a resumed wizard shows no school although one is saved), 4 should-fix (S1 login text asks for prefilled values, S2 Absence "no limits" line contradicts the default limit, S3 stale README/SCHOOL_PRESETS names, S4 adapted P3 test taps Back). Baseline for the re-review: core 808 passed / 2 skipped, app 710 passed / 1 skipped. See [`reviews/phase-3.md`](reviews/phase-3.md).
 - **What was done:** Implemented `design-F1.md` in 8 commits (`1afb030`, `bf98783`, `ff297de`, `2696b70`, `b0c7582`, `4ff0a40`, `efd75c4`, `7c590ce`):
   1. Core presets (`1afb030`): optional preset fields (`school`, `category_cs`, `category_en`, `bakalari_url`, `strava_canteen_id`, `marks_scale`), GEKOM D1 values (`https://bakaweb.gekom.cz`, `'1950'`, `'percent'`), validation, `presetMarksScale`, `presetBakalariUrl`, `presetCanteenId`, `presetCategory`, `schoolGroups`, and `docs/SCHOOL_PRESETS.md`.
   2. Step flow & Welcome (`bf98783`): 6 desktop / 7 Android steps (`stepWelcome`..`stepDone`), removed AI and Limits from the wizard, merged short 3-sentence disclaimer with *Rozumím* gate and `WelcomeLogo` entrance animation, plus safe `min(saved, 1)` resume rule.
