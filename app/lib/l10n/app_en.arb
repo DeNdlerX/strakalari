@@ -1,7 +1,7 @@
 {
   "@@locale": "en",
   "abs_limits_btn": "Limits",
-  "abs_no_limits": "No limits set yet",
+  "abs_no_limits": "All subjects use the default limit of {pct:g} %.",
   "absence_title": "Absences",
   "account_bakalari": "Bakaláři",
   "account_strava": "Strava",

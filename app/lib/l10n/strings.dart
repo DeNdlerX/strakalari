@@ -21,7 +21,7 @@ class Strings {
 
   static const Map<String, String> _cs = {
     "abs_limits_btn": "Limity",
-    "abs_no_limits": "Zatím nejsou nastavené limity",
+    "abs_no_limits": "Všechny předměty mají výchozí limit {pct:g} %.",
     "absence_title": "Absence",
     "account_bakalari": "Bakaláři",
     "account_strava": "Strava",
@@ -827,7 +827,7 @@ class Strings {
 
   static const Map<String, String> _en = {
     "abs_limits_btn": "Limits",
-    "abs_no_limits": "No limits set yet",
+    "abs_no_limits": "All subjects use the default limit of {pct:g} %.",
     "absence_title": "Absences",
     "account_bakalari": "Bakaláři",
     "account_strava": "Strava",

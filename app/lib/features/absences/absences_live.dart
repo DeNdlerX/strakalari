@@ -20,6 +20,10 @@ AbsencesController absencesControllerFor(AppState s) {
   c.updatedLabel = s.updatedLabel;
   final rawLimits = s.get('subject_limits', {});
   c.hasSubjectLimits = rawLimits is Map && rawLimits.isNotEmpty;
+  final rawDefaultLimit = s.get('absence_critical_pct', 25.0);
+  c.defaultLimitPct = rawDefaultLimit is num
+      ? rawDefaultLimit.toDouble()
+      : double.tryParse('$rawDefaultLimit') ?? 25.0;
   c.createLimitsController = () => settingsControllerFor(s);
   c.onLimitsUpdated = () => s.save(const {});
   final (states, _) = s.subjectStates();

@@ -150,7 +150,15 @@ void main() {
 
     expect(find.byKey(const Key('abs:limits_btn')), findsOneWidget);
     expect(find.byKey(const Key('abs:no_limits_banner')), findsOneWidget);
-    expect(find.text(Strings.get('abs_no_limits')), findsOneWidget);
+    expect(find.text('Všechny předměty mají výchozí limit 25 %.'),
+        findsOneWidget);
+
+    // Changing absence_critical_pct updates the displayed default limit.
+    s.config.set('absence_critical_pct', 30.0);
+    s.onChanged();
+    await t.pump();
+    expect(find.text('Všechny předměty mají výchozí limit 30 %.'),
+        findsOneWidget);
 
     await t.tap(find.byKey(const Key('abs:no_limits_btn')));
     await t.pumpAndSettle();

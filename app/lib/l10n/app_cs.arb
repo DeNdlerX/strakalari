@@ -1,7 +1,7 @@
 {
   "@@locale": "cs",
   "abs_limits_btn": "Limity",
-  "abs_no_limits": "Zatím nejsou nastavené limity",
+  "abs_no_limits": "Všechny předměty mají výchozí limit {pct:g} %.",
   "absence_title": "Absence",
   "account_bakalari": "Bakaláři",
   "account_strava": "Strava",

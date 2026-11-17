@@ -79,7 +79,8 @@ class AbsencesView extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              child: Text(Strings.get('abs_no_limits'),
+              child: Text(
+                  Strings.format('abs_no_limits', {'pct': c.defaultLimitPct}),
                   style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
             ),
             const SizedBox(width: 8),
