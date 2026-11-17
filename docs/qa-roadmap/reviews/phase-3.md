@@ -775,3 +775,222 @@ question about Strava's *Změnit*.
    - No `Co-Authored-By`, `Claude-Session` or "Generated with" lines.
    - `qa-roadmap` has no upstream.
 8. **Not checked:** macOS and iOS builds (not possible here).
+
+---
+
+## Re-review 3 (2026-11-17)
+
+Re-reviewed at `qa-roadmap` @ `6718510` (base `main` @ `f8d5582`; `main`
+still has no commits the branch lacks). Commits since re-review 2
+(`c61e479`):
+
+- `2c1a256` (M3) and `4484155` (O2, the owner's change);
+- `970c5d5` (STATUS only);
+- `51d9e42`, `84254bd`, `3c2ad05`, `a7f63af`, `6718510`: the F6 proposal,
+  research prompt and research report, docs only (N14).
+
+### Verdict: **FAIL**
+
+M3 is fixed with the one line asked for, and its test fails without it. O2
+is done as the owner asked: with GEKOM, the wizard shows neither the
+address nor the canteen, and all suites are green.
+
+But O2 opened a new hole (M4). If the user has typed an address under
+*Jiná škola* and then switches to GEKOM, the wizard can hide the address
+field while the address is empty. *Otestovat a pokračovat* then only says
+"fill in Bakaláři", and there's nothing to fill in. A GEKOM student gets
+stuck on step 3. The fix is four lines, and the reviewer tested it (below).
+
+### Must-fix
+
+#### M4 (F1 / O2, `4484155`): a hidden address or canteen field can leave the value empty, and the wizard gets stuck
+
+- **Where:** `app/lib/features/wizard/wizard_controller.dart:212–219`
+  (`effectiveBakalariUrl`) and `:221–228` (`effectiveCanteenId`), together
+  with the new `showBakalariUrlField` / `showStravaCanteenField`
+  (`:230–246`).
+- **What is wrong:**
+  - Since `4484155`, under a preset the field shows only when a draft
+    holds a **non-empty** value that differs from the preset. But
+    `effectiveBakalariUrl()` still returns the draft whenever one exists,
+    **even an empty one**.
+  - So with an empty `wiz:bakalari_url` draft and GEKOM picked, there is
+    no address field and the address used is `''`. *Otestovat a
+    pokračovat* shows `wiz_need_bakalari` (*Vyplňte…*) and runs no test.
+    The short S1 text even says only username and password are needed.
+  - Two ways to get there. Both were reproduced through `LiveWizardView`
+    with real taps at `6718510`:
+    1. Škola → *Jiná škola* → Bakaláři, type an address → *Zpět* →
+       GEKOM → Bakaláři. The typed address is shown, because it differs
+       from the preset. The user clears it to get the school's address.
+       On the next rebuild (keyboard closing, any `AppState` change), the
+       field disappears and the address stays empty.
+    2. The same, but the address was typed and erased again under *Jiná
+       škola*. With GEKOM there is no address field at all from the
+       start, and the address is empty.
+  - The only ways out are *Zpět* → *Jiná škola* and typing the address by
+    hand, or restarting the app. A student won't know either.
+  - The Strava canteen has the same hole: a canteen number typed under
+    *Jiná škola*, then GEKOM, then cleared gives no field and
+    `effectiveCanteenId()` `''`, so `readyStrava()` stays false (checked
+    in the controller).
+  - Before O2 (`2c1a256`), the same reviewer tests pass: the field stays
+    visible while a draft exists. So `4484155` introduced this.
+- **What correct looks like:** one commit, `F1: never hide an empty
+  address or canteen (R3 M4)`.
+  - Under a preset, a hidden field always means the preset value is used.
+    An empty draft counts as no draft while the field is hidden. The
+    reviewer tried exactly this:
+    ```dart
+    String effectiveBakalariUrl() {
+      final d = drafts['wiz:bakalari_url']?.trim();
+      if (d != null && (d.isNotEmpty || showBakalariUrlField)) return d;
+      final cfg = '${config['bakalari_url'] ?? ''}'.trim();
+      if (cfg.isNotEmpty) return cfg;
+      return presetBakalariUrl();
+    }
+    ```
+    `effectiveCanteenId()` gets the same change, with
+    `wiz:strava_canteen_id` and `showStravaCanteenField`.
+  - Result with this change:
+    - both paths above run the connection test with
+      `https://bakaweb.gekom.cz`;
+    - the canteen case gives `1950`;
+    - all 715 app tests pass, plus the reviewer's 6.
+  - Keep what works today:
+    - *Jiná škola* always shows both fields;
+    - an own value in the config that differs from the preset shows the
+      field;
+    - clearing the field in those two cases still means "empty", and the
+      user has to type a value.
+  - Tests in `app/test/wizard_live_test.dart`, group `F1 login prefills`.
+    Each must fail on `6718510`:
+    - **Path 1, live:**
+      - `LiveWizardView` on a bare `AppState` with
+        `disclaimer_accepted`, `wizardStep` = Škola;
+      - tap `school:custom`, `wiz:next_btn`, enter an address in
+        `draft:wiz:bakalari_url`, tap `wiz:back_btn`, `school:GEKOM`,
+        `wiz:next_btn`;
+      - clear the address, fill username and password, call
+        `s.onChanged()`, tap *Otestovat a pokračovat*;
+      - expect no `wiz_need_bakalari` text and the test started with
+        `https://bakaweb.gekom.cz`. A bare `AppState` claims `testing`
+        and never touches the network, so `s.testing == 'bakalari'` plus
+        `wizardControllerFor(s).effectiveBakalariUrl()` is enough.
+    - **Path 2, live:** the same, but erase the address under *Jiná
+      škola* before *Zpět*.
+    - **Strava, controller:** canteen `1234` typed under *Jiná škola*,
+      then GEKOM, then cleared: `effectiveCanteenId()` is `1950`.
+
+### Notes (no action needed)
+
+- **N14 (F6 docs, owner):**
+  - Five commits add the F6 proposal, the step 0 research prompt and its
+    report. They are docs only, in `docs/qa-roadmap/`, at the owner's
+    request, and recorded in STATUS (*Owner decisions*, F6 row).
+  - F6 isn't in PLAN and no F6 code exists. That is right until the
+    owner's "go", D6 and a design note with its review.
+  - The research used the owner's real GEKOM login, read-only, in a
+    separate session the owner asked for. The implementing agent's "no
+    real services" rule is unchanged.
+  - The reviewer scanned the three files for e-mail addresses, tokens,
+    long ids, names and hosts. Only the school's public address and
+    made-up examples are there.
+  - `a7f63af` adds one *Owner decisions* line beyond the prompt's "one
+    line in the F6 row". It quotes the owner word for word, so it is
+    fine.
+- **N15 (evidence):**
+  - The agent's O2 captures are 390 px only: cs/en dark and cs light.
+    The reviewer captured the rest (below).
+  - The phone screenshots `phone_2_bakalari_prefill.png` and
+    `phone_3_strava.png` are from before O2 and still show the old rows.
+    Retake them when the phone is next in use; no need now.
+  - STATUS *How to verify* (Phase 3) still names `phone_welcome.mp4`,
+    which was deleted for N2.
+- **N16 (M3 live):** the S5 case still works through the real screen
+  after M3. In the reviewer's test, a wizard shown again after finishing
+  without logins puts nothing into the drafts at start-up and leaves
+  `config.json` unchanged. After *Pokračovat* on Vítejte, Škola shows GEKOM
+  ticked and *Pokračovat* enabled.
+
+### Each earlier finding
+
+| Finding | Fixed? | How the reviewer checked |
+|---|---|---|
+| M3 | ✔ `2c1a256` | Exactly the one line asked for: `if (savedStep >= 0) _seedSchoolPresetDraft(savedStep);`. The new test (the reviewer's stale case) **fails on `84254bd`** (`Expected: not 'gekom_2026_2027'`) and passes on `2c1a256`. The S5 test still passes on `2c1a256`, now through the `wizardOpened()` seed, and through the live screen (N16). |
+| O2 | ✔ `4484155`, but see M4 | With GEKOM, neither row nor *Změnit* shows, also when the saved config equals the preset. An own config value and *Jiná škola* show the field. `_prefillRow`, `_displayHost`, `wiz:edit_strava_canteen` and the three `wiz_prefill_*` strings are gone, and nothing else used them (grep over the repo). Settings → Účty is unchanged. The adapted test **fails on `2c1a256`** (finds *Škola: bakaweb.gekom.cz*) and passes on `4484155`. The reviewer's resumed-config case also fails on `2c1a256` and passes on `4484155`. Every test point from re-review 2 is covered, including the saved preset values after a passing fake test. The *Změnit* tap removal is listed under *Deviations* with the owner's words. |
+
+### What the reviewer verified, and how
+
+1. **Suites** (worktree, Flutter 3.44.8 / Dart 3.12.2):
+   - `dart pub get --enforce-lockfile`: OK.
+   - Core: `dart analyze` no issues; `dart test` **808 passed, 2
+     skipped**. The skips are the old POSIX ones.
+   - App: `flutter analyze` no issues; `flutter test` **715 passed, 1
+     skipped**. That is 714 plus the M3 test; O2 adapted an existing
+     test.
+   - Use these counts as the baseline for the next review.
+2. **Each fix's test fails without it:**
+   - One throwaway worktree in the reviewer's scratch space, removed
+     afterwards.
+   - The commit's test file was copied onto the parent and run, then run
+     on the commit (table above).
+3. **Reviewer's own tests** (not committed):
+   - M4, paths 1 and 2 through `LiveWizardView`: both stuck at
+     `6718510`, both fine at `2c1a256`.
+   - M4, controller-level: Bakaláři with and without a rebuild, and the
+     Strava canteen. Stuck at `6718510`, fine at `2c1a256`.
+   - The suggested change: all M4 tests pass, and the whole app suite
+     passes (721 = 715 + 6 reviewer tests).
+   - O2 resumed config equal to the preset: fails on `2c1a256`, passes
+     on `4484155`.
+   - S5 through the live screen after M3 (N16).
+   - No test touched the network. The live connection test runs only
+     with the real app's `spawn`, and a bare `AppState` never runs it.
+4. **Screens:**
+   - Captured with a copy of `tools/parity/capture_screens.dart`: real
+     router and `MyApp` setup, Roboto.
+   - Bakaláři and Strava steps in three cases: GEKOM fresh, GEKOM with
+     saved values equal to the preset (resumed), and *Jiná škola*.
+   - 390 and 1280 px, cs and en, light and dark: **48 images, no render
+     or overflow errors**.
+   - The fields show only for *Jiná škola*, and the short S1 texts show
+     with GEKOM.
+   - The agent's 390 px captures (19:07, from the O2 tree) were opened.
+5. **Scope:**
+   - `2c1a256` is the one line and its test.
+   - `4484155` touches only what O2 names: the two getters, the two rows
+     in the view, three strings and the test.
+   - The F6 commits are docs only (N14).
+   - O1, F1b and phase 4 weren't started.
+6. **Config keys and strings:**
+   - No key added, removed or renamed. `config.example.json`,
+     `config.dart` and `test/parity/` match `main`.
+   - The cs and en ARB files have the same 800 keys, and both
+     `strings.dart` tables match them exactly (checked by script).
+7. **Safety rules:**
+   - Since re-review 2, only one line changed in `app/lib/controllers/`
+     (M3), and nothing in core `lib/`.
+   - `runRefresh`, the session lock, `sendExcuse` / `HistoryLock`, the
+     audit and `automation_paused` are untouched. No new `catch`.
+   - M4 blocks setup; it sends and saves nothing wrong.
+8. **Test integrity:**
+   - The removed test lines are the old prefill-row and *Změnit*
+     assertions, replaced by the O2 ones the review asked for.
+   - No `skip:`, no `try`/`catch` around assertions, and the count went
+     up by one.
+   - The new hosts are `http://127.0.0.1:18080` and the preset value
+     under test.
+9. **Phone:**
+   - Not checked this time. `adb devices` showed only a stale offline
+     emulator; the Pixel wasn't connected.
+   - This round has no phone item.
+10. **Hygiene:**
+    - No personal files or screenshots in the new commits.
+    - The F6 docs are scanned (N14).
+    - No `Co-Authored-By`, `Claude-Session` or "Generated with" lines.
+    - `qa-roadmap` has no upstream.
+    - The worktree's uncommitted `generated_plugin*` files are the known
+      Flutter line-ending churn.
+11. **Not checked:** macOS and iOS builds (not possible here), and the
+    phone (not connected).

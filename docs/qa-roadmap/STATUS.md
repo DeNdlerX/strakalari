@@ -1,7 +1,7 @@
 # QA & roadmap status
 
-Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3 (R3 re-review 2 fixes ready)
-Next step: Stop for R3 re-review 3 (Phase 3 checkpoint ⛔ R3). After R3 passes, do O1 and start F1b with `design-F1b.md`.
+Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3 (R3 re-review 3: FAIL, M4 open)
+Next step: Fix every finding in `reviews/phase-3.md` (blockers first), one commit per finding, then stop for re-review. (Open now: M4 in *Re-review 3*.) After R3 passes, do O1 and start F1b with `design-F1b.md`.
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -85,6 +85,7 @@ Next step: Stop for R3 re-review 3 (Phase 3 checkpoint ⛔ R3). After R3 passes,
 
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
 ### Phase 3 (`F1` complete, checkpoint ⛔ R3)
+- **2026-11-17 R3 re-review 3: FAIL**: M3 is fixed and O2 is done as the owner asked, but O2 lets the wizard hide the address or canteen field while the value is empty, so a GEKOM student who first typed under *Jiná škola* can get stuck on Bakaláři (M4, must-fix, four lines, tested by the reviewer). Baseline: core 808 passed / 2 skipped, app 715 passed / 1 skipped. See [`reviews/phase-3.md`](reviews/phase-3.md#re-review-3-2026-11-17).
 - **2026-11-17 R3 M3 + O2 fixes (`2c1a256`, `4484155`):**
   - **M3 (`2c1a256`):** Guarded `_seedSchoolPresetDraft(savedStep)` in `AppState()` behind `if (savedStep >= 0)` so a stale school draft is never seeded when no wizard is on screen (while `wizardOpened()` still seeds when the wizard opens, preserving S5). Added `stale school draft is not seeded when no wizard is open (R3 M3)` in `app/test/wizard_live_test.dart` (verified failing before fix, passing after).
   - **O2 (`4484155`):** Updated `showBakalariUrlField` and `showStravaCanteenField` in `app/lib/features/wizard/wizard_controller.dart` to show fields only when no preset value exists or the saved/draft value differs from the preset; removed `_prefillRow`, `_displayHost`, `wiz:edit_strava_canteen`, and `wiz_prefill_*` strings (`app_cs.arb`, `app_en.arb`, `strings.dart`); adapted `F1 login prefills` in `app/test/wizard_live_test.dart` (verified failing before fix, passing after); captured 390 px cs/en dark/light screenshots (`build/qa-evidence/F1/wiz-step2-*.png`, `wiz-step3-*.png`).
