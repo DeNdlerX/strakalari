@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../widgets/app_widgets.dart' as w;
 import '../common/app_tokens.dart';
+import '../settings/settings_view.dart' show TemplateEditor;
 import 'wizard_controller.dart';
 
 /// First-run setup wizard — port of `views/wizard.py`.
@@ -84,7 +85,7 @@ final step = c.step.clamp(0, WizardController.stepDone);
       ));
     }
 
-    final card = Card(
+    Widget buildCard(bool scrollBody) => Card(
       color: t.card,
       // `components.card`: a 1 px outline in the border colour.
       shape: RoundedRectangleBorder(
@@ -93,6 +94,7 @@ final step = c.step.clamp(0, WizardController.stepDone);
       child: Padding(
         padding: EdgeInsets.all(t.pad),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
@@ -105,7 +107,18 @@ final step = c.step.clamp(0, WizardController.stepDone);
             const SizedBox(height: 8),
             dots,
             const Divider(height: 24),
-            ...content,
+            if (scrollBody)
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: content,
+                  ),
+                ),
+              )
+            else
+              ...content,
             const Divider(height: 24),
             if (narrow)
               Column(
@@ -144,10 +157,12 @@ final step = c.step.clamp(0, WizardController.stepDone);
             width: constraints.maxWidth *
                 _wizardColumns(constraints.maxWidth + (narrow ? 16 : 48)) /
                 12,
-            child: ListView(
-              shrinkWrap: true,
-              children: [card],
-            ),
+            child: constraints.hasBoundedHeight
+                ? buildCard(true)
+                : ListView(
+                    shrinkWrap: true,
+                    children: [buildCard(false)],
+                  ),
           ),
         ),
       ),
@@ -266,7 +281,6 @@ switch (step) {
           _p(Strings.get('wiz_strava_p')),
           SwitchListTile(
             value: enabled,
-            activeThumbColor: t.accent,
             contentPadding: EdgeInsets.zero,
             title: Text(Strings.get('use_strava')),
             onChanged: c.setStravaEnabled,
@@ -296,7 +310,6 @@ switch (step) {
           _p(Strings.get('wiz_ai_p')),
           SwitchListTile(
             value: enabled,
-            activeThumbColor: t.accent,
             contentPadding: EdgeInsets.zero,
             title: Text(Strings.get('wiz_use_ai')),
             onChanged: c.setAiEnabled,
@@ -423,9 +436,8 @@ final rows = <Widget>[
         alignment: Alignment.centerLeft,
         child: OutlinedButton.icon(
           onPressed: () {
-            c.onLimitsRefresh();
-            if (context.mounted &&
-                c.refreshRunning == false) {
+            final started = c.retryLimitsRefresh();
+            if (context.mounted && !started) {
               ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                       content:
@@ -569,7 +581,6 @@ final enabled = c.alarmEnabled;
       _p(Strings.get('wiz_alarm_p')),
       SwitchListTile(
         value: enabled,
-        activeThumbColor: t.accent,
         contentPadding: EdgeInsets.zero,
         title: Text(Strings.get('wakeup_enable')),
         onChanged: c.setAlarmEnabled,
@@ -602,20 +613,22 @@ final enabled = c.alarmEnabled;
 
   List<Widget> _templateEditors(BuildContext context) {
     final c = controller;
-    const keys = [
-      'late_income_excuses',
-      'left_soon_excuses',
-      'short_absence_excuses',
-      'long_absence_excuses',
+    const entries = [
+      ('late_income_excuses', 'tpl_late'),
+      ('left_soon_excuses', 'tpl_soon'),
+      ('short_absence_excuses', 'tpl_short'),
+      ('long_absence_excuses', 'tpl_long'),
     ];
     return [
-      for (final key in keys)
-        _DraftArea(
-          initial: c.excuseTemplates[key] ?? '',
-          label: key,
-          tokens: tokens,
-          onChanged: (v) =>
-              c.excuseTemplates[key] = v,
+      for (final (key, titleKey) in entries)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: TemplateEditor(
+            configKey: key,
+            titleKey: titleKey,
+            readTemplates: () => c.config[key] ?? const <Object?>[],
+            commitTemplates: (values) => c.saveTemplateList(key, values),
+          ),
         ),
     ];
   }
@@ -646,6 +659,7 @@ final enabled = c.alarmEnabled;
   Widget _field(String label, String key, String initial,
       {bool password = false, String hint = ''}) {
     return _DraftField(
+      key: ValueKey('draft:$key'),
       label: label,
       initial: initial,
       password: password,
@@ -668,6 +682,7 @@ class _DraftField extends StatefulWidget {
   final void Function(String value) onChanged;
 
   const _DraftField({
+    super.key,
     required this.label,
     required this.initial,
     required this.tokens,
@@ -682,15 +697,32 @@ class _DraftField extends StatefulWidget {
 
 class _DraftFieldState extends State<_DraftField> {
   late final TextEditingController _ctrl;
+  late final FocusNode _focus;
+  bool _hidden = true;
 
   @override
   void initState() {
     super.initState();
     _ctrl = TextEditingController(text: widget.initial);
+    _focus = FocusNode();
+  }
+
+  @override
+  void didUpdateWidget(covariant _DraftField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.password != oldWidget.password) {
+      _hidden = true;
+    }
+    if (!_focus.hasFocus &&
+        widget.initial != oldWidget.initial &&
+        _ctrl.text != widget.initial) {
+      _ctrl.text = widget.initial;
+    }
   }
 
   @override
   void dispose() {
+    _focus.dispose();
     _ctrl.dispose();
     super.dispose();
   }
@@ -701,7 +733,8 @@ class _DraftFieldState extends State<_DraftField> {
       padding: const EdgeInsets.only(bottom: 8),
       child: TextField(
         controller: _ctrl,
-        obscureText: widget.password,
+        focusNode: _focus,
+        obscureText: widget.password && _hidden,
         decoration: InputDecoration(
           labelText: widget.label,
           hintText:
@@ -709,60 +742,15 @@ class _DraftFieldState extends State<_DraftField> {
           isDense: true,
           filled: true,
           fillColor: widget.tokens.surface,
-        ),
-        onChanged: widget.onChanged,
-      ),
-    );
-  }
-}
-
-/// Multi-line template editor (one template per line).
-class _DraftArea extends StatefulWidget {
-  final String initial;
-  final String label;
-  final AppTokens tokens;
-  final void Function(String value) onChanged;
-
-  const _DraftArea({
-    required this.initial,
-    required this.label,
-    required this.tokens,
-    required this.onChanged,
-  });
-
-  @override
-  State<_DraftArea> createState() => _DraftAreaState();
-}
-
-class _DraftAreaState extends State<_DraftArea> {
-  late final TextEditingController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = TextEditingController(text: widget.initial);
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: TextField(
-        controller: _ctrl,
-        maxLines: 3,
-        minLines: 1,
-        decoration: InputDecoration(
-          labelText: widget.label,
-          isDense: true,
-          filled: true,
-          fillColor: widget.tokens.surface,
-          alignLabelWithHint: true,
+          suffixIcon: widget.password
+              ? IconButton(
+                  tooltip: '',
+                  icon: Icon(_hidden
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined),
+                  onPressed: () => setState(() => _hidden = !_hidden),
+                )
+              : null,
         ),
         onChanged: widget.onChanged,
       ),

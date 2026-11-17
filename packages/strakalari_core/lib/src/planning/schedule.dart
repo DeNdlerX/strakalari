@@ -1092,6 +1092,15 @@ class LessonDiff {
       );
 }
 
+bool _sameRoomChangeNote(String note) {
+  final m = RegExp(
+    r'^(?:Změna místnosti|Room change)\s*:\s*(.+?)\s*\(([^()]+)\)\s*$',
+    caseSensitive: false,
+  ).firstMatch(note.trim());
+  if (m == null) return false;
+  return _normText(m.group(1)!) == _normText(m.group(2)!);
+}
+
 /// Compares one lesson against the stable baseline.
 ///
 /// A bare teacher note (description) with identical subject/teacher/room/
@@ -1109,7 +1118,9 @@ class LessonDiff {
 LessonDiff classifyLesson(Map<Object?, Object?>? raw,
     [Object? day, Map<Object?, Object?>? baseline, bool complete = false]) {
   final parsed = Lesson.fromLegacy(_readMap(raw), day);
-  final note = parsed.change;
+  final rawNote = parsed.change;
+  final sameRoomNote = _sameRoomChangeNote(rawNote);
+  final note = sameRoomNote ? '' : rawNote;
   final status = parsed.status.toLowerCase();
 
   if (status == 'cancelled') {
@@ -1121,10 +1132,13 @@ LessonDiff classifyLesson(Map<Object?, Object?>? raw,
   // Bakalari's own verdict: an explicit change code (e.g. RoomChanged), a
   // "removed" (cancelled) row or a class event is a change even when the
   // teacher notice is empty and no baseline is available to diff against.
+  // A RoomChanged badge whose old and new rooms are identical is a no-op.
   final flagged =
       _orEmpty(rawMap['type']).trim().toLowerCase() == 'removed' ||
           _orEmpty(rawMap['type']).trim().toLowerCase() == 'event' ||
-          (infoCode.isNotEmpty && infoCode != 'nochange');
+          (infoCode.isNotEmpty &&
+              infoCode != 'nochange' &&
+              !(infoCode == 'roomchanged' && sameRoomNote));
 
   final dayObj = parsed.day;
   var period = parsed.period;

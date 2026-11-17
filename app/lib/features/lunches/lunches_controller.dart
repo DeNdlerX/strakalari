@@ -29,6 +29,7 @@ class LunchController {
   String lunchPrefs = '';
   bool aiRunning = false;
   bool stravaOn = false;
+  bool stravaConfigured = true;
   bool demoMode = false;
   bool showPastLunches = false;
   bool lunchToolsOpen = false;

@@ -198,7 +198,7 @@ class TodayView extends StatelessWidget {
       out.add(
         _card(
           Text(
-            c.demoMode ? Strings.get('no_data') : Strings.get('no_changes'),
+            c.demoMode ? Strings.get('no_data') : Strings.get('no_pending_excuses'),
             style: TextStyle(color: t.faint, fontSize: t.fsBody),
           ),
         ),

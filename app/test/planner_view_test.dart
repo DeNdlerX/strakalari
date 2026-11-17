@@ -1,5 +1,7 @@
+import 'package:app/features/common/app_tokens.dart';
 import 'package:app/l10n/strings.dart';
 import 'package:app/features/planner/plan_reserve.dart' show daysText;
+import 'package:app/widgets/app_widgets.dart' show StatCard;
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -306,6 +308,105 @@ void main() {
       expect(c.plannerTargetDays(), 7);
       c.setPlannerTarget(9999);
       expect(c.plannerTargetDays(), 200);
+    });
+
+    testWidgets(
+        'P9a+b narrow planner equalizes KPI card heights and keeps calendar visible on first screen',
+        (t) async {
+      t.view.physicalSize = const Size(390, 844);
+      t.view.devicePixelRatio = 1.0;
+      addTearDown(t.view.reset);
+
+      final savedLang = Strings.lang;
+      addTearDown(() => Strings.lang = savedLang);
+      Strings.lang = 'cs';
+
+      final sem1 = TermPlanData(
+        key: 'sem1',
+        start: DateTime(2026, 9, 1),
+        close: DateTime(2027, 1, 25),
+        capacity: 13,
+        hasData: true,
+        active: true,
+        remainingDays: [
+          for (var i = 0; i < 41; i++)
+            DateTime(2026, 11, 16).add(Duration(days: i)),
+        ],
+        fastPace: const ['Fyzika', 'Tělesná výchova'],
+        tightest: const TightestData(
+          name: 'Tělesná výchova',
+          free: 4,
+          status: 'warning',
+        ),
+        budgets: const [
+          BudgetRowData(
+            name: 'Tělesná výchova',
+            missed: 8,
+            planned: 0,
+            free: 4,
+            buffer: 1,
+            schoolCap: 12,
+            schoolLeft: 4,
+            projectedPct: 20.0,
+            limitPct: 25.0,
+            status: 'warning',
+          ),
+        ],
+      );
+      final sem2 = TermPlanData(
+        key: 'sem2',
+        start: DateTime(2027, 1, 26),
+        close: DateTime(2027, 4, 26),
+        capacity: 10,
+        hasData: true,
+        active: false,
+      );
+      final yearPlan = YearPlanData(
+        today: DateTime(2026, 11, 15),
+        firstDay: DateTime(2026, 11, 16),
+        terms: [sem1, sem2],
+        lessonsOn: (_) => 6,
+      );
+
+      final tok = AppTokens.dark();
+      final c = _controller();
+      await t.pumpWidget(MaterialApp(
+        theme: tok.toThemeData(),
+        home: Scaffold(
+          body: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            child: PlannerView(
+              controller: c,
+              plan: yearPlan,
+              hasTimetable: true,
+              hasData: true,
+              updatedLabel: '15.11.2026 18:56:41 · před 4 min',
+              narrow: true,
+            ),
+          ),
+        ),
+      ));
+      await t.pump();
+
+      final cards = find.byType(StatCard);
+      expect(cards, findsNWidgets(4));
+      expect(t.getSize(cards.at(0)).height, t.getSize(cards.at(1)).height);
+      expect(t.getSize(cards.at(2)).height, t.getSize(cards.at(3)).height);
+
+      // Action buttons and semester buttons each sit side-by-side on one row.
+      final seeAbsRect = t.getRect(find.text(Strings.get('see_absences')));
+      final customRect = t.getRect(find.text(Strings.get('plan_custom')));
+      expect((seeAbsRect.center.dy - customRect.center.dy).abs(), lessThan(4));
+
+      final sem1Btn = find.textContaining('1. pololetí');
+      final sem2Btn = find.textContaining('2. pololetí');
+      expect((t.getCenter(sem1Btn).dy - t.getCenter(sem2Btn).dy).abs(), lessThan(4));
+
+      // Calendar section header fits inside the ~708 px phone body even with
+      // wide Ahem test metrics (in real Roboto, multiple week rows fit too).
+      final calHeader = find.text(Strings.get('section_overview').toUpperCase());
+      expect(calHeader, findsOneWidget);
+      expect(t.getBottomLeft(calHeader).dy, lessThan(708));
     });
   });
 }

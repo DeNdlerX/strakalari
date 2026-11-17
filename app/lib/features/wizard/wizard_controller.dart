@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../l10n/strings.dart';
 import '../common/format.dart';
+import '../settings/settings_controller.dart' show SettingsController;
 
 /// First-run setup wizard — a `ChangeNotifier` port of
 /// `views/wizard.py`.
@@ -22,6 +23,10 @@ class WizardController extends ChangeNotifier {
   /// Persists config updates. False when the write failed.
   final bool Function(Map<String, Object?> updates) onSave;
 
+  /// Persists config updates without emitting a shell rebuild (used when
+  /// template rows commit during unmount/dispose). Defaults to [onSave].
+  final bool Function(Map<String, Object?> updates) onSaveQuiet;
+
   /// Starts a live connection test for `service`
   /// (`bakalari | strava | ai`) with draft-backed overrides. The shell
   /// reports back via [recordTestResult].
@@ -39,7 +44,7 @@ class WizardController extends ChangeNotifier {
 
   /// Starts the one-time Bakaláři-only refresh when the limits step
   /// shows with no subjects yet.
-  final void Function() onLimitsRefresh;
+  final Object? Function() onLimitsRefresh;
 
   /// Sets the app language (`cs | en`).
   final void Function(String lang) onSetLanguage;
@@ -54,12 +59,13 @@ class WizardController extends ChangeNotifier {
   WizardController({
     Map<String, Object?>? config,
     bool Function(Map<String, Object?> updates)? onSave,
+    bool Function(Map<String, Object?> updates)? onSaveQuiet,
     void Function(String service, Map<String, String> overrides)?
         onTestRequest,
     bool Function()? onFinishRefresh,
     void Function()? onOpenUrl,
     void Function()? onAlarmPermission,
-    void Function()? onLimitsRefresh,
+    Object? Function()? onLimitsRefresh,
     void Function(String lang)? onSetLanguage,
     this.onDraftChanged,
     this.onClearDrafts,
@@ -68,11 +74,12 @@ class WizardController extends ChangeNotifier {
     this.onVerified,
   })  : config = config ?? {},
         onSave = onSave ?? ((_) => false),
+        onSaveQuiet = onSaveQuiet ?? onSave ?? ((_) => false),
         onTestRequest = onTestRequest ?? ((_, _) {}),
         onFinishRefresh = onFinishRefresh ?? (() => false),
         onOpenUrl = onOpenUrl ?? (() {}),
         onAlarmPermission = onAlarmPermission ?? (() {}),
-        onLimitsRefresh = onLimitsRefresh ?? (() {}),
+        onLimitsRefresh = onLimitsRefresh ?? (() => null),
         onSetLanguage = onSetLanguage ?? ((_) {});
 
   // -- steps ------------------------------------------------------------------------
@@ -304,6 +311,15 @@ class WizardController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Triggers a limits refresh from the retry button and returns whether a
+  /// new refresh started (false when one is already running).
+  bool retryLimitsRefresh() {
+    if (refreshRunning) return false;
+    final result = onLimitsRefresh();
+    if (result is bool) return result;
+    return true;
+  }
+
   /// A limit in percent; null when blank. Throws [FormatException]
   /// when invalid — like `wizard._limit_value`.
   static double? limitValue(String raw) {
@@ -406,29 +422,12 @@ class WizardController extends ChangeNotifier {
 
   // -- excuse templates (excuses step) ---------------------------------------------------------------
 
-  /// Joined template texts per config key, edited in memory and saved
-  /// on Continue (one template per non-empty line).
-  final Map<String, String> excuseTemplates = {};
-
-  void setExcuseTemplatesInitial(Map<String, List<String>> initial) {
-    excuseTemplates.clear();
-    initial.forEach((key, lines) {
-      excuseTemplates[key] = lines.join('\n');
-    });
-  }
-
-  bool saveExcuseTemplates() {
-    final updates = <String, Object?>{
-      for (final e in excuseTemplates.entries)
-        e.key: e.value
-            .split('\n')
-            .map((l) => l.trimRight())
-            .where((l) => l.trim().isNotEmpty)
-            .toList(),
-    };
-    if (updates.isEmpty) return true;
-    return _save(updates);
-  }
+  bool saveTemplateList(String key, List<Map<String, String>> values) =>
+      SettingsController.commitTemplatesList(
+        current: config[key] ?? const [],
+        values: values,
+        saveCleaned: (cleaned) => _saveQuiet({key: cleaned}),
+      );
 
   // -- live tests ----------------------------------------------------------------------------------------
 
@@ -689,7 +688,6 @@ class WizardController extends ChangeNotifier {
             finishedMessage: null
           );
         }
-        saveExcuseTemplates();
         break;
       default:
         break;
@@ -746,11 +744,19 @@ class WizardController extends ChangeNotifier {
     return true;
   }
 
-  bool _save(Map<String, Object?> updates) {
-    final ok = onSave(updates);
+  bool _persist(
+    Map<String, Object?> updates,
+    bool Function(Map<String, Object?> updates) writer,
+  ) {
+    final ok = writer(updates);
     if (ok) config.addAll(updates);
     return ok;
   }
+
+  bool _save(Map<String, Object?> updates) => _persist(updates, onSave);
+
+  bool _saveQuiet(Map<String, Object?> updates) =>
+      _persist(updates, onSaveQuiet);
 }
 
 /// A selectable school calendar card — preset data resolved by the

@@ -63,8 +63,8 @@ THEMES = ["Opakování", "Nové učivo", "Procvičování", "Práce ve skupinác
 # (weekday, period, kind, extra). kinds: Removed, Substitution, RoomChanged
 CHANGES = {
     0: [(2, 3, "Removed", None), (3, 2, "Substitution", "Mgr. Radek Beneš"),
-        (4, 5, "RoomChanged", "I - (118)")],
-    1: [(0, 1, "RoomChanged", "II - (203)"), (1, 4, "Removed", None),
+        (4, 5, "RoomChanged", "III - (310)")],
+    1: [(0, 1, "RoomChanged", "III - (303)"), (1, 4, "Removed", None),
         (3, 3, "Substitution", "Mgr. Radek Beneš")],
 }
 

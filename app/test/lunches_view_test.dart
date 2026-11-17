@@ -159,5 +159,19 @@ void main() {
       expect(logged, 1);
       expect(c.orders.containsKey('07.09.2026'), isFalse);
     });
+
+    testWidgets('send button disabled with reason when strava not configured',
+        (t) async {
+      final c = _controller()..stravaConfigured = false;
+      await t.pumpWidget(_app(LunchesView(controller: c)));
+      final btn = t.widget<ElevatedButton>(
+        find.ancestor(
+          of: find.text(Strings.get('send_orders')),
+          matching: find.byWidgetPredicate((w) => w is ElevatedButton),
+        ),
+      );
+      expect(btn.onPressed, isNull);
+      expect(find.text(Strings.get('strava_not_configured')), findsOneWidget);
+    });
   });
 }

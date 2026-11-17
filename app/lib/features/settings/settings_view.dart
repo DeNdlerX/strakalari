@@ -79,6 +79,17 @@ class _AutosaveFieldState extends State<AutosaveField> {
   }
 
   @override
+  void didUpdateWidget(AutosaveField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!focus.hasFocus &&
+        !widget.password &&
+        (oldWidget.fallback != widget.fallback ||
+            oldWidget.draftKey != widget.draftKey)) {
+      _showValue(widget.controller.draft(widget.draftKey, widget.fallback));
+    }
+  }
+
+  @override
   void dispose() {
     text.dispose();
     focus.dispose();
@@ -103,8 +114,12 @@ class _AutosaveFieldState extends State<AutosaveField> {
         return;
       }
     }
+    final raw = c.get(widget.configKey);
+    final baseline = (raw == null || '$raw'.isEmpty) && widget.fallback.isNotEmpty
+        ? widget.fallback
+        : raw;
     if (!widget.password &&
-        SettingsController.sameValue(c.get(widget.configKey), newVal)) {
+        SettingsController.sameValue(baseline, newVal)) {
       c.clearDrafts(widget.draftKey);
       _showValue(newVal);
       return; // focus moved without an edit: nothing to save
@@ -129,8 +144,8 @@ class _AutosaveFieldState extends State<AutosaveField> {
   @override
   Widget build(BuildContext context) {
     final tok = tokensOf(context);
-    // Python `labeled_field`: a fixed caption above the box, the label as
-    // the placeholder (a floating label reads as "empty" even when filled).
+    // Python `labeled_field`: a fixed caption above the box; only show a
+    // placeholder when an explicit hint differs from the caption.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       spacing: 4,
@@ -146,7 +161,7 @@ class _AutosaveFieldState extends State<AutosaveField> {
           focusNode: focus,
           style: TextStyle(color: tok.text, fontSize: tok.fsBody),
           decoration: InputDecoration(
-            hintText: widget.hint.isEmpty ? widget.label : widget.hint,
+            hintText: widget.hint.isEmpty ? null : widget.hint,
             suffixIcon: widget.password
                 ? IconButton(
                     tooltip: '',
@@ -170,31 +185,82 @@ class _AutosaveFieldState extends State<AutosaveField> {
 
 /// One template-list editor (names + texts). Port of common._tpl_editor.
 class TemplateEditor extends StatefulWidget {
-  final SettingsController controller;
+  final SettingsController? controller;
   final String configKey;
   final String titleKey;
+  final Object? Function()? readTemplates;
+  final bool Function(List<Map<String, String>> values)? commitTemplates;
 
   const TemplateEditor(
       {super.key,
-      required this.controller,
+      this.controller,
       required this.configKey,
-      required this.titleKey});
+      required this.titleKey,
+      this.readTemplates,
+      this.commitTemplates})
+      : assert(
+          controller != null ||
+              (readTemplates != null && commitTemplates != null),
+          'Provide controller or both readTemplates and commitTemplates',
+        );
 
   @override
   State<TemplateEditor> createState() => _TemplateEditorState();
 }
 
+class _TemplateRow {
+  final TextEditingController name;
+  final TextEditingController text;
+  final FocusNode nameFocus;
+  final FocusNode textFocus;
+  bool disposed = false;
+
+  _TemplateRow(String initialName, String initialText, VoidCallback onBlur)
+      : name = TextEditingController(text: initialName),
+        text = TextEditingController(text: initialText),
+        nameFocus = FocusNode(),
+        textFocus = FocusNode() {
+    nameFocus.addListener(() {
+      if (!nameFocus.hasFocus) onBlur();
+    });
+    textFocus.addListener(() {
+      if (!textFocus.hasFocus) onBlur();
+    });
+  }
+
+  void dispose() {
+    if (disposed) return;
+    disposed = true;
+    name.dispose();
+    text.dispose();
+    nameFocus.dispose();
+    textFocus.dispose();
+  }
+}
+
 class _TemplateEditorState extends State<TemplateEditor> {
   late List<Map<String, String>> values;
+  late List<Map<String, String>> _lastStored;
+  final List<_TemplateRow> _rows = [];
+  final List<_TemplateRow> _pendingDispose = [];
+  bool _dirty = false;
+
+  static List<Map<String, String>> _cloneValues(
+          List<Map<String, String>> src) =>
+      [for (final m in src) Map<String, String>.of(m)];
 
   @override
   void initState() {
     super.initState();
-    values = _load();
+    _lastStored = _load();
+    values = _cloneValues(_lastStored);
+    _rebuildRows();
   }
 
   List<Map<String, String>> _load() {
-    final stored = widget.controller.get(widget.configKey, []);
+    final stored = widget.readTemplates != null
+        ? widget.readTemplates!()
+        : widget.controller!.get(widget.configKey, []);
     final out = <Map<String, String>>[];
     if (stored is List) {
       for (final v in stored) {
@@ -211,8 +277,100 @@ class _TemplateEditorState extends State<TemplateEditor> {
     return out;
   }
 
-  void _commit() {
-    widget.controller.commitTemplates(widget.configKey, values);
+  void _rebuildRows() {
+    if (_rows.isNotEmpty) {
+      _pendingDispose.addAll(_rows);
+      _rows.clear();
+      _schedulePendingDispose();
+    }
+    for (var i = 0; i < values.length; i++) {
+      _rows.add(_makeRow(values[i]));
+    }
+  }
+
+  _TemplateRow _makeRow(Map<String, String> item) => _TemplateRow(
+        item['name'] ?? '',
+        item['text'] ?? '',
+        _commitIfDirty,
+      );
+
+  void _schedulePendingDispose() {
+    if (_pendingDispose.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _flushPendingDispose();
+    });
+  }
+
+  void _flushPendingDispose() {
+    for (final r in _pendingDispose) {
+      r.dispose();
+    }
+    _pendingDispose.clear();
+  }
+
+  static bool _sameValues(
+      List<Map<String, String>> a, List<Map<String, String>> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i]['name'] != b[i]['name'] || a[i]['text'] != b[i]['text']) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @override
+  void didUpdateWidget(covariant TemplateEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final keyChanged = widget.configKey != oldWidget.configKey;
+    final anyFocused =
+        _rows.any((r) => r.nameFocus.hasFocus || r.textFocus.hasFocus);
+    if (!keyChanged && (_dirty || anyFocused)) return;
+    final fresh = _load();
+    if (keyChanged || !_sameValues(fresh, _lastStored)) {
+      _lastStored = fresh;
+      values = _cloneValues(fresh);
+      _dirty = false;
+      _rebuildRows();
+    }
+  }
+
+  void _syncFromRows() {
+    for (var i = 0; i < _rows.length && i < values.length; i++) {
+      values[i]['name'] = _rows[i].name.text;
+      values[i]['text'] = _rows[i].text.text;
+    }
+  }
+
+  void _commitIfDirty() {
+    if (!_dirty) return;
+    _commit();
+  }
+
+  void _saveValues() {
+    _syncFromRows();
+    final commit = widget.commitTemplates;
+    final ok = commit != null
+        ? commit(values)
+        : widget.controller!.commitTemplates(widget.configKey, values);
+    if (ok) {
+      _dirty = false;
+      _lastStored = _load();
+    }
+  }
+
+  void _commit() => _saveValues();
+
+  @override
+  void dispose() {
+    if (_dirty) _saveValues();
+    for (final r in _rows) {
+      r.dispose();
+    }
+    _rows.clear();
+    _flushPendingDispose();
+    super.dispose();
   }
 
   @override
@@ -221,34 +379,44 @@ class _TemplateEditorState extends State<TemplateEditor> {
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-              spacing: 20,
+          spacing: 20,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _CardTitle(Strings.get(widget.titleKey)),
-            for (var i = 0; i < values.length; i++)
+            for (var i = 0; i < _rows.length; i++)
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: Column(
+                      spacing: 12,
                       children: [
                         TextField(
                           key: Key('tpl:${widget.configKey}:$i:name'),
                           decoration: InputDecoration(
                               labelText:
                                   Strings.format('tpl_name', {'n': i + 1})),
-                          controller: TextEditingController(
-                              text: values[i]['name']),
-                          onChanged: (v) => values[i]['name'] = v,
+                          controller: _rows[i].name,
+                          focusNode: _rows[i].nameFocus,
+                          onChanged: (v) {
+                            values[i]['name'] = v;
+                            _dirty = true;
+                          },
+                          onSubmitted: (_) => _commit(),
                         ),
                         TextField(
                           key: Key('tpl:${widget.configKey}:$i:text'),
                           decoration: InputDecoration(
                               labelText: Strings.get('tpl_text')),
-                          controller: TextEditingController(
-                              text: values[i]['text']),
-                          maxLines: 2,
-                          onChanged: (v) => values[i]['text'] = v,
+                          controller: _rows[i].text,
+                          focusNode: _rows[i].textFocus,
+                          keyboardType: TextInputType.multiline,
+                          minLines: 2,
+                          maxLines: null,
+                          onChanged: (v) {
+                            values[i]['text'] = v;
+                            _dirty = true;
+                          },
                         ),
                       ],
                     ),
@@ -257,7 +425,12 @@ class _TemplateEditorState extends State<TemplateEditor> {
                     tooltip: Strings.get('delete'),
                     icon: const Icon(Icons.delete_outline),
                     onPressed: () {
-                      setState(() => values.removeAt(i));
+                      setState(() {
+                        values.removeAt(i);
+                        final removed = _rows.removeAt(i);
+                        _pendingDispose.add(removed);
+                      });
+                      _schedulePendingDispose();
                       _commit();
                     },
                   ),
@@ -265,8 +438,11 @@ class _TemplateEditorState extends State<TemplateEditor> {
               ),
             TextButton(
               onPressed: () {
-                setState(
-                    () => values.add({'name': '', 'text': ''}));
+                setState(() {
+                  final item = {'name': '', 'text': ''};
+                  values.add(item);
+                  _rows.add(_makeRow(item));
+                });
                 _commit();
               },
               child: Text('+ ${Strings.get('add')}'),
@@ -745,8 +921,10 @@ class SettingsView extends StatelessWidget {
                 contentPadding: EdgeInsets.zero,
                 title: Text(Strings.get('use_strava')),
                 value: c.get('use_strava', true) == true,
-                onChanged: (v) =>
-                    c.saveQuiet({'use_strava': v}),
+                onChanged: (v) {
+                  c.saveQuiet({'use_strava': v});
+                  onChanged?.call();
+                },
               ),
             ],
           ),
@@ -864,6 +1042,13 @@ class SettingsView extends StatelessWidget {
   // -- calendar ----------------------------------------------------------------------
   List<Widget> _calendar() {
     final c = controller;
+    final presetOpts = core.presetOptions(Strings.lang);
+    final rawPreset = '${c.get('school_preset_id', 'custom')}';
+    final knownIds = {for (final (id, _) in presetOpts) id, 'custom'};
+    final presetId = knownIds.contains(rawPreset) ? rawPreset : 'custom';
+    final (presetSem1, presetSem2) = core.presetCloses(presetId);
+    final rawSem1 = '${c.get('sem1_close', '')}';
+    final rawSem2 = '${c.get('sem2_close', '')}';
     final days = c.userFreeDays();
     days.sort((a, b) => '${a['date']}'.compareTo('${b['date']}'));
     return [
@@ -874,22 +1059,31 @@ class SettingsView extends StatelessWidget {
               spacing: 20,
             children: [
               DropdownButtonFormField<String>(
+                key: ValueKey('cal:preset:$presetId:${Strings.lang}'),
                 decoration:
                     InputDecoration(labelText: Strings.get('cal_preset')),
-                initialValue: 'custom',
+                initialValue: presetId,
                 items: [
-                  DropdownMenuItem(
-                      value: 'custom', child: Text(Strings.get('cal_custom_opt'))),
+                  for (final (id, label) in presetOpts)
+                    DropdownMenuItem(value: id, child: Text(label)),
+                  if (!presetOpts.any((e) => e.$1 == 'custom'))
+                    DropdownMenuItem(
+                        value: 'custom',
+                        child: Text(Strings.get('cal_custom_opt'))),
                 ],
-                onChanged: (v) =>
-                    c.save({'school_preset_id': v ?? 'custom'}),
+                onChanged: (v) {
+                  if (v == null || v == presetId) return;
+                  c.save({'school_preset_id': v});
+                  onChanged?.call();
+                },
               ),
               AutosaveField(
                 controller: c,
                 label: Strings.get('cal_sem1'),
                 draftKey: 'cal:sem1',
                 configKey: 'sem1_close',
-                fallback: '${c.get('sem1_close', '')}',
+                fallback: rawSem1.isNotEmpty ? rawSem1 : presetSem1,
+                hint: presetSem1,
                 parse: (raw) {
                   final cleaned = raw.trim();
                   if (cleaned.isNotEmpty &&
@@ -904,7 +1098,8 @@ class SettingsView extends StatelessWidget {
                 label: Strings.get('cal_sem2'),
                 draftKey: 'cal:sem2',
                 configKey: 'sem2_close',
-                fallback: '${c.get('sem2_close', '')}',
+                fallback: rawSem2.isNotEmpty ? rawSem2 : presetSem2,
+                hint: presetSem2,
                 parse: (raw) {
                   final cleaned = raw.trim();
                   if (cleaned.isNotEmpty &&
@@ -1270,8 +1465,10 @@ class SettingsView extends StatelessWidget {
                   contentPadding: EdgeInsets.zero,
                   title: Text(Strings.get('run_in_background')),
                   value: c.get('run_in_background', true) == true,
-                  onChanged: (v) =>
-                      c.saveQuiet({'run_in_background': v}),
+                  onChanged: (v) {
+                    c.saveQuiet({'run_in_background': v});
+                    onChanged?.call();
+                  },
                 ),
                 _Hint(Strings.get('run_in_background_hint')),
               ],
@@ -1305,7 +1502,10 @@ class SettingsView extends StatelessWidget {
                   contentPadding: EdgeInsets.zero,
                   title: Text(Strings.get('minimize_to_tray')),
                   value: c.get('minimize_to_tray', true) == true,
-                  onChanged: (v) => c.saveQuiet({'minimize_to_tray': v}),
+                  onChanged: (v) {
+                    c.saveQuiet({'minimize_to_tray': v});
+                    onChanged?.call();
+                  },
                 ),
               ],
             ),
@@ -1343,8 +1543,10 @@ class SettingsView extends StatelessWidget {
                     contentPadding: EdgeInsets.zero,
                     title: Text(Strings.get('minimize_to_tray')),
                     value: c.get('minimize_to_tray', true) == true,
-                    onChanged: (v) =>
-                        c.saveQuiet({'minimize_to_tray': v}),
+                    onChanged: (v) {
+                      c.saveQuiet({'minimize_to_tray': v});
+                      onChanged?.call();
+                    },
                   ),
                 ],
               );
@@ -1489,8 +1691,10 @@ class SettingsView extends StatelessWidget {
                 contentPadding: EdgeInsets.zero,
                 title: Text(Strings.get('ai_auto_enable')),
                 value: c.get('gemini_auto_enabled', false) == true,
-                onChanged: (v) =>
-                    c.saveQuiet({'gemini_auto_enabled': v}),
+                onChanged: (v) {
+                  c.saveQuiet({'gemini_auto_enabled': v});
+                  onChanged?.call();
+                },
               ),
               _Hint(Strings.get('ai_auto_hint')),
               AutosaveField(
@@ -1629,7 +1833,7 @@ class SettingsView extends StatelessWidget {
                   controlAffinity: ListTileControlAffinity.leading,
                   contentPadding: EdgeInsets.zero,
                   key: Key('notif:$event'),
-                  title: Text(event),
+                  title: Text(Strings.get('notif_$event')),
                   value: (prefs[event] ?? true) == true,
                   onChanged: (v) {
                     prefs[event] = v;

@@ -376,4 +376,117 @@ void main() {
       2,
     );
   });
+
+  group('B8 marks band controllers', () {
+    testWidgets(
+        'rebuilding MarksView preserves band TextEditingController identity, focus, edit, and cursor position',
+        (tester) async {
+      Strings.lang = 'cs';
+      final state = createState();
+      final controller = marksControllerFor(state);
+
+      await tester.pumpWidget(buildMarksView(controller, tester));
+
+      // Locate the 2nd band TextField inside the bands card (first 4 TextFields
+      // in MarksView's non-dialog tree are the 4 percentage band fields).
+      final bandFields = find.byType(TextField);
+      expect(bandFields, findsNWidgets(4));
+      final secondFieldFinder = bandFields.at(1);
+
+      await tester.tap(secondFieldFinder);
+      await tester.pump();
+      await tester.enterText(secondFieldFinder, '74.5');
+      await tester.pump();
+
+      final beforeCtrl = tester.widget<TextField>(secondFieldFinder).controller!;
+      beforeCtrl.selection = const TextSelection.collapsed(offset: 2);
+      await tester.pump();
+      expect(beforeCtrl.selection.baseOffset, 2);
+
+      // Trigger a controller-driven rebuild (e.g., changing subject sort order).
+      controller.setMarksSort('worst');
+      await tester.pumpWidget(buildMarksView(controller, tester));
+      await tester.pump();
+
+      final afterWidget = tester.widget<TextField>(secondFieldFinder);
+      final afterCtrl = afterWidget.controller!;
+      expect(identical(afterCtrl, beforeCtrl), isTrue);
+      expect(afterCtrl.text, '74.5');
+      expect(afterCtrl.selection.baseOffset, 2);
+      expect(FocusManager.instance.primaryFocus?.hasFocus, isTrue);
+
+      // Verify unmount/dispose runs cleanly without errors.
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  });
+
+  group('P7 marks trend chart with axes and labels', () {
+    testWidgets('shows CustomPaint line chart with Y and X axis labels for grade and percent',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      Strings.lang = 'cs';
+
+      final gradeState = createState(grades: {
+        'Anglický jazyk': [
+          {'Grade': '1', 'Weight': 10, 'Date': '06.10.2026', 'Caption': 'Unit 2 test'},
+          {'Grade': '1', 'Weight': 5, 'Date': '28.10.2026', 'Caption': 'Vocabulary quiz'},
+          {'Grade': '2', 'Weight': 10, 'Date': '12.11.2026', 'Caption': 'Reading'},
+        ],
+      })..selectMarksSubject('Anglický jazyk');
+
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: MarksView(
+            controller: marksControllerFor(gradeState),
+            tokens: AppTokens.dark(),
+            narrow: true,
+          ),
+        ),
+      ));
+      await tester.pump();
+
+      final chartFinder = find.byKey(const ValueKey('marks:trend_chart'));
+      expect(chartFinder, findsOneWidget);
+      expect(
+        find.descendant(of: chartFinder, matching: find.byType(CustomPaint)),
+        findsOneWidget,
+      );
+      for (final label in ['1', '3', '5', '6. 10.', '12. 11.']) {
+        expect(
+          find.descendant(of: chartFinder, matching: find.text(label)),
+          findsOneWidget,
+          reason: 'grade chart missing axis label $label',
+        );
+      }
+
+      final pctState = createState(grades: {
+        'Chemie': [
+          {'Grade': '53', 'Weight': 5, 'Date': '10.09.2026'},
+          {'Grade': '100', 'Weight': 5, 'Date': '15.09.2026'},
+        ],
+      })..selectMarksSubject('Chemie');
+
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: MarksView(
+            controller: marksControllerFor(pctState),
+            tokens: AppTokens.dark(),
+            narrow: true,
+          ),
+        ),
+      ));
+      await tester.pump();
+
+      expect(chartFinder, findsOneWidget);
+      for (final label in ['100 %', '50 %', '0 %', '10. 9.', '15. 9.']) {
+        expect(
+          find.descendant(of: chartFinder, matching: find.text(label)),
+          findsOneWidget,
+          reason: 'percent chart missing axis label $label',
+        );
+      }
+    });
+  });
 }

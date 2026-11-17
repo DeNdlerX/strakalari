@@ -1,6 +1,13 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:app/controllers/app_state.dart';
+import 'package:app/features/settings/settings_live.dart';
 import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import 'package:app/features/settings/settings_controller.dart';
 import 'package:app/features/settings/settings_view.dart';
@@ -312,4 +319,364 @@ void main() {
       });
     });
   });
+
+  group('B5 school calendar presets', () {
+    testWidgets(
+        'preset dropdown lists all core presets plus custom and selects saved school_preset_id',
+        (t) async {
+      Strings.lang = 'cs';
+      final options = core.presetOptions('cs');
+      expect(options, isNotEmpty);
+      final targetPreset = options.first;
+      final c = _controller({'school_preset_id': targetPreset.$1});
+
+      await _openSection(t, c, 'calendar');
+
+      final dropdown = t.widget<DropdownButtonFormField<String>>(
+          find.byType(DropdownButtonFormField<String>).first);
+      expect(dropdown.initialValue, targetPreset.$1);
+
+      await t.tap(find.byType(DropdownButtonFormField<String>).first);
+      await t.pumpAndSettle();
+
+      for (final (_, title) in options) {
+        expect(find.text(title), findsAtLeastNWidgets(1));
+      }
+      expect(find.text(Strings.get('cal_custom_opt')), findsOneWidget);
+    });
+
+    testWidgets(
+        'known preset populates empty semester fields from presetCloses without writing config on blur',
+        (t) async {
+      Strings.lang = 'cs';
+      final withCloses = core
+          .presetOptions('cs')
+          .firstWhere((e) => core.presetCloses(e.$1).$1.isNotEmpty);
+      final (expectedSem1, expectedSem2) = core.presetCloses(withCloses.$1);
+      expect(expectedSem2, isNotEmpty);
+
+      final cfg = <String, dynamic>{
+        'school_preset_id': withCloses.$1,
+        'user_free_days': <Object>[],
+      };
+      final c = SettingsController(cfg);
+      await _openSection(t, c, 'calendar');
+
+      final sem1Field =
+          t.widget<TextField>(find.byKey(const Key('auto:cal:sem1')));
+      final sem2Field =
+          t.widget<TextField>(find.byKey(const Key('auto:cal:sem2')));
+      expect(sem1Field.controller?.text, expectedSem1);
+      expect(sem2Field.controller?.text, expectedSem2);
+
+      // Focusing and unfocusing without editing must not write config overrides.
+      await t.tap(find.byKey(const Key('auto:cal:sem1')));
+      await t.pump();
+      FocusManager.instance.primaryFocus?.unfocus();
+      await t.pump();
+      await t.tap(find.byKey(const Key('auto:cal:sem2')));
+      await t.pump();
+      FocusManager.instance.primaryFocus?.unfocus();
+      await t.pump();
+
+      expect(cfg.containsKey('sem1_close'), isFalse);
+      expect(cfg.containsKey('sem2_close'), isFalse);
+    });
+
+    testWidgets(
+        'changing preset updates semester defaults when no override exists and empty hints are omitted',
+        (t) async {
+      Strings.lang = 'cs';
+      final options = core.presetOptions('cs');
+      final withCloses =
+          options.firstWhere((e) => core.presetCloses(e.$1).$1.isNotEmpty);
+      final (expectedSem1, expectedSem2) = core.presetCloses(withCloses.$1);
+
+      final c = _controller({'school_preset_id': 'custom'});
+      t.view.physicalSize = const Size(800, 4000);
+      t.view.devicePixelRatio = 1.0;
+      addTearDown(t.view.reset);
+      c.settingsSection = 'calendar';
+      c.settingsOpen = true;
+
+      await t.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) => SettingsView(
+                controller: c,
+                narrow: true,
+                onChanged: () => setState(() {}),
+              ),
+            ),
+          ),
+        ),
+      );
+      await t.pump();
+
+      // Custom preset has no close dates, so hintText must be null rather than duplicating label.
+      final initialSem1 =
+          t.widget<TextField>(find.byKey(const Key('auto:cal:sem1')));
+      expect(initialSem1.decoration?.hintText, isNull);
+      final addDateField =
+          t.widget<TextField>(find.byKey(const Key('auto:cal:add_date')));
+      expect(addDateField.decoration?.hintText, isNull);
+
+      await t.tap(find.byType(DropdownButtonFormField<String>).first);
+      await t.pumpAndSettle();
+      await t.tap(find.text(withCloses.$2).last);
+      await t.pumpAndSettle();
+
+      expect(c.get('school_preset_id'), withCloses.$1);
+      final updatedSem1 =
+          t.widget<TextField>(find.byKey(const Key('auto:cal:sem1')));
+      final updatedSem2 =
+          t.widget<TextField>(find.byKey(const Key('auto:cal:sem2')));
+      expect(updatedSem1.controller?.text, expectedSem1);
+      expect(updatedSem2.controller?.text, expectedSem2);
+    });
+
+    testWidgets(
+        'M2: opening and closing dropdown without change or re-picking current preset writes nothing',
+        (t) async {
+      Strings.lang = 'cs';
+      final tmp =
+          Directory.systemTemp.createTempSync('strakalari_b5_dropdown_');
+      core.setEnvironmentOverride(
+          {'STRAKALARI_DATA_DIR': tmp.path, 'STRAKALARI_NO_KEYRING': '1'});
+      addTearDown(() {
+        core.setEnvironmentOverride(null);
+        try {
+          tmp.deleteSync(recursive: true);
+        } catch (_) {}
+      });
+
+      final cfgPath = core.resolvePath('config.json');
+      File(cfgPath).writeAsStringSync(jsonEncode({
+        'school_preset_id': 'gekom_2026_2027',
+        'tutorials_enabled': false,
+      }));
+      final beforeText = File(cfgPath).readAsStringSync();
+      final beforeMtime = File(cfgPath).lastModifiedSync();
+
+      final s = AppState();
+      var saveCount = 0;
+      s.configListeners.add(() => saveCount++);
+      s.setSettingsSection('calendar');
+
+      t.view.physicalSize = const Size(800, 4000);
+      t.view.devicePixelRatio = 1.0;
+      addTearDown(t.view.reset);
+
+      await t.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppState(s)),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: LiveSettingsView(narrow: true)),
+          ),
+        ),
+      );
+      await t.pumpAndSettle();
+
+      final dd = find.byType(DropdownButtonFormField<String>).first;
+      final selectedTitle = core
+          .presetOptions('cs')
+          .firstWhere((e) => e.$1 == 'gekom_2026_2027')
+          .$2;
+
+      // (1) Open and dismiss without picking.
+      await t.tap(dd);
+      await t.pumpAndSettle();
+      await t.tapAt(const Offset(5, 5));
+      await t.pumpAndSettle();
+
+      expect(saveCount, 0);
+      expect(s.get('school_preset_id'), 'gekom_2026_2027');
+      expect(File(cfgPath).readAsStringSync(), beforeText);
+      expect(File(cfgPath).lastModifiedSync(), beforeMtime);
+
+      // (2) Open and re-pick the already selected preset.
+      await t.tap(dd);
+      await t.pumpAndSettle();
+      await t.tap(find.text(selectedTitle).last);
+      await t.pumpAndSettle();
+
+      expect(saveCount, 0);
+      expect(s.get('school_preset_id'), 'gekom_2026_2027');
+      expect(File(cfgPath).readAsStringSync(), beforeText);
+      expect(File(cfgPath).lastModifiedSync(), beforeMtime);
+    });
+  });
+
+  group('B6 notification event labels', () {
+    testWidgets(
+        'every notification event renders its localized cs and en label without raw keys',
+        (t) async {
+      final prevLang = Strings.lang;
+      addTearDown(() => Strings.lang = prevLang);
+
+      for (final lang in ['cs', 'en']) {
+        Strings.lang = lang;
+        final c = _controller();
+        await _openSection(t, c, 'notifications');
+
+        for (final event in kNotificationEvents) {
+          final label = Strings.get('notif_$event');
+          expect(label, isNotEmpty);
+          expect(label, isNot('notif_$event'));
+          expect(label, isNot(event));
+          expect(find.text(label), findsOneWidget);
+          expect(find.text(event), findsNothing);
+        }
+      }
+    });
+  });
+
+  group('B9 background switch rebuilds', () {
+    testWidgets('tapping run_in_background updates switch state immediately',
+        (t) async {
+      Strings.lang = 'cs';
+      t.view.physicalSize = const Size(800, 4000);
+      t.view.devicePixelRatio = 1.0;
+      addTearDown(t.view.reset);
+      final c = _controller({'run_in_background': true});
+      c.settingsSection = 'browser';
+      c.settingsOpen = true;
+      await t.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) => SettingsView(
+                controller: c,
+                narrow: true,
+                platform: 'android',
+                onChanged: () => setState(() {}),
+              ),
+            ),
+          ),
+        ),
+      );
+      await t.pump();
+
+      final switchFinder = find.widgetWithText(
+        SwitchListTile,
+        Strings.get('run_in_background'),
+      );
+      expect(switchFinder, findsOneWidget);
+      expect(t.widget<SwitchListTile>(switchFinder).value, isTrue);
+
+      await t.tap(switchFinder);
+      await t.pump();
+      expect(c.get('run_in_background'), isFalse);
+      expect(t.widget<SwitchListTile>(switchFinder).value, isFalse);
+
+      await t.tap(switchFinder);
+      await t.pump();
+      expect(c.get('run_in_background'), isTrue);
+      expect(t.widget<SwitchListTile>(switchFinder).value, isTrue);
+    });
+
+    for (final spec in [
+      (
+        label: 'use_strava',
+        section: 'accounts',
+        platform: 'windows',
+        storeManaged: false,
+        configKey: 'use_strava',
+        titleKey: 'use_strava',
+        initial: true,
+      ),
+      (
+        label: 'minimize_to_tray (storeManaged)',
+        section: 'browser',
+        platform: 'windows',
+        storeManaged: true,
+        configKey: 'minimize_to_tray',
+        titleKey: 'minimize_to_tray',
+        initial: true,
+      ),
+      (
+        label: 'minimize_to_tray (classic)',
+        section: 'browser',
+        platform: 'windows',
+        storeManaged: false,
+        configKey: 'minimize_to_tray',
+        titleKey: 'minimize_to_tray',
+        initial: true,
+      ),
+      (
+        label: 'gemini_auto_enabled',
+        section: 'ai',
+        platform: 'windows',
+        storeManaged: false,
+        configKey: 'gemini_auto_enabled',
+        titleKey: 'ai_auto_enable',
+        initial: false,
+      ),
+    ]) {
+      testWidgets('tapping ${spec.label} updates switch state immediately',
+          (t) async {
+        Strings.lang = 'cs';
+        t.view.physicalSize = const Size(800, 4000);
+        t.view.devicePixelRatio = 1.0;
+        addTearDown(t.view.reset);
+
+        final c = SettingsController(
+          {spec.configKey: spec.initial},
+          storeManaged: spec.storeManaged,
+        );
+        c.settingsSection = spec.section;
+        c.settingsOpen = true;
+        await t.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: StatefulBuilder(
+                builder: (context, setState) => SettingsView(
+                  controller: c,
+                  narrow: true,
+                  platform: spec.platform,
+                  onChanged: () => setState(() {}),
+                ),
+              ),
+            ),
+          ),
+        );
+        await t.pump();
+
+        final switchFinder = find.widgetWithText(
+          SwitchListTile,
+          Strings.get(spec.titleKey),
+        );
+        expect(switchFinder, findsOneWidget);
+        expect(t.widget<SwitchListTile>(switchFinder).value, spec.initial);
+
+        await t.tap(switchFinder);
+        await t.pump();
+        expect(c.get(spec.configKey), !spec.initial);
+        expect(t.widget<SwitchListTile>(switchFinder).value, !spec.initial);
+
+        await t.tap(switchFinder);
+        await t.pump();
+        expect(c.get(spec.configKey), spec.initial);
+        expect(t.widget<SwitchListTile>(switchFinder).value, spec.initial);
+      });
+    }
+  });
+}
+
+class _SeededAppState extends AppStateController {
+  final AppState seeded;
+  _SeededAppState(this.seeded);
+
+  @override
+  AppState build() {
+    seeded.onChanged = () {
+      // ignore: avoid_self_assignment
+      state = state;
+    };
+    seeded.onProgress = seeded.onChanged;
+    return seeded;
+  }
 }

@@ -292,17 +292,40 @@ class PlannerView extends StatelessWidget {
     }
     final p = plan!;
     final term = p.term(controller.plannerTerm) ?? p.defaultTerm;
+    final compactStyle = narrow
+        ? const ButtonStyle(
+            padding: WidgetStatePropertyAll(
+              EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            ),
+            minimumSize: WidgetStatePropertyAll(Size(0, 36)),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.compact,
+          )
+        : null;
+    final compactTextStyle = narrow ? TextStyle(fontSize: tok.fsSmall) : null;
     final customBtn = Tooltip(
       message: Strings.get('plan_custom_hint'),
       child: ElevatedButton.icon(
+        style: compactStyle,
         onPressed: () => showCustomPlanDialog(context),
-        icon: const Icon(Icons.edit_calendar_outlined, size: 18),
-        label: Text(Strings.get('plan_custom')),
+        icon: Icon(Icons.edit_calendar_outlined, size: narrow ? 16 : 18),
+        label: Text(
+          Strings.get('plan_custom'),
+          style: compactTextStyle,
+          textAlign: narrow ? TextAlign.center : null,
+          maxLines: narrow ? 2 : null,
+        ),
       ),
     );
     final seeAbsences = OutlinedButton(
+      style: compactStyle,
       onPressed: onOpenAbsences,
-      child: Text(Strings.get('see_absences')),
+      child: Text(
+        Strings.get('see_absences'),
+        style: compactTextStyle,
+        textAlign: narrow ? TextAlign.center : null,
+        maxLines: narrow ? 2 : null,
+      ),
     );
     if (narrow) {
       blocks
@@ -314,7 +337,14 @@ class PlannerView extends StatelessWidget {
           ),
         )
         ..add(
-          Wrap(spacing: 8, runSpacing: 8, children: [seeAbsences, customBtn]),
+          Row(
+            spacing: 8,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(child: seeAbsences),
+              Expanded(child: customBtn),
+            ],
+          ),
         );
     } else {
       blocks.add(
@@ -338,22 +368,42 @@ class PlannerView extends StatelessWidget {
       );
     } else {
       if (p.terms.length >= 2) {
+        final termButtons = [
+          for (final other in p.terms)
+            () {
+              final label =
+                  '${_termTitle(other)} · ${Strings.format('term_until', {'d': w.czDay(other.close)})}';
+              void pick() => controller.selectPlannerTerm(other.key);
+              final child = Text(
+                label,
+                style: compactTextStyle,
+                textAlign: narrow ? TextAlign.center : null,
+                maxLines: narrow ? 2 : null,
+              );
+              return other.key == term.key
+                  ? ElevatedButton(
+                      style: compactStyle,
+                      onPressed: pick,
+                      child: child,
+                    )
+                  : OutlinedButton(
+                      style: compactStyle,
+                      onPressed: pick,
+                      child: child,
+                    );
+            }(),
+        ];
         blocks.add(
-          Wrap(
-            spacing: tok.gap / 2,
-            runSpacing: tok.gap / 2,
-            children: [
-              for (final other in p.terms)
-                () {
-                  final label =
-                      '${_termTitle(other)} · ${Strings.format('term_until', {'d': w.czDay(other.close)})}';
-                  void pick() => controller.selectPlannerTerm(other.key);
-                  return other.key == term.key
-                      ? ElevatedButton(onPressed: pick, child: Text(label))
-                      : OutlinedButton(onPressed: pick, child: Text(label));
-                }(),
-            ],
-          ),
+          narrow
+              ? Row(
+                  spacing: tok.gap / 2,
+                  children: [for (final b in termButtons) Expanded(child: b)],
+                )
+              : Wrap(
+                  spacing: tok.gap / 2,
+                  runSpacing: tok.gap / 2,
+                  children: termButtons,
+                ),
         );
       }
       if (!term.hasData) {
@@ -381,16 +431,19 @@ class PlannerView extends StatelessWidget {
     return _scroll(tok, blocks);
   }
 
-  Widget _scroll(Tokens tok, List<Widget> blocks) => ListView(
-    padding: EdgeInsets.zero,
-    children: [
-      for (var i = 0; i < blocks.length; i++) ...[
-        blocks[i],
-        if (i != blocks.length - 1) SizedBox(height: tok.gap),
+  Widget _scroll(Tokens tok, List<Widget> blocks) {
+    final gap = narrow ? tok.gap * 0.75 : tok.gap;
+    return ListView(
+      padding: EdgeInsets.zero,
+      children: [
+        for (var i = 0; i < blocks.length; i++) ...[
+          blocks[i],
+          if (i != blocks.length - 1) SizedBox(height: gap),
+        ],
+        SizedBox(height: tok.pad * 2),
       ],
-      SizedBox(height: tok.pad * 2),
-    ],
-  );
+    );
+  }
 
   Widget _small(Tokens tok, String text, {bool faint = true, double? size}) =>
       Text(
@@ -454,10 +507,12 @@ class PlannerView extends StatelessWidget {
       ),
     ];
     if (!narrow || cards.length <= 3) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        spacing: tok.gap,
-        children: cards,
+      return IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          spacing: tok.gap,
+          children: cards,
+        ),
       );
     }
     final half = tok.gap / 2;
@@ -465,10 +520,12 @@ class PlannerView extends StatelessWidget {
       spacing: half,
       children: [
         for (var i = 0; i < cards.length; i += 2)
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            spacing: half,
-            children: cards.sublist(i, i + 2),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              spacing: half,
+              children: cards.sublist(i, i + 2),
+            ),
           ),
       ],
     );

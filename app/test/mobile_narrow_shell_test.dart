@@ -7,6 +7,7 @@ import 'package:app/shell/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
 Widget buildShellHarness({
@@ -247,6 +248,76 @@ void main() {
       );
       closeSubpage(route: 'lunches', narrow: true, state: state);
       expect(state.lunchToolsOpen, isFalse);
+    });
+
+    testWidgets(
+        'P9c More subpages show top-bar back button on phone and navigate back to More',
+        (tester) async {
+      setViewport(tester, 390, 844);
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final state = container.read(appStateProvider);
+      state.wizardDismissed = true;
+      state.setTutorialsEnabled(false);
+
+      // Top-level tabs must NOT show back button.
+      await tester.pumpWidget(
+        buildShellHarness(container: container, initialLocation: '/today'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('topbar_back_btn')), findsNothing);
+
+      // Visiting each More subpage on phone shows top-bar back button -> /more.
+      for (final loc in ['/absences', '/planner', '/activity', '/settings']) {
+        final c = ProviderContainer();
+        addTearDown(c.dispose);
+        final s = c.read(appStateProvider);
+        s.wizardDismissed = true;
+        s.setTutorialsEnabled(false);
+
+        await tester.pumpWidget(
+          buildShellHarness(container: c, initialLocation: loc),
+        );
+        await tester.pumpAndSettle();
+
+        final backBtn = find.byKey(const ValueKey('topbar_back_btn'));
+        expect(backBtn, findsOneWidget, reason: '$loc must have back button');
+        await tester.tap(backBtn);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const ValueKey('topbar_back_btn')), findsNothing,
+            reason: 'after tapping back from $loc, /more has no back button');
+        final router = GoRouter.of(tester.element(find.byType(NavigationBar)));
+        expect(router.routerDelegate.currentConfiguration.uri.path, '/more',
+            reason: 'back from $loc must land on More');
+      }
+    });
+
+    testWidgets(
+        'P9c an open Settings section shows only its own back arrow, not a second one in the top bar',
+        (tester) async {
+      setViewport(tester, 390, 844);
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final state = container.read(appStateProvider);
+      state.wizardDismissed = true;
+      state.setTutorialsEnabled(false);
+
+      await tester.pumpWidget(
+        buildShellHarness(container: container, initialLocation: '/settings'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('topbar_back_btn')), findsOneWidget);
+
+      state.setSettingsSection('wakeup');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('topbar_back_btn')), findsNothing);
+      expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+      expect(state.settingsOpen, isFalse);
+      expect(find.byKey(const ValueKey('topbar_back_btn')), findsOneWidget);
     });
   });
 }

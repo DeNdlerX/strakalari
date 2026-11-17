@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:app/controllers/app_state.dart';
 import 'package:app/features/common/app_tokens.dart';
 import 'package:app/features/timetable/timetable_live.dart';
+import 'package:app/l10n/strings.dart';
+import 'package:app/shell/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -234,6 +236,164 @@ void main() {
           greaterThanOrEqualTo(2));
     });
   }
+
+  group('P6 timetable phone polish', () {
+    AppState weekState(DateTime monday, {String view = 'table'}) {
+      String d(int offset) {
+        final dt = addDays(monday, offset);
+        return '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}';
+      }
+
+      final nextMon = addDays(monday, 7);
+      return AppState(
+        configData: {
+          'tutorials_done': ['intro', 'timetable'],
+          'timetable_view': view,
+        },
+        data: {
+          'timetable': {
+            for (var i = 0; i < 5; i++)
+              d(i): [
+                {
+                  'subject': 'Matematika',
+                  'teacher': 'Mgr. Jana Nováková',
+                  'room': 'II',
+                  'time': '1 (8:00 - 8:45)',
+                },
+                {
+                  'subject': 'Fyzika',
+                  'teacher': 'Ing. Martin Procházka',
+                  'room': 'IV',
+                  'time': '3 (10:00 - 10:45)',
+                },
+              ],
+            '${nextMon.day.toString().padLeft(2, '0')}.${nextMon.month.toString().padLeft(2, '0')}.${nextMon.year}': [
+              {
+                'subject': 'Chemie',
+                'teacher': 'Ing. Jiří Kučera',
+                'room': 'IV',
+                'time': '1 (8:00 - 8:45)',
+              },
+            ],
+          },
+          'stable_baseline_source': 'scraped',
+          'stable_baseline': {
+            '0|1': {
+              'weekday': 0,
+              'period': 1,
+              'subject': 'Matematika',
+              'teacher': 'Mgr. Jana Nováková',
+              'room': 'II',
+              'start_min': 480,
+              'support': 5,
+            },
+          },
+        },
+      );
+    }
+
+    testWidgets(
+        'table legend is fully visible above bottom bar, list rows space period from time, and selected week button stands out',
+        (tester) async {
+      addTearDown(tester.view.reset);
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(390, 844);
+      Strings.lang = 'cs';
+
+      final previous = FlutterError.onError;
+      FlutterError.onError = (details) {
+        if (details.exceptionAsString().contains('overflowed')) return;
+        previous?.call(details);
+      };
+      addTearDown(() => FlutterError.onError = previous);
+
+      final monday = DateTime(2026, 10, 12);
+      final s = weekState(monday, view: 'table');
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => FixedAppStateController(s)),
+          ],
+          child: MaterialApp(
+            theme: darkTokens.toThemeData(),
+            home: Scaffold(
+              appBar: AppBar(toolbarHeight: 56),
+              bottomNavigationBar: NavigationBar(
+                selectedIndex: 1,
+                destinations: const [
+                  NavigationDestination(icon: Icon(Icons.home), label: 'Dnes'),
+                  NavigationDestination(
+                      icon: Icon(Icons.calendar_month), label: 'Rozvrh'),
+                ],
+              ),
+              body: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: LiveTimetableView(
+                  tokens: AppTokens.dark(),
+                  narrow: true,
+                  now: DateTime(2026, 10, 12, 10, 0),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // (a) Legend must sit completely inside the visible body above the bottom bar.
+      final bodyRect = tester.getRect(find.byType(LiveTimetableView));
+      final legendNow = find.text(Strings.get('legend_now'));
+      expect(legendNow, findsOneWidget);
+      expect(
+        tester.getRect(legendNow).bottom,
+        lessThanOrEqualTo(bodyRect.bottom),
+      );
+
+      // (c) On this week, Tento tyden is ElevatedButton and Staly is OutlinedButton.
+      expect(
+        find.widgetWithText(ElevatedButton, Strings.get('this_week')),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(OutlinedButton, Strings.get('stable_view')),
+        findsOneWidget,
+      );
+
+      // Switching to next week turns Tento tyden back into OutlinedButton.
+      await tester.tap(find.byIcon(Icons.chevron_right));
+      await tester.pump();
+      expect(
+        find.widgetWithText(OutlinedButton, Strings.get('this_week')),
+        findsOneWidget,
+      );
+
+      // Switching to Staly makes Staly ElevatedButton and Tento tyden OutlinedButton.
+      await tester
+          .tap(find.widgetWithText(OutlinedButton, Strings.get('stable_view')));
+      await tester.pump();
+      expect(
+        find.widgetWithText(ElevatedButton, Strings.get('stable_view')),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(OutlinedButton, Strings.get('this_week')),
+        findsOneWidget,
+      );
+
+      // (b) List view separates period number from time range.
+      await tester
+          .tap(find.widgetWithText(OutlinedButton, Strings.get('this_week')));
+      await tester.pump();
+      await tester.tap(find.text(Strings.get('view_list')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ExpansionTile), findsWidgets);
+      final periodRect = tester.getRect(find.text('1.').first);
+      final timeRect = tester.getRect(find.text('8:00 - 8:45').first);
+      expect(timeRect.left - periodRect.right, greaterThanOrEqualTo(4));
+    });
+  });
 }
 
 class FixedAppStateController extends AppStateController {

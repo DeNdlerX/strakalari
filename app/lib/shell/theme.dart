@@ -150,8 +150,31 @@ class Tokens {
         fsTiny: fsTiny ?? this.fsTiny,
       );
 
-  /// Builds the Material [ThemeData] for this token set.
+  static ThemeData? _darkDefaultTheme;
+  static ThemeData? _lightDefaultTheme;
+  static final Map<(Tokens, String?), ThemeData> _themeCache = {};
+
+  /// Returns a cached Material [ThemeData] for this token set so repeated
+  /// builds preserve value/identity equality and avoid resetting [AnimatedTheme].
   ThemeData toThemeData({String? fontFamily}) {
+    if (fontFamily == null) {
+      if (identical(this, darkTokens)) {
+        return _darkDefaultTheme ??= _buildThemeData(null);
+      }
+      if (identical(this, lightTokens)) {
+        return _lightDefaultTheme ??= _buildThemeData(null);
+      }
+    }
+    final key = (this, fontFamily);
+    final cached = _themeCache[key];
+    if (cached != null) return cached;
+    if (_themeCache.length >= 16) {
+      _themeCache.remove(_themeCache.keys.first);
+    }
+    return _themeCache[key] = _buildThemeData(fontFamily);
+  }
+
+  ThemeData _buildThemeData(String? fontFamily) {
     final scheme = ColorScheme(
       brightness: mode == 'light' ? Brightness.light : Brightness.dark,
       primary: accent,

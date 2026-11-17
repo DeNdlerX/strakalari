@@ -48,8 +48,12 @@ String durationText(Object? seconds) {
 }
 
 DateTime? runTime(Map<String, dynamic> run) {
+  final raw = '${run['at'] ?? ''}'.trim();
+  // Legacy runs stored a date-only YYYY-MM-DD 'at'; skip midnight parsing so
+  // runWhen falls back to the preformatted 'finished' clock label instead.
+  if (!raw.contains('T') && !raw.contains(' ')) return null;
   try {
-    return DateTime.parse('${run['at'] ?? ''}');
+    return DateTime.parse(raw);
   } catch (_) {
     return null;
   }
@@ -596,10 +600,14 @@ class ActivityView extends StatelessWidget {
         ...lines,
       ],
     );
-    final actionRow = Wrap(
+    final Widget wideActions = Wrap(
         spacing: 8,
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
+        children: actions);
+    final Widget narrowActions = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 8,
         children: actions);
     return Container(
       padding: EdgeInsets.all(tok.pad),
@@ -615,10 +623,9 @@ class ActivityView extends StatelessWidget {
           Row(
             spacing: 14,
             crossAxisAlignment: CrossAxisAlignment.center,
-            children: [disc, Expanded(child: text), if (wide) actionRow],
+            children: [disc, Expanded(child: text), if (wide) wideActions],
           ),
-          if (!wide)
-            Align(alignment: Alignment.centerRight, child: actionRow),
+          if (!wide) narrowActions,
           if (kind == 'working')
             LinearProgressIndicator(color: tok.accent, backgroundColor: tok.overlay),
         ],

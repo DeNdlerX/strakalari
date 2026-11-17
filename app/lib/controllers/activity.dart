@@ -556,7 +556,7 @@ extension ActivityLogic on AppState {
       'finished':
           '${finished.day.toString().padLeft(2, '0')}.${finished.month.toString().padLeft(2, '0')}. ${fmtClock(finished).substring(0, 5)}',
       // Machine-readable twins of the labels above.
-      'at': fmtIso(finished),
+      'at': finished.toIso8601String(),
       'seconds': finished.difference(started).inSeconds < 0
           ? 0
           : finished.difference(started).inSeconds,

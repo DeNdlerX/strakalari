@@ -760,119 +760,15 @@ final entries = <(DateTime?, SubjectSummary, Map<String, Object?>)>[];
       parseCzDate(mark['TestDate'] ?? mark['Date']);
 
   Widget _bandsCard(BuildContext context) {
-    final c = controller;
-    final t = tokens;
-final (bands, source) = c.marksBandsSource();
-    final fields = <TextEditingController>[];
-    final cells = <Widget>[];
-    for (var i = 0; i < 4; i++) {
-      final key = 'marks:band:${i + 1}';
-      final field = TextEditingController(
-          text: c.draft(key, gFormat(bands[i])));
-      field.addListener(() =>
-          c.setDraft(key, field.text));
-      fields.add(field);
-      cells.add(Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(Strings.format('marks_band_label', {'grade': i + 2}),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    color: t.muted, fontSize: t.fsTiny)),
-            const SizedBox(height: 4),
-            TextField(
-              controller: field,
-              keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true),
-              decoration: InputDecoration(
-                isDense: true,
-                filled: true,
-                fillColor: t.surface,
-                suffixText: '%',
-              ),
-            ),
-          ],
-        ),
-      ));
-    }
-
-    void save() {
-      List<double>? parsed;
-      try {
-        parsed = [
-          for (final f in fields)
-            double.parse(
-                f.text.replaceAll(',', '.').trim())
-        ];
-      } catch (_) {
-        parsed = null;
-      }
-      if (parsed != null && c.setMarksBands(parsed)) {
-        c.clearDrafts('marks:band:');
-        for (var i = 0; i < 4; i++) {
-          fields[i].text = gFormat(c.marksBands()[i]);
-        }
-        _snack(context, Strings.get('marks_bands_saved'));
-      } else {
-        _snack(context, Strings.get('marks_bands_invalid'));
-      }
-    }
-
-    void reset() {
-      c.clearDrafts('marks:band:');
-      c.setMarksBands(null);
-    }
-
-    final buttons = <Widget>[
-      TextButton.icon(
-          onPressed: save,
-          icon: const Icon(Icons.check, size: 18),
-          label: Text(Strings.get('marks_save'))),
-    ];
-    if (source == 'user') {
-      buttons.add(TextButton(
-          onPressed: reset,
-          child: Text(
-              c.presetBands != null
-                  ? Strings.get('marks_bands_use_school')
-                  : Strings.get('marks_bands_default'),
-              style: TextStyle(color: t.muted))));
-    }
-    return _section(
-        Strings.get('marks_bands'),
-        [
-          Row(
-            children: [
-              Icon(
-                  source == 'preset'
-                      ? Icons.school_outlined
-                      : Icons.tune,
-                  size: 14,
-                  color: t.accent),
-              const SizedBox(width: 6),
-              Expanded(
-                  child: Text(c.bandsSourceText(source),
-                      style: TextStyle(
-                          color: t.accent,
-                          fontSize: t.fsSmall))),
-            ],
-          ),
-          Text(MarksController.bandsRanges(bands),
-              style:
-                  TextStyle(color: t.muted, fontSize: t.fsSmall)),
-          Text(Strings.get('marks_bands_hint'),
-              style:
-                  TextStyle(color: t.muted, fontSize: t.fsSmall)),
-          Padding(
-            padding:
-                const EdgeInsets.symmetric(vertical: 4),
-            child: Row(spacing: 8, children: cells),
-          ),
-          Wrap(spacing: 8, children: buttons),
-        ],
-        icon: Icons.percent);
+    final (bands, source) = controller.marksBandsSource();
+    return _BandsCard(
+      controller: controller,
+      tokens: tokens,
+      bands: bands,
+      source: source,
+      onSnack: _snack,
+      sectionBuilder: _section,
+    );
   }
 
   Widget _section(String title, List<Widget> controls,
@@ -1118,57 +1014,105 @@ Widget tile(String label, String value, String kind) {
     final t = tokens;
     final history = summary.history;
     if (history.length < 2) return null;
-    final bars = <Widget>[];
-    for (final (day, avg) in history.skip(
-        history.length > 24 ? history.length - 24 : 0)) {
-      final double ratio;
-      if (summary.scale == 'percent') {
-        ratio = avg / 100.0;
-      } else {
-        ratio = (5.0 - avg) / 4.0;
-      }
-      final clamped = ratio.clamp(0.06, 1.0);
-      final color = statusColor(
-          kindFor(avg, summary.scale, bands), t);
-      bars.add(Expanded(
+    final points = history
+        .skip(history.length > 24 ? history.length - 24 : 0)
+        .toList();
+    final isPct = summary.scale == 'percent';
+    final yLabels = isPct ? const ['100 %', '50 %', '0 %'] : const ['1', '3', '5'];
+    final ratios = <double>[];
+    final dotColors = <Color>[];
+    final tooltips = <Widget>[];
+    for (final (day, avg) in points) {
+      final raw = isPct ? avg / 100.0 : (5.0 - avg) / 4.0;
+      ratios.add(raw.clamp(0.0, 1.0));
+      dotColors.add(statusColor(kindFor(avg, summary.scale, bands), t));
+      tooltips.add(Expanded(
         child: Tooltip(
           message:
               '${day == null ? '?' : czDay(day)} · ${formatValue(avg, summary.scale)}',
-          child: SizedBox(
-            height: 64,
-            child: Column(
-              children: [
-                const Spacer(),
-                Container(
-                  height: roundHalfEvenToInt(64 * clamped).toDouble(),
-                  decoration: BoxDecoration(
-                      color: color,
-                      borderRadius:
-                          BorderRadius.circular(3)),
-                ),
-              ],
-            ),
-          ),
+          child: const SizedBox.expand(),
         ),
       ));
     }
+    String dayLabel(int i) {
+      final day = points[i].$1;
+      return day == null ? '${i + 1}.' : czDay(day);
+    }
+
+    final firstLabel = dayLabel(0);
+    final midIdx = points.length >= 5 ? points.length ~/ 2 : -1;
+    final midLabel = midIdx >= 0 ? dayLabel(midIdx) : '';
+    final lastLabel = dayLabel(points.length - 1);
+    final axisStyle = TextStyle(color: t.faint, fontSize: t.fsTiny);
+    const chartH = 84.0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(Strings.get('marks_trend'),
-            style: TextStyle(
-                color: t.muted, fontSize: t.fsSmall)),
+            style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
         const SizedBox(height: 4),
         Container(
+          key: const ValueKey('marks:trend_chart'),
           decoration: BoxDecoration(
             color: t.surface,
             borderRadius: BorderRadius.circular(t.radiusSm),
           ),
-          padding: const EdgeInsets.all(6),
-          child: Row(
-              spacing: 3,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: bars),
+          padding: const EdgeInsets.fromLTRB(8, 8, 10, 6),
+          child: Column(
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    height: chartH,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        for (final lbl in yLabels) Text(lbl, style: axisStyle),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: SizedBox(
+                      height: chartH,
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: CustomPaint(
+                              painter: _TrendChartPainter(
+                                ratios: ratios,
+                                dotColors: dotColors,
+                                lineColor: t.accent,
+                                fillColor: tintColor(t.accent, 0.12),
+                                gridColor: t.border,
+                                surfaceColor: t.surface,
+                              ),
+                            ),
+                          ),
+                          Positioned.fill(child: Row(children: tooltips)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Padding(
+                padding: EdgeInsets.only(left: isPct ? 42 : 18),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(firstLabel, style: axisStyle),
+                    if (midLabel.isNotEmpty) Text(midLabel, style: axisStyle),
+                    Text(lastLabel, style: axisStyle),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -1634,5 +1578,291 @@ final rows = <Widget>[];
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+/// Stateful grade bands card owning its four [TextEditingController]s and
+/// [FocusNode]s across parent rebuilds.
+class _BandsCard extends StatefulWidget {
+  final MarksController controller;
+  final AppTokens tokens;
+  final List<double> bands;
+  final String source;
+  final void Function(BuildContext context, String message) onSnack;
+  final Widget Function(String title, List<Widget> controls,
+      {IconData? icon}) sectionBuilder;
+
+  const _BandsCard({
+    required this.controller,
+    required this.tokens,
+    required this.bands,
+    required this.source,
+    required this.onSnack,
+    required this.sectionBuilder,
+  });
+
+  @override
+  State<_BandsCard> createState() => _BandsCardState();
+}
+
+class _BandsCardState extends State<_BandsCard> {
+  late final List<TextEditingController> _fields;
+  late final List<FocusNode> _focusNodes;
+  bool _syncing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNodes = List.generate(4, (_) => FocusNode());
+    _fields = List.generate(4, (i) {
+      final key = 'marks:band:${i + 1}';
+      final ctrl = TextEditingController(
+        text: widget.controller.draft(key, gFormat(widget.bands[i])),
+      );
+      ctrl.addListener(() {
+        if (!_syncing) {
+          widget.controller.setDraft(key, ctrl.text);
+        }
+      });
+      return ctrl;
+    });
+  }
+
+  void _syncField(int index, String value) {
+    _syncing = true;
+    try {
+      _fields[index].text = value;
+    } finally {
+      _syncing = false;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _BandsCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    for (var i = 0; i < 4; i++) {
+      if (_focusNodes[i].hasFocus) continue;
+      final key = 'marks:band:${i + 1}';
+      final desired = widget.controller.draft(key, gFormat(widget.bands[i]));
+      if (_fields[i].text != desired) {
+        _syncField(i, desired);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final f in _fields) {
+      f.dispose();
+    }
+    for (final n in _focusNodes) {
+      n.dispose();
+    }
+    super.dispose();
+  }
+
+  void _save(BuildContext context) {
+    final c = widget.controller;
+    List<double>? parsed;
+    try {
+      parsed = [
+        for (final f in _fields)
+          double.parse(f.text.replaceAll(',', '.').trim())
+      ];
+    } catch (_) {
+      parsed = null;
+    }
+    if (parsed != null && c.setMarksBands(parsed)) {
+      c.clearDrafts('marks:band:');
+      final updated = c.marksBands();
+      for (var i = 0; i < 4; i++) {
+        _syncField(i, gFormat(updated[i]));
+      }
+      widget.onSnack(context, Strings.get('marks_bands_saved'));
+    } else {
+      widget.onSnack(context, Strings.get('marks_bands_invalid'));
+    }
+  }
+
+  void _reset() {
+    final c = widget.controller;
+    c.clearDrafts('marks:band:');
+    c.setMarksBands(null);
+    final updated = c.marksBands();
+    for (var i = 0; i < 4; i++) {
+      _syncField(i, gFormat(updated[i]));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.controller;
+    final t = widget.tokens;
+    final bands = widget.bands;
+    final source = widget.source;
+
+    final cells = <Widget>[
+      for (var i = 0; i < 4; i++)
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(Strings.format('marks_band_label', {'grade': i + 2}),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: t.muted, fontSize: t.fsTiny)),
+              const SizedBox(height: 4),
+              TextField(
+                controller: _fields[i],
+                focusNode: _focusNodes[i],
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  isDense: true,
+                  filled: true,
+                  fillColor: t.surface,
+                  suffixText: '%',
+                ),
+              ),
+            ],
+          ),
+        ),
+    ];
+
+    final buttons = <Widget>[
+      TextButton.icon(
+          onPressed: () => _save(context),
+          icon: const Icon(Icons.check, size: 18),
+          label: Text(Strings.get('marks_save'))),
+    ];
+    if (source == 'user') {
+      buttons.add(TextButton(
+          onPressed: _reset,
+          child: Text(
+              c.presetBands != null
+                  ? Strings.get('marks_bands_use_school')
+                  : Strings.get('marks_bands_default'),
+              style: TextStyle(color: t.muted))));
+    }
+
+    return widget.sectionBuilder(
+        Strings.get('marks_bands'),
+        [
+          Row(
+            children: [
+              Icon(
+                  source == 'preset' ? Icons.school_outlined : Icons.tune,
+                  size: 14,
+                  color: t.accent),
+              const SizedBox(width: 6),
+              Expanded(
+                  child: Text(c.bandsSourceText(source),
+                      style: TextStyle(color: t.accent, fontSize: t.fsSmall))),
+            ],
+          ),
+          Text(MarksController.bandsRanges(bands),
+              style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
+          Text(Strings.get('marks_bands_hint'),
+              style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(spacing: 8, children: cells),
+          ),
+          Wrap(spacing: 8, children: buttons),
+        ],
+        icon: Icons.percent);
+  }
+}
+
+class _TrendChartPainter extends CustomPainter {
+  final List<double> ratios;
+  final List<Color> dotColors;
+  final Color lineColor;
+  final Color fillColor;
+  final Color gridColor;
+  final Color surfaceColor;
+
+  const _TrendChartPainter({
+    required this.ratios,
+    required this.dotColors,
+    required this.lineColor,
+    required this.fillColor,
+    required this.gridColor,
+    required this.surfaceColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (ratios.isEmpty || size.width <= 0 || size.height <= 0) return;
+    const padH = 6.0;
+    const padV = 8.0;
+    final plotW = (size.width - padH * 2).clamp(1.0, double.infinity);
+    final plotH = (size.height - padV * 2).clamp(1.0, double.infinity);
+
+    final gridPaint = Paint()
+      ..color = gridColor
+      ..strokeWidth = 1.0;
+    for (final frac in [0.0, 0.5, 1.0]) {
+      final y = padV + plotH * frac;
+      canvas.drawLine(Offset(padH, y), Offset(padH + plotW, y), gridPaint);
+    }
+
+    final pts = <Offset>[];
+    for (var i = 0; i < ratios.length; i++) {
+      final x = ratios.length == 1
+          ? padH + plotW / 2
+          : padH + (i * plotW / (ratios.length - 1));
+      final y = padV + plotH * (1.0 - ratios[i]);
+      pts.add(Offset(x, y));
+    }
+
+    if (pts.length >= 2) {
+      final bottomY = padV + plotH;
+      final fillPath = Path()
+        ..moveTo(pts.first.dx, bottomY)
+        ..lineTo(pts.first.dx, pts.first.dy);
+      final linePath = Path()..moveTo(pts.first.dx, pts.first.dy);
+      for (final p in pts.skip(1)) {
+        fillPath.lineTo(p.dx, p.dy);
+        linePath.lineTo(p.dx, p.dy);
+      }
+      fillPath
+        ..lineTo(pts.last.dx, bottomY)
+        ..close();
+      canvas.drawPath(fillPath, Paint()..color = fillColor);
+      canvas.drawPath(
+        linePath,
+        Paint()
+          ..color = lineColor
+          ..strokeWidth = 2.5
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round,
+      );
+    }
+
+    final bgPaint = Paint()..color = surfaceColor;
+    for (var i = 0; i < pts.length; i++) {
+      canvas.drawCircle(pts[i], 5.0, bgPaint);
+      canvas.drawCircle(pts[i], 3.5, Paint()..color = dotColors[i]);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _TrendChartPainter old) {
+    if (old.lineColor != lineColor ||
+        old.fillColor != fillColor ||
+        old.gridColor != gridColor ||
+        old.surfaceColor != surfaceColor ||
+        old.ratios.length != ratios.length ||
+        old.dotColors.length != dotColors.length) {
+      return true;
+    }
+    for (var i = 0; i < ratios.length; i++) {
+      if (old.ratios[i] != ratios[i] || old.dotColors[i] != dotColors[i]) {
+        return true;
+      }
+    }
+    return false;
   }
 }
