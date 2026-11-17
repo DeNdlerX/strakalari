@@ -50,10 +50,10 @@ Routine refresh, real GEKOM and Strava account, `automation_paused: true`:
 | Strava (2 requests) | menu and orders | 4 KB | already small and compressed |
 
 Other facts from the code:
-- `dart:io` already asks for gzip. The school server compresses only some
-  replies (the Komens list: 54 → 7 KB), not the big pages or the timetable
-  JSON. The app can't change that, so the savings must come from
-  downloading less.
+- `dart:io` already asks for gzip. The school server compresses only the
+  DevExpress callbacks (the Komens list: 55 → 3–7 KB), not the pages, the
+  JSON or the widgets, and `br` changes nothing (step 0, research §7). The
+  app can't change that, so the savings must come from downloading less.
 - The cold run (1.68 MB) also backfills 8 old weeks once per school year
   (`historyWeeks`). That is a one-time cost and is fine.
 - Android wakes the app with `setAndAllowWhileIdle` alarms
@@ -63,6 +63,29 @@ Other facts from the code:
 - `check_interval_minutes` already accepts 1 minute (`config.dart:466`,
   `settings_controller.dart:297`). No new key is needed for the interval
   itself.
+
+### Step 0 findings (real GEKOM web, 2026-11-17)
+
+Full report: `research-F6-bakalari-web.md`. The research day was a
+public holiday (no lessons), so nothing was seen appearing live.
+
+| Need | Smallest web request | Size | Change signal |
+|---|---|---|---|
+| **New marks** | `GET /Marks/Widget` (the dashboard's recent-marks box) | **2.0 KB** | the 5 most recently given marks; identical bytes while nothing changes. Extra, optional: `GET /Dashboard/NoticesWidget`, 0.4 KB, "Nové známky: N" |
+| Marks themselves | `GET /next/prubzna.aspx` | 187 KB | no smaller variant: with a date filter the page frame alone is ~95 KB |
+| Timetable changes | `POST /Timetable/substitutions/dates` (already used) | 3–5 KB | listed every changed lesson the weeks showed; whole free days aren't in it |
+| A week | `POST /Timetable/GetContentData` | 50–85 KB | no smaller variant (no day view) |
+| Absence | `GET /Absence/Continuous/GetAbsenceBySubjects`, range 1 Sep → today computed by the app | 1.2–3 KB | per-subject `Count`; the 58 KB page isn't needed for the range |
+| Komens → Odeslané | its list callback with only 3 hidden fields kept from an earlier load (even across a new login) | 2.9 KB gzip | no 207 KB page per run |
+
+- **Session:** 15 minutes, sliding. A request in the second half of the
+  15 minutes renews it; one in the first half doesn't. Ticks every 5
+  minutes keep it alive on their own. Measured: still alive after 10 idle
+  minutes, dead 15 minutes after the last renewal.
+- **No `ETag`, no `Last-Modified`, never `304`** on any Bakaláři reply.
+  Change detection is the client's job (compare the small replies).
+- **TLS:** a new connection costs ~6–7 KB (handshake), more than a quick
+  tick's data. `dart:io` drops idle connections after 15 s.
 
 ---
 
@@ -108,6 +131,8 @@ owner's measuring build before the next one.
 - It writes `research-F6-bakalari-web.md` and updates §2, §4, §5 and §8
   here.
 - Steps 2 and 5 below depend on its result.
+- **Done 2026-11-17:** `research-F6-bakalari-web.md`; summary in §2
+  ("Step 0 findings"). The steps below are updated with its results.
 
 ### Step 1: free wins (same data, same freshness, ~45 % less)
 
@@ -116,25 +141,25 @@ can change.
 
 | Change | Saves per refresh | Notes |
 |---|---|---|
-| After the login `POST`, don't follow the redirect to `/dashboard`; treat a redirect away from `/login` as success | −49 KB per login | Keep the "still on the login page" failure check. The excuse post (`sendOnce`) doesn't change. |
-| Keep the absence date range from `/Absence/Continuous` in the cache; fetch the page again once a day, or when `GetAbsenceBySubjects` fails or the date falls outside the range | −58 KB | The JSON call stays every run. |
+| After the login `POST`, don't follow the redirect to `/dashboard`; treat a redirect away from `/login` as success | −49 KB per login | Keep the "still on the login page" failure check. The excuse post (`sendOnce`) doesn't change. Step 0: the form's `returnUrl` field picks the redirect target (verified in the browser), so `returnUrl=/Marks/Widget` would even make the login bring the marks signal (research §5). |
+| Don't load `/Absence/Continuous` for its date range: send 1 September of the school year → today (step 0: plain dates work, same reply). Load the page only when `GetAbsenceBySubjects` fails | −58 KB | The JSON call stays every run. |
 | Permanent timetable (`perm`) and the subject list once a day | −76 KB | The permanent timetable changes a few times a year. |
 | Past weeks (−1 … −3) once a day, plus at once when the absence data shows a new absence in them | −216 KB | They are only needed to match absences to lessons for excuses. |
 | Komens details: read `GetMessageDataAsync` only for message ids not seen before (cache by id) | −30 KB | Overlaps F2. Do it inside F2 if F2 comes first. |
+| Komens list without the page: keep `__VIEWSTATE`, `__VIEWSTATEGENERATOR` and `__EVENTVALIDATION` from the last page load and post only those with the list callback; load the page again when the reply is the `redirect` one or isn't a message list | −204 KB | Step 0: works with fields 10 minutes old, and with fields from a session that had expired, after a new login (research §6, §6.1). So they can live in the cache. The `hfListType` check moves to the last page load. Overlaps F2 like the row above. |
 
-Result: ~**550 KB** per full refresh, with the same freshness for this week
+Result: ~**350 KB** per full refresh, with the same freshness for this week
 and next week, marks, absence and the outbox.
 
 ### Step 2: tiers (the big win)
 
 | Tier | When | What | Size |
 |---|---|---|---|
-| **Quick** | every `check_interval_minutes` (e.g. 5) during school hours | substitution feed only (`/Timetable/substitutions/dates`) | ~5 KB + login/TLS |
-| **Week** | when the feed's entries for a week changed (hash per week), and every 30 min in school hours as a safety net | that week's `GetContentData` (this week, next week) | ~72 KB per week |
-| **Absence** | every 15–30 min in school hours | `GetAbsenceBySubjects` (cached date range, step 1) | ~3 KB |
-| **Marks** | every quick tick (D6: within 5 minutes) | the cheap change signal from step 0; `prubzna.aspx` only when it changed. Fallback if no signal exists: `prubzna.aspx` every quick tick | signal: to be measured; page: ~185 KB |
+| **Quick** | every `check_interval_minutes` (e.g. 5) during school hours | three small reads: the marks signal `GET /Marks/Widget`, the substitution feed `POST /Timetable/substitutions/dates`, and the absence numbers `GET /Absence/Continuous/GetAbsenceBySubjects` (computed date range, step 1) | ~6–10 KB of data; ~16–20 KB with headers and TLS |
+| **Week** | when the feed's entries for a week changed (hash per week), when an absence `Count` grew (this week), and hourly in school hours as a safety net for free days, which the feed doesn't list | that week's `GetContentData` (this week, next week) | 50–85 KB per week |
+| **Marks** | in the same quick tick, when the widget's 5 lines differ from the cached copy (D6: within 5 minutes) | `prubzna.aspx` | ~187 KB |
 | **Strava** | every 30 min in the day, and before each order cutoff | as today | ~4 KB |
-| **Full** | first run of the day, and twice a day | everything, including the Komens outbox; **only here do auto excuses run** | ~550 KB after step 1 |
+| **Full** | first run of the day, and twice a day | everything, including the Komens outbox; **only here do auto excuses run** | ~350 KB after step 1 (~640 KB for the first run of the day, with the daily parts) |
 | **Night** | 22:00–6:00 (D6) | nothing, except one quick tick 30 min before the Budík alarm | — |
 
 - "School hours" come from today's timetable: 30 minutes before the first
@@ -154,6 +179,14 @@ and next week, marks, absence and the outbox.
 - With a 5-minute rhythm the Bakaláři session stays alive between ticks.
   Reusing it saves the login (~10 KB) and avoids ~100 logins a day on the
   school's server.
+- **Step 0 measured it:** 15 minutes, sliding. A request in the second
+  half of the 15 minutes renews it; one in the first half doesn't. Ticks
+  every 5 minutes therefore keep it alive with no extra keep-alive
+  request. Ticks 15 or more minutes apart (the hourly ticks) log in again.
+  `GET /sessioninfo` (87 B) tells the seconds left and doesn't renew, if a
+  check is ever needed. Since a renewal probably sends a fresh cookie, the
+  session must keep every `Set-Cookie` it gets (it already does), and 3b
+  must store the cookie again after each run, not only at login.
 - **3a (no new risk):** keep the `BakalariSession` in memory between runs
   where the process lives on: desktop, and Android while the UI isolate
   is alive.
@@ -177,32 +210,52 @@ and next week, marks, absence and the outbox.
 
 - Build the cheap marks signal that step 0 found into the quick tier, with
   a fake-server test that a new mark is noticed after one quick tick.
-- If step 0 finds no cheap signal, the fallback is the marks page on every
-  quick tick (§5, second total). The owner then decides between the data
-  cost and a slower marks check.
+- **The signal (step 0): `GET /Marks/Widget`, 2.0 KB.** It holds the 5
+  most recently given marks (`.mark-line` → grade, subject, note, date,
+  `isNew`), and its bytes don't change while the marks don't. Each quick
+  tick parses it and compares the 5 lines with the copy in the cache.
+  - Different → load `prubzna.aspx` in the same tick, and notify the new
+    marks as today.
+  - Same → nothing more.
+  - Can't parse it (the format changed) → load `prubzna.aspx` this tick
+    and log it loudly, so a broken signal never hides marks.
+- The full runs keep reading `prubzna.aspx`. They catch what the widget
+  can't see: an edit or a deletion of an older mark.
+- Optional second signal: `GET /Dashboard/NoticesWidget` (0.4 KB,
+  "Nové známky: N"). Not needed for the first version.
+- The fake server (`fake_bakalari.dart`) and the demo server get a
+  `/Marks/Widget` that follows the marks they serve.
 
 ---
 
 ## 5. Expected result
 
-GEKOM school day, quick tick every 5 minutes from 7:30 to 15:30 (~96
-ticks), and hourly on the rest of the day until 22:00.
+GEKOM school day, quick tick every 5 minutes from 7:30 to 15:30 (96
+ticks), hourly from 6:00 to 7:30 and from 15:30 to 22:00 (8 ticks),
+nothing at night. Sizes from step 0 (research §9).
 
 | Part | Per day |
 |---|---|
-| Quick ticks, school hours (96 × ~10–15 KB incl. TLS) | ~1.2 MB |
-| Quick ticks, rest of the day (~6 × ~15 KB) | ~0.1 MB |
-| Week refetches (≈ 16 safety-net + a few real changes × 72 KB) | ~1.4 MB |
-| Absence (32 × ~5 KB) | ~0.2 MB |
-| Marks: a cheap signal every quick tick (96 × ≤ 5 KB, assumed) + the page when a mark arrived (~3 × 185 KB) | ~1.0 MB |
+| Quick ticks, school hours (96 × ~17 KB: marks widget 2 KB + feed 3–5 KB + absence 1–3 KB, ~3 KB of headers, ~7 KB for a new TLS connection; the session stays alive) | ~1.6 MB |
+| Quick ticks, rest of the day (8 × ~26 KB, a new login each) | ~0.2 MB |
+| Marks page when the widget changed (~3 × 187 KB) | ~0.6 MB |
+| Week refetches after a feed change (~3 × ~70 KB) | ~0.2 MB |
+| Week safety net, this week hourly in school hours (8 × ~65 KB) | ~0.5 MB |
 | Strava (~30 × ~6 KB) | ~0.2 MB |
-| Full runs (3 × ~550 KB) | ~1.6 MB |
-| **Total, with a cheap marks signal** | **~6 MB a day** |
-| **Total, without one** (marks page every quick tick, 96 × 185 KB ≈ 17.8 MB) | **~23 MB a day**: about today's hourly use, but every 5 minutes |
+| Full runs (first of the day ~640 KB, then 2 × ~350 KB) | ~1.3 MB |
+| **Total** | **~4.6 MB a day** |
 
-These are estimates from one measured run, and the size of the marks
-signal is an assumption until step 0 measures it. The measuring build
-checks them after each step.
+- A day off (weekend, holiday): 16 hourly ticks and the full runs, about
+  **1.7 MB**.
+- The TLS handshake is the biggest part of a quick tick. Keeping one
+  connection open between ticks (desktop, Android with the UI alive) would
+  bring a tick down to ~10 KB, about −0.7 MB a day. The school's server
+  keeps an idle connection for at least 10 minutes. The client would need
+  an `idleTimeout` of ~6 minutes instead of `dart:io`'s 15 s (research §8).
+- Requests to the school server: about 400 a day, against ~670 today.
+
+These are estimates from one measured run and one holiday's research. The
+measuring build checks them after each step.
 
 ---
 
@@ -254,8 +307,8 @@ checks them after each step.
 |---|---|
 | Go for F6? Before or after F2 (excuse history)? | After F2, because both change the Komens read. Step 1 (except the Komens part) can come any time. |
 | School hours: from the timetable, or fixed (e.g. 7:00–16:00)? | From the timetable |
-| How quickly must new **marks** and **absences** show up? | **Answered 2026-11-17 for marks:** "I want new marks to be visible in the 5 minutes, thats kinda the point." Absence: still open (suggestion 15–30 min, or 5 min if step 0 finds a cheap signal) |
+| How quickly must new **marks** and **absences** show up? | **Answered 2026-11-17 for marks:** "I want new marks to be visible in the 5 minutes, thats kinda the point." **Step 0:** a cheap marks signal exists (`/Marks/Widget`, 2 KB), so 5 minutes it is. Absence: the absence numbers themselves are only 1–3 KB, so the suggestion is now **5 minutes too** (every quick tick). Your call. |
 | Night pause 22:00–6:00? | Yes, with one tick before the Budík alarm |
-| May the session cookie be stored encrypted for background runs (step 3b)? | Only if 3a isn't enough |
-| 5 minutes on mobile data too, or only on Wi-Fi (15 min on mobile)? | Your call: ~6 MB a day is small for most plans |
-| Can you save a few real pages (marks page, dashboard), personal data removed, for step 5? | **Answered 2026-11-17:** the owner logs in to the built-in browser for the step 0 research agent instead. |
+| May the session cookie be stored encrypted for background runs (step 3b)? | Only if 3a isn't enough. **Step 0:** a session lasts 15 minutes and 5-minute ticks keep it alive. Without 3b, every headless Android tick logs in again: ~+7.5 KB a tick (~+0.7 MB a day) and ~96 more logins a day on the school's server |
+| 5 minutes on mobile data too, or only on Wi-Fi (15 min on mobile)? | Your call: **~4.6 MB a school day** (step 0 estimate) is small for most plans |
+| Can you save a few real pages (marks page, dashboard), personal data removed, for step 5? | **Answered 2026-11-17:** the owner logs in to the built-in browser for the step 0 research agent instead. **Done:** `research-F6-bakalari-web.md`. |

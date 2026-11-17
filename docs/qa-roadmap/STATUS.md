@@ -34,7 +34,7 @@ Next step: Stop for R3 re-review 3 (Phase 3 checkpoint ⛔ R3). After R3 passes,
 | F3 | todo | — | — | — | Blocked until R4 + D3 |
 | F4 | todo | — | — | — | Blocked until R5 + D4 |
 | F5 | todo | — | — | — | Blocked until R6 + D5 |
-| F6 | proposal | — | — | — | Owner (2026-11-17): low-data refresh, towards every 5 minutes. Not in PLAN; proposal in `proposal-F6-low-data.md`. Don't start it until the owner says "go" and answers D6 (proposal §8); then write a design note `design-F6.md` and stop for review before any code. Step 0 first: research on the real Bakaláři by a separate agent (`PROMPT-F6-research.md`, owner logged in, read-only), run only while the implementing agent is stopped. The implementing agent doesn't do step 0. |
+| F6 | proposal | — | — | — | Owner (2026-11-17): low-data refresh, towards every 5 minutes. Not in PLAN; proposal in `proposal-F6-low-data.md`. Don't start it until the owner says "go" and answers D6 (proposal §8); then write a design note `design-F6.md` and stop for review before any code. Step 0 first: research on the real Bakaláři by a separate agent (`PROMPT-F6-research.md`, owner logged in, read-only), run only while the implementing agent is stopped. The implementing agent doesn't do step 0. Step 0 done 2026-11-17: `research-F6-bakalari-web.md` (marks signal `GET /Marks/Widget`, 2 KB; ~4.6 MB a school day at 5 minutes; proposal §2, §4, §5, §8 updated). |
 
 ## Owner decisions (answers word for word, with date)
 - **B1 (2026-11-15):** "connected. I dont think any use it."
