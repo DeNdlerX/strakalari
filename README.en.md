@@ -85,7 +85,7 @@ Also:
   |---|---|
   | **GEKOM** | 2026/2027 |
 
-  At another school? Choose **Custom days** in the wizard (or in *Settings → School calendar*) and enter your school's dates. Everything else works the same.
+  At another school? Choose **Another school** in the wizard (or in *Settings → School*) and enter your school's dates. Everything else works the same.
 - **Want a preset for your school?** Send a link to the school calendar as an [issue](https://github.com/DeNdlerX/strakalari/issues/new), or add it yourself following [docs/SCHOOL_PRESETS.md](docs/SCHOOL_PRESETS.md).
 
 ---

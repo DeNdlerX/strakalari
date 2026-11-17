@@ -85,7 +85,7 @@ A navíc:
   |---|---|
   | **GEKOM** | 2026/2027 |
 
-  Chodíte jinam? V průvodci (nebo v *Nastavení → Školní kalendář*) zvolte **Vlastní dny** a zadejte data své školy. Všechno ostatní funguje stejně.
+  Chodíte jinam? V průvodci (nebo v *Nastavení → Škola*) zvolte **Jiná škola** a zadejte data své školy. Všechno ostatní funguje stejně.
 - **Chcete předvolbu pro svou školu?** Pošlete odkaz na školní kalendář jako [issue](https://github.com/DeNdlerX/strakalari/issues/new), nebo si ji přidejte sami podle [docs/SCHOOL_PRESETS.md](docs/SCHOOL_PRESETS.md).
 
 ---

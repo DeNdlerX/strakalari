@@ -76,10 +76,10 @@ folder (the folder that holds `config.json`), e.g.
   (`100,0 | 87,0 | 72,0 | 55,0 | 40,0 0,0`): take the numbers under grades
   **2–5** (`87, 72, 55, 40`). A boundary value belongs to the worse grade,
   as in that table — 87 % is a 2, 40 % is a 5. Without it the Marks tab
-  uses 90/75/50/30; a user can still override it on the Marks tab.
+  uses 90/75/50/30; a user can still override it in *Settings → School* (or on the Marks tab when no preset sets bands).
 
 Restart the app; the preset then appears in the wizard and in
-*Settings → School calendar*. A file with a mistake is skipped and the reason is
+*Settings → School*. A file with a mistake is skipped and the reason is
 printed to the console log.
 
 ## Contributing a preset
