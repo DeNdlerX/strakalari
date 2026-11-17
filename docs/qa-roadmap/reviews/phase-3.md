@@ -436,3 +436,172 @@ each code commit (throwaway worktree):
 | `7c590ce` | clean / 808 + 2 | clean / 710 + 1 |
 
 No commit left a broken tree.
+
+---
+
+## Re-review 2026-11-17
+
+Re-reviewed at `qa-roadmap` @ `792ec4f` (base `main` @ `f8d5582`; `main`
+still has no commits the branch lacks). Commits since the review
+(`fa71cc7`): `1838525` (X1), `ca17f0c` (M1), `bedcf60` (M2), `1627602`
+(S1), `d2f6033` (S2), `20fbc63` (S3), `ae8d768` (S4), `19858ae` (owner:
+no *Změnit* on the preset Bakaláři address), and `cb16159` / `792ec4f`
+(STATUS only).
+
+### Verdict: **PASS WITH FIXES**
+
+The blocker, both must-fix and all four should-fix findings are fixed in the
+code, not just marked as fixed. Each code fix has a test that fails without
+it. All four suites are green, with three more app tests than at the
+review. One should-fix is left (S5): the M2 fix covers a wizard resumed
+mid-way, but not a wizard that shows again after it was finished without
+logins. The saved school is still lost in that case. Nothing else changed.
+
+### Open finding
+
+#### S5 (should-fix, F1 / M2): the wizard shown again after finishing without logins forgets the saved school
+
+- **Where:** `app/lib/controllers/app_state.dart:132–144` (the resume
+  block added in `bedcf60`). It seeds `wiz:cal_preset` only when
+  `savedStep >= 0`.
+- **What is wrong:**
+  - A user can reach *Dokončit* with *Přeskočit* on Bakaláři and Strava.
+    `wizardFinished()` saves `wizard_step: -1`.
+  - On the next start `needsSetup()` is true (no credentials), so the
+    wizard shows again from Vítejte.
+  - Škola then has nothing picked and *Pokračovat* is disabled, though
+    `school_preset_id` is `gekom_2026_2027`.
+  - The R3 M2 text asked for the seed "when the saved step was past Škola
+    (`wizard_step` > 1), **or when the saved id is a real preset (not
+    `custom`)**". The second half isn't met in this path.
+  - Reviewer's test at `792ec4f`: save `disclaimer_accepted` and GEKOM,
+    go to `stepDone`, `wizardFinished()`, new `AppState()`. Result:
+    `needsSetup()` is true, `wizardStep` 0, `calPreset()` `''`.
+- **What correct looks like:** one commit, `F1: keep the saved school when
+  the wizard shows again (R3 S5)`.
+  - Whenever the wizard is shown, a real saved preset (not `custom`) is
+    picked on Škola. That includes `wizard_step` -1 with `needsSetup()`
+    true. One way: also seed in `AppState.wizardOpened()` when
+    `wiz:cal_preset` isn't in `drafts` yet and the saved
+    `school_preset_id` is a real preset.
+  - Keep what works today:
+    - an explicit pick, including *Jiná škola*, is never overwritten;
+    - a fresh install still needs an explicit pick
+      (`testCalendarStepRequiresExplicitPick` and the fresh case of
+      `resumed wizard keeps saved school picked …` stay unchanged);
+    - starting the app writes nothing to `config.json`.
+  - Add a test to `wizard_live_test.dart` that fails on `792ec4f`:
+    ```dart
+    final first = AppState()..wizardOpened();
+    first.save({'disclaimer_accepted': true,
+                'school_preset_id': 'gekom_2026_2027'});
+    first.wizardGoto(WizardController.stepDone, WizardController.stepDone);
+    first.wizardFinished();
+    final again = AppState();
+    expect(again.needsSetup(), isTrue);
+    again.wizardOpened(); // as LiveWizardView does
+    final c = wizardControllerFor(again);
+    expect(c.calPreset(), 'gekom_2026_2027');
+    ```
+
+### Notes (no action needed)
+
+- **N10 (M2, old step numbers):** someone who quit the **old** wizard on
+  steps 2–5 resumes on Škola with *Jiná škola* already picked. Their
+  `school_preset_id` was still the default `custom`, and the seed rule
+  takes `wizard_step` > 1 as "past Škola". This is what the R3 M2 text
+  allowed. It only affects someone halfway through setup during the update,
+  and they can still pick their school. Accepted.
+- **N11 (`19858ae`, owner):** the preset Bakaláři address has no
+  *Změnit* any more, as the owner asked ("One thing, I wouldnt give them
+  the option to change the link"). It is recorded under *Owner decisions*
+  and *Deviations*. Accepted.
+  - A wrong preset address can now only be fixed in Nastavení → Účty after
+    setup. The address is the owner's confirmed one (Q1).
+  - `design-F1.md` §3 still describes *Změnit* on Bakaláři. It is a
+    historical design note, so leave it.
+  - Whether Strava's *Změnit* stays is an open owner question in STATUS.
+- **N12 (STATUS):** the Phase 3 *Unsure* list still says Q1 is open. It was
+  answered at R3 ("And yes, the url is bakaweb.gekom.cz"). Mark it answered
+  if you touch STATUS anyway.
+
+### Each earlier finding
+
+| Finding | Fixed? | How the reviewer checked |
+|---|---|---|
+| X1 | ✔ `1838525` | `git diff f8d5582 -- packages/strakalari_core/test/parity/` is empty. `parity_school_presets_test.dart` adds the three D1 fields in a commented constant for `getPreset('gekom_2026_2027')` only. With `'1951'` in the constant the parity test **fails**; as committed it passes. STATUS *Deviations* rewritten. |
+| M1 | ✔ `ca17f0c` | Both tests are back, byte-identical to `f8d5582` (compared by diff), before `testNoSkipWhereNothingMayBeSkipped`. The four tests removed with their code are listed under *Deviations*, each with its reason. |
+| M2 | ✔ `bedcf60`, with S5 left | `wiz:cal_preset` is seeded from `school_preset_id` on resume. `saveCalendar` skips the save when nothing changed. New test **fails on `ca17f0c`** (`calPreset()` `''`) and passes on `bedcf60`. Reviewer's own tests at `792ec4f`: resume on Škola keeps GEKOM; starting the app doesn't touch `config.json` (content and mtime); picking *Jiná škola* on a resumed Škola saves `custom`. Phone: `phone_resume.png` (17:08, `.test` installed 17:07:58) shows GEKOM picked and *Pokračovat* enabled. Gap: S5. |
+| S1 | ✔ `1627602` | `wiz_bakalari_p_preset` / `wiz_strava_p_preset` in both ARB files and `strings.dart` (cs/en as asked), used only while the prefill row shows. Extended test **fails on `bedcf60`** and passes on `1627602`; it checks GEKOM, `custom` and Strava after *Změnit*. |
+| S2 | ✔ `d2f6033` | `abs_no_limits` now says *Všechny předměty mají výchozí limit {pct:g} %.* / *All subjects use the default limit of {pct:g} %.*, fed from `absence_critical_pct`. The test checks 25 % and a change to 30 %. It **fails on `1627602`** and passes on `d2f6033`. |
+| S3 | ✔ `20fbc63` | README cs/en and `SCHOOL_PRESETS.md` use *Jiná škola* / *Another school* and *Nastavení → Škola* / *Settings → School*, and l.79 points to Settings → School. No old names left (grep). Docs only. |
+| S4 | ✔ `ae8d768` | The P3 test enters a name, taps *Pokračovat* and asserts `stepDone`, then checks *Zpět*. It is a test-only change, so it passes on its parent and on the commit, as expected. Listed under *Deviations*. |
+
+### What the reviewer verified, and how
+
+1. **Suites** (worktree, Flutter 3.44.8 / Dart 3.12.2):
+   - `dart pub get --enforce-lockfile`: OK.
+   - Core: `dart analyze` no issues; `dart test` **808 passed, 2
+     skipped**. That is the same as R3; the skips are the old POSIX ones.
+   - App: `flutter analyze` no issues; `flutter test` **713 passed, 1
+     skipped**. That is 710 at R3 plus the two M1 tests and the M2 test.
+   - Use these counts as the baseline for the next review.
+2. **Each fix's test fails without it:**
+   - One throwaway worktree in the reviewer's scratch space, removed
+     afterwards.
+   - For M2, S1, S2 and `19858ae`: checked out the parent, copied in the
+     commit's test file, and ran that test. It fails with an assertion
+     (table above; `19858ae`'s test finds *Změnit* on the parent). On the
+     commit it passes.
+   - X1: checked by changing the constant.
+   - M1 and S3: compared by diff.
+3. **Reviewer's own tests** at `792ec4f` (not committed): S5 (fails as
+   described), N10, resume on Škola, no write at start-up, and changing
+   the seeded school.
+4. **Screens:**
+   - Captured with a copy of `tools/parity/capture_screens.dart` (real
+     router and `MyApp` setup, Roboto, demo data).
+   - Screens: wizard Bakaláři and Strava with GEKOM and with `custom`, and
+     Absence without subject limits.
+   - 390 and 1280 px, cs and en, light and dark: **40 images, no render
+     or overflow errors**. The short texts show only with the prefill,
+     and the Absence line matches the *Limit: 25 %* rows.
+   - The agent's phone screenshots `phone_resume.png`,
+     `phone_2_bakalari_prefill.png` (no *Změnit*, short text) and
+     `phone_3_strava.png` were opened.
+5. **Scope:** the code commits touch only what each finding names, plus
+   `19858ae`, which follows the owner's recorded words. No new feature.
+   F1b and Phase 4 weren't started.
+6. **Config keys and strings:**
+   - No key added, removed or renamed. `config.example.json`, `config.dart`
+     and `test/parity/` match `main`.
+   - The cs and en ARB files have the same keys. The three new or changed
+     strings match `strings.dart` in both tables (checked by script).
+7. **Safety rules:**
+   - Since the review, nothing in core `lib/` changed.
+   - In `app/lib/controllers/`, only the resume seed in `app_state.dart`
+     changed. It only fills an in-memory draft.
+   - `runRefresh`, the session lock, `sendExcuse` / `HistoryLock`, the
+     audit and `automation_paused` are untouched. No new `catch`.
+8. **Test integrity:**
+   - The removed test lines since the review are only the replaced
+     assertions for S2 (new text), S4 (Back → Continue) and S1 (the
+     `custom` case now renders too), and X1's `final expected`.
+   - No `skip:`, no `try`/`catch` around assertions, and no assertion
+     loosened.
+   - The only host in new tests is the preset value under test.
+9. **Phone** (read-only, `adb -s 2C221FDH3002NZ`):
+   - The Play app `io.github.dendlerx.strakalari` still shows
+     `lastUpdateTime=2026-11-13 04:07:35` from `com.android.vending`, so
+     it wasn't reinstalled.
+   - The `.test` app was installed at 17:07:58, after `19858ae`.
+   - The reviewer didn't operate either app. At the owner's request
+     (refresh interval, see STATUS *Questions*), the reviewer read the
+     phone's own data counter for the Play app (`dumpsys netstats`,
+     read-only). Nothing was logged in or changed.
+10. **Hygiene:**
+    - No personal files or screenshots in any branch commit.
+    - All commits are by the configured user, with no `Co-Authored-By`,
+      `Claude-Session` or "Generated with" lines.
+    - `qa-roadmap` has no upstream, so nothing was pushed.
+11. **Not checked:** macOS and iOS builds (not possible here).
