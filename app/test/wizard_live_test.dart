@@ -167,7 +167,7 @@ void main() {
       // Step 0: Vítejte — accept disclaimer and Continue.
       await tester.tap(find.byType(CheckboxListTile));
       await tester.pump();
-      await tester.tap(find.widgetWithText(ElevatedButton, Strings.get('wiz_next')));
+      await tester.tap(find.widgetWithText(FilledButton, Strings.get('wiz_next')));
       await tester.pumpAndSettle();
       expect(s.wizardStep, WizardController.stepSchool);
 
@@ -194,7 +194,7 @@ void main() {
             matching: find.byType(TextField),
           ),
           'Jan Novák');
-      await tester.tap(find.widgetWithText(ElevatedButton, Strings.get('wiz_next')));
+      await tester.tap(find.widgetWithText(FilledButton, Strings.get('wiz_next')));
       await tester.pumpAndSettle();
       if (s.wizardStep == WizardController.stepPhone) {
         await tester.tap(find.text(Strings.get('wiz_skip')));
@@ -263,7 +263,7 @@ void main() {
       await tester.enterText(textField, 'První řádek\nDruhý řádek\nS pozdravem');
       await tester.pump();
 
-      final nextBtn = find.widgetWithText(ElevatedButton, Strings.get('wiz_next'));
+      final nextBtn = find.widgetWithText(FilledButton, Strings.get('wiz_next'));
       await tester.ensureVisible(nextBtn);
       await tester.pump();
       await tester.tap(nextBtn);
@@ -582,7 +582,7 @@ void main() {
       // and 4 in the step column are both _DraftField in both steps.
       s.wizardStep = WizardController.stepStrava;
       s.onChanged();
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(find.widgetWithText(TextField, 'strava_user'), findsOneWidget);
       expect(find.widgetWithText(TextField, 'baka_user'), findsNothing);
@@ -685,11 +685,11 @@ void main() {
         }
 
         final nextFinder =
-            find.widgetWithText(ElevatedButton, Strings.get('wiz_next'));
-        expect(tester.widget<ElevatedButton>(nextFinder).onPressed, isNull);
+            find.widgetWithText(FilledButton, Strings.get('wiz_next'));
+        expect(tester.widget<FilledButton>(nextFinder).onPressed, isNull);
         await tester.tap(find.byType(CheckboxListTile));
         await tester.pump();
-        expect(tester.widget<ElevatedButton>(nextFinder).onPressed, isNotNull);
+        expect(tester.widget<FilledButton>(nextFinder).onPressed, isNotNull);
       }
     });
   });
@@ -788,7 +788,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final nextBtn =
-          find.widgetWithText(ElevatedButton, Strings.get('wiz_next'));
+          find.widgetWithText(FilledButton, Strings.get('wiz_next'));
       final backBtn =
           find.widgetWithText(TextButton, Strings.get('wiz_back'));
       expect(nextBtn, findsOneWidget);
@@ -841,7 +841,7 @@ void main() {
               ),
             ),
           );
-          await tester.pump();
+          await tester.pumpAndSettle();
 
           final tileFinder = find.byType(SwitchListTile);
           expect(tileFinder, findsOneWidget, reason: '${tok.mode}/step=$step');
@@ -901,23 +901,23 @@ void main() {
 
       // Continue is disabled until a school is picked.
       final nextFinder =
-          find.widgetWithText(ElevatedButton, Strings.get('wiz_next'));
-      expect(tester.widget<ElevatedButton>(nextFinder).onPressed, isNull);
+          find.widgetWithText(FilledButton, Strings.get('wiz_next'));
+      expect(tester.widget<FilledButton>(nextFinder).onPressed, isNull);
 
       // Skipping writes nothing and advances.
       await tester.tap(find.text(Strings.get('wiz_skip')));
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(s.wizardStep, WizardController.stepBakalari);
       expect(s.get('school_preset_id'), 'custom');
 
       // Go back, pick GEKOM, continue -> writes only school_preset_id.
       await tester.tap(find.text(Strings.get('wiz_back')));
-      await tester.pump();
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('school:GEKOM')));
       await tester.pump();
       expect(find.text(Strings.get('wiz_school_preset_p')), findsOneWidget);
       expect(find.byType(RadioListTile<String>), findsNothing);
-      expect(tester.widget<ElevatedButton>(nextFinder).onPressed, isNotNull);
+      expect(tester.widget<FilledButton>(nextFinder).onPressed, isNotNull);
 
       final beforeCfg = Map<String, Object?>.of(s.config.data);
       await tester.tap(nextFinder);
@@ -975,12 +975,12 @@ void main() {
       expect(find.text('1. ročník'), findsOneWidget);
       expect(find.text('Maturitní'), findsOneWidget);
       final nextFinder =
-          find.widgetWithText(ElevatedButton, Strings.get('wiz_next'));
-      expect(tester.widget<ElevatedButton>(nextFinder).onPressed, isNull);
+          find.widgetWithText(FilledButton, Strings.get('wiz_next'));
+      expect(tester.widget<FilledButton>(nextFinder).onPressed, isNull);
 
       await tester.tap(find.byKey(const ValueKey('preset:xy_4')));
       await tester.pump();
-      expect(tester.widget<ElevatedButton>(nextFinder).onPressed, isNotNull);
+      expect(tester.widget<FilledButton>(nextFinder).onPressed, isNotNull);
 
       await tester.tap(nextFinder);
       await tester.pump();
@@ -1042,7 +1042,7 @@ void main() {
           ),
           'heslo');
       await tester.tap(
-          find.widgetWithText(ElevatedButton, Strings.get('wiz_test_continue')));
+          find.widgetWithText(FilledButton, Strings.get('wiz_test_continue')));
       await tester.pump();
 
       expect(saved['bakalari_url'], 'https://bakaweb.gekom.cz');
@@ -1075,7 +1075,7 @@ void main() {
           ),
           'heslo2');
       await tester.tap(
-          find.widgetWithText(ElevatedButton, Strings.get('wiz_test_continue')));
+          find.widgetWithText(FilledButton, Strings.get('wiz_test_continue')));
       await tester.pump();
 
       expect(saved['strava_canteen_id'], '1950');
@@ -1159,7 +1159,7 @@ void main() {
       await tester.tap(find.byType(SwitchListTile));
       await tester.pump();
       await tester.tap(
-          find.widgetWithText(ElevatedButton, Strings.get('wiz_next')));
+          find.widgetWithText(FilledButton, Strings.get('wiz_next')));
       await tester.pump();
 
       expect(permissionCalls, 1);
@@ -1216,6 +1216,151 @@ void main() {
       expect(s.notificationPermissionAsked, isFalse);
       expect(s.get('wakeup_enabled'), isFalse);
       expect(s.wizardStep, WizardController.stepDone);
+    });
+  });
+
+  group('F1 phone wizard layout', () {
+    testWidgets(
+        'no Card, pinned bottom bar without wrapping at 390px on every step and above IME',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      Strings.lang = 'cs';
+
+      final s = AppState(configData: {
+        'language': 'cs',
+        'school_preset_id': 'gekom_2026_2027',
+        'use_strava': true,
+      });
+      final ctrl = WizardController(config: s.config.data)..isAndroid = true;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: WizardView(
+              controller: ctrl,
+              tokens: AppTokens.dark(),
+              narrow: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // No card wrapper on phone; LinearProgressIndicator in pinned header.
+      expect(find.byType(Card), findsNothing);
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+
+      for (var step = 0; step <= WizardController.stepDone; step++) {
+        ctrl.step = step;
+        // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+        ctrl.notifyListeners();
+        await tester.pumpAndSettle();
+
+        // Scroll long content if scrollable and verify bottom bar stays fixed at bottom.
+        if (step == WizardController.stepExcuses) {
+          await tester.tap(find.byKey(const Key('wiz:excuses_advanced')));
+          await tester.pumpAndSettle();
+          final scrollable = find.byType(Scrollable).first;
+          await tester.drag(scrollable, const Offset(0, -400));
+          await tester.pump();
+        }
+
+        final barRect = tester.getRect(find.byKey(const Key('wiz:bottom_bar')));
+        expect(barRect.bottom, closeTo(844.0, 1.0),
+            reason: 'step $step bottom bar must pin to bottom');
+        expect(barRect.right, lessThanOrEqualTo(390.0));
+
+        final nextRect = tester.getRect(find.byKey(const Key('wiz:next_btn')));
+        expect(nextRect.right, lessThanOrEqualTo(390.0));
+        expect(nextRect.bottom, lessThanOrEqualTo(844.0));
+
+        if (step > 0) {
+          final backRect = tester.getRect(find.byKey(const Key('wiz:back_btn')));
+          expect((backRect.center.dy - nextRect.center.dy).abs(), lessThan(4.0),
+              reason: 'step $step Back and Next must sit on one row');
+        }
+        if (step < WizardController.stepDone && ctrl.canSkip) {
+          final skipRect = tester.getRect(find.byKey(const Key('wiz:skip_btn')));
+          expect((skipRect.center.dy - nextRect.center.dy).abs(), lessThan(4.0),
+              reason: 'step $step Skip and Next must sit on one row');
+          expect(tester.getRect(find.byKey(const Key('wiz:back_btn'))).right,
+              lessThanOrEqualTo(skipRect.left));
+          expect(skipRect.right, lessThanOrEqualTo(nextRect.left));
+        }
+      }
+
+      // Simulated keyboard on Bakaláři keeps bottom bar above 300 px IME inset.
+      ctrl.step = WizardController.stepBakalari;
+      // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+      ctrl.notifyListeners();
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(
+            size: Size(390, 844),
+            viewInsets: EdgeInsets.only(bottom: 300),
+          ),
+          child: MaterialApp(
+            home: Scaffold(
+              body: WizardView(
+                controller: ctrl,
+                tokens: AppTokens.dark(),
+                narrow: true,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final imeBarRect = tester.getRect(find.byKey(const Key('wiz:bottom_bar')));
+      expect(imeBarRect.bottom, lessThanOrEqualTo(544.5));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('AnimatedSwitcher uses 250 ms and respects disableAnimations',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final ctrl = WizardController(config: {'language': 'cs'});
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: WizardView(
+              controller: ctrl,
+              tokens: AppTokens.dark(),
+              narrow: true,
+            ),
+          ),
+        ),
+      );
+      final switcher =
+          tester.widget<AnimatedSwitcher>(find.byType(AnimatedSwitcher));
+      expect(switcher.duration, const Duration(milliseconds: 250));
+
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(
+            size: Size(390, 844),
+            disableAnimations: true,
+          ),
+          child: MaterialApp(
+            home: Scaffold(
+              body: WizardView(
+                controller: ctrl,
+                tokens: AppTokens.dark(),
+                narrow: true,
+              ),
+            ),
+          ),
+        ),
+      );
+      final staticSwitcher =
+          tester.widget<AnimatedSwitcher>(find.byType(AnimatedSwitcher));
+      expect(staticSwitcher.duration, Duration.zero);
     });
   });
 }

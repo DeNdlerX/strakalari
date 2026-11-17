@@ -789,7 +789,7 @@
   "wiz_prefill_school": "School: {host}",
   "wiz_school_preset_p": "The Bakaláři address, canteen, holidays and grade conversion are filled in for you. You can change them in Settings.",
   "wiz_signature_label": "Your name under excuses",
-  "wiz_skip": "Skip this step",
+  "wiz_skip": "Skip",
   "wiz_step_of": "Step {i} of {n}",
   "wiz_strava_h": "Strava canteen",
   "wiz_strava_p": "If you don't use school lunches, turn the integration off. Otherwise fill in the login and canteen ID.",

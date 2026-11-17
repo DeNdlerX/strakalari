@@ -71,6 +71,8 @@ class _WizardViewState extends State<WizardView>
     with SingleTickerProviderStateMixin {
   late final AnimationController _welcomeCtrl;
   bool _welcomeStarted = false;
+  int _lastStep = 0;
+  bool _goingBack = false;
 
   WizardController get controller => widget.controller;
   AppTokens get tokens => widget.tokens;
@@ -79,10 +81,31 @@ class _WizardViewState extends State<WizardView>
   @override
   void initState() {
     super.initState();
+    _lastStep = controller.step.clamp(0, WizardController.stepDone);
+    controller.addListener(_onControllerChanged);
     _welcomeCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1100),
     );
+  }
+
+  @override
+  void didUpdateWidget(covariant WizardView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_onControllerChanged);
+      widget.controller.addListener(_onControllerChanged);
+      _lastStep = widget.controller.step.clamp(0, WizardController.stepDone);
+      _goingBack = false;
+    }
+  }
+
+  void _onControllerChanged() {
+    final next = controller.step.clamp(0, WizardController.stepDone);
+    if (next != _lastStep) {
+      _goingBack = next < _lastStep;
+      _lastStep = next;
+    }
   }
 
   @override
@@ -100,6 +123,7 @@ class _WizardViewState extends State<WizardView>
 
   @override
   void dispose() {
+    controller.removeListener(_onControllerChanged);
     _welcomeCtrl.dispose();
     super.dispose();
   }
@@ -112,123 +136,276 @@ class _WizardViewState extends State<WizardView>
     );
   }
 
+  Widget _stepSwitcher(BuildContext context, int step, Widget child) {
+    final noAnim = MediaQuery.disableAnimationsOf(context);
+    return ClipRect(
+      child: AnimatedSwitcher(
+        duration: noAnim ? Duration.zero : const Duration(milliseconds: 250),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        layoutBuilder: (currentChild, previousChildren) => Stack(
+          alignment: Alignment.topCenter,
+          children: [
+            ...previousChildren,
+            ?currentChild,
+          ],
+        ),
+        transitionBuilder: (child, animation) {
+          if (noAnim) return child;
+          final dx = _goingBack ? -0.08 : 0.08;
+          final offset = Tween<Offset>(
+            begin: Offset(dx, 0),
+            end: Offset.zero,
+          ).animate(animation);
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(position: offset, child: child),
+          );
+        },
+        child: KeyedSubtree(
+          key: ValueKey('wiz_step_$step'),
+          child: child,
+        ),
+      ),
+    );
+  }
+
   Widget _body(BuildContext context) {
     final c = controller;
     final t = tokens;
     final step = c.step.clamp(0, WizardController.stepDone);
 
-    final content = _stepContent(context, step);
     final shown = c.shownSteps();
+    final stepPos = shown.where((x) => x <= step).length;
+    final primaryLabel = step < WizardController.stepDone
+        ? c.nextLabel()
+        : Strings.get('wiz_finish');
+    final VoidCallback? primaryPressed = step < WizardController.stepDone
+        ? (c.nextEnabled ? () => _next(context) : null)
+        : () => _next(context);
+
+    if (narrow) {
+      final heading = _stepHeading(step);
+      final bodyChildren =
+          _stepContent(context, step, includeHeading: false);
+      final header = Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              Strings.format('wiz_step_of', {
+                'i': stepPos,
+                'n': shown.length,
+              }),
+              style: TextStyle(color: t.muted, fontSize: t.fsSmall),
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: shown.isEmpty ? 0 : stepPos / shown.length,
+                minHeight: 5,
+                backgroundColor: t.border,
+                color: t.accent,
+              ),
+            ),
+            if (heading != null) ...[
+              const SizedBox(height: 12),
+              _h(heading, 20),
+            ],
+          ],
+        ),
+      );
+      final bottomBar = Material(
+        key: const Key('wiz:bottom_bar'),
+        color: t.surface,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 16, 10),
+          child: Row(
+            children: [
+              if (step > 0) ...[
+                TextButton(
+                  key: const Key('wiz:back_btn'),
+                  style: TextButton.styleFrom(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                    minimumSize: const Size(0, 44),
+                  ),
+                  onPressed: c.pressBack,
+                  child: Text(Strings.get('wiz_back'),
+                      maxLines: 1, softWrap: false),
+                ),
+                const SizedBox(width: 4),
+              ],
+              if (step < WizardController.stepDone && c.canSkip) ...[
+                TextButton(
+                  key: const Key('wiz:skip_btn'),
+                  style: TextButton.styleFrom(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                    minimumSize: const Size(0, 44),
+                  ),
+                  onPressed: c.pressSkip,
+                  child: Text(Strings.get('wiz_skip'),
+                      maxLines: 1, softWrap: false),
+                ),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: FilledButton(
+                  key: const Key('wiz:next_btn'),
+                  style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+                  onPressed: primaryPressed,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(primaryLabel, maxLines: 1, softWrap: false),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      return Material(
+        color: t.bg,
+        child: AnimatedPadding(
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 120),
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.viewInsetsOf(context).bottom),
+          child: SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                header,
+                Divider(height: 1, color: t.border),
+                Expanded(
+                  child: _stepSwitcher(
+                    context,
+                    step,
+                    SingleChildScrollView(
+                      key: ValueKey('wiz_scroll_$step'),
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: bodyChildren,
+                      ),
+                    ),
+                  ),
+                ),
+                Divider(height: 1, color: t.border),
+                bottomBar,
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final content = _stepContent(context, step);
     final dots = Wrap(
       spacing: 6,
       children: [
         for (final i in shown)
-          _dot(i < step
-              ? 'ok'
-              : (i == step ? 'working' : 'idle')),
+          _dot(i < step ? 'ok' : (i == step ? 'working' : 'idle')),
       ],
     );
 
-    final nextLabel = c.nextLabel();
     final nav = <Widget>[];
     if (step > 0) {
       nav.add(TextButton(
+          key: const Key('wiz:back_btn'),
           onPressed: c.pressBack,
           child: Text(Strings.get('wiz_back'))));
     }
     nav.add(const Spacer());
-    if (step < WizardController.stepDone) {
-      if (c.canSkip) {
-        nav.add(TextButton(
-            onPressed: c.pressSkip,
-            child: Text(Strings.get('wiz_skip'))));
-      }
-      nav.add(ElevatedButton(
-        onPressed: c.nextEnabled ? () => _next(context) : null,
-        child: Text(nextLabel),
-      ));
-    } else {
-      nav.add(ElevatedButton(
-        onPressed: () => _next(context),
-        child: Text(Strings.get('wiz_finish')),
-      ));
+    if (step < WizardController.stepDone && c.canSkip) {
+      nav.add(TextButton(
+          key: const Key('wiz:skip_btn'),
+          onPressed: c.pressSkip,
+          child: Text(Strings.get('wiz_skip'))));
     }
+    nav.add(FilledButton(
+      key: const Key('wiz:next_btn'),
+      onPressed: primaryPressed,
+      child: Text(primaryLabel),
+    ));
 
     Widget buildCard(bool scrollBody) => Card(
-      color: t.card,
-      // `components.card`: a 1 px outline in the border colour.
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(t.radiusMd),
-          side: BorderSide(color: t.border)),
-      child: Padding(
-        padding: EdgeInsets.all(t.pad),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-                Strings.format('wiz_step_of', {
-                  'i': shown.where((x) => x <= step).length,
-                  'n': shown.length,
-                }),
-                style:
-                    TextStyle(color: t.muted, fontSize: t.fsSmall)),
-            const SizedBox(height: 8),
-            dots,
-            const Divider(height: 24),
-            if (scrollBody)
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: content,
-                  ),
-                ),
-              )
-            else
-              ...content,
-            const Divider(height: 24),
-            if (narrow)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  nav.last,
-                  if (nav.length > 1)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        for (final w in nav
-                            .sublist(0, nav.length - 1)
-                            .where((w) => w is! Spacer))
-                          w,
-                      ],
+          color: t.card,
+          // `components.card`: a 1 px outline in the border colour.
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(t.radiusMd),
+              side: BorderSide(color: t.border)),
+          child: Padding(
+            padding: EdgeInsets.all(t.pad),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                    Strings.format('wiz_step_of', {
+                      'i': stepPos,
+                      'n': shown.length,
+                    }),
+                    style:
+                        TextStyle(color: t.muted, fontSize: t.fsSmall)),
+                const SizedBox(height: 8),
+                dots,
+                const Divider(height: 24),
+                if (scrollBody)
+                  Flexible(
+                    child: _stepSwitcher(
+                      context,
+                      step,
+                      SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: content,
+                        ),
+                      ),
                     ),
-                ],
-              )
-            else
-              LayoutBuilder(
-                builder: (context, footerConstraints) {
-                  final items = [for (final w in nav) if (w is! Spacer) w];
-                  if (footerConstraints.maxWidth < 560 && items.length > 1) {
-                    return Wrap(
-                      alignment: WrapAlignment.spaceBetween,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: items,
-                    );
-                  }
-                  return Row(children: nav);
-                },
-              ),
-          ],
-        ),
-      ),
-    );
+                  )
+                else
+                  _stepSwitcher(
+                    context,
+                    step,
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: content,
+                    ),
+                  ),
+                const Divider(height: 24),
+                LayoutBuilder(
+                  builder: (context, footerConstraints) {
+                    final items = [
+                      for (final w in nav)
+                        if (w is! Spacer) w
+                    ];
+                    if (footerConstraints.maxWidth < 560 && items.length > 1) {
+                      return Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: items,
+                      );
+                    }
+                    return Row(children: nav);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
     return Container(
       color: t.bg,
-      padding: EdgeInsets.all(narrow ? 8 : 24),
+      padding: const EdgeInsets.all(24),
       child: LayoutBuilder(
         // Top of the page (`MainAxisAlignment.START` in Python), centred
         // sideways.
@@ -238,7 +415,7 @@ class _WizardViewState extends State<WizardView>
             // Python: ResponsiveRow col {xs: 12, md: 9, lg: 7, xl: 6, xxl: 5}
             // (Flet breakpoints 768 / 992 / 1200 / 1400), centered.
             width: constraints.maxWidth *
-                _wizardColumns(constraints.maxWidth + (narrow ? 16 : 48)) /
+                _wizardColumns(constraints.maxWidth + 48) /
                 12,
             child: constraints.hasBoundedHeight
                 ? buildCard(true)
@@ -383,17 +560,38 @@ class _WizardViewState extends State<WizardView>
     ];
   }
 
-  List<Widget> _stepContent(BuildContext context, int step) {
+  String? _stepHeading(int step) {
+    switch (step) {
+      case WizardController.stepSchool:
+        return Strings.get('wiz_cal_h');
+      case WizardController.stepBakalari:
+        return Strings.get('wiz_bakalari_h');
+      case WizardController.stepStrava:
+        return Strings.get('wiz_strava_h');
+      case WizardController.stepExcuses:
+        return Strings.get('wiz_excuses_h');
+      case WizardController.stepPhone:
+        return Strings.get('wiz_phone_h');
+      case WizardController.stepDone:
+        return Strings.get('wiz_done_h');
+      default:
+        return null;
+    }
+  }
+
+  List<Widget> _stepContent(BuildContext context, int step,
+      {bool includeHeading = true}) {
     final c = controller;
     switch (step) {
       case WizardController.stepWelcome:
         return _welcomeContent();
       case WizardController.stepSchool:
-        return _schoolContent();
+        return _schoolContent(includeHeading: includeHeading);
       case WizardController.stepBakalari:
         return [
-          _h(Strings.get('wiz_bakalari_h'), 19),
+          if (includeHeading) _h(Strings.get('wiz_bakalari_h'), 19),
           _p(Strings.get('wiz_bakalari_p')),
+          const SizedBox(height: 16),
           if (!c.showBakalariUrlField)
             _prefillRow(
               key: const Key('wiz:change_bakalari_url'),
@@ -422,8 +620,9 @@ class _WizardViewState extends State<WizardView>
       case WizardController.stepStrava:
         final enabled = c.stravaEnabled;
         return [
-          _h(Strings.get('wiz_strava_h'), 19),
+          if (includeHeading) _h(Strings.get('wiz_strava_h'), 19),
           _p(Strings.get('wiz_strava_p')),
+          const SizedBox(height: 16),
           SwitchListTile(
             value: enabled,
             contentPadding: EdgeInsets.zero,
@@ -431,6 +630,7 @@ class _WizardViewState extends State<WizardView>
             onChanged: c.setStravaEnabled,
           ),
           if (enabled) ...[
+            const SizedBox(height: 12),
             if (!c.showStravaCanteenField)
               _prefillRow(
                 key: const Key('wiz:change_strava_canteen'),
@@ -461,13 +661,15 @@ class _WizardViewState extends State<WizardView>
         ];
       case WizardController.stepExcuses:
         return [
-          _h(Strings.get('wiz_excuses_h'), 19),
-          const SizedBox(height: 8),
+          if (includeHeading) ...[
+            _h(Strings.get('wiz_excuses_h'), 19),
+            const SizedBox(height: 16),
+          ],
           _field(Strings.get('wiz_signature_label'), 'wiz:signature',
               '${c.config['your_signature'] ?? ''}',
               hint: Strings.get('signature_hint')),
           _hint(Strings.get('wiz_excuses_p')),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           ExpansionTile(
             key: const Key('wiz:excuses_advanced'),
             initiallyExpanded: false,
@@ -484,10 +686,10 @@ class _WizardViewState extends State<WizardView>
           ),
         ];
       case WizardController.stepPhone:
-        return _phoneContent();
+        return _phoneContent(includeHeading: includeHeading);
       default:
         return [
-          _h(Strings.get('wiz_done_h'), 19),
+          if (includeHeading) _h(Strings.get('wiz_done_h'), 19),
           _p(Strings.get('wiz_done_p')),
         ];
     }
@@ -531,7 +733,7 @@ if (c.testing == service) {
     return [];
   }
 
-  List<Widget> _schoolContent() {
+  List<Widget> _schoolContent({bool includeHeading = true}) {
     final c = controller;
     final t = tokens;
     final selectedGroup = c.selectedSchoolGroup();
@@ -668,16 +870,16 @@ if (c.testing == service) {
       customCard(),
     ];
     return [
-      _h(Strings.get('wiz_cal_h'), 19),
+      if (includeHeading) _h(Strings.get('wiz_cal_h'), 19),
       _p(Strings.get('wiz_cal_p')),
-      const SizedBox(height: 8),
+      const SizedBox(height: 16),
       narrow
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 for (var i = 0; i < cards.length; i++) ...[
                   cards[i],
-                  if (i != cards.length - 1) const SizedBox(height: 8),
+                  if (i != cards.length - 1) const SizedBox(height: 12),
                 ],
               ],
             )
@@ -689,13 +891,15 @@ if (c.testing == service) {
     ];
   }
 
-  List<Widget> _phoneContent() {
+  List<Widget> _phoneContent({bool includeHeading = true}) {
     final c = controller;
     return [
-      _h(Strings.get('wiz_phone_h'), 19),
-      const SizedBox(height: 6),
+      if (includeHeading) ...[
+        _h(Strings.get('wiz_phone_h'), 19),
+        const SizedBox(height: 6),
+      ],
       _p(Strings.get('wiz_phone_p')),
-      const SizedBox(height: 8),
+      const SizedBox(height: 16),
       SwitchListTile(
         value: c.alarmEnabled,
         contentPadding: EdgeInsets.zero,
@@ -720,7 +924,7 @@ if (c.testing == service) {
   }) {
     final t = tokens;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
           Expanded(
@@ -837,7 +1041,7 @@ class _DraftFieldState extends State<_DraftField> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
         controller: _ctrl,
         focusNode: _focus,

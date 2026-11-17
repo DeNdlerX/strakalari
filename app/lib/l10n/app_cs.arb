@@ -789,7 +789,7 @@
   "wiz_prefill_school": "Škola: {host}",
   "wiz_school_preset_p": "Adresa Bakalářů, jídelna, prázdniny a převod známek se vyplní samy. Změnit je můžete v Nastavení.",
   "wiz_signature_label": "Vaše jméno pod omluvenkami",
-  "wiz_skip": "Přeskočit krok",
+  "wiz_skip": "Přeskočit",
   "wiz_step_of": "Krok {i} z {n}",
   "wiz_strava_h": "Jídelna Strava",
   "wiz_strava_p": "Pokud obědy neřešíte, integraci vypněte. Jinak vyplňte přihlášení a číslo jídelny.",
