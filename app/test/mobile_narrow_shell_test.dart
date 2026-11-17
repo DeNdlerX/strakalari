@@ -7,6 +7,7 @@ import 'package:app/shell/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
 Widget buildShellHarness({
@@ -286,6 +287,9 @@ void main() {
 
         expect(find.byKey(const ValueKey('topbar_back_btn')), findsNothing,
             reason: 'after tapping back from $loc, /more has no back button');
+        final router = GoRouter.of(tester.element(find.byType(NavigationBar)));
+        expect(router.routerDelegate.currentConfiguration.uri.path, '/more',
+            reason: 'back from $loc must land on More');
       }
     });
   });
