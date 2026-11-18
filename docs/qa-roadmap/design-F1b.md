@@ -321,10 +321,12 @@ go up):
   to `'/absences'` (instead of `'/planner'`) from `'/more'` and keeps the
   `'/more'` → `'/today'` Back assertions.
 - `app/test/tutorial_test.dart`: remove `'planner'` from `routes` in
-  `strings exist for every step` and add step-skipping tests for the merged
+  `strings exist for every step`, add step-skipping tests for the merged
   `'absences'` tour (skips `plan_strip` and `plan_pick` without timetable,
   skips `plan_pick` when `recommended` is empty, offers tour only when
-  `recommended` is non-empty).
+  `recommended` is non-empty), and assert that `tut_abs_subject_body` mentions
+  the reserve in both cs and en (`rezerv` / `reserve`, replacing the dropped
+  planner-intro reserve check in `planner_view_test.dart`).
 - `app/test/ui_views_test.dart`: replace step 5 (`LivePlannerView`) with a
   `LiveAbsencesView(narrow: false)` check with timetable/plan data so every
   shell screen remains covered.
@@ -338,18 +340,37 @@ go up):
   calendar-strip tests to pump `PlannerSections` (instead of `PlannerView`)
   with the same arguments and keep all DST cell/outline/alignment assertions;
   `custom dialog` stays unchanged.
-- `app/test/planner_view_test.dart`: update the 11 widget tests (`empty state`,
-  `year plan renders...`, `target dropdown...` ×2, `plan dialog confirm`,
-  `plan dialog cancel`, `plan-all dialog`, `planned entry can be unplanned`,
-  `planned entry in the past`, `custom picker`, and `P9a+b`) to pump
-  `AbsencesView` (asserting `absence_title` instead of `planner_title`, and
-  `abs_subjects_section` instead of `section_budgets`). On `P9a+b`, use a new
-  student's setup (`hasSubjectLimits: false`, `createLimitsController != null`
-  so the *no limits* banner is showing, plus warnings card, 2 terms, and 4
-  KPI cards), assert *Limity* (`abs_limits_btn`) and *Naplánovat vlastní
-  volno* (`plan_custom`) sit on one row, and assert *Přehled pololetí*
-  (`section_overview`) still ends above `708 px` at `390 × 844`.
-  `controller plan/unplan with failing persist rolls back` stays unchanged.
+- `app/test/planner_view_test.dart`: update all 12 `PlannerView` widget tests
+  to pump `AbsencesView` (asserting `absence_title` instead of `planner_title`,
+  and `abs_subjects_section` instead of `section_budgets`):
+  - `empty state without timetable` (`no_data` + `planner_need_refresh`);
+  - `empty state asks for credentials when timetable exists` (stays): pumps
+    `AbsencesView` with no subjects, `hasTimetable: true`, and `demoMode: true`
+    expecting `need_credentials`, and with `demoMode: false` expecting
+    `no_data` and no `need_credentials`;
+  - `year plan renders stats, calendar, budgets, planned`: removes the old
+    `expect(find.textContaining('10'), findsWidgets)` intro-reserve check
+    (recorded under *Deviations*: "the planner intro paragraph was removed by
+    F1b"), replaced by the `tut_abs_subject_body` reserve check (`rezerv` /
+    `reserve`) in `tutorial_test.dart`;
+  - `target dropdown offers the capacity` ×2, `plan dialog confirm plans the
+    day`, `plan dialog cancel closes without planning`, `plan-all dialog plans
+    recommended days`, `planned entry can be unplanned`, and `a planned entry
+    in the past shows the passed badge`;
+  - `custom picker taps a day whole and confirms`: finds `PlannerSections` by
+    type (`find.byType(PlannerSections)`) instead of `PlannerView` to call
+    `showCustomPlanDialog(ctx)`;
+  - `P9a+b narrow planner equalizes KPI card heights and keeps calendar visible
+    on first screen`: keeps its existing assertions (4 `StatCard`s with equal
+    heights per row and both semester buttons on one row), uses a new student's
+    setup (`hasSubjectLimits: false`, `createLimitsController != null` so the
+    *no limits* banner is showing, plus warnings card, 2 terms, and 4 KPI
+    cards), asserts *Limity* (`Key('abs:limits_btn')`, string `abs_limits_btn`)
+    and *Naplánovat vlastní termín* (`plan_custom`) sit on one row (replacing
+    `see_absences`), and asserts *Přehled pololetí* (`section_overview`) still
+    ends above `708 px` at `390 × 844`.
+  - `reserve dialog saves valid values only` and `controller plan/unplan with
+    failing persist rolls back` stay unchanged.
 - `app/test/absences_view_test.dart` and `app/test/absences_live_test.dart`:
   keep all existing tests (`P9a` 3-card row without plan, `F1` limits editor,
   `LiveAbsencesView` snapshot/rebuild) and add tests proving:
