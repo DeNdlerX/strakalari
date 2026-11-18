@@ -1,7 +1,7 @@
 # QA & roadmap status
 
-Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3b design (R3b S8–S10 fixed; awaiting re-review)
-Next step: Wait for the reviewer to re-review `docs/qa-roadmap/design-F1b.md` (R3b S8–S10 fixed in `50f366f`, `d93fa8a`, `2516ede`); do not write F1b code until R3b passes.
+Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3b (F1b design passed, code next)
+Next step: Design note for phase 3b passed (2026-11-18). Write phase 3b's code as the note says (`design-F1b.md`, including the reviewer's §3 item 8 change), in green `F1b:` commits, then stop for review.
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -53,6 +53,7 @@ Next step: Wait for the reviewer to re-review `docs/qa-roadmap/design-F1b.md` (R
 - **O2 / F1 prefill rows (2026-11-17, at the R3 re-review 2):** "You may also remove the canteen number text as well as the url, its set from the preset."
 - **F6 low-data refresh (2026-11-17, after the R3 re-review 2):** "Ok, but could you create a plan for saving the bandwith? I would like it to be as small as possible, possibly getting to the every 5 minute refresh frequency." → `proposal-F6-low-data.md` (a plan only; no "go" yet).
 - **F6 marks within 5 minutes (2026-11-17):** "I want new marks to be visible in the 5 minutes, thats kinda the point. If you want real bakalari instance, I can log into your browser and you can go through it and find the most optimal ways, along with perhaps some new stuff that we could use. But maybe write me a continuation prompt for this for a new agent that will do it." → D6 marks answered; research prompt `PROMPT-F6-research.md`.
+- **Reviewer may improve designs (2026-11-18, at the R3b re-review 2):** "Btw if you had better ideas for anything like the plan or in general, you can change it. We want to make the app as good as possible, so feel free to improve the agents designs if you feel like they could be better." → reviewer change in `design-F1b.md` §3 item 8.
 - **New features from the F6 research (2026-11-17):** "we could do calendar and homeworks and the notification, but our school adds new stuff to the nástěnka instead. And we have no homeworks in our school on bakalari" → ideas only, not in PLAN: school calendar, Komens new-message notification and Nástěnka new posts; homework dropped for GEKOM (`research-F6-bakalari-web.md` §10).
 
 ## Questions for the owner / reviewer
@@ -87,6 +88,7 @@ Next step: Wait for the reviewer to re-review `docs/qa-roadmap/design-F1b.md` (R
 
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
 ### Phase 3b design note (`F1b` + `O1`, checkpoint ⛔ before F1b code)
+- **2026-11-18 R3b re-review 2: PASS**: S8–S10 are fixed in the note. At the owner's invitation the reviewer changed one thing in `design-F1b.md` §3 item 8: *Doporučený plán* shows the next 3 days with *Zobrazit všechny (N)*, so the subject list stays close on a phone, and the `plan_explain` paragraph moves into the tour (tests and *Done when* added). The agent may now write F1b code. Baseline: core 809 passed / 2 skipped, app 722 passed / 1 skipped. See [`reviews/phase-3b-design.md`](reviews/phase-3b-design.md#re-review-2-2026-11-18).
 - **2026-11-18 R3b re-review fixes (`50f366f`, `d93fa8a`, `2516ede`):**
   - **S8 (`50f366f`):** Named all 12 `PlannerView` widget tests in `design-F1b.md` §7 (`app/test/planner_view_test.dart`), adding `empty state asks for credentials when timetable exists` (`demoMode: true` → `need_credentials`; `demoMode: false` → `no_data` and no `need_credentials`), specifying the `tut_abs_subject_body` reserve check (`rezerv` / `reserve` in `tutorial_test.dart`) replacing the dropped intro `'10'` line (noted for *Deviations*), stating `custom picker taps a day whole and confirms` finds `PlannerSections` by type, preserving P9a+b's existing equal-height 4-`StatCard` and single-row semester-button checks (with *Naplánovat vlastní termín* / `plan_custom`), and keeping `reserve dialog saves valid values only` unchanged.
   - **S9 (`d93fa8a`):** Updated `design-F1b.md` §3 item 3 case 2, item 10, and §7 absence test case 2 so that when `plan != null && term == null` (closed school year), *Naplánované* (`planned_title`, with unplan) and the calendar footer still render after `term_nothing`, keeping upcoming planned days that can cancel lunches visible and removable, with a test proving a planned entry shows and can be unplanned when `term == null`.

@@ -614,3 +614,101 @@ All three are text changes to the note.
     `generated_plugin*` files are the known Flutter line-ending churn.
 11. **Not checked:** macOS and iOS builds (not possible here), the phone
     (not needed this round).
+
+---
+
+## Re-review 2 (2026-11-18)
+
+Reviewed at `qa-roadmap` @ `1989b1f`. Commits since re-review 1
+(`4589d51`): `50f366f` (S8), `d93fa8a` (S9), `2516ede` (S10), `1989b1f`
+(STATUS). All four touch only `design-F1b.md` and STATUS. Still no F1b
+code. `main` has no commits the branch lacks.
+
+### Verdict: PASS
+
+All three gaps are fixed in the note. The reviewer also made one change to
+the design, at the owner's invitation (below). With it, the note is the
+approved F1b spec, and the agent may write F1b code.
+
+### S8–S10, checked
+
+- **S8 fixed.** §7's `planner_view_test.dart` line names all 12 widget
+  tests that build `PlannerView` (checked against the file: `:86`, `:98`,
+  `:109`, `:138` ×2, `:161`, `:181`, `:198`, `:215`, `:238`, `:256`,
+  `:313`) plus the two that stay. The credentials test stays, with the
+  demo / non-demo pair asked for. The `'10'` line is replaced by a real
+  check in `tutorial_test.dart` and goes under *Deviations*. P9a+b keeps
+  its equal-height and semester-row checks. The custom picker finds
+  `PlannerSections`.
+- **S9 fixed.** Case 2 (`plan != null && term == null`) now shows
+  `term_nothing`, then the planned days with unplan, then the calendar
+  footer, as `PlannerView` does today. Item 10 says "whenever
+  `plan != null`". §7 case 2 tests that a planned entry shows and can be
+  unplanned.
+- **S10 fixed.** §2 lists `scaffold.dart:163`, `:180–181`,
+  `router.dart:18`, `:83`, `:120–121` and `today_controller.dart:149`. Each
+  was checked against the file.
+
+### Reviewer change to the design (owner's invitation, 2026-11-18)
+
+The owner wrote: "if you had better ideas for anything like the plan or in
+general, you can change it. We want to make the app as good as possible,
+so feel free to improve the agents designs if you feel like they could be
+better." The reviewer changed one thing in `design-F1b.md`:
+
+- **§3 item 8: the next 3 recommended days, not all of them.**
+  - **Why:** on a phone the unified subject list comes after *Doporučený
+    plán*. Today that section shows one card per pick
+    (`planner_view.dart` `_recommended`), and with a target of 10–13 days
+    that is 10+ cards of about 80 px between the calendar and the
+    subjects. The same days are already green and tappable in the
+    calendar above. Three cards plus *Zobrazit všechny (N)* keep the
+    subjects close, which is the owner's "as simple as possible".
+  - **What:** `term.recommended` is date-sorted (core `spreadPlan`,
+    `planner.dart:731`, sorts at the end), so the first 3 are the next
+    picks. Two new strings (`plan_show_all`, `plan_show_less`). The heading
+    count and *Naplánovat vše* still cover all picks. The open/closed flag
+    lives in memory in `AppState`, like `plannerTerm`: no config key, no
+    save.
+  - **Also:** the `plan_explain` paragraph (two to three lines on every
+    visit) moves into `tut_plan_strip_body` as one sentence, the same
+    treatment the note already gives the planner intro. One key removed.
+    The table ends at 796 keys (still `>= 790`).
+  - **Tests and Done when:** §7 has a widget test (5 picks: 3 shown, then
+    all 5, *Naplánovat vše* always 5; 3 picks: no button; `plan_explain`
+    gone), a live test (the flag flips, emits, and `config.json` is
+    unchanged) and a string check for the tour sentence. §8 has one *Done
+    when* line. §5 notes the only `controllers/` addition is the in-memory
+    flag.
+  - **No other change.** The reviewer looked for more and left the rest as
+    the agent wrote it. The section order (N1 of the first review), the KPI
+    row and the subject card are sound. The tour, the tests and the
+    strings now line up with the code.
+
+Because the reviewer wrote this part, the next reviewer checks its code
+like any other part of the note: against §3 item 8, §7 and §8.
+
+### Notes
+
+- **N12 (baseline for F1b code):** core 809 passed / 2 skipped, app 722
+  passed / 1 skipped. The app count may only go up.
+
+### What the reviewer verified, and how (re-review 2)
+
+1. **Suites:** `dart pub get --enforce-lockfile` OK; core `dart analyze`
+   no issues, `dart test` **809 passed, 2 skipped**; app `flutter analyze`
+   no issues, `flutter test` **722 passed, 1 skipped**.
+2. **S8–S10:** each new line of the note was compared with the code and
+   test lines it names (listed above).
+3. **The reviewer's change:** read `_recommended`
+   (`planner_view.dart`), `spreadPlan`'s final sort, `plannerTerm` /
+   `selectPlannerTerm` (`app_state.dart:222`, `controllers/planner.dart:320`,
+   `planner_live.dart:24`, `:43–44`), the ARB keys (no existing
+   "show all" key fits; `lunch_show_past` is the same pattern), and every
+   test that taps or counts recommended cards (`planner_view_test.dart:171`,
+   `:190`, `:198`; all use `.first` or one pick, so none needs to change).
+4. **Scope and hygiene:** the four agent commits are by the configured
+   user, docs only, with no `Co-Authored-By`, `Claude-Session` or
+   "Generated with" lines. No upstream. No config, parity, ARB or code
+   file changed.
+5. **Not checked:** macOS and iOS builds; the phone (no phone item).

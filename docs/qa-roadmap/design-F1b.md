@@ -1,11 +1,19 @@
 # F1b design note: join the Absence and Plánovač tabs
 
-Status: **design only, no code yet.** Written 2026-11-17 after R3 PASS
-(`6d4c925`) and O1 (`4eea335`).
+Status: **design passed (R3b re-review 2, 2026-11-18), no code yet.**
+Written 2026-11-17 after R3 PASS (`6d4c925`) and O1 (`4eea335`). The
+reviewer added one change at the owner's invitation (§3 item 8: show the
+next 3 recommended days, move `plan_explain` into the tour); it is part of
+the approved design.
 
 Sources: owner's 2026-11-17 request in `STATUS.md`:
 > "perhaps absence limits in the absence tab? I would also join absence and
 > planner tab. They do very similar stuff"
+
+and the owner's 2026-11-18 note to the reviewer:
+> "if you had better ideas for anything like the plan or in general, you can
+> change it. We want to make the app as good as possible, so feel free to
+> improve the agents designs if you feel like they could be better."
 
 ---
 
@@ -144,9 +152,38 @@ Top-to-bottom structure on `/absences`:
      and legend, opening `showPlanDayDialog` / `showPlannedDialog` on tap.
 
 8. **Recommended days off**
-   - *Doporučené volno* (`section_plan`), target days dropdown, *Naplánovat vše*,
-     and recommended day cards (`TutorialAnchor(anchorKey: 'plan_first')` on
-     the first card).
+   - *Doporučený plán (N)* (`section_plan` + count), target days dropdown,
+     *Naplánovat vše (N)*, and recommended day cards
+     (`TutorialAnchor(anchorKey: 'plan_first')` on the first card).
+   - **Only the next 3 days are shown** (reviewer change, 2026-11-18, see
+     below). `term.recommended` is already sorted by date
+     (`spreadPlan`, core `planner.dart:731`), so these are the next three
+     picks. With more than 3 picks, a `TextButton` under the third card
+     reads *Zobrazit všechny ({n})* / *Show all ({n})* (`plan_show_all`,
+     `n` = all picks) and shows the rest; once open it reads *Zobrazit
+     méně* / *Show fewer* (`plan_show_less`). With 3 or fewer picks there is
+     no button. The heading count and *Naplánovat vše (N)* still cover
+     **all** N picks, and every pick stays green and tappable in the
+     calendar strip above.
+   - The open/closed state is in memory only, like the selected term:
+     `bool plannerShowAllPicks = false` in `AppState` next to `plannerTerm`
+     (`app_state.dart:222`), flipped by `togglePlannerShowAllPicks()` next
+     to `selectPlannerTerm` (`controllers/planner.dart:320–323`, same
+     `_emit()`), mirrored into `PlannerController` as `showAllPicks` +
+     `toggleShowAllPicksHook` the way `plannerTerm` /
+     `selectPlannerTermHook` are (`planner_live.dart:24`, `:43–44`). Not
+     saved in `config.json` (no config key), so it survives rebuilds and
+     scrolling and resets on restart.
+   - The `plan_explain` paragraph (two to three lines on a phone, shown on
+     every visit) is dropped from the screen. Its point ("spread evenly up
+     to the closure") moves into the tour as one sentence added to
+     `tut_plan_strip_body`, the same way the reserve sentence moves into
+     `tut_abs_subject_body`.
+   - **Why (reviewer):** on a phone the unified subject list comes after
+     this section. With a target of 10–13 days, the old full list put 10+
+     cards (about 80 px each) between the calendar and the subjects, and
+     the same days are already green in the calendar. Three cards keep the
+     subjects one short scroll below the calendar.
 
 9. **Subjects & hour budgets (unified list — replaces both old subject lists)**
    - Section header: *Předměty a rozpočet* / *Subjects & budget*, plus the
@@ -227,7 +264,9 @@ Top-to-bottom structure on `/absences`:
 - **Safety rules (`CONTRIBUTING.md` §5):** `runRefresh`, `withSessionLock`,
   `Strakalari.sendExcuse`, `HistoryLock`, `audit.dart`, `automation_paused`,
   and `planCustomSkip` / `unplanEntry` / lunch cancellation staging in
-  `controllers/planner.dart` are completely untouched.
+  `controllers/planner.dart` are completely untouched. The only addition in
+  `controllers/` is the in-memory `plannerShowAllPicks` flag and its
+  `togglePlannerShowAllPicks()` (§3 item 8): no save, no network, no lock.
 - `LiveAbsencesView` still emits only when `AppState` changes; opening/closing
   `LimitsEditorContent` keeps `onLimitsUpdated` working without breaking
   existing tests.
@@ -282,6 +321,8 @@ Top-to-bottom structure on `/absences`:
   |---|---|---|---|
   | `stat_warn_crit` | `Varování / Kritické` | `Warning / Critical` | 2nd KPI card when `plan != null && term != null` |
   | `abs_subjects_section` | `Předměty a rozpočet` | `Subjects & budget` | Section header above the unified subject list |
+  | `plan_show_all` | `Zobrazit všechny ({n})` | `Show all ({n})` | Under the 3rd recommended day card when there are more than 3 picks (§3 item 8) |
+  | `plan_show_less` | `Zobrazit méně` | `Show fewer` | Same button once the full list is open |
 
 - **Reused existing keys** (not duplicated): `planner_horizon`, `stat_tightest`,
   `hours_free`, `stat_can_afford`, `stat_planned`, `budget_final`,
@@ -293,9 +334,15 @@ Top-to-bottom structure on `/absences`:
   `strings.dart`, each verified unused via grep after F1b): `see_absences`,
   `nav_planner`, `section_budgets`, `planner_desc`, `plan_buffer_note`
   (`strings_table_parity_test.dart:115` switched to `abs_no_limits`),
-  `tut_plan_budget_title`, `tut_plan_budget_body`.
+  `tut_plan_budget_title`, `tut_plan_budget_body`, `plan_explain` (moved
+  into `tut_plan_strip_body`, §3 item 8).
 - **Updated keys** (`cs` & `en`): `tut_intro_nav_body`,
-  `tut_intro_nav_body_narrow`, `tut_abs_stats_body`, `tut_abs_subject_body`.
+  `tut_intro_nav_body_narrow`, `tut_abs_stats_body`, `tut_abs_subject_body`,
+  `tut_plan_strip_body` (one added sentence: cs *Doporučené dny jsou
+  rozložené rovnoměrně až do uzávěrky.*, en *The picks are spread evenly up
+  to the closure.*).
+- **Key count:** 800 today − 8 removed + 4 new = 796, still above the
+  `>= 790` check (`strings_table_parity_test.dart:90`).
 
 ### README & screenshots (`README.md`, `README.en.md`, `tools/parity/capture_screens.dart`)
 - Update `README.md:51–60` and `README.en.md:51–60` in short, non-technical
@@ -387,6 +434,21 @@ go up):
     ends above `708 px` at `390 × 844`.
   - `reserve dialog saves valid values only` and `controller plan/unplan with
     failing persist rolls back` stay unchanged.
+  - **New** (reviewer change, §3 item 8): `recommended list shows the next 3
+    days and opens to all`: a term with 5 picks shows 3 `plan_skip` buttons
+    and `plan_show_all` with `(5)`; tapping it (through the controller hook)
+    shows 5 and `plan_show_less`; the heading still reads `(5)` and
+    *Naplánovat vše* opens `PlanAllDialog` with all 5 days in both states. A
+    term with exactly 3 picks shows 3 cards and no button. `plan_explain`
+    is not on screen.
+- `app/test/planner_live_test.dart` (in addition to the line above): with a
+  real `AppState`, `togglePlannerShowAllPicks()` flips
+  `plannerShowAllPicks`, emits, and `plannerControllerFor(s).showAllPicks`
+  follows; nothing is written to `config.json` (compare the file before and
+  after).
+- `app/test/tutorial_test.dart` (in addition to the line above):
+  `tut_plan_strip_body` mentions the spread in cs and en (`rovnoměrně` /
+  `evenly`).
 - `app/test/absences_view_test.dart` and `app/test/absences_live_test.dart`:
   keep all existing tests (`P9a` 3-card row without plan, `F1` limits editor,
   `LiveAbsencesView` snapshot/rebuild) and add tests proving:
@@ -430,6 +492,11 @@ view tests, (3) tutorials + strings + `README` + `docs/images/absences-*.png`.
 - All planner dialogs (`PlanDayDialog`, `PlanAllDialog`, `PlannedDialog`,
   `CustomPlanDialog`), `PlannerController`, and lunch-cancel staging stay
   intact.
+- *Doporučený plán* shows the next 3 picks, with *Zobrazit všechny (N)* /
+  *Zobrazit méně* when there are more; the heading count and *Naplánovat
+  vše* cover all picks; the state is in memory only (no config write);
+  `plan_explain` is off the screen and its sentence is in
+  `tut_plan_strip_body`.
 - `P9a+b` passes on the merged `AbsencesView` with a new student's setup (no
   limits banner + warnings + 2 terms + 4 KPIs, `Limity` + `plan_custom` on one
   row, *Přehled pololetí* ending above `708 px` at `390 × 844`).
