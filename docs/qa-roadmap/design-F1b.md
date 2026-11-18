@@ -73,19 +73,33 @@ Top-to-bottom structure on `/absences`:
    - Shown when `!c.hasSubjectLimits && c.createLimitsController != null`:
      `abs_no_limits` with active `absence_critical_pct` + *Limity* button.
 
-3. **Empty / partial-data states**
-   - **No absence data (`subjects.isEmpty`)**: show `EmptyState(no_data)` plus
-     `need_credentials` (in `demoMode`) or `planner_need_refresh` (when
-     `!hasTimetable`).
-   - **Absences present, no planner data (`plan == null`)**: show the 3
-     Absence KPI cards and unified subject cards (using `w.Meter` fallback, as
-     today), plus a compact muted card at the bottom with
-     `planner_need_refresh` (or `term_nothing` when `plan != null && term == null`).
+3. **Real data states (replacing separate Absence/Planner empty states)**
+   - **Case 1 — no subjects (`c.subjects.isEmpty`)**: occurs when there is no
+     timetable (`subjectStates()` returns `[]`) or no absence data. Show
+     `EmptyState(no_data)`, plus `planner_need_refresh` when `!hasTimetable`
+     and `need_credentials` when `c.demoMode` is true.
+   - **Case 2 — subjects present, `term == null`** (the school year's absences
+     are closed, or `plan == null` in a standalone `AbsencesView` test): show
+     the 3 Absence KPI cards, unified subject cards with `w.Meter` fallback
+     and today's detail line, and a muted card with `term_nothing` when
+     `plan != null && term == null` (or `planner_need_refresh` if `plan ==
+     null && !hasTimetable`).
+   - **Case 3 — active term (`plan != null && term != null`)**: show the full
+     screen (term selector, `term_fresh` if `!term.hasData`, 4 KPI cards +
+     summary line, warnings, calendar strip, recommended days, unified
+     subjects & budgets, planned days, calendar footer). Any subject missing
+     a budget row in the selected term falls back to `w.Meter` and today's
+     detail line.
+   - **Intro & `term_fresh`:** drop the 4-line planner intro paragraph
+     (`planner_desc` + `plan_buffer_note`) from the screen (a short sentence
+     about the reserve moves into `tut_abs_subject_body`), and keep the 1-line
+     `term_fresh` accent note below the term buttons when `!term.hasData`.
 
 4. **Term selector** (when `plan != null && plan.terms.length >= 2`)
    - *1. pololetí · do ...* / *2. pololetí · do ...* buttons (same compact row
      on `narrow`, `Wrap` on `wide`). Selecting a term updates both the planner
      sections and the subject budget bars/projections to match that term.
+   - If `!term.hasData`, show `term_fresh` right under the term buttons.
 
 5. **Unified KPI row (`TutorialAnchor(anchorKey: 'abs_stats')`)**
    - When `plan == null || term == null`: the existing 3 Absence KPI cards
@@ -279,8 +293,11 @@ go up):
   keep all existing tests (`P9a` 3-card row without plan, `F1` limits editor,
   `LiveAbsencesView` snapshot/rebuild) and add tests proving:
   - each subject renders **once** (no duplicate subject cards);
-  - both current % + budget bar + projected % show together when budget data
-    exists, and `Meter` fallback shows when no budget/term exists;
+  - real `AppState` data cases 1–3: (1) no timetable → `no_data` +
+    `planner_need_refresh` (`need_credentials` in demo mode), (2) closed year
+    (`term == null`) → 3 Absence KPI cards, `Meter` fallback, and
+    `term_nothing`, (3) active term → 4 KPI cards, budget bars + projected %,
+    and `Meter` fallback for any subject without a budget row;
   - `/planner` redirects to `/absences`;
   - *Dnes* planner suggestion navigates to `/absences`.
 - `app/test/strings_table_parity_test.dart`: update line 115 (`plan_buffer_note`)
