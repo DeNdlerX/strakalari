@@ -28,10 +28,13 @@ this single screen.
 - **`shellRoutes`** (`app/lib/shell/router.dart`): remove `'planner'`.
   Order becomes `['today', 'timetable', 'absences', 'marks', 'lunches', 'activity', 'settings']` (7 items).
 - **`narrowTabs`**: unchanged (`['today', 'timetable', 'marks', 'lunches', 'more']`).
-- **`moreRoutes`** & **`MorePage.entries`** (`app/lib/features/more.dart`):
-  remove `'planner'`. Order becomes `['absences', 'activity', 'settings']`
-  (plus `'alarm'` before `'settings'` on Android).
-- **`/planner` compatibility redirect:** keep
+- **`moreRoutes`** & **`MorePage.entries`** (`app/lib/features/more.dart:25–43`):
+  remove `'planner'`. Desktop/non-Android order becomes `['absences', 'activity',
+  'settings']` (3 items). In `MorePage.visibleEntries()`, replace
+  `...entries.take(3)` with `...entries.take(entries.length - 1)` before
+  `alarmEntry, entries.last`, so Android shows `['absences', 'activity',
+  'alarm', 'settings']` (4 items) without duplicating *Nastavení*.
+- **`/planner` compatibility redirect:** add
   `GoRoute(path: '/planner', redirect: (_, _) => '/absences')` in
   `buildRouter` and map `'planner'` → `'absences'` in `routeForLocation`
   (if passed directly to `AppScaffold` in tests/deep links) so any stale
