@@ -1,7 +1,7 @@
 # QA & roadmap status
 
-Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3b design (R3b fixes ready for re-review)
-Next step: Stop for R3b re-review; after R3b PASS, implement `design-F1b.md` in green `F1b:` commits.
+Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3b design (R3b re-review: PASS WITH FIXES)
+Next step: Fix every finding in `reviews/phase-3b-design.md` (blockers first), one commit per finding, then stop for re-review. (Open after the 2026-11-18 re-review: S8, S9, S10, all in `design-F1b.md`; no F1b code yet.)
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -87,6 +87,7 @@ Next step: Stop for R3b re-review; after R3b PASS, implement `design-F1b.md` in 
 
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
 ### Phase 3b design note (`F1b` + `O1`, checkpoint ⛔ before F1b code)
+- **2026-11-18 R3b re-review: PASS WITH FIXES**: O1 is done (M1 fixed; its test fails without the fix). The F1b note answers every R3b point, but three gaps are left in the note: a closed school year would hide the planned days off, which can still cancel a lunch (S9); one planner test and two assertions are still unnamed (S8); four code places still name the Plánovač route (S10). No F1b code until they are fixed and re-reviewed. Baseline: core 809 passed / 2 skipped, app 722 passed / 1 skipped. See [`reviews/phase-3b-design.md`](reviews/phase-3b-design.md#re-review-2026-11-18).
 - **2026-11-18 R3b review fixes (`9211e90`, `a39ccf3`, `017963c`, `d3f5b66`, `ef57141`, `ead4ddc`, `1798aad`, `bdc9af4`, `386958c`):**
   - **M1 (`9211e90`):** Updated `_refreshLocked` in `app/lib/controllers/activity.dart` to send `automation_failed` before rethrowing `fetchErrors.first.$2` when `autoErrors.isNotEmpty && !result.onlyLowBalance`. Added the 3 R3b M1 test cases to `app/test/app_state_excuses_and_planner_test.dart` (verified case 1 failed before the fix and all 3 pass after).
   - **M2 (`a39ccf3`):** Clarified `PlannerView` and `LivePlannerView` removal (`PlannerSections` replaces `PlannerView` in `planner_view.dart` and is embedded by `AbsencesView`; `LiveAbsencesView` gains `DateTime? now`) and listed all 12 affected test files + unchanged dialog/picker/reserve files in `design-F1b.md` §7.

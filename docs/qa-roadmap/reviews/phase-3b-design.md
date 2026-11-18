@@ -397,3 +397,220 @@ and the tutorial, an unclear string list, the README, and a duplicate
       Flutter line-ending churn.
 12. **Not checked:** macOS and iOS builds (not possible here), and the
     phone (not connected).
+
+---
+
+## Re-review 2026-11-18
+
+Reviewed at `qa-roadmap` @ `8756d0e` (base `main` @ `f8d5582`; `main` has
+no commits the branch lacks). Commits since the review (`7479a97`):
+
+- `9211e90` (O1, code: R3b M1 and its three tests);
+- `a39ccf3`, `017963c`, `d3f5b66`, `ef57141`, `ead4ddc`, `1798aad`,
+  `bdc9af4`, `386958c` (`design-F1b.md` only, one per finding);
+- `8756d0e` (STATUS).
+
+Still no F1b code.
+
+### Verdict: PASS WITH FIXES
+
+**O1 is done.** The hole from M1 is closed with the change asked for: when
+Strava fails to load and an automatic excuse fails in the same refresh, the
+student gets *Automatika selhala* again. The new test fails without the fix
+and passes with it.
+
+**The F1b note** now answers every R3b point: what replaces `PlannerView`,
+the three real data cases, the subject card, the tutorial, the exact
+strings, the README, the Android *Více* list and a *Done when* list. Three
+gaps are left (S8–S10). The most important one: on a closed school year the
+note would hide the list of planned days off. Those days can still cancel a
+lunch, so the student must keep seeing them and be able to remove them.
+The other two are a test the list still misses (plus two assertions it
+doesn't name) and four code places that still name the old Plánovač tab.
+All three are text changes to the note.
+
+### R3b findings, checked
+
+- **M1 fixed** (`9211e90`). `_refreshLocked` (`activity.dart:432–443`)
+  now sends `automation_failed` before it throws the fetch error, only when
+  an auto phase failed and not for an empty Strava account. The fetch error
+  is still thrown, reported and recorded as a failed run. No new `catch`.
+  Test case 1 fails on `7479a97` (`Expected: contains 'automation_failed'`,
+  `Actual: []`) and passes on `9211e90`. Cases 2 and 3 pass on both, as
+  they should: they pin behaviour that didn't change. The *Deviations*
+  line is in STATUS (l.86). Accepted.
+- **M2 fixed, with one gap (S8).** §4 decides: `PlannerView` becomes
+  `PlannerSections` with the same arguments (minus `onOpenAbsences` and
+  `updatedLabel`), the dialogs stay, `LiveAbsencesView` gets `now:`. §7 has
+  a line for each of the 11 test files that use `PlannerView`,
+  `LivePlannerView`, route `planner` or tour `planner` (checked by grep
+  over `app/test`), and names the three files that stay unchanged.
+- **S1 fixed, with one gap (S9).** §3 item 3 has the three real cases;
+  `term_fresh` stays; the intro paragraph goes, with one reserve sentence
+  in `tut_abs_subject_body`.
+- **S2 fixed.** Match by `AbsencesController.canonSubject`
+  (`absences_controller.dart:113`); the badge tiers match the planner's own
+  colours (`planner_view.dart:1152–1163`); `budget_final` / `budget_line`
+  and `AbsencesController.detail` are reused.
+- **S3 fixed.** The offer rule is today's planner rule
+  (`planner_live.dart:211–216`); the id stays `absences`, no migration; the
+  skip flags come from `AppState` through `tutorialStepSkipped`
+  (`tutorial.dart:105`). `yearPlan()` is cached per input
+  (`planner.dart:328`), so reading it from the skip check is cheap. The
+  `plan_budget` step, anchor and strings go.
+- **S4 fixed.** Two new keys with cs and en; every reused key exists in
+  both ARB files; seven removed keys listed. The table shrinks from 800 to
+  795 keys and stays above the `>= 790` check
+  (`strings_table_parity_test.dart:90`). `abs_no_limits` has `{pct:g}`, so
+  the `:115` format test can move to it.
+- **S5 fixed.** README cs and en, `capture_screens.dart:68`, the
+  `planner-*.png` pictures.
+- **S6 fixed.** `entries.take(entries.length - 1)` gives `absences,
+  activity, alarm, settings` on Android.
+- **S7 fixed.** §8 has the *Done when* list and the commit plan; §7 has the
+  new student's P9b setup.
+
+---
+
+### Should-fix
+
+#### S8 (F1b §7, l.341–352): `planner_view_test.dart` still misses one test and two assertions
+
+- **Where:** `design-F1b.md` l.341–352; `app/test/planner_view_test.dart`.
+- **What is wrong:**
+  - The file has 12 widget tests that build `PlannerView`. The note names
+    11. Missing: `empty state asks for credentials when timetable exists`
+    (`:98–107`). It builds `PlannerView(plan: null, hasTimetable: true)` and
+    expects `need_credentials`. In the merged screen (§3 case 1)
+    `need_credentials` shows only in demo mode, as Absence does today
+    (`absences_view.dart:127`). So this test can't pass unchanged, and the
+    note doesn't say what it becomes. That is how tests got deleted in R3.
+  - `year plan renders stats, calendar, budgets, planned` ends with
+    "Intro carries the reserve note":
+    `expect(find.textContaining('10'), findsWidgets)` (`:129–130`). The
+    intro goes. On the merged screen some other `10` is always there (a
+    date such as *5. 10.*), so the line would keep passing while it checks
+    nothing.
+  - P9a+b: the note lists only the new assertions. It doesn't say that the
+    existing ones stay.
+- **What correct looks like:** in §7's `planner_view_test.dart` line:
+  - `empty state asks for credentials when timetable exists`: pumps
+    `AbsencesView` with no subjects, `hasTimetable: true` and
+    `demoMode: true` and expects `need_credentials`; the same with
+    `demoMode: false` expects `no_data` and no `need_credentials`. The test
+    stays.
+  - `year plan renders…`: the `'10'` line is replaced by a check of where
+    the reserve now lives: in `tutorial_test.dart`, `tut_abs_subject_body`
+    mentions the reserve in cs and en (for example `rezerv` / `reserve`).
+    Removing the old line goes under *Deviations*: "the planner intro
+    paragraph was removed by F1b".
+  - P9a+b keeps its existing checks: 4 `StatCard`s with equal heights per
+    row (`:392–394`) and both semester buttons on one row (`:401–403`).
+  - `custom picker taps a day whole and confirms` finds `PlannerView` by
+    type (`:270–271`): say which class it finds afterwards.
+
+#### S9 (F1b §3 item 3 case 2, l.84–89): a closed school year would hide the planned days off
+
+- **Where:** `design-F1b.md` l.84–89 (case 2) and l.166–167 (item 10).
+- **What is wrong:**
+  - Today `PlannerView` shows *Naplánované* and the calendar footer also
+    when there is no term: `term_nothing` at `planner_view.dart:360–369`,
+    then `_planned` and `_footer` at `:429–430` for every plan.
+  - The note's case 2 (`plan != null`, `term == null`) lists the KPI
+    cards, the subject cards and `term_nothing`, and nothing else. Only
+    case 3 lists the planned days. Item 10 says "unchanged", which reads
+    as case 3 only.
+  - Planned days drive the automatic lunch cancel (`_plannedDeorders`,
+    `lunch_auto.dart:379`, used at `:463`). A planned day that is still
+    ahead must stay visible and removable, or the student can't see why a
+    lunch was cancelled and can't stop it.
+- **What correct looks like:**
+  - Case 2 says: with `plan != null && term == null`, show `term_nothing`,
+    then *Naplánované* (`planned_title`, with unplan) and the calendar
+    footer, as today.
+  - §7, absence test case 2: a planned entry shows and can be unplanned
+    when `term == null`.
+
+#### S10 (F1b §2, l.26–49): four more code places name the Plánovač route
+
+- **Where:** `design-F1b.md` §2.
+- **What is wrong:** §2 lists `shellRoutes`, `moreRoutes`,
+  `MorePage.entries`, `routeForLocation` and the *Dnes* tip, but not:
+  - `app/lib/shell/scaffold.dart:163` (`_railIcons['planner']`) and
+    `:180–181` (`_titleFor`, `nav_planner`);
+  - `app/lib/shell/router.dart:83` (`PlaceholderScreen` titles,
+    `nav_planner`), `:120–121` (`case 'planner': LivePlannerView`) and its
+    import at `:18`;
+  - `app/lib/features/today/today_controller.dart:149` (a comment naming
+    `"planner"`).
+
+  §6 removes `nav_planner`, so these have to go too. The grep in §6 would
+  find them, but the note is F1b's only spec.
+- **What correct looks like:** list these places in §2, each with "remove
+  the `planner` entry". Nothing else in them changes.
+
+---
+
+### Notes (no action needed)
+
+- **N8 (O1 M1):** a student who switched *Neúspěšná aktualizace* on now
+  gets two notifications for such a run (`automation_failed` and
+  `refresh_failed`). Both are true and have different tags. Accepted.
+- **N9 (F1b tutorials):** an old `planner` entry in `tutorials_done` stays
+  and is harmless. Validation checks only that it is a list
+  (`config.dart:406`), and an unknown id is never offered
+  (`tutorial.dart:120`). This agrees with "no migration" in the note.
+- **N10 (F1b wording):** the button is `plan_custom`, *Naplánovat vlastní
+  termín* (`app_cs.arb:487`). The note calls it *Naplánovat vlastní
+  volno* in §3, §7 and §8. Use the key as it is. No new text.
+- **N11 (F1b, pre-existing):** `ReserveDialog` (`planner_view.dart:2080`)
+  isn't opened anywhere in `app/lib`. It was unreachable before F1b, and
+  the reserve is set in Settings. That's out of scope: keep the class and
+  its test `reserve dialog saves valid values only` (`:68`) as they are.
+
+---
+
+### What the reviewer verified, and how (re-review)
+
+1. **Suites** (worktree, Flutter 3.44.8 / Dart 3.12.2):
+   - `dart pub get --enforce-lockfile`: OK.
+   - Core: `dart analyze` no issues; `dart test` **809 passed, 2 skipped**.
+   - App: `flutter analyze` no issues; `flutter test` **722 passed, 1
+     skipped** (719 + M1's three).
+   - Baseline for F1b: these counts. The app count may only go up.
+2. **M1's test catches the bug:** in a throwaway worktree at `7479a97`
+   (removed afterwards), with `9211e90`'s
+   `app_state_excuses_and_planner_test.dart` copied in: case 1 fails with
+   the assertion above; cases 2 and 3 pass. All three pass on `9211e90`.
+3. **M1's code:** read `_refreshLocked` around the change. Only one
+   notification is added before the existing `throw`. The run record,
+   `reportError` and the `refresh_failed` path are unchanged.
+4. **The note against the code:** every file, line, key, anchor and method
+   the note names was looked up (`more.dart:25–43`, `router.dart`,
+   `tutorial.dart:105–130`, `planner_live.dart:200–216`,
+   `absences_controller.dart:90–114`, `planner_view.dart:225–430` and
+   `:1152–1200`, core `YearPlan.term` / `defaultTerm`, the ARB keys, README
+   l.51–60, `capture_screens.dart:63–74`). Then grep over `app/lib` and
+   `app/test` for `PlannerView`, `LivePlannerView`, `'planner'`,
+   `/planner` and every removed key. The gaps are S8–S10.
+5. **Scope:** `9211e90` touches `activity.dart` and one test file. The
+   other commits touch only `design-F1b.md` and STATUS. No F1b code, no
+   phase 4 work.
+6. **Config keys and strings:** no config file, parity fixture or ARB file
+   changed since `7479a97`.
+7. **Safety rules:** `runRefresh`, the session lock, `sendExcuse` /
+   `HistoryLock`, the audit and `automation_paused` are untouched. The only
+   change in `controllers/` adds a notification. No new `catch`.
+8. **Test integrity:** only `app_state_excuses_and_planner_test.dart`
+   changed, with 3 new tests. The fake's new constructor arguments default
+   to the old config and behaviour, so the existing tests see the same
+   fake. No test removed, no `skip:`, no `try`/`catch` around assertions.
+   The only host is `127.0.0.1:18080`.
+9. **Screens and phone:** no UI change and no phone item this round, so
+   no captures and no phone check.
+10. **Hygiene:** all ten commits by the configured user, with no
+    `Co-Authored-By`, `Claude-Session` or "Generated with" lines. No
+    personal files. `qa-roadmap` has no upstream. The uncommitted
+    `generated_plugin*` files are the known Flutter line-ending churn.
+11. **Not checked:** macOS and iOS builds (not possible here), the phone
+    (not needed this round).
