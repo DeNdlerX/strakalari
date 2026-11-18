@@ -113,9 +113,11 @@ Top-to-bottom structure on `/absences`:
         if `critCount > 0`, `warning` if `warnCount > 0`, else `ok`)
      3. *Můžete vynechat*: `daysText(term.capacity)`
      4. *Naplánováno*: `${daysText(plannedDays)} · $plannedHours h`
-   - Compact 1-line summary right below the KPIs (replacing two extra KPI cards):
-     `Zbývá N školních dní` + (if `term.tightest != null`)
-     `· Nejtěsnější: <name> (<free> h volno)`.
+   - Compact 1-line summary right below the KPIs (replacing two extra KPI cards,
+     reusing existing strings):
+     `${Strings.get('planner_horizon')}: ${term.remainingDays.length}` +
+     (if `term.tightest != null`)
+     `' · ${Strings.get('stat_tightest')}: ${tight.name} (${Strings.format('hours_free', {'n': hoursText(tight.free)})})'`.
 
 6. **Warnings card** (unchanged from `PlannerView._warnings`)
    - Shown when `over`, `reserve`, or `fastPace` subjects exist.
@@ -255,14 +257,26 @@ Top-to-bottom structure on `/absences`:
   and the *Limity* button.
 
 ### Strings (`app/lib/l10n/app_cs.arb`, `app_en.arb`, `strings.dart`)
-- Add new cs/en strings for:
-  - `stat_warn_crit` (*Varování / Kritické* | *Warning / Critical*)
-  - `abs_horizon_tightest` / `abs_days_left` (*Zbývá {n} školních dní* | *{n} school days left* and *Nejtěsnější: {name} ({h} h volno)* | *Tightest: {name} ({h} h free)*)
-  - `abs_subjects_section` (*Předměty a rozpočet* | *Subjects & budget*)
-  - `abs_current_pct` (*Aktuálně {p} %* | *Current {p} %*)
-- Keep `planner_title` (checked by `strings_table_parity_test.dart` and usable
-  as a section header) and `nav_planner` only if needed; remove `see_absences`
-  (no longer shown anywhere).
+- **New keys:**
+
+  | Key | `cs` | `en` | Where used |
+  |---|---|---|---|
+  | `stat_warn_crit` | `Varování / Kritické` | `Warning / Critical` | 2nd KPI card when `plan != null && term != null` |
+  | `abs_subjects_section` | `Předměty a rozpočet` | `Subjects & budget` | Section header above the unified subject list |
+
+- **Reused existing keys** (not duplicated): `planner_horizon`, `stat_tightest`,
+  `hours_free`, `stat_can_afford`, `stat_planned`, `budget_final`,
+  `budget_line`, `col_limit`, `safe_to`, `col_safe`, `avg_absence`,
+  `warn_subjects`, `crit_subjects` (still used for the 3-card row when
+  `plan == null || term == null`), `planner_title` (kept for
+  `strings_table_parity_test.dart:89`).
+- **Removed keys** (removed from `app_cs.arb`, `app_en.arb`, and
+  `strings.dart`, each verified unused via grep after F1b): `see_absences`,
+  `nav_planner`, `section_budgets`, `planner_desc`, `plan_buffer_note`
+  (`strings_table_parity_test.dart:115` switched to `abs_no_limits`),
+  `tut_plan_budget_title`, `tut_plan_budget_body`.
+- **Updated keys** (`cs` & `en`): `tut_intro_nav_body`,
+  `tut_intro_nav_body_narrow`, `tut_abs_stats_body`, `tut_abs_subject_body`.
 
 ---
 
