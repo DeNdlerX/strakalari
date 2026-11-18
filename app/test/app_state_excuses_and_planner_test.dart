@@ -24,12 +24,15 @@ class _CallbackNotifier implements NotifierBackend {
 
 class _NewsRefreshApp extends Strakalari {
   Map<String, List<Map<String, Object?>>> testGrades = {};
+  final bool failStrava;
 
-  _NewsRefreshApp()
-      : super(configData: {
-          'bakalari_url': 'https://demo',
-          'bakalari_username': 'student',
-        });
+  _NewsRefreshApp({Map<String, Object?>? configData, this.failStrava = false})
+      : super(
+            configData: configData ??
+                {
+                  'bakalari_url': 'https://demo',
+                  'bakalari_username': 'student',
+                });
 
   @override
   Map<String, List<Map<String, Object?>>> get grades => testGrades;
@@ -44,7 +47,11 @@ class _NewsRefreshApp extends Strakalari {
   Future<int> syncWebExcusesToHistory({int? limit}) async => 0;
 
   @override
-  Future<void> fetchStravaData() async {}
+  Future<void> fetchStravaData() async {
+    if (failStrava) {
+      throw const SocketException('strava unreachable');
+    }
+  }
 
   @override
   void close() {}
@@ -477,6 +484,61 @@ void main() {
       state.startRefresh('bakalari');
       await job;
       expect(notified.any((n) => n.$1 == 'new_mark'), isTrue);
+    });
+
+    Future<List<String>> runAutoFailCase({
+      required String excuseMode,
+      required bool failStrava,
+    }) async {
+      final notified = <String>[];
+      final cfg = <String, Object?>{
+        'bakalari_url': 'http://127.0.0.1:18080',
+        'bakalari_username': 'student',
+        'use_strava': true,
+        'strava_username': 'strava_student',
+        'strava_canteen_id': '1950',
+        'excuse_mode': excuseMode,
+      };
+      final state = AppState(data: {
+        'absence': {'M': 0.0},
+        'grades': <String, Object?>{},
+      });
+      for (final e in cfg.entries) {
+        state.config.set(e.key, e.value);
+      }
+      state.demoMode = false;
+      notifierBackend =
+          _CallbackNotifier((tag, _) => notified.add(tag));
+      final app = _NewsRefreshApp(configData: cfg, failStrava: failStrava);
+      state.createApp = ({onLog, configData}) => app;
+      Future<void>? job;
+      state.spawn = (fn, name) {
+        job = fn();
+      };
+      state.startRefresh('all');
+      await job;
+      return notified;
+    }
+
+    test('auto failure notifies automation_failed even when Strava fetch fails (R3b M1)',
+        () async {
+      final tags = await runAutoFailCase(excuseMode: 'auto', failStrava: true);
+      expect(tags, contains('automation_failed'));
+      expect(tags, isNot(contains('refresh_failed')));
+    });
+
+    test('fetch failure in confirm mode sends no notification by default (O1)',
+        () async {
+      final tags =
+          await runAutoFailCase(excuseMode: 'confirm', failStrava: true);
+      expect(tags, isEmpty);
+    });
+
+    test('auto failure without fetch error notifies automation_failed',
+        () async {
+      final tags = await runAutoFailCase(excuseMode: 'auto', failStrava: false);
+      expect(tags, contains('automation_failed'));
+      expect(tags, isNot(contains('refresh_failed')));
     });
   });
 

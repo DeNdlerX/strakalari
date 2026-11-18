@@ -430,6 +430,14 @@ extension ActivityLogic on AppState {
           if (!autoErrors.contains(e)) e
       ];
       if (fetchErrors.isNotEmpty) {
+        // O1 turned refresh_failed off by default: a failed auto phase in
+        // the same run still gets its own notification (fail loudly).
+        if (autoErrors.isNotEmpty && !result.onlyLowBalance) {
+          notifyEvent(
+              'automation_failed',
+              Strings.format('automation_failed_body',
+                  {'detail': failureDetail(autoErrors.first.$2)}));
+        }
         // ignore: only_throw_errors
         throw fetchErrors.first.$2;
       }
