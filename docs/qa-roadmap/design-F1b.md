@@ -135,16 +135,28 @@ Top-to-bottom structure on `/absences`:
      budgets are present.
    - Wrapped in `TutorialAnchor(anchorKey: 'plan_budget')` around the list (and
      `TutorialAnchor(anchorKey: 'abs_first')` on the first subject card).
+   - **Match key:** each `SubjectAbsence` matches its `BudgetRowData` in the
+     selected term by `AbsencesController.canonSubject(name)` (`TermPlanData.budgets`
+     carries only `name`, and both lists derive from `subjectStates()`, so no
+     budget row exists without a subject).
    - One card per subject:
-     - Top row: **Subject name** (bold), **Current %** (e.g. `12.5 %`), and
-       **Status badge** (most severe of current absence status and budget
-       status: `critical`/`over` > `warning`/`reserve`/`tight` > `ok`).
+     - Top row: **Subject name** (bold), bare **current %** (`'${subject.currentPct.toStringAsFixed(1)} %'`,
+       no `abs_current_pct` string needed), and **one status badge**:
+       - Tier 3 (red `critical`): `critical` (absence) / `over` (budget)
+       - Tier 2 (yellow `warning`): `warning` (absence) / `reserve` or `tight` (budget)
+       - Tier 1 (green `ok`): `ok`
+       - Pick the higher tier; on a tie, pick the budget status (since it
+         belongs to the selected term). Badge label uses `state_<status>` when
+         the absence status wins strictly, and `budget_<status>` (`budget_ok`,
+         `budget_tight`, `budget_reserve`, `budget_over`) when the budget
+         status wins or ties (or `state_<status>` when no budget row exists).
      - Bar: when a matching budget row exists for the active term, render the
        4-color stacked `_budgetBar`; otherwise render `w.Meter(valuePct: subject.currentPct)`.
-     - Detail lines:
-       - With budget: `Limit: X % · na konci ~P %` and
-         `N h volno · P h plánováno · B h rezerva`.
-       - Without budget: `Limit: X % · Bezpečně do: Y % · Zbývá hodin: Z`.
+     - Detail lines (reusing existing strings):
+       - With budget: line 1 = `budget_final` (*na konci ~{p} % (limit {limit:g} %)*),
+         line 2 = `budget_line` (*volno {free} h · naplánováno {planned} h · rezerva {buffer} h*).
+       - Without budget: `AbsencesController.detail(subject)` (`col_limit` ·
+         `safe_to` · `col_safe`).
 
 10. **Planned days** (`planned_title`) & **Calendar footer** (*Upravit kalendář*
     → Settings → Škola), unchanged from `PlannerView`.
