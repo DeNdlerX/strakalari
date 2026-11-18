@@ -1,10 +1,12 @@
 import 'dart:io';
 
-import 'package:app/controllers/app_state.dart';
+import 'package:app/controllers/app_state.dart' hide PlannerController;
 import 'package:app/features/absences/absences_controller.dart';
 import 'package:app/features/absences/absences_live.dart';
 import 'package:app/features/absences/absences_view.dart';
 import 'package:app/features/common/app_tokens.dart';
+import 'package:app/features/planner/planner_controller.dart';
+import 'package:app/features/planner/planner_view.dart';
 import 'package:app/features/settings/settings_view.dart';
 import 'package:app/l10n/strings.dart';
 import 'package:app/widgets/app_widgets.dart';
@@ -173,6 +175,122 @@ void main() {
     expect(s.get('subject_limits'), {'Matematika': 18.0});
     expect(find.byKey(const Key('abs:no_limits_banner')), findsNothing);
     expect(find.byKey(const Key('abs:limits_btn')), findsOneWidget);
+  });
+
+  testWidgets(
+      'F1b each subject renders once with badge precedence and Meter fallback without budget row',
+      (t) async {
+    t.view.physicalSize = const Size(1280, 1800);
+    t.view.devicePixelRatio = 1.0;
+    addTearDown(t.view.reset);
+
+    final tok = AppTokens.dark();
+    final abs = AbsencesController()
+      ..subjects = const [
+        // Absence critical beats budget ok -> state_critical.
+        SubjectAbsence(
+          name: 'Matematika',
+          currentPct: 27.5,
+          status: 'critical',
+          limitPct: 25.0,
+          effectivePlanLimit: 22.5,
+          effectivePlanSafe: 0,
+        ),
+        // Tie warning (absence warning vs budget tight) -> budget_tight wins.
+        SubjectAbsence(
+          name: 'Fyzika',
+          currentPct: 19.0,
+          status: 'warning',
+          limitPct: 25.0,
+          effectivePlanLimit: 22.5,
+          effectivePlanSafe: 2,
+        ),
+        // Subject without a budget row falls back to Meter + detail line.
+        SubjectAbsence(
+          name: 'Dějepis',
+          currentPct: 10.0,
+          status: 'ok',
+          limitPct: 25.0,
+          effectivePlanLimit: 22.5,
+          effectivePlanSafe: 4,
+        ),
+      ];
+    final term = TermPlanData(
+      key: 'sem1',
+      start: DateTime(2026, 9, 1),
+      close: DateTime(2027, 1, 25),
+      capacity: 4,
+      hasData: true,
+      active: true,
+      remainingDays: [DateTime(2026, 10, 5)],
+      budgets: const [
+        BudgetRowData(
+          name: '  matematika ',
+          missed: 5,
+          planned: 0,
+          free: 3,
+          buffer: 1,
+          schoolCap: 10,
+          schoolLeft: 5,
+          projectedPct: 24.0,
+          limitPct: 25.0,
+          status: 'ok',
+        ),
+        BudgetRowData(
+          name: 'Fyzika',
+          missed: 4,
+          planned: 1,
+          free: 1,
+          buffer: 1,
+          schoolCap: 8,
+          schoolLeft: 3,
+          projectedPct: 22.0,
+          limitPct: 25.0,
+          status: 'tight',
+        ),
+      ],
+    );
+    final plan = YearPlanData(
+      today: DateTime(2026, 9, 26),
+      firstDay: DateTime(2026, 9, 28),
+      terms: [term],
+      lessonsOn: (_) => 5,
+    );
+
+    await t.pumpWidget(MaterialApp(
+      theme: tok.toThemeData(),
+      home: Scaffold(
+        body: AbsencesView(
+          controller: abs,
+          tokens: tok,
+          planner: PlannerController({}),
+          plan: plan,
+          hasTimetable: true,
+        ),
+      ),
+    ));
+    await t.pump();
+
+    // 4 KPI cards in active term.
+    expect(find.byType(StatCard), findsNWidgets(4));
+
+    // Each subject appears exactly once (no duplicate budget/absence lists).
+    expect(find.text('Matematika'), findsOneWidget);
+    expect(find.text('Fyzika'), findsOneWidget);
+    expect(find.text('Dějepis'), findsOneWidget);
+
+    // Budget rows render projected % + budget lines + badge precedence.
+    expect(find.text('27.5 %'), findsOneWidget);
+    expect(find.text(Strings.get('state_critical')), findsOneWidget);
+    expect(find.text(Strings.get('budget_tight')), findsOneWidget);
+    expect(
+      find.text(Strings.format('budget_final', {'p': '24.0', 'limit': 25.0})),
+      findsOneWidget,
+    );
+
+    // Subject missing from term.budgets falls back to Meter (exactly 1 Meter).
+    expect(find.byType(Meter), findsOneWidget);
+    expect(find.text('10.0 %'), findsOneWidget);
   });
 }
 

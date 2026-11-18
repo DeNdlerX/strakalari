@@ -7,6 +7,8 @@ import 'package:app/features/today/today_controller.dart';
 import 'package:app/features/today/today_view.dart';
 import 'package:app/l10n/strings.dart';
 import 'package:app/shell/router.dart';
+import 'package:app/widgets/app_widgets.dart' show EmptyState, Meter, StatCard;
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -91,7 +93,17 @@ void main() {
     s.demoMode = false;
     s.onChanged();
     await tester.pump();
-    expect(find.text('Matematika'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('abs:subjects')),
+      300,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('abs:subjects')),
+        matching: find.text('Matematika'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('/planner redirects to /absences', (tester) async {
@@ -152,4 +164,193 @@ void main() {
     await tester.pump();
     expect(navigated, 'absences');
   });
+
+  group('F1b real AppState data cases 1-3', () {
+    testWidgets('case 1: no timetable shows no_data, planner_need_refresh, and need_credentials in demoMode',
+        (tester) async {
+      final s = AppState(
+        configData: {'tutorials_enabled': false},
+        data: const {},
+      )..demoMode = true;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _FixedAbsState(s)),
+          ],
+          child: MaterialApp(
+            theme: AppTokens.dark().toThemeData(),
+            home: Scaffold(
+              body: LiveAbsencesView(tokens: AppTokens.dark(), narrow: false),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.descendant(
+          of: find.byType(EmptyState),
+          matching: find.text(Strings.get('no_data')),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text(Strings.get('planner_need_refresh')), findsOneWidget);
+      expect(find.text(Strings.get('need_credentials')), findsOneWidget);
+    });
+
+    testWidgets(
+        'case 2: closed school year (term == null) shows 3 KPIs, Meter, term_nothing, footer, and unplannable planned entry',
+        (tester) async {
+      tester.view.physicalSize = const Size(1280, 1400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final closedNow = DateTime(2027, 6, 15, 10, 0);
+      await withClock(Clock.fixed(closedNow), () async {
+        final s = AppState(
+          configData: {
+            'tutorials_enabled': false,
+            'school_preset_id': 'custom',
+            'sem1_close': '25.01.2027',
+            'sem2_close': '26.04.2027',
+          },
+          data: {
+            'absence': {'Matematika': 12.0},
+            'timetable': {
+              '11.09.2026': [
+                {
+                  'subject': 'Matematika',
+                  'time': '1. 8:00 - 8:45',
+                  'absenceType': 'NoAbsent',
+                  'absencetext': '',
+                },
+              ],
+            },
+          },
+        );
+        s.demoMode = false;
+        expect(s.planCustomSkip('2027-06-20', '2027-06-20', null, null, 'Lékař'),
+            isTrue);
+        expect(s.yearPlan(closedNow).defaultTerm, isNull);
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              appStateProvider.overrideWith(() => _FixedAbsState(s)),
+            ],
+            child: MaterialApp(
+              theme: AppTokens.dark().toThemeData(),
+              home: Scaffold(
+                body: LiveAbsencesView(
+                  tokens: AppTokens.dark(),
+                  narrow: false,
+                  now: closedNow,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(find.byType(StatCard), findsNWidgets(3));
+        expect(find.byType(Meter), findsOneWidget);
+        expect(find.text(Strings.get('term_nothing')), findsOneWidget);
+        expect(find.text(Strings.get('cal_open_calendar')), findsOneWidget);
+        expect(
+          find.textContaining(Strings.get('planned_title').toUpperCase()),
+          findsOneWidget,
+        );
+        expect(find.textContaining('20.06.2027'), findsWidgets);
+
+        final unplan = find.text(Strings.get('unplan'));
+        expect(unplan, findsOneWidget);
+        await tester.tap(unplan);
+        await tester.pump();
+        expect(s.plannedSkips, isEmpty);
+      });
+    });
+
+    testWidgets(
+        'case 3: active term shows 4 KPIs, budget bars, projected %, and single subject card',
+        (tester) async {
+      tester.view.physicalSize = const Size(1280, 1800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final activeNow = DateTime(2026, 9, 10, 10, 0);
+      await withClock(Clock.fixed(activeNow), () async {
+        final s = AppState(
+          configData: {'tutorials_enabled': false},
+          data: {
+            'absence': {'Matematika': 8.0},
+            'timetable': {
+              '11.09.2026': [
+                {
+                  'subject': 'Matematika',
+                  'time': '1. 8:00 - 8:45',
+                  'absenceType': 'NoAbsent',
+                  'absencetext': '',
+                },
+              ],
+            },
+          },
+        );
+        s.demoMode = false;
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              appStateProvider.overrideWith(() => _FixedAbsState(s)),
+            ],
+            child: MaterialApp(
+              theme: AppTokens.dark().toThemeData(),
+              home: Scaffold(
+                body: LiveAbsencesView(
+                  tokens: AppTokens.dark(),
+                  narrow: false,
+                  now: activeNow,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(find.byType(StatCard), findsNWidgets(4));
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('abs:subjects')),
+            matching: find.text('Matematika'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('abs:subjects')),
+            matching: find.text('8.0 %'),
+          ),
+          findsOneWidget,
+        );
+        expect(find.text(Strings.get('abs_subjects_section').toUpperCase()),
+            findsOneWidget);
+        expect(find.byType(Meter), findsNothing);
+      });
+    });
+  });
+}
+
+class _FixedAbsState extends AppStateController {
+  final AppState fixed;
+  _FixedAbsState(this.fixed);
+
+  @override
+  AppState build() {
+    fixed.onChanged = () {
+      // ignore: avoid_self_assignment
+      state = state;
+    };
+    fixed.onProgress = fixed.onChanged;
+    return fixed;
+  }
 }

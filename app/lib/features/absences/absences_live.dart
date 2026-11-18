@@ -1,20 +1,17 @@
-// Live wiring of the Absences screen to the shared AppState.
-//
-// Port of the glue in strakalari/flet_ui/views/absences.py (`build`):
-// reads `subjectStates()` and `yearPlan().defaultTerm.budgetByCanon`
-// from `AppState` and passes them into `AbsencesView`.
+// Live wiring of the unified Absences & Planner screen to the shared AppState.
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../controllers/app_state.dart';
+import '../../controllers/app_state.dart' hide PlannerController;
 
 import '../common/app_tokens.dart';
+import '../planner/planner_live.dart';
 import '../settings/settings_live.dart';
 import 'absences_controller.dart';
 import 'absences_view.dart';
 
 /// Builds a snapshot [AbsencesController] from the shared [AppState].
-AbsencesController absencesControllerFor(AppState s) {
+AbsencesController absencesControllerFor(AppState s, [DateTime? now]) {
   final c = AbsencesController();
   c.demoMode = s.demoMode;
   c.updatedLabel = s.updatedLabel;
@@ -39,7 +36,8 @@ AbsencesController absencesControllerFor(AppState s) {
       ),
   ];
   try {
-    final term = s.yearPlan().defaultTerm;
+    final yp = s.yearPlan(now);
+    final term = yp.term(s.plannerTerm) ?? yp.defaultTerm;
     if (term != null && term.hasData) {
       c.budgets = {
         for (final e in term.budgetByCanon.entries)
@@ -56,26 +54,60 @@ AbsencesController absencesControllerFor(AppState s) {
   return c;
 }
 
-/// The Absences route: rebuilds whenever the shared state emits.
+/// The unified Absences route: rebuilds whenever the shared state emits.
 class LiveAbsencesView extends ConsumerWidget {
   final AppTokens? tokens;
   final bool narrow;
+  final DateTime? now;
 
   const LiveAbsencesView({
     super.key,
     this.tokens,
     this.narrow = false,
+    this.now,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStateProvider);
     final tok = tokens ?? s.appTokens;
+    final absController = absencesControllerFor(s, now);
+    final planner = plannerControllerFor(s);
+    final hasTimetable = s.timetable().isNotEmpty;
+    final planData =
+        hasTimetable && absController.subjects.isNotEmpty
+            ? yearPlanDataFor(s, now)
+            : null;
     s.tutorialOffer('absences');
     return AbsencesView(
-      controller: absencesControllerFor(s),
+      controller: absController,
       tokens: tok,
       narrow: narrow,
+      planner: planner,
+      plan: planData,
+      hasTimetable: hasTimetable,
+      calendarSummary: calendarSummaryFor(s),
+      stravaOn: s.stravaEnabled(),
+      impactOf: (entry) => convertPlannerImpacts(
+        s.planImpact(
+          '${entry['start_date'] ?? ''}',
+          '${entry['end_date'] ?? ''}',
+          entry['start_period'] as int?,
+          entry['end_period'] as int?,
+          now,
+        ),
+      ),
+      impactOfEntries: (entries) => convertPlannerImpacts(
+        s.planImpactEntries([
+          for (final e in entries) Map<String, Object?>.of(e),
+        ], now),
+      ),
+      freeDays: () => s.calendarData().dates,
+      onOpenCalendar: () {
+        s.setSettingsSection('calendar');
+        s.go('settings');
+      },
+      tutorialEvent: s.tutorialEvent,
     );
   }
 }

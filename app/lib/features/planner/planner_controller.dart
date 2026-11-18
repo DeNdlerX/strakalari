@@ -26,11 +26,13 @@ class PlannerController {
   final bool Function(String dayLabel)? isLunchOpen;
 
   String? plannerTerm;
+  bool showAllPicks = false;
   bool stravaEnabled = false;
 
   /// Optional live-state delegation hooks (wired by `planner_live.dart`).
   bool Function(int days)? setPlannerTargetHook;
   void Function(String? key)? selectPlannerTermHook;
+  void Function()? toggleShowAllPicksHook;
   bool Function(
     String startIso,
     String endIso,
@@ -93,6 +95,12 @@ class PlannerController {
   void selectPlannerTerm(String? key) {
     plannerTerm = key;
     selectPlannerTermHook?.call(key);
+    _emit();
+  }
+
+  void toggleShowAllPicks() {
+    showAllPicks = !showAllPicks;
+    toggleShowAllPicksHook?.call();
     _emit();
   }
 

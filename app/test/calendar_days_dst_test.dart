@@ -143,7 +143,7 @@ void main() {
       await withClock(Clock.fixed(DateTime(2026, 11, 12, 10)), () async {
         await t.pumpWidget(MaterialApp(
           home: Scaffold(
-            body: PlannerView(
+            body: PlannerSections(
               controller: PlannerController({
                 'long_absence_excuses': ['Omluvte absenci.'],
               }),

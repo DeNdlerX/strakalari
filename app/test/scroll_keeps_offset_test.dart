@@ -1,5 +1,5 @@
 import 'package:app/controllers/app_state.dart' hide PlannerController;
-import 'package:app/features/planner/planner_live.dart';
+import 'package:app/features/absences/absences_live.dart';
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -38,7 +38,7 @@ void main() {
           ],
           child: MaterialApp(
             home: Scaffold(
-              body: LivePlannerView(now: DateTime(2026, 9, 10, 10, 0)),
+              body: LiveAbsencesView(now: DateTime(2026, 9, 10, 10, 0)),
             ),
           ),
         ),

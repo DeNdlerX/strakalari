@@ -223,13 +223,104 @@ class PickerSlot {
   bool get pickable => taught && period != null && !past && !planned;
 }
 
-/// The planner screen: year overview, budgets, recommendations, planned.
-class PlannerView extends StatelessWidget {
+/// Listens to [PlannerController] changes and rebuilds [builder].
+class PlannerListener extends StatefulWidget {
+  final PlannerController? controller;
+  final WidgetBuilder builder;
+
+  const PlannerListener({
+    super.key,
+    required this.controller,
+    required this.builder,
+  });
+
+  @override
+  State<PlannerListener> createState() => _PlannerListenerState();
+}
+
+class _PlannerListenerState extends State<PlannerListener> {
+  void _onChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller?.addListener(_onChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant PlannerListener oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?.removeListener(_onChanged);
+      widget.controller?.addListener(_onChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller?.removeListener(_onChanged);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context);
+}
+
+/// 4-color stacked hour-budget bar shared by the unified Absence subject list.
+Widget plannerBudgetBar(Tokens tok, BudgetRowData b) {
+  final over = b.status == 'over';
+  final segments = <(double, Color)>[
+    (b.missed, over ? tok.red : tok.muted),
+    (b.planned, over ? tok.red : tok.accent),
+    (b.free < 0 ? 0.0 : b.free, tok.green),
+    (
+      (b.buffer < b.schoolLeft ? b.buffer : b.schoolLeft).clamp(0.0, 1e9),
+      tintColor(tok.yellow, 0.55),
+    ),
+  ];
+  var total = b.schoolCap > b.missed + b.planned
+      ? b.schoolCap
+      : b.missed + b.planned;
+  if (total < 0.1) total = 0.1;
+  final parts = <Widget>[];
+  var used = 0;
+  for (final (hours, color) in segments) {
+    final share = core.roundHalfEvenToInt(
+      (hours < 0 ? 0.0 : hours) / total * 1000,
+    );
+    if (share <= 0) continue;
+    used += share;
+    parts.add(
+      Expanded(
+        flex: share,
+        child: ColoredBox(color: color),
+      ),
+    );
+  }
+  if (used < 1000) {
+    parts.add(Expanded(flex: 1000 - used, child: const SizedBox.shrink()));
+  }
+  return Container(
+    height: 8,
+    clipBehavior: Clip.hardEdge,
+    decoration: BoxDecoration(
+      color: tok.overlay,
+      borderRadius: BorderRadius.circular(4),
+    ),
+    child: Row(children: parts),
+  );
+}
+
+/// Planner sections embedded inside [AbsencesView] (or standalone in tests):
+/// warnings, calendar strip, recommended days, optional unified subjects
+/// section, planned entries, and calendar footer.
+class PlannerSections extends StatelessWidget {
   final PlannerController controller;
   final YearPlanData? plan;
   final bool hasTimetable;
   final bool hasData;
-  final String updatedLabel;
   final String calendarSummary;
   final bool stravaOn;
   final bool narrow;
@@ -238,17 +329,17 @@ class PlannerView extends StatelessWidget {
   impactOfEntries;
   final List<PickerSlot> Function(DateTime day)? lessonsFor;
   final Set<DateTime> Function()? freeDays;
-  final VoidCallback? onOpenAbsences;
   final VoidCallback? onOpenCalendar;
   final void Function(String template)? tutorialEvent;
+  final Widget? subjectsSection;
+  final bool embedded;
 
-  const PlannerView({
+  const PlannerSections({
     super.key,
     required this.controller,
     this.plan,
     this.hasTimetable = false,
     this.hasData = false,
-    this.updatedLabel = '',
     this.calendarSummary = '',
     this.stravaOn = false,
     this.narrow = false,
@@ -256,33 +347,29 @@ class PlannerView extends StatelessWidget {
     this.impactOfEntries,
     this.lessonsFor,
     this.freeDays,
-    this.onOpenAbsences,
     this.onOpenCalendar,
     this.tutorialEvent,
+    this.subjectsSection,
+    this.embedded = false,
   });
 
   Tokens _tok(BuildContext context) => tokensOf(context);
 
   @override
   Widget build(BuildContext context) {
-    final tok = _tok(context);
-    final reserve = controller.planReserve();
-    final intro = Text(
-      '${Strings.get('planner_desc')} ${Strings.format('plan_buffer_note', {'reserve': reserve})}',
-      style: TextStyle(color: tok.muted, fontSize: tok.fsSmall),
+    return PlannerListener(
+      controller: controller,
+      builder: (context) => _buildBody(context),
     );
+  }
+
+  Widget _buildBody(BuildContext context) {
+    final tok = _tok(context);
+    final gap = narrow ? tok.gap * 0.75 : tok.gap;
     final blocks = <Widget>[];
     if (plan == null || !hasData) {
-      blocks
-        ..add(
-          w.HeaderRow(
-            heading: Strings.get('planner_title'),
-            updated: updatedLabel,
-            tok: tok,
-          ),
-        )
-        ..add(intro)
-        ..add(w.EmptyState(text: Strings.get('no_data'), tok: tok));
+      if (embedded) return const SizedBox.shrink();
+      blocks.add(w.EmptyState(text: Strings.get('no_data'), tok: tok));
       if (!hasTimetable) {
         blocks.add(_small(tok, Strings.get('planner_need_refresh')));
       } else {
@@ -292,71 +379,6 @@ class PlannerView extends StatelessWidget {
     }
     final p = plan!;
     final term = p.term(controller.plannerTerm) ?? p.defaultTerm;
-    final compactStyle = narrow
-        ? const ButtonStyle(
-            padding: WidgetStatePropertyAll(
-              EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            ),
-            minimumSize: WidgetStatePropertyAll(Size(0, 36)),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            visualDensity: VisualDensity.compact,
-          )
-        : null;
-    final compactTextStyle = narrow ? TextStyle(fontSize: tok.fsSmall) : null;
-    final customBtn = Tooltip(
-      message: Strings.get('plan_custom_hint'),
-      child: ElevatedButton.icon(
-        style: compactStyle,
-        onPressed: () => showCustomPlanDialog(context),
-        icon: Icon(Icons.edit_calendar_outlined, size: narrow ? 16 : 18),
-        label: Text(
-          Strings.get('plan_custom'),
-          style: compactTextStyle,
-          textAlign: narrow ? TextAlign.center : null,
-          maxLines: narrow ? 2 : null,
-        ),
-      ),
-    );
-    final seeAbsences = OutlinedButton(
-      style: compactStyle,
-      onPressed: onOpenAbsences,
-      child: Text(
-        Strings.get('see_absences'),
-        style: compactTextStyle,
-        textAlign: narrow ? TextAlign.center : null,
-        maxLines: narrow ? 2 : null,
-      ),
-    );
-    if (narrow) {
-      blocks
-        ..add(
-          w.HeaderRow(
-            heading: Strings.get('planner_title'),
-            updated: updatedLabel,
-            tok: tok,
-          ),
-        )
-        ..add(
-          Row(
-            spacing: 8,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(child: seeAbsences),
-              Expanded(child: customBtn),
-            ],
-          ),
-        );
-    } else {
-      blocks.add(
-        w.HeaderRow(
-          heading: Strings.get('planner_title'),
-          updated: updatedLabel,
-          tok: tok,
-          actions: [seeAbsences, customBtn],
-        ),
-      );
-    }
-    blocks.add(intro);
     if (term == null) {
       blocks.add(
         w.AppCard(
@@ -367,54 +389,6 @@ class PlannerView extends StatelessWidget {
         ),
       );
     } else {
-      if (p.terms.length >= 2) {
-        final termButtons = [
-          for (final other in p.terms)
-            () {
-              final label =
-                  '${_termTitle(other)} · ${Strings.format('term_until', {'d': w.czDay(other.close)})}';
-              void pick() => controller.selectPlannerTerm(other.key);
-              final child = Text(
-                label,
-                style: compactTextStyle,
-                textAlign: narrow ? TextAlign.center : null,
-                maxLines: narrow ? 2 : null,
-              );
-              return other.key == term.key
-                  ? ElevatedButton(
-                      style: compactStyle,
-                      onPressed: pick,
-                      child: child,
-                    )
-                  : OutlinedButton(
-                      style: compactStyle,
-                      onPressed: pick,
-                      child: child,
-                    );
-            }(),
-        ];
-        blocks.add(
-          narrow
-              ? Row(
-                  spacing: tok.gap / 2,
-                  children: [for (final b in termButtons) Expanded(child: b)],
-                )
-              : Wrap(
-                  spacing: tok.gap / 2,
-                  runSpacing: tok.gap / 2,
-                  children: termButtons,
-                ),
-        );
-      }
-      if (!term.hasData) {
-        blocks.add(
-          Text(
-            Strings.get('term_fresh'),
-            style: TextStyle(color: tok.accent, fontSize: tok.fsSmall),
-          ),
-        );
-      }
-      blocks.add(_statsRow(tok, term));
       blocks.addAll(_warnings(tok, term));
       blocks.add(w.SectionHeader(Strings.get('section_overview'), tok: tok));
       blocks.add(
@@ -424,10 +398,19 @@ class PlannerView extends StatelessWidget {
         ),
       );
       blocks.addAll(_recommended(context, tok, p, term));
-      blocks.addAll(_budgets(tok, term));
+      if (subjectsSection != null) {
+        blocks.add(subjectsSection!);
+      }
     }
     blocks.addAll(_planned(context, tok, p));
     blocks.addAll(_footer(tok));
+    if (embedded) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: gap,
+        children: blocks,
+      );
+    }
     return _scroll(tok, blocks);
   }
 
@@ -454,82 +437,8 @@ class PlannerView extends StatelessWidget {
         ),
       );
 
-  static String _termTitle(TermPlanData t) =>
-      t.key == 'sem1' ? Strings.get('term_sem1') : Strings.get('term_sem2');
-
   static String _dayLabel(DateTime d) =>
       '${w.dayName(d)} ${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
-
-  Widget _statsRow(Tokens tok, TermPlanData term) {
-    final remaining = term.remainingDays.toSet();
-    final plannedDays = term.plannedDates.intersection(remaining).length;
-    final plannedHours = term.planned.fold(0, (sum, r) => sum + r.costHours);
-    final tight = term.tightest;
-    var tightLabel = Strings.get('stat_tightest');
-    var tightValue = '—';
-    var tightKind = 'info';
-    if (tight != null) {
-      tightLabel =
-          '${Strings.get('stat_tightest')} · ${Strings.format('hours_free', {'n': hoursText(tight.free)})}';
-      tightValue = tight.name;
-      tightKind =
-          const {
-            'over': 'critical',
-            'reserve': 'warning',
-            'tight': 'warning',
-          }[tight.status] ??
-          'ok';
-    }
-    final cards = <Widget>[
-      w.StatCard(
-        label: Strings.get('stat_can_afford'),
-        value: daysText(term.capacity),
-        tok: tok,
-        kind: term.capacity > 0 ? 'ok' : 'warning',
-      ),
-      w.StatCard(
-        label: Strings.get('stat_planned'),
-        value: '${daysText(plannedDays)} · $plannedHours h',
-        tok: tok,
-        kind: plannedDays > 0 ? 'sent' : 'info',
-      ),
-      w.StatCard(
-        label: tightLabel,
-        value: tightValue,
-        tok: tok,
-        kind: tightKind,
-        singleLine: true,
-      ),
-      w.StatCard(
-        label: Strings.get('planner_horizon'),
-        value: '${term.remainingDays.length}',
-        tok: tok,
-      ),
-    ];
-    if (!narrow || cards.length <= 3) {
-      return IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          spacing: tok.gap,
-          children: cards,
-        ),
-      );
-    }
-    final half = tok.gap / 2;
-    return Column(
-      spacing: half,
-      children: [
-        for (var i = 0; i < cards.length; i += 2)
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              spacing: half,
-              children: cards.sublist(i, i + 2),
-            ),
-          ),
-      ],
-    );
-  }
 
   List<Widget> _warnings(Tokens tok, TermPlanData term) {
     final over = <String>{for (final r in term.planned) ...r.overNames}.toList()
@@ -976,7 +885,6 @@ class PlannerView extends StatelessWidget {
             ...actions,
           ],
         ),
-      _small(tok, Strings.get('plan_explain')),
     ];
     if (picks.isEmpty) {
       final already = term.plannedDates
@@ -999,7 +907,10 @@ class PlannerView extends StatelessWidget {
       );
       return out;
     }
-    for (var i = 0; i < picks.length; i++) {
+    final showToggle = picks.length > 3;
+    final visibleCount =
+        (!showToggle || controller.showAllPicks) ? picks.length : 3;
+    for (var i = 0; i < visibleCount; i++) {
       final option = picks[i];
       final lessonsToday = lessonsFor?.call(option.day) ?? const <PickerSlot>[];
       final taught = lessonsToday.where((s) => s.taught).toList();
@@ -1066,6 +977,21 @@ class PlannerView extends StatelessWidget {
         i == 0 ? TutorialAnchor(anchorKey: 'plan_first', child: card) : card,
       );
     }
+    if (showToggle) {
+      out.add(
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            onPressed: controller.toggleShowAllPicks,
+            child: Text(
+              controller.showAllPicks
+                  ? Strings.get('plan_show_less')
+                  : Strings.format('plan_show_all', {'n': picks.length}),
+            ),
+          ),
+        ),
+      );
+    }
     return out;
   }
 
@@ -1098,155 +1024,6 @@ class PlannerView extends StatelessWidget {
         },
       ),
     );
-  }
-
-  Widget _budgetBar(Tokens tok, BudgetRowData b) {
-    final over = b.status == 'over';
-    final segments = <(double, Color)>[
-      (b.missed, over ? tok.red : tok.muted),
-      (b.planned, over ? tok.red : tok.accent),
-      (b.free < 0 ? 0.0 : b.free, tok.green),
-      (
-        (b.buffer < b.schoolLeft ? b.buffer : b.schoolLeft).clamp(0.0, 1e9),
-        tintColor(tok.yellow, 0.55),
-      ),
-    ];
-    var total = b.schoolCap > b.missed + b.planned
-        ? b.schoolCap
-        : b.missed + b.planned;
-    if (total < 0.1) total = 0.1;
-    final parts = <Widget>[];
-    var used = 0;
-    for (final (hours, color) in segments) {
-      final share =
-          core.roundHalfEvenToInt((hours < 0 ? 0.0 : hours) / total * 1000);
-      if (share <= 0) continue;
-      used += share;
-      parts.add(
-        Expanded(
-          flex: share,
-          child: ColoredBox(color: color),
-        ),
-      );
-    }
-    if (used < 1000) {
-      parts.add(Expanded(flex: 1000 - used, child: const SizedBox.shrink()));
-    }
-    return Container(
-      height: 8,
-      clipBehavior: Clip.hardEdge,
-      decoration: BoxDecoration(
-        color: tok.overlay,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Row(children: parts),
-    );
-  }
-
-  List<Widget> _budgets(Tokens tok, TermPlanData term) {
-    if (term.budgets.isEmpty) return const [];
-    final rows = <Widget>[];
-    for (final b in term.budgets) {
-      final kind =
-          const {
-            'over': 'critical',
-            'reserve': 'warning',
-            'tight': 'warning',
-          }[b.status] ??
-          'ok';
-      final label = Strings.get(
-        const {
-              'over': 'budget_over',
-              'reserve': 'budget_reserve',
-              'tight': 'budget_tight',
-            }[b.status] ??
-            'budget_ok',
-      );
-      rows.add(
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          spacing: 3,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              spacing: 6,
-              children: [
-                Expanded(
-                  child: Text(
-                    b.name,
-                    style: TextStyle(
-                      color: tok.text,
-                      fontSize: tok.fsSmall,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                Text(
-                  Strings.format('budget_final', {
-                    'p': b.projectedPct.toStringAsFixed(1),
-                    'limit': b.limitPct,
-                  }),
-                  style: TextStyle(color: tok.faint, fontSize: tok.fsTiny),
-                ),
-                w.Badge(text: label, tok: tok, kind: kind),
-              ],
-            ),
-            _budgetBar(tok, b),
-            Text(
-              Strings.format('budget_line', {
-                'free': hoursText(b.free),
-                'planned': b.planned.toInt(),
-                'buffer': hoursText(b.buffer),
-              }),
-              style: TextStyle(color: tok.muted, fontSize: tok.fsTiny),
-            ),
-          ],
-        ),
-      );
-    }
-    Widget legend(Color color, String label) => Row(
-      mainAxisSize: MainAxisSize.min,
-      spacing: 4,
-      children: [
-        Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(color: tok.muted, fontSize: tok.fsTiny),
-        ),
-      ],
-    );
-    return [
-      w.SectionHeader(Strings.get('section_budgets'), tok: tok),
-      TutorialAnchor(
-        anchorKey: 'plan_budget',
-        child: w.AppCard(
-          tok: tok,
-          children: [
-            Wrap(
-              spacing: tok.gap,
-              runSpacing: 4,
-              children: [
-                legend(tok.muted, Strings.get('legend_missed')),
-                legend(tok.accent, Strings.get('legend_planned')),
-                legend(tok.green, Strings.get('legend_free_h')),
-                legend(
-                  tintColor(tok.yellow, 0.55),
-                  Strings.get('legend_buffer'),
-                ),
-              ],
-            ),
-            ...rows,
-          ],
-        ),
-      ),
-    ];
   }
 
   List<Widget> _planned(BuildContext context, Tokens tok, YearPlanData p) {
@@ -1529,7 +1306,7 @@ class _PlanDayDialogState extends State<PlanDayDialog> {
         const [];
     return AlertDialog(
       title: Text(
-        "${Strings.get('plan_skip')}: ${w.dayName(widget.day)} ${PlannerView._cz(widget.day)}",
+        "${Strings.get('plan_skip')}: ${w.dayName(widget.day)} ${PlannerSections._cz(widget.day)}",
       ),
       content: SingleChildScrollView(
         child: Column(
@@ -1656,7 +1433,7 @@ class _PlanAllDialogState extends State<_PlanAllDialog> {
     );
     final options = [for (final e in named) e.value];
     final labels = templateLabels(named);
-    final listing = widget.days.map((d) => PlannerView._cz(d)).join(', ');
+    final listing = widget.days.map((d) => PlannerSections._cz(d)).join(', ');
     return AlertDialog(
       title: Text(Strings.get('plan_all_title')),
       content: SingleChildScrollView(
@@ -2000,7 +1777,7 @@ class _CustomPlanDialogState extends State<CustomPlanDialog> {
       child: Column(
         children: [
           ListTile(
-            title: Text(PlannerView._cz(day)),
+            title: Text(PlannerSections._cz(day)),
             subtitle: Text(
               sel.isEmpty
                   ? Strings.get('pick_nothing')

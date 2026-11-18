@@ -9,7 +9,6 @@ import 'package:app/features/common/app_tokens.dart';
 import 'package:app/features/lunches/lunches_format.dart';
 import 'package:app/features/lunches/lunches_live.dart';
 import 'package:app/features/marks/marks_live.dart';
-import 'package:app/features/planner/planner_live.dart';
 import 'package:app/features/settings/settings_controller.dart';
 import 'package:app/features/settings/settings_live.dart';
 import 'package:app/features/timetable/timetable_controller.dart';
@@ -383,13 +382,27 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(LiveMarksView), findsOneWidget);
 
-      // 5. Planner
+      // 5. Merged Absences & Planner with timetable/plan data
+      final planState = container.read(appStateProvider);
+      planState.data = {
+        'absence': {'Matematika': 8.0},
+        'timetable': {
+          '11.09.2026': [
+            {'subject': 'Matematika', 'time': '1. 8:00 - 8:45'},
+          ],
+        },
+      };
+      planState.demoMode = false;
       await tester.pumpWidget(_app(
-        const LivePlannerView(narrow: false),
+        LiveAbsencesView(
+          tokens: tokens,
+          narrow: false,
+          now: DateTime(2026, 9, 10, 10, 0),
+        ),
         container: container,
       ));
       await tester.pumpAndSettle();
-      expect(find.byType(LivePlannerView), findsOneWidget);
+      expect(find.byType(LiveAbsencesView), findsOneWidget);
 
       // 6. Lunches
       await tester.pumpWidget(_app(

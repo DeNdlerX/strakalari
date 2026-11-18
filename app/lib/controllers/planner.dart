@@ -323,6 +323,11 @@ extension PlannerLogic on AppState {
     _emit();
   }
 
+  void togglePlannerShowAllPicks() {
+    plannerShowAllPicks = !plannerShowAllPicks;
+    _emit();
+  }
+
   /// The whole-year plan (budgets, candidate days, balanced picks),
   /// cached per input snapshot. Port of `year_plan()`.
   YearPlan yearPlan([DateTime? now]) {

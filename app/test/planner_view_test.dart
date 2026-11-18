@@ -1,4 +1,7 @@
+import 'package:app/features/absences/absences_controller.dart';
+import 'package:app/features/absences/absences_view.dart';
 import 'package:app/features/common/app_tokens.dart';
+import 'package:app/features/settings/settings_controller.dart';
 import 'package:app/l10n/strings.dart';
 import 'package:app/features/planner/plan_reserve.dart' show daysText;
 import 'package:app/widgets/app_widgets.dart' show StatCard;
@@ -21,6 +24,31 @@ PlannerController _controller([Map<String, dynamic>? config]) {
   );
   c.stravaEnabled = false;
   return c;
+}
+
+AbsencesController _absController({
+  List<SubjectAbsence>? subjects,
+  bool demoMode = false,
+  String updatedLabel = 'now',
+  bool hasSubjectLimits = true,
+  SettingsController Function()? createLimitsController,
+}) {
+  return AbsencesController()
+    ..demoMode = demoMode
+    ..updatedLabel = updatedLabel
+    ..hasSubjectLimits = hasSubjectLimits
+    ..createLimitsController = createLimitsController
+    ..subjects = subjects ??
+        const [
+          SubjectAbsence(
+            name: 'Matematika',
+            currentPct: 12.0,
+            status: 'ok',
+            limitPct: 25.0,
+            effectivePlanLimit: 22.5,
+            effectivePlanSafe: 4,
+          ),
+        ];
 }
 
 YearPlanData _plan([Set<DateTime> planned = const {}]) {
@@ -63,6 +91,48 @@ YearPlanData _plan([Set<DateTime> planned = const {}]) {
   );
 }
 
+YearPlanData _planWithPicks(List<DateTime> pickDays) {
+  final term = TermPlanData(
+    key: 'sem1',
+    start: DateTime(2026, 9, 1),
+    close: DateTime(2027, 1, 25),
+    capacity: pickDays.length,
+    hasData: true,
+    active: true,
+    remainingDays: pickDays,
+    budgets: const [
+      BudgetRowData(
+        name: 'Matematika',
+        missed: 2,
+        planned: 0,
+        free: 8,
+        buffer: 2,
+        schoolCap: 12,
+        schoolLeft: 10,
+        projectedPct: 16.0,
+        limitPct: 25.0,
+        status: 'ok',
+      ),
+    ],
+    recommended: [
+      for (final d in pickDays)
+        DayOptionData(
+          day: d,
+          lessonsCount: 5,
+          cost: 5,
+          budgetHours: 5,
+          lessons: const ['Matematika'],
+        ),
+    ],
+  );
+  return YearPlanData(
+    today: DateTime(2026, 9, 26),
+    firstDay: DateTime(2026, 9, 28),
+    terms: [term],
+    lessonsOn: (_) => 5,
+  );
+}
+
 void main() {
   group('planner_view', () {
     testWidgets('reserve dialog saves valid values only', (t) async {
@@ -85,11 +155,12 @@ void main() {
 
     testWidgets('empty state without timetable', (t) async {
       final c = _controller();
-      await t.pumpWidget(_app(PlannerView(
-        controller: c,
+      await t.pumpWidget(_app(AbsencesView(
+        controller: _absController(subjects: const [], updatedLabel: 'never'),
+        tokens: AppTokens.dark(),
+        planner: c,
         plan: null,
         hasTimetable: false,
-        updatedLabel: 'never',
       )));
       expect(find.text(Strings.get('no_data')), findsOneWidget);
       expect(find.text(Strings.get('planner_need_refresh')), findsOneWidget);
@@ -98,36 +169,49 @@ void main() {
     testWidgets('empty state asks for credentials when timetable exists',
         (t) async {
       final c = _controller();
-      await t.pumpWidget(_app(PlannerView(
-        controller: c,
+      await t.pumpWidget(_app(AbsencesView(
+        controller: _absController(subjects: const [], demoMode: true),
+        tokens: AppTokens.dark(),
+        planner: c,
         plan: null,
         hasTimetable: true,
       )));
       expect(find.text(Strings.get('need_credentials')), findsOneWidget);
+
+      await t.pumpWidget(_app(AbsencesView(
+        controller: _absController(subjects: const [], demoMode: false),
+        tokens: AppTokens.dark(),
+        planner: c,
+        plan: null,
+        hasTimetable: true,
+      )));
+      expect(find.text(Strings.get('no_data')), findsOneWidget);
+      expect(find.text(Strings.get('need_credentials')), findsNothing);
     });
 
     testWidgets('year plan renders stats, calendar, budgets, planned',
         (t) async {
       _setViewport(t);
       final c = _controller();
-      await t.pumpWidget(_app(PlannerView(
-        controller: c,
+      await t.pumpWidget(_app(AbsencesView(
+        controller: _absController(updatedLabel: 'now'),
+        tokens: AppTokens.dark(),
+        planner: c,
         plan: _plan(),
         hasTimetable: true,
-        hasData: true,
-        updatedLabel: 'now',
       )));
-      expect(find.text(Strings.get('planner_title')), findsWidgets);
-      expect(find.text(Strings.get('section_overview').toUpperCase()), findsOneWidget);
+      expect(find.text(Strings.get('absence_title')), findsWidgets);
+      expect(find.text(Strings.get('section_overview').toUpperCase()),
+          findsOneWidget);
       // Below the fold: ListView builds lazily, so scroll first.
       await t.scrollUntilVisible(
-          find.text(Strings.get('section_budgets').toUpperCase()), 300);
-      expect(find.text(Strings.get('section_budgets').toUpperCase()), findsOneWidget);
-      await t.scrollUntilVisible(
           find.textContaining(Strings.get('section_plan').toUpperCase()), 300);
-      expect(find.textContaining(Strings.get('section_plan').toUpperCase()), findsOneWidget);
-      // Intro carries the reserve note.
-      expect(find.textContaining('10'), findsWidgets);
+      expect(find.textContaining(Strings.get('section_plan').toUpperCase()),
+          findsOneWidget);
+      await t.scrollUntilVisible(
+          find.text(Strings.get('abs_subjects_section').toUpperCase()), 300);
+      expect(find.text(Strings.get('abs_subjects_section').toUpperCase()),
+          findsOneWidget);
     });
 
     // Checkpoint B BR-M4: planner.py `_target_dropdown`.
@@ -140,12 +224,12 @@ void main() {
         _setViewport(t);
         final maximum = 5 + planned.length;
         final c = _controller();
-        await t.pumpWidget(_app(PlannerView(
-          controller: c,
+        await t.pumpWidget(_app(AbsencesView(
+          controller: _absController(updatedLabel: 'now'),
+          tokens: AppTokens.dark(),
+          planner: c,
           plan: _plan(planned),
           hasTimetable: true,
-          hasData: true,
-          updatedLabel: 'now',
         )));
         await t.scrollUntilVisible(
             find.textContaining(Strings.get('section_plan').toUpperCase()), 300);
@@ -161,11 +245,12 @@ void main() {
     testWidgets('plan dialog confirm plans the day', (t) async {
       _setViewport(t);
       final c = _controller();
-      await t.pumpWidget(_app(PlannerView(
-        controller: c,
+      await t.pumpWidget(_app(AbsencesView(
+        controller: _absController(),
+        tokens: AppTokens.dark(),
+        planner: c,
         plan: _plan(),
         hasTimetable: true,
-        hasData: true,
       )));
       // Open the recommend-row plan button.
       await t.scrollUntilVisible(find.text(Strings.get('plan_skip')).first, 300);
@@ -181,11 +266,12 @@ void main() {
     testWidgets('plan dialog cancel closes without planning', (t) async {
       _setViewport(t);
       final c = _controller();
-      await t.pumpWidget(_app(PlannerView(
-        controller: c,
+      await t.pumpWidget(_app(AbsencesView(
+        controller: _absController(),
+        tokens: AppTokens.dark(),
+        planner: c,
         plan: _plan(),
         hasTimetable: true,
-        hasData: true,
       )));
       await t.scrollUntilVisible(find.text(Strings.get('plan_skip')).first, 300);
       await t.tap(find.text(Strings.get('plan_skip')).first);
@@ -198,11 +284,12 @@ void main() {
     testWidgets('plan-all dialog plans recommended days', (t) async {
       _setViewport(t);
       final c = _controller();
-      await t.pumpWidget(_app(PlannerView(
-        controller: c,
+      await t.pumpWidget(_app(AbsencesView(
+        controller: _absController(),
+        tokens: AppTokens.dark(),
+        planner: c,
         plan: _plan(),
         hasTimetable: true,
-        hasData: true,
       )));
       await t.scrollUntilVisible(find.textContaining(Strings.get('plan_all')).first, 300);
       await t.tap(find.textContaining(Strings.get('plan_all')).first);
@@ -219,11 +306,12 @@ void main() {
       _setViewport(t);
       final c = _controller();
       c.planSkip('2026-10-05', 'Omluvte absenci.');
-      await t.pumpWidget(_app(PlannerView(
-        controller: c,
+      await t.pumpWidget(_app(AbsencesView(
+        controller: _absController(),
+        tokens: AppTokens.dark(),
+        planner: c,
         plan: _plan(),
         hasTimetable: true,
-        hasData: true,
       )));
       final unplan = find.text(Strings.get('unplan'));
       await t.scrollUntilVisible(unplan, 300);
@@ -241,11 +329,12 @@ void main() {
         _setViewport(t);
         final c = _controller();
         c.planSkip('2026-10-05', 'Omluvte absenci.');
-        await t.pumpWidget(_app(PlannerView(
-          controller: c,
+        await t.pumpWidget(_app(AbsencesView(
+          controller: _absController(),
+          tokens: AppTokens.dark(),
+          planner: c,
           plan: _plan(),
           hasTimetable: true,
-          hasData: true,
         )));
         await t.scrollUntilVisible(find.text(Strings.get('day_passed')), 300);
         expect(find.text(Strings.get('day_passed')), findsOneWidget);
@@ -256,19 +345,20 @@ void main() {
     testWidgets('custom picker taps a day whole and confirms', (t) async {
       _setViewport(t);
       final c = _controller();
-      await t.pumpWidget(_app(PlannerView(
-        controller: c,
+      await t.pumpWidget(_app(AbsencesView(
+        controller: _absController(),
+        tokens: AppTokens.dark(),
+        planner: c,
         plan: _plan(),
         hasTimetable: true,
-        hasData: true,
         lessonsFor: (_) => const [
           PickerSlot(period: 1, subject: 'M'),
           PickerSlot(period: 2, subject: 'F'),
         ],
       )));
       final view =
-          t.widget<PlannerView>(find.byType(PlannerView));
-      final ctx = t.element(find.byType(PlannerView));
+          t.widget<PlannerSections>(find.byType(PlannerSections));
+      final ctx = t.element(find.byType(PlannerSections));
       view.showCustomPlanDialog(ctx);
       await t.pumpAndSettle();
       // The dialog title shadows the view button: take the dialog one.
@@ -308,6 +398,108 @@ void main() {
       expect(c.plannerTargetDays(), 7);
       c.setPlannerTarget(9999);
       expect(c.plannerTargetDays(), 200);
+    });
+
+    testWidgets('recommended list shows the next 3 days and opens to all',
+        (t) async {
+      t.view.physicalSize = const Size(1280, 2000);
+      t.view.devicePixelRatio = 1.0;
+      addTearDown(t.view.reset);
+
+      final fiveDays = [
+        DateTime(2026, 10, 5),
+        DateTime(2026, 10, 12),
+        DateTime(2026, 10, 19),
+        DateTime(2026, 10, 26),
+        DateTime(2026, 11, 2),
+      ];
+      var hookCalls = 0;
+      final c = _controller()
+        ..toggleShowAllPicksHook = () => hookCalls++;
+
+      await t.pumpWidget(_app(AbsencesView(
+        controller: _absController(),
+        tokens: AppTokens.dark(),
+        planner: c,
+        plan: _planWithPicks(fiveDays),
+        hasTimetable: true,
+      )));
+      await t.pump();
+
+      // Heading and Plan all cover all 5 picks; only 3 cards shown initially.
+      expect(
+        find.text('${Strings.get('section_plan')} (5)'.toUpperCase()),
+        findsOneWidget,
+      );
+      expect(find.text('${Strings.get('plan_all')} (5)'), findsOneWidget);
+      expect(find.text(Strings.get('plan_skip')), findsNWidgets(3));
+      expect(
+        find.text(Strings.format('plan_show_all', {'n': 5})),
+        findsOneWidget,
+      );
+      // plan_explain is dropped from the screen.
+      expect(
+        find.textContaining('rozložené rovnoměrně až do uzávěrky'),
+        findsNothing,
+      );
+      expect(
+        find.textContaining('spread evenly up to the closure'),
+        findsNothing,
+      );
+
+      // Plan all opens PlanAllDialog with all 5 days even when collapsed.
+      await t.tap(find.text('${Strings.get('plan_all')} (5)'));
+      await t.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.textContaining('02.11.2026'),
+        ),
+        findsOneWidget,
+      );
+      await t.tap(find.text(Strings.get('cancel')));
+      await t.pumpAndSettle();
+
+      // Tapping Show all (5) opens to all 5 cards through the controller hook.
+      await t.tap(find.text(Strings.format('plan_show_all', {'n': 5})));
+      await t.pumpAndSettle();
+      expect(hookCalls, 1);
+      expect(find.text(Strings.get('plan_skip')), findsNWidgets(5));
+      expect(find.text(Strings.get('plan_show_less')), findsOneWidget);
+      expect(
+        find.text('${Strings.get('section_plan')} (5)'.toUpperCase()),
+        findsOneWidget,
+      );
+
+      // Plan all still covers all 5 days when expanded.
+      await t.tap(find.text('${Strings.get('plan_all')} (5)'));
+      await t.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.textContaining('02.11.2026'),
+        ),
+        findsOneWidget,
+      );
+      await t.tap(find.text(Strings.get('cancel')));
+      await t.pumpAndSettle();
+
+      // With exactly 3 picks, all 3 cards show and there is no toggle button.
+      final c3 = _controller();
+      await t.pumpWidget(_app(AbsencesView(
+        controller: _absController(),
+        tokens: AppTokens.dark(),
+        planner: c3,
+        plan: _planWithPicks(fiveDays.take(3).toList()),
+        hasTimetable: true,
+      )));
+      await t.pump();
+      expect(find.text(Strings.get('plan_skip')), findsNWidgets(3));
+      expect(
+        find.text(Strings.format('plan_show_all', {'n': 3})),
+        findsNothing,
+      );
+      expect(find.text(Strings.get('plan_show_less')), findsNothing);
     });
 
     testWidgets(
@@ -370,17 +562,32 @@ void main() {
 
       final tok = AppTokens.dark();
       final c = _controller();
+      final abs = _absController(
+        updatedLabel: '15.11.2026 18:56:41 · před 4 min',
+        hasSubjectLimits: false,
+        createLimitsController: () => SettingsController({}),
+        subjects: const [
+          SubjectAbsence(
+            name: 'Tělesná výchova',
+            currentPct: 20.0,
+            status: 'warning',
+            limitPct: 25.0,
+            effectivePlanLimit: 22.5,
+            effectivePlanSafe: 4,
+          ),
+        ],
+      );
       await t.pumpWidget(MaterialApp(
         theme: tok.toThemeData(),
         home: Scaffold(
           body: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            child: PlannerView(
-              controller: c,
+            child: AbsencesView(
+              controller: abs,
+              tokens: tok,
+              planner: c,
               plan: yearPlan,
               hasTimetable: true,
-              hasData: true,
-              updatedLabel: '15.11.2026 18:56:41 · před 4 min',
               narrow: true,
             ),
           ),
@@ -388,19 +595,23 @@ void main() {
       ));
       await t.pump();
 
+      expect(find.byKey(const Key('abs:no_limits_banner')), findsOneWidget);
+
       final cards = find.byType(StatCard);
       expect(cards, findsNWidgets(4));
       expect(t.getSize(cards.at(0)).height, t.getSize(cards.at(1)).height);
       expect(t.getSize(cards.at(2)).height, t.getSize(cards.at(3)).height);
 
-      // Action buttons and semester buttons each sit side-by-side on one row.
-      final seeAbsRect = t.getRect(find.text(Strings.get('see_absences')));
+      // Action buttons (Limits + Plan custom) and semester buttons each sit
+      // side-by-side on one row.
+      final limitsRect = t.getRect(find.byKey(const Key('abs:limits_btn')));
       final customRect = t.getRect(find.text(Strings.get('plan_custom')));
-      expect((seeAbsRect.center.dy - customRect.center.dy).abs(), lessThan(4));
+      expect((limitsRect.center.dy - customRect.center.dy).abs(), lessThan(4));
 
       final sem1Btn = find.textContaining('1. pololetí');
       final sem2Btn = find.textContaining('2. pololetí');
-      expect((t.getCenter(sem1Btn).dy - t.getCenter(sem2Btn).dy).abs(), lessThan(4));
+      expect((t.getCenter(sem1Btn).dy - t.getCenter(sem2Btn).dy).abs(),
+          lessThan(4));
 
       // Calendar section header fits inside the ~708 px phone body even with
       // wide Ahem test metrics (in real Roboto, multiple week rows fit too).
@@ -420,7 +631,7 @@ void _setViewport(WidgetTester t) {
   addTearDown(t.view.resetDevicePixelRatio);
 }
 
-Widget _app(Widget child) {
-  SnackLog.clear();
-  return MaterialApp(home: Scaffold(body: child));
-}
+Widget _app(Widget child) => MaterialApp(
+      theme: AppTokens.dark().toThemeData(),
+      home: Scaffold(body: child),
+    );

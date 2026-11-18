@@ -220,6 +220,7 @@ class AppState {
 
   // -- planner UI memory ------------------------------------------------------
   String? plannerTerm;
+  bool plannerShowAllPicks = false;
 
   // -- tutorial progress -------------------------------------------------------
   Set<String> tutorialsDoneSession = {};
