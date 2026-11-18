@@ -278,6 +278,19 @@ Top-to-bottom structure on `/absences`:
 - **Updated keys** (`cs` & `en`): `tut_intro_nav_body`,
   `tut_intro_nav_body_narrow`, `tut_abs_stats_body`, `tut_abs_subject_body`.
 
+### README & screenshots (`README.md`, `README.en.md`, `tools/parity/capture_screens.dart`)
+- Update `README.md:51–60` and `README.en.md:51–60` in short, non-technical
+  prose: fold the *Plánovač* / *Planner* bullet into **Absence** / **Absences**
+  (tracking limits + planning days off evenly up to the closure), and replace
+  the `docs/images/planner-cs.png` / `planner-en.png` image cell with
+  `docs/images/absences-cs.png` / `absences-en.png`.
+- Remove `'planner'` from `screens` in `tools/parity/capture_screens.dart:68`,
+  capture the updated `absences-cs.png` / `absences-en.png` from synthetic demo
+  data into `docs/images/`, and remove the obsolete `docs/images/planner-cs.png`
+  and `docs/images/planner-en.png`.
+- Leave `docs/SCHOOL_PRESETS.md:5` ("the Planner") unchanged (names the
+  feature, not the tab).
+
 ---
 
 ## 7. Tests to update and add
