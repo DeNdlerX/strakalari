@@ -83,10 +83,12 @@ Top-to-bottom structure on `/absences`:
      and `need_credentials` when `c.demoMode` is true.
    - **Case 2 — subjects present, `term == null`** (the school year's absences
      are closed, or `plan == null` in a standalone `AbsencesView` test): show
-     the 3 Absence KPI cards, unified subject cards with `w.Meter` fallback
-     and today's detail line, and a muted card with `term_nothing` when
-     `plan != null && term == null` (or `planner_need_refresh` if `plan ==
-     null && !hasTimetable`).
+     the 3 Absence KPI cards and unified subject cards with `w.Meter` fallback
+     and today's detail line. When `plan != null && term == null`, also show
+     the muted `term_nothing` card, then *Naplánované* (`planned_title`, with
+     unplan so upcoming planned days that can cancel lunches stay visible and
+     removable) and the calendar footer, as `PlannerView` does today (or
+     `planner_need_refresh` if `plan == null && !hasTimetable`).
    - **Case 3 — active term (`plan != null && term != null`)**: show the full
      screen (term selector, `term_fresh` if `!term.hasData`, 4 KPI cards +
      summary line, warnings, calendar strip, recommended days, unified
@@ -163,8 +165,10 @@ Top-to-bottom structure on `/absences`:
        - Without budget: `AbsencesController.detail(subject)` (`col_limit` ·
          `safe_to` · `col_safe`).
 
-10. **Planned days** (`planned_title`) & **Calendar footer** (*Upravit kalendář*
-    → Settings → Škola), unchanged from `PlannerView`.
+10. **Planned days** (`planned_title`, with unplan) & **Calendar footer**
+    (*Upravit kalendář* → Settings → Škola), shown whenever `plan != null`
+    (both Case 2 when `term == null` and Case 3 when `term != null`),
+    unchanged from `PlannerView`.
 
 ### Why this order?
 - KPIs are immediately visible at the top.
@@ -377,9 +381,11 @@ go up):
   - each subject renders **once** (no duplicate subject cards);
   - real `AppState` data cases 1–3: (1) no timetable → `no_data` +
     `planner_need_refresh` (`need_credentials` in demo mode), (2) closed year
-    (`term == null`) → 3 Absence KPI cards, `Meter` fallback, and
-    `term_nothing`, (3) active term → 4 KPI cards, budget bars + projected %,
-    and `Meter` fallback for any subject without a budget row;
+    (`plan != null && term == null`) → 3 Absence KPI cards, `Meter` fallback,
+    `term_nothing`, calendar footer, and a planned entry shown under
+    `planned_title` that can be unplanned when `term == null`, (3) active term
+    → 4 KPI cards, budget bars + projected %, and `Meter` fallback for any
+    subject without a budget row;
   - `/planner` redirects to `/absences`;
   - *Dnes* planner suggestion navigates to `/absences`.
 - `app/test/strings_table_parity_test.dart`: update line 115 (`plan_buffer_note`)
