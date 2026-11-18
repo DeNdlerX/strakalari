@@ -133,8 +133,8 @@ Top-to-bottom structure on `/absences`:
    - Section header: *Předměty a rozpočet* / *Subjects & budget*, plus the
      4-color legend (*Zameškáno*, *Plánováno*, *Volno*, *Rezerva*) when
      budgets are present.
-   - Wrapped in `TutorialAnchor(anchorKey: 'plan_budget')` around the list (and
-     `TutorialAnchor(anchorKey: 'abs_first')` on the first subject card).
+   - First subject card is wrapped in `TutorialAnchor(anchorKey: 'abs_first')`
+     (`plan_budget` anchor is dropped alongside the `plan_budget` tour step).
    - **Match key:** each `SubjectAbsence` matches its `BudgetRowData` in the
      selected term by `AbsencesController.canonSubject(name)` (`TermPlanData.budgets`
      carries only `name`, and both lists derive from `subjectStates()`, so no
@@ -216,19 +216,33 @@ Top-to-bottom structure on `/absences`:
 ## 6. Tutorials & strings (PLAN rule 5 & rule 7)
 
 ### Tutorials (`app/lib/tutorial/tours.dart`, `app/lib/controllers/tutorial.dart`)
-- Remove the separate `'planner'` tour; fold its steps into the `'absences'`
-  tour (route `'absences'`):
+- Remove the separate `'planner'` tour (including its `plan_budget` step,
+  `TutorialAnchor(anchorKey: 'plan_budget')`, and `tut_plan_budget_title` /
+  `tut_plan_budget_body` strings; `abs_first` sits on the unified subject
+  list). Fold `plan_strip` and `plan_pick` into `'absences'` (route
+  `'absences'`):
   1. `abs_stats` (`anchor: 'abs_stats'`) — covers the unified overview KPIs.
   2. `plan_strip` (`anchor: 'plan_strip'`) — calendar strip (skipped via
-     `tutorialStepSkipped` when no planner calendar is on screen).
+     `tutorialStepSkipped` when no planner calendar is active).
   3. `plan_pick` (`anchor: 'plan_first'`, `until: 'day_planned'`) — recommended
      day card (skipped when `recommended` is empty).
-  4. `abs_subject` (`anchor: 'abs_first'`) — unified subject + budget card and
-     the *Limity* button.
-- `AbsencesView` exposes `bool hasPlannerData` / `bool hasRecommendedDays` (or
-  `AppState` checks `timetable().isNotEmpty` / current `YearPlan` state) for
-  `tutorialStepSkipped`, matching how `marks_scale` is skipped when a preset sets
-  the scale.
+  4. `abs_subject` (`anchor: 'abs_first'`) — unified subject + budget card,
+     reserve note, and *Limity* button.
+- **When the tour is offered:** `LiveAbsencesView` calls
+  `s.tutorialOffer('absences')` only once the active term has `hasData` and
+  non-empty `recommended` days (matching `planner_live.dart:214` today), so
+  `plan_pick` is never skipped on first offer and a new user sees the complete
+  4-step tour.
+- **Existing users:** keep the tour id `'absences'` with **no `tutorials_done`
+  migration** (anyone wanting to see the combined steps again can replay
+  tutorials in *Nastavení → Vzhled → Přehrát návody znovu*).
+- **Skip flags (`AppState`):** `tutorialStepSkipped(TourStep step)` in
+  `app/lib/controllers/tutorial.dart` reads directly from `AppState` (not from
+  `AbsencesView`), matching `hasPresetScale` for `marks_scale`:
+  - `plan_strip`: skipped when `timetable().isEmpty` or the active term
+    (`yearPlan().term(plannerTerm) ?? yearPlan().defaultTerm`) is `null`.
+  - `plan_pick`: skipped when `plan_strip` is skipped or the active term's
+    `recommended` is empty.
 - Update `intro` tour strings:
   - `tut_intro_nav_body` (cs/en): drop "Plánovač hledá volné dny" / "the
     Planner finds days off" and note that *Absence* handles both absences and
@@ -236,8 +250,9 @@ Top-to-bottom structure on `/absences`:
   - `tut_intro_nav_body_narrow` (cs/en): remove *Plánovač* / *the Planner* from
     the list under *Více* / *More*.
 - Update `tut_abs_stats_body` and `tut_abs_subject_body` (cs/en) so they
-  accurately describe the unified KPIs and combined subject/budget cards +
-  *Limity* button.
+  accurately describe the unified KPIs, combined subject/budget cards, the
+  illness/surprise reserve (moved from the dropped planner intro paragraph),
+  and the *Limity* button.
 
 ### Strings (`app/lib/l10n/app_cs.arb`, `app_en.arb`, `strings.dart`)
 - Add new cs/en strings for:
