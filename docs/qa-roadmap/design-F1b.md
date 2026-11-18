@@ -147,14 +147,29 @@ Top-to-bottom structure on `/absences`:
 ## 4. Code organization & keeping planner dialogs/tests clean
 
 - Keep `PlannerController`, `plan_reserve.dart`, `YearPlanData` /
-  `TermPlanData` / `DayOptionData` / `PlannedRowData` / `BudgetRowData`, and
+  `TermPlanData` / `DayOptionData` / `PlannedRowData` / `BudgetRowData` /
+  `TightestData` / `ImpactRowData` / `ImpactTerm` / `PickerSlot`, and
   `plannerControllerFor` / `yearPlanDataFor`.
-- Extract the reusable planner sections and dialogs (`showPlanDayDialog`,
-  `showPlanAllDialog`, `showCustomPlanDialog`, `showPlannedDialog`, calendar
-  strip, target dropdown, budget bar) so `AbsencesView` renders them directly
-  without duplicating dialog/picker logic.
-- Remove `LivePlannerView` (replaced by `LiveAbsencesView`) and keep unit/dialog
-  tests working against `AbsencesView` / `PlannerController` (see §7).
+- **Remove `LivePlannerView` and `PlannerView`.** In
+  `app/lib/features/planner/planner_view.dart`, replace `PlannerView` with
+  `PlannerSections` keeping the same constructor arguments `PlannerView` takes
+  today (minus `onOpenAbsences` and `updatedLabel`), plus optional
+  `Widget? subjectsSection` and `bool embedded = false`, and retaining the
+  dialogs and helpers (`PlanDayDialog`, `PlanAllDialog`, `PlannedDialog`,
+  `CustomPlanDialog`, `showPlanDayDialog`, `showPlanAllDialog`,
+  `showPlannedDialog`, `showCustomPlanDialog`).
+- `AbsencesView` accepts optional planner arguments (`PlannerController? planner`,
+  `YearPlanData? plan`, `bool hasTimetable`, `String calendarSummary`,
+  `bool stravaOn`, `impactOf`, `impactOfEntries`, `lessonsFor`, `freeDays`,
+  `onOpenCalendar`, `tutorialEvent`), renders a single `ListView` on both
+  narrow and wide viewports, and embeds `PlannerSections(..., embedded: true,
+  subjectsSection: ...)` so warnings, calendar strip, recommended days, the
+  unified subject/budget list, planned days, and the calendar footer render in
+  one scroll container without duplicating dialog/picker logic.
+- `LiveAbsencesView` gains an optional `DateTime? now` parameter (forwarded to
+  `yearPlanDataFor(s, now)`) so tests can pin the clock, and builds both
+  `absencesControllerFor(s)` and `plannerControllerFor(s)` +
+  `yearPlanDataFor(s, now)`.
 
 ---
 
@@ -212,33 +227,67 @@ Top-to-bottom structure on `/absences`:
 
 ## 7. Tests to update and add
 
-Because `'planner'` leaves the shell rail and *More*, existing route/nav/tour
-tests need direct adaptation (no test logic weakened or deleted):
+Because `'planner'` leaves the shell rail and *More*, existing route/nav/view
+tests are adapted directly (every test stays; baseline is core 809 passed /
+2 skipped and app 722 passed / 1 skipped after R3b M1, and the count may only
+go up):
+
 - `app/test/widget_test.dart`: remove `'planner'` from the rail route loop
   (7 shell routes + `'more'`).
-- `app/test/more_page_test.dart`: update `MorePage` expected entry counts
-  (3 desktop, 4 Android) and replace `'planner'` with `'absences'` in
-  `openMoreRouteStandardScreenNavigatesDirectly`.
-- `app/test/mobile_narrow_shell_test.dart`: update `everyScreenBuilds`,
-  `backStepsUp`, and `P9c` loops to expect `/absences` instead of `/planner`
-  (plus a check that `/planner` redirects to `/absences`).
+- `app/test/more_page_test.dart`: `desktopOrNonAndroidHasFourEntries` expects
+  3 entries (`['absences', 'activity', 'settings']`);
+  `androidInsertsAlarmEntryBeforeSettings` expects 4 entries (`['absences',
+  'activity', 'alarm', 'settings']`, alarm at index 2);
+  `openMoreRouteStandardScreenNavigatesDirectly` opens `'absences'` and
+  expects `'absences'`.
+- `app/test/mobile_narrow_shell_test.dart`: `everyScreenBuilds` checks the 8
+  live routes (without `'/planner'`) plus verifies `'/planner'` redirects to
+  `'/absences'`; `backStepsUp` replaces `'planner'` cases with `'absences'`
+  (`narrow: true` → `'more'`, `narrow: false` → `'today'`,
+  `wizardShown: true` → `null`); `P9c` checks `['/absences', '/activity',
+  '/settings']`.
 - `app/test/android_back_test.dart`: `backOnAMoreScreenGoesToMore` navigates
-  to `/absences` (instead of `/planner`) from `/more`.
-- `app/test/tutorial_test.dart`: remove `'planner'` from `routes` set and add
-  step-skipping tests for the merged `'absences'` tour (with and without
-  timetable/recommended days).
-- `app/test/planner_view_test.dart`, `app/test/scroll_keeps_offset_test.dart`,
-  `app/test/ui_views_test.dart`, `app/test/absences_view_test.dart`,
-  `app/test/absences_live_test.dart`: update view tests from `PlannerView` /
-  `LivePlannerView` to the unified `AbsencesView` / `LiveAbsencesView` (keeping
-  all assertions on KPIs, calendar strip, recommended days, target dropdown,
-  planned entries, P9a equal heights, P9b calendar on first screen at 390 px,
-  and scroll preservation), and add tests proving:
+  to `'/absences'` (instead of `'/planner'`) from `'/more'` and keeps the
+  `'/more'` → `'/today'` Back assertions.
+- `app/test/tutorial_test.dart`: remove `'planner'` from `routes` in
+  `strings exist for every step` and add step-skipping tests for the merged
+  `'absences'` tour (skips `plan_strip` and `plan_pick` without timetable,
+  skips `plan_pick` when `recommended` is empty, offers tour only when
+  `recommended` is non-empty).
+- `app/test/ui_views_test.dart`: replace step 5 (`LivePlannerView`) with a
+  `LiveAbsencesView(narrow: false)` check with timetable/plan data so every
+  shell screen remains covered.
+- `app/test/scroll_keeps_offset_test.dart`: replace `LivePlannerView(now: ...)`
+  with `LiveAbsencesView(now: DateTime(2026, 9, 10, 10, 0))` and keep the
+  100 px scroll-preservation assertion.
+- `app/test/planner_live_test.dart`: update `LivePlannerView renders budgets
+  and recommendations` to pump `LiveAbsencesView(now: DateTime(2026, 9, 10, 10, 0))`
+  and assert subject, budget, and recommended-day rendering.
+- `app/test/calendar_days_dst_test.dart`: update the `wide` and `phone`
+  calendar-strip tests to pump `PlannerSections` (instead of `PlannerView`)
+  with the same arguments and keep all DST cell/outline/alignment assertions;
+  `custom dialog` stays unchanged.
+- `app/test/planner_view_test.dart`: update the 11 widget tests (`empty state`,
+  `year plan renders...`, `target dropdown...` ×2, `plan dialog confirm`,
+  `plan dialog cancel`, `plan-all dialog`, `planned entry can be unplanned`,
+  `planned entry in the past`, `custom picker`, and `P9a+b`) to pump
+  `AbsencesView` (asserting `absence_title` instead of `planner_title`,
+  `abs_subjects_section` instead of `section_budgets`, and `Limity` +
+  `plan_custom` instead of `see_absences` on P9b); `controller plan/unplan
+  with failing persist rolls back` stays unchanged.
+- `app/test/absences_view_test.dart` and `app/test/absences_live_test.dart`:
+  keep all existing tests (`P9a` 3-card row without plan, `F1` limits editor,
+  `LiveAbsencesView` snapshot/rebuild) and add tests proving:
   - each subject renders **once** (no duplicate subject cards);
-  - both current % + budget bar + projected % show together when planner data
-    exists, and `Meter` fallback shows when no timetable exists;
+  - both current % + budget bar + projected % show together when budget data
+    exists, and `Meter` fallback shows when no budget/term exists;
   - `/planner` redirects to `/absences`;
   - *Dnes* planner suggestion navigates to `/absences`.
+- `app/test/strings_table_parity_test.dart`: update line 115 (`plan_buffer_note`)
+  to test another `{name:g}` key (`abs_no_limits` with `pct`) when
+  `plan_buffer_note` is removed, keeping `planner_title` and `>= 790` checks.
+- (`app/test/planner_dialog_test.dart`, `app/test/plan_picker_test.dart`, and
+  `app/test/planner_reserve_test.dart` stay unchanged.)
 
 Visual evidence to capture before/after implementation: `absences` screen at
 390 px and 1280 px in cs and en, light and dark (plus `MorePage` at 390 px).
