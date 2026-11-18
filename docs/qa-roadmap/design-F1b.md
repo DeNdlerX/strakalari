@@ -40,6 +40,18 @@ this single screen.
   (if passed directly to `AppScaffold` in tests/deep links) so any stale
   deep link or bookmark lands cleanly on `/absences` instead of falling back to
   `/today`.
+- **Remaining `planner` route entries to remove** (nothing else in these
+  places changes):
+  - `app/lib/shell/scaffold.dart:163` (`_railIcons['planner']`) and `:180–181`
+    (`_titleFor` `case 'planner'` returning `nav_planner`): remove the
+    `planner` entry in both.
+  - `app/lib/shell/router.dart:83` (`PlaceholderScreen` `titles['planner']`,
+    `nav_planner`), `:120–121` (`case 'planner': return LivePlannerView(...)`),
+    and its import at `:18` (`../features/planner/planner_live.dart`): remove
+    the `planner` entry and the unused import.
+  - `app/lib/features/today/today_controller.dart:149` (doc comment naming
+    `"planner"`): remove the `"planner"` entry (update comment to
+    `state.go("settings"|"absences")`).
 - **`TodayView`** (`app/lib/features/today/today_view.dart:128`): the planner
   suggestion card's action calls `c.onGo('absences')` with label
   `Strings.get('nav_absences')`.
