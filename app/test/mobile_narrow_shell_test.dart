@@ -160,7 +160,7 @@ void main() {
     });
 
     // test_mobile.py::test_every_screen_builds: phone page 390x844, no
-    // `report_error` for any of the 9 routes.
+    // `report_error` for any of the 8 live routes; `/planner` redirects to `/absences`.
     testWidgets('everyScreenBuilds', (tester) async {
       setViewport(tester, 390, 844);
       for (final route in [
@@ -168,7 +168,6 @@ void main() {
         '/timetable',
         '/absences',
         '/marks',
-        '/planner',
         '/lunches',
         '/activity',
         '/settings',
@@ -186,6 +185,20 @@ void main() {
         expect(state.lastError, isNull, reason: route);
         container.dispose();
       }
+      // Compatibility redirect: `/planner` lands on `/absences`.
+      expect(routeForLocation('/planner'), 'absences');
+      final container = ProviderContainer();
+      final state = container.read(appStateProvider);
+      state.wizardDismissed = true;
+      await tester.pumpWidget(
+        buildShellHarness(container: container, initialLocation: '/planner'),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(state.lastError, isNull);
+      final router = GoRouter.of(tester.element(find.byType(NavigationBar)));
+      expect(router.routerDelegate.currentConfiguration.uri.path, '/absences');
+      container.dispose();
     });
 
     test('backStepsUp', () {
@@ -194,7 +207,7 @@ void main() {
         isNull,
       );
       expect(
-        backTarget(route: 'planner', narrow: true, wizardShown: false),
+        backTarget(route: 'absences', narrow: true, wizardShown: false),
         'more',
       );
       expect(
@@ -206,11 +219,11 @@ void main() {
         'today',
       );
       expect(
-        backTarget(route: 'planner', narrow: false, wizardShown: false),
+        backTarget(route: 'absences', narrow: false, wizardShown: false),
         'today',
       );
       expect(
-        backTarget(route: 'planner', narrow: true, wizardShown: true),
+        backTarget(route: 'absences', narrow: true, wizardShown: true),
         isNull,
       );
     });
@@ -268,7 +281,7 @@ void main() {
       expect(find.byKey(const ValueKey('topbar_back_btn')), findsNothing);
 
       // Visiting each More subpage on phone shows top-bar back button -> /more.
-      for (final loc in ['/absences', '/planner', '/activity', '/settings']) {
+      for (final loc in ['/absences', '/activity', '/settings']) {
         final c = ProviderContainer();
         addTearDown(c.dispose);
         final s = c.read(appStateProvider);

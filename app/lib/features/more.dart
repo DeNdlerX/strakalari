@@ -24,7 +24,6 @@ class MorePage extends StatelessWidget {
 
   static const List<(String, IconData, String)> entries = [
     ('absences', Icons.event_busy_outlined, 'nav_absences'),
-    ('planner', Icons.event_note_outlined, 'nav_planner'),
     ('activity', Icons.history_outlined, 'nav_activity'),
     ('settings', Icons.settings_outlined, 'nav_settings'),
   ];
@@ -36,7 +35,7 @@ class MorePage extends StatelessWidget {
     if (!isAndroid) return entries;
     // Android inserts the alarm shortcut before settings.
     return [
-      ...entries.take(3),
+      ...entries.take(entries.length - 1),
       alarmEntry,
       entries.last,
     ];

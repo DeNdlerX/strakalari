@@ -61,7 +61,6 @@ void main() {
       'timetable',
       'absences',
       'marks',
-      'planner',
       'lunches',
       'activity',
       'settings',

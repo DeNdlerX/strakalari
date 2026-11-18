@@ -15,7 +15,6 @@ import '../features/activity/activity_live.dart';
 import '../features/lunches/lunches_live.dart';
 import '../features/marks/marks_live.dart';
 import '../features/more.dart';
-import '../features/planner/planner_live.dart';
 import '../features/settings/settings_live.dart';
 import '../features/timetable/timetable_live.dart';
 import '../features/today/today_live.dart';
@@ -23,13 +22,12 @@ import '../features/wizard/wizard_live.dart';
 import '../l10n/strings.dart';
 import '../shell/scaffold.dart';
 
-/// The eight rail routes, in rail order. Port of `ROUTES`.
+/// The seven rail routes, in rail order.
 const List<String> shellRoutes = [
   'today',
   'timetable',
   'absences',
   'marks',
-  'planner',
   'lunches',
   'activity',
   'settings',
@@ -48,7 +46,6 @@ const List<String> narrowTabs = [
 /// `MORE_ROUTES`.
 const List<String> moreRoutes = [
   'absences',
-  'planner',
   'activity',
   'settings',
 ];
@@ -61,6 +58,7 @@ String routeForLocation(String location) {
   final seg = location.split('?').first.split('#').first;
   final name = seg.startsWith('/') ? seg.substring(1) : seg;
   if (name.isEmpty) return 'today';
+  if (name == 'planner') return 'absences';
   if (shellRoutes.contains(name)) return name;
   if (name == 'more' || name == 'wizard') return name;
   return 'today';
@@ -80,7 +78,6 @@ class PlaceholderScreen extends StatelessWidget {
       'timetable': Strings.get('nav_timetable'),
       'absences': Strings.get('nav_absences'),
       'marks': Strings.get('nav_marks'),
-      'planner': Strings.get('nav_planner'),
       'lunches': Strings.get('nav_lunches'),
       'activity': Strings.get('nav_activity'),
       'settings': Strings.get('nav_settings'),
@@ -117,8 +114,6 @@ GoRoute _route(String name) => GoRoute(
               return LiveAbsencesView(tokens: tokens, narrow: narrow);
             case 'marks':
               return LiveMarksView(tokens: tokens, narrow: narrow);
-            case 'planner':
-              return LivePlannerView(narrow: narrow);
             case 'lunches':
               return LiveLunchesView(narrow: narrow);
             case 'activity':
@@ -151,6 +146,10 @@ GoRouter buildRouter({String initialLocation = '/today'}) => GoRouter(
         GoRoute(
           path: '/',
           redirect: (context, state) => '/today',
+        ),
+        GoRoute(
+          path: '/planner',
+          redirect: (_, _) => '/absences',
         ),
         GoRoute(
           path: '/wizard',

@@ -160,7 +160,6 @@ const Map<String, IconData> _railIcons = {
   'timetable': Icons.calendar_month_outlined,
   'absences': Icons.event_busy_outlined,
   'marks': Icons.grade_outlined,
-  'planner': Icons.event_note_outlined,
   'lunches': Icons.restaurant_outlined,
   'activity': Icons.history_outlined,
   'settings': Icons.settings_outlined,
@@ -177,8 +176,6 @@ String _titleFor(String route) {
       return Strings.get('nav_absences');
     case 'marks':
       return Strings.get('nav_marks');
-    case 'planner':
-      return Strings.get('nav_planner');
     case 'lunches':
       return Strings.get('nav_lunches');
     case 'activity':

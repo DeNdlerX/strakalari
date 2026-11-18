@@ -13,10 +13,9 @@ void main() {
     test('desktopOrNonAndroidHasFourEntries', () {
       final page = MorePage(onOpen: (_) {}, isAndroid: false);
       final items = page.visibleEntries();
-      expect(items.length, 4);
+      expect(items.length, 3);
       expect(items.map((e) => e.$1).toList(), [
         'absences',
-        'planner',
         'activity',
         'settings',
       ]);
@@ -25,17 +24,16 @@ void main() {
     test('androidInsertsAlarmEntryBeforeSettings', () {
       final page = MorePage(onOpen: (_) {}, isAndroid: true);
       final items = page.visibleEntries();
-      expect(items.length, 5);
+      expect(items.length, 4);
       expect(items.map((e) => e.$1).toList(), [
         'absences',
-        'planner',
         'activity',
         'alarm',
         'settings',
       ]);
-      expect(items[3].$1, 'alarm');
-      expect(items[3].$2, Icons.alarm);
-      expect(items[3].$3, 'sec_alarm');
+      expect(items[2].$1, 'alarm');
+      expect(items[2].$2, Icons.alarm);
+      expect(items[2].$3, 'sec_alarm');
     });
 
     test('openMoreRouteAlarmOpensSettingsInAlarmSection', () {
@@ -66,9 +64,9 @@ void main() {
       final state = AppState();
 
       String? target;
-      openMoreRoute(state, 'planner', (route) => target = route);
+      openMoreRoute(state, 'absences', (route) => target = route);
 
-      expect(target, 'planner');
+      expect(target, 'absences');
     });
   });
 

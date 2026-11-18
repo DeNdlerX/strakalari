@@ -112,7 +112,7 @@ void main() {
 
   testWidgets('backOnAMoreScreenGoesToMore', (tester) async {
     final (router, _) = await start(tester, '/more');
-    router.go('/planner');
+    router.go('/absences');
     await tester.pumpAndSettle();
     expect(handlesBack.last, isTrue);
     await pressBack(tester);
