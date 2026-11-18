@@ -342,10 +342,14 @@ go up):
   `year plan renders...`, `target dropdown...` ×2, `plan dialog confirm`,
   `plan dialog cancel`, `plan-all dialog`, `planned entry can be unplanned`,
   `planned entry in the past`, `custom picker`, and `P9a+b`) to pump
-  `AbsencesView` (asserting `absence_title` instead of `planner_title`,
-  `abs_subjects_section` instead of `section_budgets`, and `Limity` +
-  `plan_custom` instead of `see_absences` on P9b); `controller plan/unplan
-  with failing persist rolls back` stays unchanged.
+  `AbsencesView` (asserting `absence_title` instead of `planner_title`, and
+  `abs_subjects_section` instead of `section_budgets`). On `P9a+b`, use a new
+  student's setup (`hasSubjectLimits: false`, `createLimitsController != null`
+  so the *no limits* banner is showing, plus warnings card, 2 terms, and 4
+  KPI cards), assert *Limity* (`abs_limits_btn`) and *Naplánovat vlastní
+  volno* (`plan_custom`) sit on one row, and assert *Přehled pololetí*
+  (`section_overview`) still ends above `708 px` at `390 × 844`.
+  `controller plan/unplan with failing persist rolls back` stays unchanged.
 - `app/test/absences_view_test.dart` and `app/test/absences_live_test.dart`:
   keep all existing tests (`P9a` 3-card row without plan, `F1` limits editor,
   `LiveAbsencesView` snapshot/rebuild) and add tests proving:
@@ -365,3 +369,38 @@ go up):
 
 Visual evidence to capture before/after implementation: `absences` screen at
 390 px and 1280 px in cs and en, light and dark (plus `MorePage` at 390 px).
+
+---
+
+## 8. Done when (and commit plan)
+
+Implement as a series of green `F1b:` commits (each with its own tests, never
+breaking the tree): e.g. (1) navigation/routes/`MorePage`/`TodayView`,
+(2) `PlannerSections` + unified `AbsencesView` + `LiveAbsencesView` + adapted
+view tests, (3) tutorials + strings + `README` + `docs/images/absences-*.png`.
+
+**Done when:**
+- Only one unified `/absences` screen exists; *Plánovač* is gone from the
+  desktop rail (7 items) and phone *More* (3 items: `absences, activity,
+  settings`; 4 on Android: `absences, activity, alarm, settings`).
+- `/planner` redirects to `/absences`, and the *Dnes* planner tip opens
+  `/absences`.
+- Every subject appears **once** with combined current % + stacked budget bar
+  + projected % (or `Meter` fallback when no budget/term exists); real data
+  cases 1–3 behave as specified in §3 item 3.
+- All planner dialogs (`PlanDayDialog`, `PlanAllDialog`, `PlannedDialog`,
+  `CustomPlanDialog`), `PlannerController`, and lunch-cancel staging stay
+  intact.
+- `P9a+b` passes on the merged `AbsencesView` with a new student's setup (no
+  limits banner + warnings + 2 terms + 4 KPIs, `Limity` + `plan_custom` on one
+  row, *Přehled pololetí* ending above `708 px` at `390 × 844`).
+- Merged `absences` tour, updated `intro` tour strings, and exact added/removed
+  strings in `app_cs.arb`, `app_en.arb`, and `strings.dart` (verified unused
+  by grep) are in place.
+- `README.md`, `README.en.md`, `tools/parity/capture_screens.dart`, and
+  `docs/images/absences-*.png` are updated (and `planner-*.png` removed).
+- Visual evidence captured in `build/qa-evidence/F1b/` (`absences` at
+  390 px and 1280 px, cs and en, light and dark, plus `MorePage` at 390 px).
+- `dart analyze` + `dart test` in `packages/strakalari_core` (`809 passed, 2
+  skipped`) and `flutter analyze` + `flutter test` in `app` (`>= 722 passed,
+  1 skipped`, count not lower) are all green.
