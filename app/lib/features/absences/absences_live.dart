@@ -78,7 +78,12 @@ class LiveAbsencesView extends ConsumerWidget {
         hasTimetable && absController.subjects.isNotEmpty
             ? yearPlanDataFor(s, now)
             : null;
-    s.tutorialOffer('absences');
+    if (planData != null) {
+      final term = planData.term(planner.plannerTerm) ?? planData.defaultTerm;
+      if (term != null && term.hasData && term.recommended.isNotEmpty) {
+        s.tutorialOffer('absences');
+      }
+    }
     return AbsencesView(
       controller: absController,
       tokens: tok,

@@ -102,8 +102,32 @@ extension TutorialLogic on AppState {
     tutorialOffer(firstTourId);
   }
 
-  bool tutorialStepSkipped(TourStep step) =>
-      step.key == 'marks_scale' && hasPresetScale;
+  bool _plannerStripUnavailable() {
+    if (timetable().isEmpty) return true;
+    try {
+      final yp = yearPlan();
+      final term = yp.term(plannerTerm) ?? yp.defaultTerm;
+      return term == null;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  bool tutorialStepSkipped(TourStep step) {
+    if (step.key == 'marks_scale') return hasPresetScale;
+    if (step.key == 'plan_strip') return _plannerStripUnavailable();
+    if (step.key == 'plan_pick') {
+      if (_plannerStripUnavailable()) return true;
+      try {
+        final yp = yearPlan();
+        final term = yp.term(plannerTerm) ?? yp.defaultTerm;
+        return term == null || term.recommended.isEmpty;
+      } catch (_) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   List<int> tutorialVisibleStepIndices(Tour tour) => [
         for (var i = 0; i < tour.steps.length; i++)

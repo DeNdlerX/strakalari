@@ -48,16 +48,15 @@ Chcete dostávat i testovací verze dřív než ostatní? V *Nastavení → Diag
 
 - **Dnes** — čekající omluvenky a omluvení jedním klikem: pozdní příchody, odchody, jednotlivé hodiny i celé dny (obrázek nahoře).
 - **Rozvrh** — týden jako v Bakalářích, s absencemi, suplováním, odpadlými hodinami a učebnami.
-- **Absence** — procenta za každý předmět a varování dřív, než se dostanete přes limit.
+- **Absence** — procenta za každý předmět, varování před limitem a plánování, kolik dní si ještě můžete dovolit vynechat rovnoměrně až do uzávěrky.
 - **Známky** — vážené průměry, odhad vysvědčení, výpočet „co potřebuju z příští písemky“ a zkoušení „co kdyby“.
-- **Plánovač** — kolik dní si ještě můžete dovolit vynechat a kdy, aby to vyšlo rovnoměrně až do uzávěrky.
 - **Obědy** — týdenní jídelníček, objednání všeho najednou, blacklist ingrediencí a volitelně doporučení od AI.
 
 | Rozvrh | Známky |
 |---|---|
 | <img src="docs/images/timetable-cs.png" alt="Rozvrh"> | <img src="docs/images/marks-cs.png" alt="Známky"> |
-| **Plánovač** (s interaktivním návodem) | **Obědy** |
-| <img src="docs/images/planner-cs.png" alt="Plánovač s interaktivním návodem"> | <img src="docs/images/lunches-cs.png" alt="Obědy"> |
+| **Absence** | **Obědy** |
+| <img src="docs/images/absences-cs.png" alt="Absence"> | <img src="docs/images/lunches-cs.png" alt="Obědy"> |
 
 <sub>Snímky obrazovky jsou z vymyšlených ukázkových dat.</sub>
 

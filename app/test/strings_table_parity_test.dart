@@ -112,11 +112,11 @@ void main() {
       final saved = Strings.lang;
       addTearDown(() => Strings.lang = saved);
       Strings.lang = 'cs';
-      expect(Strings.format('plan_buffer_note', {'reserve': 10.0}),
+      expect(Strings.format('abs_no_limits', {'pct': 10.0}),
           contains(' 10 %'));
-      expect(Strings.format('plan_buffer_note', {'reserve': 12.5}),
+      expect(Strings.format('abs_no_limits', {'pct': 12.5}),
           contains('12.5'));
-      expect(() => Strings.format('plan_buffer_note', {'reserve': 'x'}),
+      expect(() => Strings.format('abs_no_limits', {'pct': 'x'}),
           throwsFormatException);
     });
 

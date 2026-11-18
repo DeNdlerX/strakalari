@@ -1,11 +1,13 @@
 import 'dart:io';
 
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import 'package:app/controllers/app_state.dart';
+import 'package:app/features/absences/absences_live.dart';
 import 'package:app/features/common/app_tokens.dart';
 import 'package:app/features/marks/marks_live.dart';
 import 'package:app/features/today/today_controller.dart';
@@ -346,7 +348,6 @@ void main() {
       'timetable',
       'absences',
       'marks',
-      'planner',
       'lunches',
       'activity',
       'settings'
@@ -554,5 +555,126 @@ void main() {
     Strings.lang = 'en';
     expect(Strings.get('tut_settings_intro_body'), contains('School'));
     expect(Strings.get('tut_settings_intro_body_narrow'), contains('School'));
+  });
+
+  group('F1b merged absences tour', () {
+    test('planner tour is removed and absences tour has 4 merged steps', () {
+      expect(tours.containsKey('planner'), isFalse);
+      expect(
+        tours['absences']!.steps.map((s) => s.key).toList(),
+        ['abs_stats', 'plan_strip', 'plan_pick', 'abs_subject'],
+      );
+    });
+
+    test('skips plan_strip and plan_pick without timetable', () {
+      final st = freshState();
+      finishIntro(st);
+      expect(st.tutorialVisibleStepIndices(tours['absences']!), [0, 3]);
+    });
+
+    Map<String, List<Map<String, Object?>>> fullWeekTimetable() => {
+          for (final d in ['07.09.2026', '08.09.2026', '09.09.2026', '10.09.2026', '11.09.2026'])
+            d: [
+              {'subject': 'Matematika', 'time': '1. 8:00 - 8:45'},
+            ],
+        };
+
+    test('skips plan_pick when active term has no recommended days', () {
+      withClock(Clock.fixed(DateTime(2027, 1, 20, 10, 0)), () {
+        final st = freshState({
+          'absence_critical_pct': 5.0,
+          'sem1_close': '25.01.2027',
+        });
+        finishIntro(st);
+        st.data = {
+          // Over limit right before closure -> 0 recommended days while term is active.
+          'absence': {'Matematika': 95.0},
+          'timetable': fullWeekTimetable(),
+        };
+        st.demoMode = false;
+        final term = st.yearPlan().defaultTerm;
+        expect(term, isNotNull);
+        expect(term!.recommended, isEmpty);
+        expect(st.tutorialVisibleStepIndices(tours['absences']!), [0, 1, 3]);
+      });
+    });
+
+    testWidgets('LiveAbsencesView offers tour only when recommended days exist',
+        (tester) async {
+      final blockedNow = DateTime(2027, 1, 20, 10, 0);
+      await withClock(Clock.fixed(blockedNow), () async {
+        // Without recommended days (over limit): tour is NOT offered.
+        final blocked = freshState({
+          'absence_critical_pct': 5.0,
+          'sem1_close': '25.01.2027',
+        });
+        finishIntro(blocked);
+        blocked.data = {
+          'absence': {'Matematika': 95.0},
+          'timetable': fullWeekTimetable(),
+        };
+        blocked.demoMode = false;
+        await tester.pumpWidget(ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => FixedAppStateController(blocked)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LiveAbsencesView(tokens: AppTokens.dark(), now: blockedNow),
+            ),
+          ),
+        ));
+        await tester.pump();
+        expect(blocked.tutorialCurrent(), isNull);
+      });
+
+      final readyNow = DateTime(2026, 9, 10, 10, 0);
+      await withClock(Clock.fixed(readyNow), () async {
+        // With recommended days: tour IS offered with all 4 steps visible.
+        final ready = freshState();
+        finishIntro(ready);
+        ready.data = {
+          'absence': {'Matematika': 2.0},
+          'timetable': {
+            '11.09.2026': [
+              {'subject': 'Matematika', 'time': '1. 8:00 - 8:45'},
+            ],
+          },
+        };
+        ready.demoMode = false;
+        await tester.pumpWidget(ProviderScope(
+          key: const ValueKey('ready'),
+          overrides: [
+            appStateProvider.overrideWith(() => FixedAppStateController(ready)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LiveAbsencesView(tokens: AppTokens.dark(), now: readyNow),
+            ),
+          ),
+        ));
+        await tester.pump();
+        expect(ready.tutorial, ('absences', 0));
+        expect(ready.tutorialVisibleStepIndices(tours['absences']!),
+            [0, 1, 2, 3]);
+      });
+    });
+
+    test('tut_abs_subject_body mentions reserve and tut_plan_strip_body mentions even spread in cs and en', () {
+      final prev = Strings.lang;
+      addTearDown(() => Strings.lang = prev);
+
+      Strings.lang = 'cs';
+      expect(Strings.get('tut_abs_subject_body').toLowerCase(),
+          contains('rezerv'));
+      expect(Strings.get('tut_plan_strip_body').toLowerCase(),
+          contains('rovnoměrně'));
+
+      Strings.lang = 'en';
+      expect(Strings.get('tut_abs_subject_body').toLowerCase(),
+          contains('reserve'));
+      expect(Strings.get('tut_plan_strip_body').toLowerCase(),
+          contains('evenly'));
+    });
   });
 }
