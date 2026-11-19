@@ -82,7 +82,8 @@ Lives in `app/lib/features/planner/planner_view.dart` (widget `PlannerPage`) and
    - **Bounds & month navigation:**
      - `firstMonth`: September of the active school year (`DateTime(schoolYear, 9, 1)` where `schoolYear = term.start.month >= 8 ? term.start.year : term.start.year - 1`, matching `schoolYearTerms`).
      - `lastMonth`: `DateTime(term.close.year, term.close.month, 1)`.
-     - Initial month: `clamp(todayMonth, termStartMonth, lastMonth)` — opens on the current month when inside the active term, or on the selected term's opening month (e.g. February when switching to *2. pololetí* during November) while still allowing `‹` back to September so past months remain viewable. Switching terms re-clamps the month to `[termStartMonth, lastMonth]` and clears any pending multi-day selection.
+     - Initial month: `clamp(todayMonth, termStartMonth, lastMonth)` — opens on the current month when inside the active term, or on the selected term's opening month (e.g. February when switching to *2. pololetí* during November) while still allowing `‹` back to September so earlier months remain viewable. Switching terms changes the summary line, warnings card, recommended days list, and re-clamps the calendar month to `[termStartMonth, lastMonth]` (clearing any pending multi-day selection).
+     - **Per-cell term lookup (other term's days):** each cell takes its look (`option`, `recommended`, `overDays`, `plannedDates`) and tap options from the term in `plan.terms` that owns `day` (`!day.isBefore(_d(t.start)) && !day.isAfter(_d(t.close))`), rather than blanking days outside the selected term. Thus, with *2. pololetí* selected in November, paging back to December–January still colours and lets the student tap every future school day of *1. pololetí* up to the selected `term.close`.
      - Month header row: `IconButton(key: Key('cal:prev_month'), icon: chevron_left, tooltip: pick_prev_month)` | **`<Localized Month> <Year>`** (from existing `pick_months`) | `IconButton(key: Key('cal:next_month'), icon: chevron_right, tooltip: pick_next_month)`.
    - **Multi-select toggle above the grid:**
      - Compact row with `Switch` / `FilterChip` (`Key('plan:multi_toggle')`, label `plan_select_multi` = *Vybrat více dní* / *Select multiple days*). Off by default; turning it off clears `selectedDays`.
@@ -91,7 +92,7 @@ Lives in `app/lib/features/planner/planner_view.dart` (widget `PlannerPage`) and
      - Each in-month weekday cell has `ValueKey('day_${day.year}_${day.month}_${day.day}')`, height `44 px` (compact enough that at `390 × 844`, the entire header + summary + month calendar header + grid starts well inside the first screen — `calHeader` / month header well above `708 px`).
      - **Visual states & interactivity:**
        - Outside current month: empty `SizedBox(height: 44)`.
-       - After `term.close` or before `firstMonth`: muted faint text, `onTap: null`.
+       - After `term.close` or before the earliest term's `start` (or `firstMonth`): muted faint text, `onTap: null`.
        - **Free day / holiday** (`p.holidays.contains(day)`): `tok.border` outline, faint number, `onTap: null`.
        - **Past day** (`day.isBefore(_d(p.firstDay))`, OR `day == _d(p.today)` with zero pickable M2 slots when `lessonsFor` is provided):
          - If planned (`isPlanned`): dimmed `tintColor(over ? tok.red : tok.accent, 0.45)` — keeps its *passed* look, `onTap: null`.
@@ -103,7 +104,7 @@ Lives in `app/lib/features/planner/planner_view.dart` (widget `PlannerPage`) and
          - **Partly planned** (some slots are `planned`, and at least one slot is still `pickable`): keeps the planned colour (`over ? tok.red : tok.accent`) plus a small `4 px` `tok.accentText` dot marker at bottom-centre of the cell (and tooltip notes both planned and remaining pickable lessons) so the student can tell at a glance that more lessons are still open.
            - Single-day mode: tap opens the upgraded `PlanDayDialog` with *Vybrat jen některé hodiny* **already expanded**, showing planned lessons locked (`onChanged: null`) with `cal_tip_planned`, the remaining pickable lessons checked and pickable, and the whole-day toggle meaning **"all that are still pickable"** (`all pickable` ↔ `none`). Confirm builds entries via `core.entriesForSelection(picked: {day: sel}, lessons: {day: taughtPeriods}, template: tpl, cancelLunch: cancelLunch)` — splitting around already-planned lessons (e.g. period 3 planned → `(null, 2)` and `(4, null)`) — and saves them atomically with one `controller.planEntries(entries)`. The dialog also lists the day's existing planned entries (`controller.plannedEntriesFor(_iso(day))`) with a *Zrušit plán* button per entry so the student can either add more lessons or remove an existing partial plan from the same tap (existing entries also stay removable in *Naplánované* below the calendar).
            - Multi-day mode: tapping toggles the day in `selectedDays` and adds **only its still-pickable lessons** (`pickablePeriods`, matching today's `CustomPlanDialog._tapDay`); on confirm in `PlanMultiDialog`, `core.entriesForSelection` passes `taughtPeriods` as `lessons[day]` so the new entries split cleanly around already-planned lessons.
-       - **Selectable future school day** (not free, not past, not planned, within `[term.start, term.close]` and either has pickable M2 slots or `lessonsFor == null` with `option != null`):
+       - **Selectable future school day** (not free, not past, not planned, within `[earliestTermStart, term.close]` and either has pickable M2 slots or `lessonsFor == null` with `cellTerm.options[day] != null`):
          - Colors kept: `tok.green` (recommended), `tintColor(tok.red, 0.35)` (blocked / doesn't fit), `tok.overlay` (normal school day).
          - Today keeps its 2 px `tok.text` border.
          - In **multi-day mode**, a selected day renders with an accent fill/border (`tok.accent` with `tok.accentText` number and small check indicator) so selection is unmistakable.
@@ -343,6 +344,7 @@ Baseline after R3b fixes: core **809 passed / 2 skipped**, app **739 passed / 1 
 3. **Plánovač calendar & partly planned days (`app/test/plan_picker_test.dart`, `app/test/ui_views_test.dart`):**
    - `alreadyPlannedLessonsSplitInMultiMode`: multi-day selection on a partly planned day (period 3 planned) splits into `(null, 2)` and `(4, null)`.
    - `showPlannedDialog` on a day with two partial entries lists both entries with independent *Zrušit plán* buttons and removes only the chosen one.
+   - S2 cross-term calendar test (`absences_live_test.dart` / `planner_view_test.dart`): with `sem2` selected during November, tap `cal:prev_month` back to December and tap a future school day in `sem1` → `PlanDayDialog` opens.
    - `ui_views_test.dart` adds `LivePlannerPage` and `LiveLimitsPage` build smoke checks alongside `LiveAbsencesView`.
 4. **O4 Full-page Limits (`app/test/limits_page_test.dart`):**
    - Global fields (`absence_critical_pct`, `absence_warn_pct`, `absence_plan_reserve_pct`) load and persist via `SettingsController`; changing default updates displayed defaults on subject rows.
