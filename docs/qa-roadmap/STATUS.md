@@ -1,7 +1,7 @@
 # QA & roadmap status
 
-Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3b/3c (R3b fixes done + design-F1c.md written, awaiting re-review ⛔)
-Next step: Wait for the reviewer to re-review the R3b fixes (M1, M2, S1–S3) and review `docs/qa-roadmap/design-F1c.md` (O3–O6). Do not write O3–O6 code before `design-F1c.md` passes.
+Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3c (F1b passed; `design-F1c.md` failed R3c, fixing the note ⛔)
+Next step: Fix every finding in `reviews/phase-3c-design.md` (blockers first), one commit per finding, then stop for re-review.
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -104,6 +104,8 @@ Next step: Wait for the reviewer to re-review the R3b fixes (M1, M2, S1–S3) an
 
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
 ### Phase 3b re-review & Phase 3c design note (`M1`, `M2`, `S1`–`S3` fixed + `design-F1c.md`, checkpoint ⛔)
+- **2026-11-19 R3c design review: FAIL**: the F1c note is mostly right about the code, and the early setup refresh is safe (automation paused in memory only, nothing automatic can run). But the one calendar would stop a partly planned day from getting more lessons, which the old custom dialog allowed (M1), and the test list promises checks that can't hold and leaves tests without a fate (M2). Nine should-fix: Absence silently showing the other term (S1), the other term's days in the calendar (S2), a single planned lesson cancelling the lunch by default (S3), a typed limit lost on Android Back (S4), *Dokončit* during the early refresh skipping the full first refresh (S5), the early run starting again on every *Pokračovat* and a test that proves the pause (S6), month slots computed per cell (S7), phone evidence (S8), strings (S9). No O3–O6 code until the note passes. See [`reviews/phase-3c-design.md`](reviews/phase-3c-design.md).
+- **2026-11-19 R3b code re-review: PASS**: M1, M2, S1, S2 and S3 are fixed as asked, and each code fix's test fails without it. F1b is done. Baseline for F1c code: core 809 passed / 2 skipped, app 739 passed / 1 skipped. See [`reviews/phase-3b.md`](reviews/phase-3b.md#re-review-2026-11-19).
 - **What was done (2026-11-19):**
   - **M1 (`7329221`):** Added `crossAxisAlignment: CrossAxisAlignment.stretch` to `plannerBudgetBar` in `app/lib/features/planner/planner_view.dart` so all 4 colored segments paint at full 8 px height instead of 0 px. Added the reviewer's test `F1b budget bar segments are drawn (R3b code M1)` in `app/test/absences_view_test.dart` (verified failing with `Expected: <8>, Actual: <0.0>` before the fix and passing after) and captured full-length before/after screenshots (`390 × 3000` and `1280 × 2300`, cs & en, dark & light) in `build/qa-evidence/F1b/M1/`.
   - **M2 (`d08838d`):** Added read-only `AppState.pickerSlotsFor(DateTime rawDay, [DateTime? now])` in `app/lib/controllers/planner.dart` (ported from Python `_pick_day` / `_pick_rows`, using the same timetable source priority as `yearPlan()`: concrete week → stable template → guessed weekly union; marking `taught`, `past`, `planned`, `changed`; returning empty on weekends, free days, and days after the school year's closure) and wired `lessonsFor: (day) => s.pickerSlotsFor(day, now)` in `LiveAbsencesView` (`app/lib/features/absences/absences_live.dart`). Added widget + unit tests in `app/test/absences_live_test.dart` (verified failing with `Expected: not null, Actual: <null>` before the fix and passing after).

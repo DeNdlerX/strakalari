@@ -554,3 +554,127 @@ stops for review. Where the agent sees a better way, the note says why.
 1. M1, M2, S1, S2, S3: one commit each, with their tests.
 2. `design-F1c.md` for O3–O6, then stop for review.
 3. F1c code only after the note passes.
+
+---
+
+## Re-review 2026-11-19
+
+Reviewed at `qa-roadmap` @ `f8db00f` (base `main` @ `f8d5582`; `main` has
+no commits the branch lacks). Commits since the review (`293fe4d`):
+
+- `7329221` (M1), `d08838d` (M2), `3eff390` (S1), `690cf6f` (S2),
+  `64b5ccf` (S3): one per finding;
+- `12490c6` (`design-F1c.md`, reviewed separately in
+  [`phase-3c-design.md`](phase-3c-design.md));
+- `f8db00f` (STATUS).
+
+### Verdict: PASS
+
+All five findings are fixed in the code, each the way the review asked,
+and each code fix's test fails without the fix. Nothing else changed: no
+config key, parity fixture, string or safety-rule code. The budget bars on
+the subject cards now show their colours, *Naplánovat vlastní termín* can
+pick days again in the real app, and *Rozumím* can be unticked. F1b is
+done. O3–O6 wait for `design-F1c.md` to pass.
+
+### R3b code findings, checked
+
+- **M1 fixed** (`7329221`). `plannerBudgetBar`
+  (`planner_view.dart:312–315`) has `crossAxisAlignment:
+  CrossAxisAlignment.stretch` and nothing else changed. The reviewer's test
+  is in `absences_view_test.dart:296`; on `293fe4d` it fails with
+  `Expected: <8>, Actual: <0.0>`, on the commit it passes. Evidence in
+  `build/qa-evidence/F1b/M1/`: 8 before/after pairs, 390 × 3000 and
+  1280 × 2300, cs and en, light and dark. The reviewer compared every pair
+  pixel by pixel (they differ along each bar) and looked at the subject
+  list: before, only the grey track; after, grey *Zameškáno*, green
+  *Volno* and the reserve colour on every card. `docs/images/absences-*.png`
+  were not recaptured, which is right: at 1280 × 800 the list isn't in the
+  picture.
+- **M2 fixed** (`d08838d`). `AppState.pickerSlotsFor`
+  (`controllers/planner.dart:394–543`, method at `:400`) is read-only (no save, no network,
+  no lock) and `LiveAbsencesView` passes it as `lessonsFor`
+  (`absences_live.dart:110`).
+  - Compared line by line with the Python `_pick_rows` / `_pick_day`
+    (`git show 963cfa2^:strakalari/flet_ui/views/planner.py`, l.482–566):
+    same source order (fetched week, stable timetable, guess), same
+    grouping per period, same `taught`, `changed`, today's `past` and
+    `planned` rules. Two accepted differences (N20).
+  - The widget test (`absences_live_test.dart:342`) fails on `7329221` with
+    `Expected: not null, Actual: <null>` at the *Potvrdit* check after
+    tapping 14 Sep, and passes on the commit. The unit test (`:439`) calls
+    the new method, so it can't compile on the parent. Read: it checks
+    each flag on real cache-shaped rows (`notice: Odpadá`, `type: event`,
+    a substitution, a lesson already started, a planned lesson) and the
+    three empty cases (weekend, free day, after the closure). It would
+    catch a wrong flag.
+  - Reviewer's own throwaway test of the path the tests don't cover, the
+    stable timetable (most real weeks after a refresh): a Monday not in the
+    fetched weeks returns its two lessons from `stable_baseline`, both
+    pickable, with time, teacher and room; a past Monday marks every slot
+    past; a weekday without stable lessons returns none.
+- **S1 fixed** (`3eff390`, test only). `_app` in `planner_view_test.dart`
+  starts with `SnackLog.clear();`. The file passes on the parent and on
+  the commit (15 tests), as a hygiene fix should.
+- **S2 fixed** (`690cf6f`). The reviewer ran `python tools/demo_data.py
+  generate <tmp> --tutorials`: `tutorials_done` is `intro, excuse,
+  timetable, lunches, marks, settings, activity`, so of the 7 tours in
+  `tours.dart` only `absences` is left to show. Comment and help text say
+  so. The commit message says why there is no test.
+- **S3 fixed** (`64b5ccf`). Unticking stores `'0'`; `disclaimerOk` reads
+  `'1'` / `'0'` first and the saved value only without a draft
+  (`wizard_controller.dart:187–192`). `disclaimer_accepted` is only ever
+  written `true` (`:551`). The test (`wizard_live_test.dart:1741–1791`) fails on
+  `690cf6f` with `Expected: false, Actual: <true>` and passes on the
+  commit; it also checks that *Pokračovat* is disabled while unticked and
+  that the saved acceptance stays `true`.
+
+### Notes (no action needed)
+
+- **N20 (M2, differences from Python, accepted):** on a day before today
+  every slot is `past` (Python left past days to the calendar; same
+  result, the day can't be tapped). The last plannable day is the school
+  year's closure from `schoolYearTerms` instead of Python's fixed 30 June,
+  as the review asked. The three `catch (_)` in `pickerSlotsFor` guard a
+  read-only lookup, like Python's `except Exception` there: allowed
+  probes, not send, order or save code.
+- **N21 (M2, layering):** `app_state.dart:25` now imports
+  `features/planner/planner_view.dart` for `PickerSlot`, so a controller
+  depends on a view file. It works. If F1c touches that code anyway,
+  moving `PickerSlot` next to `PlannerController` is cleaner. Not
+  required.
+
+### What the reviewer verified, and how (re-review)
+
+1. **Suites** (worktree, Flutter 3.44.8 / Dart 3.12.2):
+   - `dart pub get --enforce-lockfile`: OK.
+   - Core: `dart analyze` no issues; `dart test` **809 passed, 2 skipped**.
+   - App: `flutter analyze` no issues; `flutter test` **739 passed, 1
+     skipped** (735 + M1's 1 + M2's 2 + S3's 1). Baseline for F1c code.
+2. **Tests catch the fixes:** one throwaway worktree in the reviewer's
+   scratch space (removed afterwards); for each commit its parent with only
+   that commit's test file copied in, results above.
+3. **Test integrity:** since `293fe4d` four test files changed, +4 tests,
+   and the only removed lines are S1's `_app` arrow body, replaced by the
+   same `MaterialApp` plus the clear. No `skip:`, no `try`/`catch` around
+   assertions, no host.
+4. **Scope:** outside tests and docs only `planner_view.dart` (one line),
+   `controllers/planner.dart` (the new method), `app_state.dart` (one
+   import), `absences_live.dart` (one line), `wizard_controller.dart`
+   (S3) and `tools/demo_data.py` (S2) changed.
+5. **Config keys and strings:** `config.example.json`, `config.dart`,
+   `test/parity/` and both ARB files are unchanged since `293fe4d`; 796
+   keys in each ARB.
+6. **Safety rules:** in `controllers/` only a read-only method and an
+   import were added. Planning still goes through `planEntries` /
+   `planCustomSkip`. `runRefresh`, the session lock, `sendExcuse` /
+   `HistoryLock`, the audit and `automation_paused` are untouched. No new
+   `catch` in send, order or save code.
+7. **Hygiene:** all seven commits by the configured user, with no
+   `Co-Authored-By`, `Claude-Session` or "Generated with" lines. No
+   personal files or screenshots committed. `qa-roadmap` has no upstream.
+   The uncommitted `generated_plugin*` files are the known Flutter
+   line-ending churn.
+8. **Not checked:** macOS and iOS builds (not possible here); the phone
+   (the owner already tested this build on the Pixel, and no fix is
+   phone-specific).
