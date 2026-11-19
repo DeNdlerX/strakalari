@@ -385,3 +385,171 @@ parent with only that commit's test files copied in, and then, at
     are the known Flutter line-ending churn.
 12. **Not checked:** the Android build (the agent reports the `phonetest`
     APK built; M6 will show it), macOS and iOS (not possible here).
+
+---
+
+## Re-review 2026-11-20
+
+Reviewed at `qa-roadmap` @ `d287723` (base `main` @ `f8d5582`; `main` has
+no commits the branch lacks). Commits since the review (`6ef111b`):
+
+- `b4adb6e` M5, drop selected days that have nothing left to plan;
+- `c012bdb` S12, test the dispose save without a route change;
+- `d287723` STATUS, with the M6 phone evidence listed.
+
+### Verdict: PASS
+
+All three findings are fixed. In *Vybrat více dní* a day that was planned
+another way before *Naplánovat* now drops out of the selection: it loses
+its check mark, the bar stops counting it, and it gets no made-up plan, so
+no lunch is marked for cancelling that the student wanted to keep (M5).
+The phone evidence is there, taken on the Pixel from the final code, and it
+shows what the note asked for: the Budík card and its permissions on
+*Telefon*, the next wake-up after the early refresh, the alarm in `dumpsys`,
+the `bakalari` run then the `all` run, and a tap on a notification (from a
+running and from a closed app), on the status notification and on the
+widget each opening its screen (M6). The dispose save on the limits page now
+has two tests, and each fails when its save is taken out (S12). Nothing
+else changed: one code file, three test files with lines only added, and
+STATUS. F1c is done, and with it phase 3 (F1, F1b, F1c).
+
+### R3c code findings, checked
+
+- **M5 fixed** (`b4adb6e`, `app/lib/features/planner/planner_view.dart`).
+  - `_pickedPeriodsForSelected` (`:1343–1372`) reads each selected day's
+    slots through the new `_slotsFor` (`:1323–1341`: the visible month's
+    map, else `monthSlotsFor` for that day's month, else `lessonsFor`) and
+    skips days that are out of range, free, before the plan's first day,
+    or have no pickable lesson left. In the live page `monthSlotsFor` reads
+    `clock.now()` on every call (`planner_live.dart:266`, `now` is null
+    there), and `pickerSlotsFor` marks past days and started lessons as not
+    pickable, so a day that went by while the selection waited drops out
+    too.
+  - The bar counts only those days (`:1641`, `:1658`). *Naplánovat* builds
+    the slots again at tap time (`:1700`), opens the dialog with only the
+    days that still have lessons, and clears the selection without a
+    dialog when none is left (`:1703`).
+  - `isSelected` needs `canPickInMulti` (`:1798–1806`), so such a day shows
+    no check mark.
+  - `PlanMultiDialog._entries` (`:2371`) skips a day missing from a
+    non-null `pickedByDay` (`:2379`); `{1}` is left only for
+    `pickedByDay == null`. The dialog's day list shows only planned days
+    (`:2414`).
+  - Tests: the reviewer's test, with two more checks added before its
+    original ones (no check mark on Monday, `1 den` in the bar)
+    (`plan_picker_test.dart:568`), a test for the case where nothing is
+    left (`:625`), and the dialog on its own
+    (`planner_dialog_test.dart:270`). With the three copied onto `6ef111b`
+    all three fail with assertions (no check mark expected but one found;
+    `AlertDialog` expected none, found 1; `hasLength(1)` got 2). Each part
+    undone on its own at `c012bdb` fails a test: `isSelected` without
+    `canPickInMulti` (the check-mark assertion), the `{1}` fallback back
+    in `_entries` (the dialog test), no clear-without-dialog with every
+    selected day passed (the `AlertDialog` assertion), the bar counting
+    every selected day (`1 den` not found).
+- **M6 fixed** (evidence in `build/qa-evidence/F1c/` and `F1c/O8/`, git
+  ignored). The reviewer opened all 19 screenshots and the 3 text files:
+  - The build matches the code: the APK
+    (`dist/flutter-android/Strakalari-0.1.0-phonetest-android.apk`, 19:14)
+    is newer than `c012bdb` (19:12), and the build stage's `app/lib`,
+    `app/android/app/src/main` and `packages/strakalari_core/lib` are
+    identical to the branch head (no code changed after `c012bdb`). On the
+    phone `.test` is `0.1.0-test`, versionCode 12099, installed 19:15.
+  - O5/O6: *Telefon* (step 6 of 7) with `WakeupCard`; Android's
+    notification prompt when the switch goes on; the exact-alarm warning
+    with *Povolit přesné budíky* and the next wake-up (Pá 20. 11. v 07:00,
+    Fyzika v 08:00, which comes from the early refresh's data); the system
+    *Alarms & reminders* screen for `0.1.0-test` (shot before the toggle
+    was flipped); back on *Telefon* with the warning gone;
+    `phone_o5_dumpsys_alarm.txt` with the `.test` `ACTION_WAKEUP_ALARM` at
+    07:00, `exactAllowReason=permission`, plus `ACTION_REFRESH_RUN`;
+    *Aktivita* with `Bakaláři` then `Vše`, both *Hotovo*, *Úspěšné běhy
+    2/2*, and *Pozastavit automatizaci* off, so the early run's pause
+    stayed in memory.
+  - O8: from a running app on *Známky*, the `refresh_failed` event
+    notification (`id=1002`, channel `strakalari_events`) opens *Aktivita a
+    stav*; with the app swiped away (0 activities), the same tap starts the
+    app on *Aktivita a stav*. Its run list is empty there, which is
+    expected: the run history lives in memory only (`app_state.dart:181`,
+    the same on `main`), so it shows the app really started fresh. The
+    status notification opens *Dnešní přehled* from *Známky*; the `.test`
+    timetable widget (demo lessons) opens *Rozvrh* from *Dnes*.
+  - The Play app `io.github.dendlerx.strakalari` was not touched: version
+    0.2.2, last updated 2026-11-13 (`dumpsys package`, read-only). No
+    `.test` wake-up alarm is scheduled now, so the demo alarm was switched
+    off as STATUS says.
+- **S12 fixed** (`c012bdb`, test only). Two tests in
+  `limits_page_test.dart:364` and `:435` build `LimitsPage` with a plain
+  `SettingsController`, type without leaving the field, replace the page
+  with `pumpWidget`, and expect the value, one `persistQuiet` update, no
+  normal update, and `onLeave` once after it. Both pass at `c012bdb`.
+  Without `_commitOnDispose()` (`settings_view.dart:102`) the first fails
+  (`Expected: <30.0>, Actual: <25.0>`); without the page's dispose commit
+  (`limits_page.dart:182`) the second fails (`Expected: {'Matematika':
+  18.0}, Actual: {}`). This matches the commit message.
+
+### Notes (no action needed)
+
+- **N38 (M5):** a day that drops out stays in the selection's memory
+  without showing, so if it becomes pickable again before *Naplánovat* (for
+  example its plan is cancelled) it shows as selected again. The student
+  picked it, so that is fine; only a day with lessons left is ever planned.
+- **N39 (M5, speed):** `AppState` caches one month of slots at a time. When
+  the selection has days in two months, each rebuild in multi mode works
+  out both months again (the other month replaces the cache, then the
+  visible one replaces it back). `yearPlan` is cached, so this is a small
+  cost and only in that case. If the owner notices lag there on the phone,
+  a cache that keeps two months fixes it. Not a finding.
+- **N40 (M5):** `_slotsFor` has a `catch (_)` around `lessonsFor` that
+  returns no lessons, so such a day is dropped, never planned. The live
+  page always passes `monthSlotsFor`, which comes first, so only the
+  standalone widget reaches it. The same display probe as N36.
+- **N41 (M6):** the warm-tap screenshots show the refresh's own error
+  dialog (*Něco se pokazilo*; the demo server was cut off to make a
+  `refresh_failed` event) still open on top, with *Aktivita a stav*
+  underneath after the tap. The tap changes the page under any open
+  dialog; closing it shows *Aktivita*. Fine.
+- **N42 (phone evidence, privacy):** the shade screenshots
+  (`O8/02_warm_shade_event.png`, `04a_cold_shade_event.png`,
+  `06_status_shade.png`) also show the owner's own notifications (the Play
+  app's real status notification, other apps, the wallet tile). They stay
+  in the git-ignored `build/` folder as PROMPT.md allows; never copy them
+  into `docs/` or a commit. The `.test` timetable widget is still on the
+  phone's home screen; the owner can remove it.
+
+### What the reviewer verified, and how
+
+1. **Suites** at `d287723` (Flutter 3.44.8 / Dart 3.12.2):
+   `dart pub get --enforce-lockfile` OK; core `dart analyze` no issues,
+   `dart test` **809 passed, 2 skipped**; app `flutter analyze` no issues,
+   `flutter test` **776 passed, 1 skipped** (771 at the review, +5 new).
+2. **Tests catch the fixes:** a throwaway worktree in the reviewer's
+   scratch space (removed afterwards): the M5 tests on `6ef111b`, then
+   each M5 part and each S12 dispose save undone on its own at `c012bdb`,
+   as listed above.
+3. **Code:** `git diff 6ef111b..HEAD` touches `planner_view.dart` (M5 only,
+   read in full), three test files and STATUS. The calendar's other
+   helpers (`_prospectiveMultiEntries`, `_taughtPeriodsForSelected`,
+   `_totalMultiHours`) read the same filtered days; `entriesForSelection`
+   (core `planned_skips.dart:168`) loops only over the picked days.
+   Planning still goes through `PlanMultiDialog` →
+   `PlannerController.planEntries` with the unchanged lunch staging.
+4. **Test integrity:** the test files only gained lines (146 + 93 + 27,
+   0 deleted); `test(` / `testWidgets(` calls 1527 → 1532; no `skip:`, no
+   `try`/`catch` around assertions, no `anything` / `isNotNull`, no host.
+5. **Phone:** all evidence opened (above); read-only `adb` checks of the
+   `.test` and Play app package info and of the `.test` alarms. Nothing
+   installed, cleared or tapped by the reviewer.
+6. **Scope, keys, strings:** no change to `config.example.json`,
+   `packages/`, `test/parity/`, the ARB files or `strings.dart`. The extra
+   filters in `_pickedPeriodsForSelected` (range, free days, first day) use
+   the same rules as the calendar cells; they belong to M5.
+7. **Safety rules:** no refresh, send, order, lock or audit code changed;
+   no new silent `catch` in send, order or save code (N40 is a display
+   read).
+8. **Hygiene:** all commits by the configured user, no `Co-Authored-By`,
+   `Claude-Session` or "Generated with" lines; no personal file or phone
+   screenshot committed; `qa-roadmap` has no upstream; `main` has no
+   commits the branch lacks. The uncommitted `generated_plugin*` files are
+   the known Flutter line-ending churn.
+9. **Not checked:** macOS and iOS (not possible here).

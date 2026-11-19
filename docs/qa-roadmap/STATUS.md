@@ -1,7 +1,7 @@
 # QA & roadmap status
 
-Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3c (F1c ready for ⛔ R3c re-review)
-Next step: Wait for reviewer re-review of Phase 3c (`reviews/phase-3c.md` M5, M6, S12 resolved); do not start Phase 4 until R3c passes and owner gives D2 + "go".
+Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3c done (R3c passed); phase 4 (F2) waits for the owner
+Next step: Phase 3c passed (2026-11-20). Start phase 4 once the owner's go and answers are in STATUS.md.
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -121,6 +121,7 @@ Next step: Wait for reviewer re-review of Phase 3c (`reviews/phase-3c.md` M5, M6
   - `cd app && flutter analyze && flutter test` (**776 passed, 1 skipped**, zero issues; +5 tests since `e1a2d3b`)
   - Open `build/qa-evidence/F1c/phone_o5_*.png`, `phone_o5_dumpsys_alarm.txt`, `phone_o6_activity_*.png`, and `build/qa-evidence/F1c/O8/*`
 - **2026-11-19 R3c code review: FAIL**: O3–O8 are built as the note says and work (short Absence, Plánovač and Limity pages, the real Budík step, the paused early refresh with the queued full run, back to the opener, notification and widget taps); 23 of 26 fixes undone one at a time are caught by their tests, including M3, M4, S6 and S11. Two must-fix: in *Vybrat více dní* a picked day that is planned another way before *Naplánovat* gets a made-up 1st-lesson plan that can also mark its lunch for cancelling (M5); the phone evidence for O5, O6 and O8 is missing (M6; the Pixel is connected now). One should-fix: the S10 tests don't reach the dispose save they are named after (S12). Baseline: core 809 passed / 2 skipped, app 771 passed / 1 skipped. See [`reviews/phase-3c.md`](reviews/phase-3c.md).
+- **2026-11-20 R3c code re-review: PASS**: M5, M6 and S12 are fixed. A day planned another way before *Naplánovat* now drops out of the multi-day pick and gets no made-up plan; each part of that fix fails a test without it. The Pixel evidence from the final build shows the Budík card and permissions, the next wake-up, the alarm, both runs, and notification, status and widget taps opening their screens from a running and a closed app; the Play app was not touched. Each dispose save fails its new test without it. F1c is done, and with it phase 3. Baseline: core 809 passed / 2 skipped, app 776 passed / 1 skipped. See [`reviews/phase-3c.md`](reviews/phase-3c.md#re-review-2026-11-20).
 
 ### Phase 3c design re-review (`design-F1c.md` updated for R3c M1, M2, S1–S9 + O7 & O8, checkpoint ⛔)
 - **2026-11-19 R3c design re-review 2: PASS**: at the owner's word ("you can fix it.") the reviewer fixed M3, M4, S10 and S11 in `design-F1c.md`: the queued *Dokončit* refresh starts after the session lock is released; the shell follows a pending route by its path part, so the *Dnes* tip with `?from=today` works; the limits page saves a changed field in `dispose()` without a focus check and does the one normal save after it; today's lessons are never taken from the month cache. Plus N32: `startRefresh([String scope = 'all', bool pauseAutomation = false])`, since Dart can't mix optional positional and named parameters. Each fix has a named test that the code review checks fails without it. The agent may write the O3–O8 code. Baseline: core 809 passed / 2 skipped, app 739 passed / 1 skipped. See [`reviews/phase-3c-design.md`](reviews/phase-3c-design.md#re-review-2-2026-11-19).
