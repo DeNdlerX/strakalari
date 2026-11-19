@@ -1737,6 +1737,58 @@ void main() {
       expect(staticSwitcher.duration, Duration.zero);
     });
   });
+
+  testWidgets(
+      'F1b saved disclaimer can be unticked and re-ticked without withdrawing saved acceptance (R3b code S3)',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    Strings.lang = 'cs';
+
+    final s = AppState(configData: {
+      'language': 'cs',
+      'disclaimer_accepted': true,
+    });
+    s.wizardStep = WizardController.stepWelcome;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: LiveWizardView(tokens: AppTokens.dark(), narrow: true),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final boxFinder = find.byType(CheckboxListTile);
+    final nextFinder = find.widgetWithText(
+      FilledButton,
+      Strings.get('wiz_next'),
+    );
+
+    // Starts ticked and Continue enabled when disclaimer_accepted is saved.
+    expect(tester.widget<CheckboxListTile>(boxFinder).value, isTrue);
+    expect(tester.widget<FilledButton>(nextFinder).onPressed, isNotNull);
+
+    // First tap unticks it, disables Continue, and leaves saved acceptance true.
+    await tester.tap(boxFinder);
+    await tester.pump();
+    expect(tester.widget<CheckboxListTile>(boxFinder).value, isFalse);
+    expect(tester.widget<FilledButton>(nextFinder).onPressed, isNull);
+    expect(s.config.get('disclaimer_accepted', false), isTrue);
+
+    // Second tap ticks it again and re-enables Continue.
+    await tester.tap(boxFinder);
+    await tester.pump();
+    expect(tester.widget<CheckboxListTile>(boxFinder).value, isTrue);
+    expect(tester.widget<FilledButton>(nextFinder).onPressed, isNotNull);
+  });
 }
 
 class _SeededAppStateController extends AppStateController {

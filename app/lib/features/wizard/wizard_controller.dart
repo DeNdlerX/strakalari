@@ -184,9 +184,12 @@ class WizardController extends ChangeNotifier {
     return (config['wakeup_enabled'] ?? false) == true;
   }
 
-  bool get disclaimerOk =>
-      drafts['wiz:disclaimer']?.isNotEmpty == true ||
-      (config['disclaimer_accepted'] ?? false) == true;
+  bool get disclaimerOk {
+    final raw = drafts['wiz:disclaimer'];
+    if (raw == '1') return true;
+    if (raw == '0') return false;
+    return (config['disclaimer_accepted'] ?? false) == true;
+  }
 
   void setStravaEnabled(bool on) =>
       setDraft('wiz:strava_enabled', on ? '1' : '');
@@ -195,7 +198,7 @@ class WizardController extends ChangeNotifier {
       setDraft('wiz:wakeup_enabled', on ? '1' : '');
 
   void setDisclaimer(bool ack) =>
-      setDraft('wiz:disclaimer', ack ? '1' : '');
+      setDraft('wiz:disclaimer', ack ? '1' : '0');
 
   // -- prefills -------------------------------------------------------------------------
 
