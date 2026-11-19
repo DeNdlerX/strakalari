@@ -359,5 +359,151 @@ void main() {
       expect(saveEvents.length, 1);
       expect(saveEvents.single.$2, {'Matematika': 19.0});
     });
+
+    testWidgets(
+      'S10 + S12: disposing LimitsPage without a route change saves focused global field and calls onLeave after',
+      (tester) async {
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        final events = <String>[];
+        final quietUpdates = <Map<String, dynamic>>[];
+        final normalUpdates = <Map<String, dynamic>>[];
+        var leaveCalls = 0;
+
+        final c = SettingsController(
+          {
+            'absence_critical_pct': 25.0,
+            'absence_warn_pct': 15.0,
+            'absence_plan_reserve_pct': 10.0,
+            'absence': {'Matematika': 10.0},
+            'subject_limits': <String, dynamic>{},
+          },
+          persist: (u) {
+            normalUpdates.add(Map<String, dynamic>.of(u));
+            events.add('persist');
+            return true;
+          },
+          persistQuiet: (u) {
+            quietUpdates.add(Map<String, dynamic>.of(u));
+            events.add('persistQuiet');
+            return true;
+          },
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTokens.dark().toThemeData(),
+            home: Scaffold(
+              body: LimitsPage(
+                controller: c,
+                tokens: AppTokens.dark(),
+                narrow: true,
+                onLeave: () {
+                  leaveCalls++;
+                  events.add('onLeave');
+                },
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // Type without unfocusing.
+        await tester.enterText(find.byKey(const Key('auto:lim:default')), '30');
+        await tester.pump();
+        expect(c.get('absence_critical_pct'), 25.0);
+        expect(quietUpdates, isEmpty);
+        expect(leaveCalls, 0);
+
+        // Replace page directly (no route change / no prior blur).
+        await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+        await tester.pump();
+
+        expect(c.get('absence_critical_pct'), 30.0);
+        expect(quietUpdates, [
+          {'absence_critical_pct': 30.0},
+        ]);
+        expect(normalUpdates, isEmpty);
+        expect(leaveCalls, 1);
+        expect(events, ['persistQuiet', 'onLeave']);
+      },
+    );
+
+    testWidgets(
+      'S10 + S12: disposing LimitsPage without a route change saves open subject row and calls onLeave after',
+      (tester) async {
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        final events = <String>[];
+        final quietUpdates = <Map<String, dynamic>>[];
+        final normalUpdates = <Map<String, dynamic>>[];
+        var leaveCalls = 0;
+
+        final c = SettingsController(
+          {
+            'absence_critical_pct': 25.0,
+            'absence_warn_pct': 15.0,
+            'absence_plan_reserve_pct': 10.0,
+            'absence': {'Matematika': 10.0},
+            'subject_limits': <String, dynamic>{},
+          },
+          persist: (u) {
+            normalUpdates.add(Map<String, dynamic>.of(u));
+            events.add('persist');
+            return true;
+          },
+          persistQuiet: (u) {
+            quietUpdates.add(Map<String, dynamic>.of(u));
+            events.add('persistQuiet');
+            return true;
+          },
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTokens.dark().toThemeData(),
+            home: Scaffold(
+              body: LimitsPage(
+                controller: c,
+                tokens: AppTokens.dark(),
+                narrow: true,
+                onLeave: () {
+                  leaveCalls++;
+                  events.add('onLeave');
+                },
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // Expand Matematika and type without unfocusing.
+        await tester.tap(find.byKey(const Key('lim:row:Matematika')));
+        await tester.pump();
+        await tester.enterText(find.byKey(const Key('lim:subj:Matematika')), '18');
+        await tester.pump();
+        expect(c.get('subject_limits'), isEmpty);
+        expect(quietUpdates, isEmpty);
+        expect(leaveCalls, 0);
+
+        // Replace page directly (no route change / no prior blur).
+        await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+        await tester.pump();
+
+        expect(c.get('subject_limits'), {'Matematika': 18.0});
+        expect(quietUpdates, [
+          {
+            'subject_limits': {'Matematika': 18.0},
+          },
+        ]);
+        expect(normalUpdates, isEmpty);
+        expect(leaveCalls, 1);
+        expect(events, ['persistQuiet', 'onLeave']);
+      },
+    );
   });
 }
