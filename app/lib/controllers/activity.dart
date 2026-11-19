@@ -306,10 +306,11 @@ extension ActivityLogic on AppState {
     } catch (_) {}
   }
 
-  /// Starts a refresh run. Returns false when busy. Phase 7 performs
-  /// the fetch; until then flags + log match the original.
-  /// Port of `start_refresh()`.
-  bool startRefresh([String scope = 'all']) {
+  /// Starts a refresh run. Returns false when busy.
+  /// When [pauseAutomation] is true (O6 early wizard refresh), the run uses an
+  /// in-memory `automation_paused: true` config copy without mutating saved
+  /// config. Port of `start_refresh()`.
+  bool startRefresh([String scope = 'all', bool pauseAutomation = false]) {
     if (!claimFlight('refresh_running')) return false;
     if (scope != 'all' && scope != 'bakalari' && scope != 'strava') {
       scope = 'all';
@@ -318,56 +319,92 @@ extension ActivityLogic on AppState {
     status = 'working';
     currentStep = '';
     refreshRunning = true;
+    earlyRefreshInFlight = pauseAutomation;
     _emit();
-    spawn(() => _refreshWork(scope), 'strakalari-refresh');
+    spawn(
+      () => _refreshWork(scope, pauseAutomation: pauseAutomation),
+      'strakalari-refresh',
+    );
     return true;
+  }
+
+  /// Called when the user finishes the setup wizard.
+  /// If an early paused Bakaláři refresh is still running, queues one normal
+  /// `'all'` refresh to start once the early run releases the session lock and
+  /// returns true (so the wizard shows `wiz_finishing_refresh`, not
+  /// `already_running`). Otherwise starts `'all'` immediately.
+  bool finishWizardRefresh() {
+    if (earlyRefreshInFlight) {
+      pendingFullRefresh = true;
+      return true;
+    }
+    return startRefresh('all');
   }
 
   /// Background refresh: the shared core pipeline + UI bookkeeping.
   /// Port of `_refresh_work()`.
-  Future<void> _refreshWork(String scope) async {
-    final started = clock.now();
-    if (demoMode && !_hasAnyCredentials()) {
-      // No login yet (fresh install / setup not finished): abort before
-      // logging in. Recorded as a failed run, never a popup.
-      workerLog(Strings.get('missing_credentials_log'));
-      finishRun(started, scope, false,
-          'missing credentials (setup not finished)');
-      return;
-    }
-    // One refresh at a time across processes: the tray runs its own
-    // scheduler, and two parallel runs would both log in, both auto-send
-    // and overwrite each other's cache.
-    var ran = false;
+  Future<void> _refreshWork(
+    String scope, {
+    bool pauseAutomation = false,
+  }) async {
     try {
-      await withSessionLockAsync((held) async {
-        if (held) {
-          ran = true;
-          await _refreshLocked(scope, started);
-        }
-      });
-    } catch (e) {
-      // The lock itself failed (not a refresh error): fail loudly.
-      if (!ran) {
-        final detail = ActivityLogic.failureDetail(e);
-        workerLog(Strings.format('refresh_failed_log', {'detail': detail}));
-        reportError('refresh ($scope)', e,
-            detail, '', {'scope': scope});
-        finishRun(started, scope, false, detail);
+      final started = clock.now();
+      if (demoMode && !_hasAnyCredentials()) {
+        // No login yet (fresh install / setup not finished): abort before
+        // logging in. Recorded as a failed run, never a popup.
+        workerLog(Strings.get('missing_credentials_log'));
+        finishRun(started, scope, false,
+            'missing credentials (setup not finished)');
         return;
       }
-      rethrow;
+      // One refresh at a time across processes: the tray runs its own
+      // scheduler, and two parallel runs would both log in, both auto-send
+      // and overwrite each other's cache.
+      var ran = false;
+      try {
+        await withSessionLockAsync((held) async {
+          if (held) {
+            ran = true;
+            await _refreshLocked(scope, started,
+                pauseAutomation: pauseAutomation);
+          }
+        });
+      } catch (e) {
+        // The lock itself failed (not a refresh error): fail loudly.
+        if (!ran) {
+          final detail = ActivityLogic.failureDetail(e);
+          workerLog(Strings.format('refresh_failed_log', {'detail': detail}));
+          reportError('refresh ($scope)', e, detail, '', {'scope': scope});
+          finishRun(started, scope, false, detail);
+          return;
+        }
+        rethrow;
+      }
+      if (ran) return;
+      workerLog(Strings.get('session_busy'));
+      // Not a failure: the other process is refreshing right now.
+      finishRun(started, scope, false, Strings.get('session_busy'),
+          skipped: true);
+    } finally {
+      if (pauseAutomation) {
+        // Runs only after withSessionLockAsync has released the OS lock, so a
+        // queued full Finish refresh never collides with the early run's lock.
+        earlyRefreshInFlight = false;
+        if (pendingFullRefresh) {
+          pendingFullRefresh = false;
+          startRefresh('all');
+        }
+      }
     }
-    if (ran) return;
-    workerLog(Strings.get('session_busy'));
-    // Not a failure: the other process is refreshing right now.
-    finishRun(started, scope, false, Strings.get('session_busy'),
-        skipped: true);
   }
 
   /// The refresh proper; runs while the session lock is held.
   /// Port of `_refresh_locked()`.
-  Future<void> _refreshLocked(String scope, DateTime started) async {
+  Future<void> _refreshLocked(
+    String scope,
+    DateTime started, {
+    bool pauseAutomation = false,
+  }) async {
     var detail = '';
     var ok = false;
     var cancelled = false;
@@ -377,9 +414,12 @@ extension ActivityLogic on AppState {
       RefreshResult result;
       try {
         app.cancelCallback = () => cancelRequested;
+        final runConfig = pauseAutomation
+            ? <String, Object?>{...app.configData, 'automation_paused': true}
+            : app.configData;
         result = await runRefresh(
           app,
-          app.configData,
+          runConfig,
           scope: scope,
           cancelledLunchDays: Set<String>.of(cancelledLunches),
           isCancelled: () => cancelRequested,
@@ -430,6 +470,14 @@ extension ActivityLogic on AppState {
           if (!autoErrors.contains(e)) e
       ];
       if (fetchErrors.isNotEmpty) {
+        // O1 turned refresh_failed off by default: a failed auto phase in
+        // the same run still gets its own notification (fail loudly).
+        if (autoErrors.isNotEmpty && !result.onlyLowBalance) {
+          notifyEvent(
+              'automation_failed',
+              Strings.format('automation_failed_body',
+                  {'detail': failureDetail(autoErrors.first.$2)}));
+        }
         // ignore: only_throw_errors
         throw fetchErrors.first.$2;
       }

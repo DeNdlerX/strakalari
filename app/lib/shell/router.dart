@@ -11,6 +11,7 @@ import 'package:strakalari_core/strakalari_core.dart';
 
 import '../controllers/app_state.dart';
 import '../features/absences/absences_live.dart';
+import '../features/absences/limits_page.dart';
 import '../features/activity/activity_live.dart';
 import '../features/lunches/lunches_live.dart';
 import '../features/marks/marks_live.dart';
@@ -23,13 +24,12 @@ import '../features/wizard/wizard_live.dart';
 import '../l10n/strings.dart';
 import '../shell/scaffold.dart';
 
-/// The eight rail routes, in rail order. Port of `ROUTES`.
+/// The seven rail routes, in rail order.
 const List<String> shellRoutes = [
   'today',
   'timetable',
   'absences',
   'marks',
-  'planner',
   'lunches',
   'activity',
   'settings',
@@ -48,7 +48,6 @@ const List<String> narrowTabs = [
 /// `MORE_ROUTES`.
 const List<String> moreRoutes = [
   'absences',
-  'planner',
   'activity',
   'settings',
 ];
@@ -56,11 +55,22 @@ const List<String> moreRoutes = [
 /// Location for [route] (`today` → `/today`).
 String routeLocation(String route) => '/$route';
 
+/// Accepts only known shell routes or `'more'` as a `?from=` back-navigation
+/// origin; `null` or any unknown value returns `null` (falling back to
+/// `'absences'`).
+String? sanitizeBackOrigin(String? raw) {
+  if (raw == null || raw.isEmpty) return null;
+  if (shellRoutes.contains(raw) || raw == 'more') return raw;
+  return null;
+}
+
 /// Route name for a location (`/lunches` → `lunches`, `/` → `today`).
 String routeForLocation(String location) {
   final seg = location.split('?').first.split('#').first;
   final name = seg.startsWith('/') ? seg.substring(1) : seg;
   if (name.isEmpty) return 'today';
+  if (name == 'planner') return 'absences/plan';
+  if (name == 'absences/plan' || name == 'absences/limits') return name;
   if (shellRoutes.contains(name)) return name;
   if (name == 'more' || name == 'wizard') return name;
   return 'today';
@@ -79,8 +89,9 @@ class PlaceholderScreen extends StatelessWidget {
       'today': Strings.get('nav_today'),
       'timetable': Strings.get('nav_timetable'),
       'absences': Strings.get('nav_absences'),
+      'absences/plan': Strings.get('planner_title'),
+      'absences/limits': Strings.get('sec_limits'),
       'marks': Strings.get('nav_marks'),
-      'planner': Strings.get('nav_planner'),
       'lunches': Strings.get('nav_lunches'),
       'activity': Strings.get('nav_activity'),
       'settings': Strings.get('nav_settings'),
@@ -117,8 +128,6 @@ GoRoute _route(String name) => GoRoute(
               return LiveAbsencesView(tokens: tokens, narrow: narrow);
             case 'marks':
               return LiveMarksView(tokens: tokens, narrow: narrow);
-            case 'planner':
-              return LivePlannerView(narrow: narrow);
             case 'lunches':
               return LiveLunchesView(narrow: narrow);
             case 'activity':
@@ -153,6 +162,10 @@ GoRouter buildRouter({String initialLocation = '/today'}) => GoRouter(
           redirect: (context, state) => '/today',
         ),
         GoRoute(
+          path: '/planner',
+          redirect: (_, _) => '/absences/plan',
+        ),
+        GoRoute(
           path: '/wizard',
           name: 'wizard',
           builder: (context, state) => Consumer(
@@ -181,6 +194,58 @@ GoRouter buildRouter({String initialLocation = '/today'}) => GoRouter(
           ),
           routes: [
             for (final name in shellRoutes) _route(name),
+            GoRoute(
+              path: '/absences/plan',
+              name: 'absences/plan',
+              builder: (context, state) {
+                final from =
+                    sanitizeBackOrigin(state.uri.queryParameters['from']);
+                return ShellBackScope(
+                  route: 'absences/plan',
+                  from: from,
+                  child: Consumer(
+                    builder: (context, ref, _) {
+                      final appState = ref.watch(appStateProvider);
+                      final size = MediaQuery.sizeOf(context);
+                      final narrow = (size.width > 0 && size.width < 720) ||
+                          (size.height > 0 && size.height < 520);
+                      return LivePlannerPage(
+                        tokens: appState.appTokens,
+                        narrow: narrow,
+                        onBack: () =>
+                            context.go(routeLocation(from ?? 'absences')),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+            GoRoute(
+              path: '/absences/limits',
+              name: 'absences/limits',
+              builder: (context, state) {
+                final from =
+                    sanitizeBackOrigin(state.uri.queryParameters['from']);
+                return ShellBackScope(
+                  route: 'absences/limits',
+                  from: from,
+                  child: Consumer(
+                    builder: (context, ref, _) {
+                      final appState = ref.watch(appStateProvider);
+                      final size = MediaQuery.sizeOf(context);
+                      final narrow = (size.width > 0 && size.width < 720) ||
+                          (size.height > 0 && size.height < 520);
+                      return LiveLimitsPage(
+                        tokens: appState.appTokens,
+                        narrow: narrow,
+                        onBack: () =>
+                            context.go(routeLocation(from ?? 'absences')),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
             _route('more'),
           ],
         ),

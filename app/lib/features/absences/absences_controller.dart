@@ -59,6 +59,12 @@ AbsencesController();
   /// `updated_label` text (unused by the layout but kept for parity).
   String updatedLabel = '';
 
+  /// Whether at least one per-subject limit is set in `subject_limits`.
+  bool hasSubjectLimits = false;
+
+  /// Default per-subject critical absence limit (`absence_critical_pct`).
+  double defaultLimitPct = 25.0;
+
   /// Mean of subject percents — like `sum(s.current_pct) / len(states)`.
   double get average => subjects.isEmpty
       ? 0.0

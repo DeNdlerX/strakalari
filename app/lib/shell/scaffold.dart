@@ -49,13 +49,19 @@ ShellLayout layoutForSize(double width, double height) {
 
 /// Where the phone's Back button leads: a More screen -> More,
 /// anything else -> Today; null on Today or while the wizard is shown
-/// (Back leaves the app). Port of `back_target()`.
+/// (Back leaves the app). Sub-routes under Absences (`absences/plan` and
+/// `absences/limits`) return to their sanitized [from] origin, or `absences`.
+/// Port of `back_target()`.
 String? backTarget({
   required String route,
   required bool narrow,
   required bool wizardShown,
+  String? from,
 }) {
   if (route == 'today' || wizardShown) return null;
+  if (route == 'absences/plan' || route == 'absences/limits') {
+    return sanitizeBackOrigin(from) ?? 'absences';
+  }
   return (moreRoutes.contains(route) && narrow) ? 'more' : 'today';
 }
 
@@ -104,8 +110,14 @@ void closeSubpage({
 /// overruled and Android closed the app.
 class ShellBackScope extends ConsumerWidget {
   final String route;
+  final String? from;
   final Widget child;
-  const ShellBackScope({super.key, required this.route, required this.child});
+  const ShellBackScope({
+    super.key,
+    required this.route,
+    this.from,
+    required this.child,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -118,6 +130,7 @@ class ShellBackScope extends ConsumerWidget {
       route: route,
       narrow: narrow,
       wizardShown: appState.wizardShown,
+      from: from,
     );
     return PopScope(
       canPop: subpage.isEmpty && target == null,
@@ -129,6 +142,7 @@ class ShellBackScope extends ConsumerWidget {
           narrow: narrow,
           state: appState,
           target: target,
+          from: from,
         );
       },
       child: child,
@@ -142,6 +156,7 @@ void _stepBackOnPhone(
   required bool narrow,
   required AppState state,
   String? target,
+  String? from,
 }) {
   if (subpageOpen(route: route, narrow: narrow, state: state).isNotEmpty) {
     closeSubpage(route: route, narrow: narrow, state: state);
@@ -149,7 +164,12 @@ void _stepBackOnPhone(
   }
   final dest =
       target ??
-      backTarget(route: route, narrow: narrow, wizardShown: state.wizardShown);
+      backTarget(
+        route: route,
+        narrow: narrow,
+        wizardShown: state.wizardShown,
+        from: from,
+      );
   if (dest != null) {
     context.go(routeLocation(dest));
   }
@@ -160,7 +180,6 @@ const Map<String, IconData> _railIcons = {
   'timetable': Icons.calendar_month_outlined,
   'absences': Icons.event_busy_outlined,
   'marks': Icons.grade_outlined,
-  'planner': Icons.event_note_outlined,
   'lunches': Icons.restaurant_outlined,
   'activity': Icons.history_outlined,
   'settings': Icons.settings_outlined,
@@ -177,8 +196,6 @@ String _titleFor(String route) {
       return Strings.get('nav_absences');
     case 'marks':
       return Strings.get('nav_marks');
-    case 'planner':
-      return Strings.get('nav_planner');
     case 'lunches':
       return Strings.get('nav_lunches');
     case 'activity':
@@ -215,20 +232,12 @@ class AppScaffold extends ConsumerWidget {
     appState.narrow = narrow;
     appState.navSide = layout == ShellLayout.side;
 
-    final pending = appState.pendingRoute;
-    if (pending != null &&
-        (shellRoutes.contains(pending) ||
-            pending == 'more' ||
-            pending == 'wizard')) {
-      appState.pendingRoute = null;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) context.go(routeLocation(pending));
-      });
-    }
-
     // First-run wizard owns the screen until finished or dismissed
-    // (gates automation, like `setup_pending` in app.py).
+    // (gates automation, like `setup_pending` in app.py). Clear any queued
+    // launch/navigation route so a notification tap never fires over or right
+    // after the wizard closes (O8).
     if (appState.setupPending) {
+      appState.pendingRoute = null;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (context.mounted) context.go('/wizard');
       });
@@ -236,6 +245,21 @@ class AppScaffold extends ConsumerWidget {
         backgroundColor: tok.bg,
         body: const SizedBox.shrink(),
       );
+    }
+
+    final pending = appState.pendingRoute;
+    if (pending != null) {
+      appState.pendingRoute = null;
+      final pendingPath = pending.split('?').first.split('#').first;
+      if (shellRoutes.contains(pendingPath) ||
+          pendingPath == 'more' ||
+          pendingPath == 'wizard' ||
+          pendingPath == 'absences/plan' ||
+          pendingPath == 'absences/limits') {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) context.go(routeLocation(pending));
+        });
+      }
     }
 
     popPendingMessages(context, appState, tok, controller);
@@ -293,13 +317,14 @@ class AppScaffold extends ConsumerWidget {
     // Phone Back is handled per page by [ShellBackScope] (router.dart), under
     // go_router's inner navigator: a PopScope here, above that navigator, was
     // overruled by it, so Android closed the app on every screen.
+    final navRoute = route.startsWith('absences/') ? 'absences' : route;
     switch (layout) {
       case ShellLayout.bar:
         final tabs = narrowTabs;
-        var index = tabs.indexOf(route);
+        var index = tabs.indexOf(navRoute);
         if (index < 0) {
           index = tabs.indexOf('more');
-          if (moreRoutes.contains(route)) {
+          if (moreRoutes.contains(navRoute)) {
             // Bar keeps More selected while a More screen is open.
           } else {
             index = 0;
@@ -333,7 +358,7 @@ class AppScaffold extends ConsumerWidget {
         );
       case ShellLayout.side:
         final tabs = narrowTabs;
-        var sideIndex = tabs.indexOf(route);
+        var sideIndex = tabs.indexOf(navRoute);
         if (sideIndex < 0) sideIndex = tabs.indexOf('more');
         return Scaffold(
           backgroundColor: tok.bg,
@@ -380,7 +405,7 @@ class AppScaffold extends ConsumerWidget {
           ),
         );
       case ShellLayout.wide:
-        var railIndex = shellRoutes.indexOf(route);
+        var railIndex = shellRoutes.indexOf(navRoute);
         if (railIndex < 0) railIndex = 0;
         return Scaffold(
           backgroundColor: tok.bg,

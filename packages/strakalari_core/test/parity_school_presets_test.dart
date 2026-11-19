@@ -13,13 +13,24 @@ String iso(DateTime d) =>
 Map<String, String> isoMap(Map<DateTime, String> m) =>
     {for (final e in m.entries) iso(e.key): e.value};
 
+// F1 (owner's D1, 2026-11-17): fields the Python app never had. The
+// frozen fixture stays as Python wrote it; they are added here.
+const _f1GekomFields = {
+  'bakalari_url': 'https://bakaweb.gekom.cz',
+  'strava_canteen_id': '1950',
+  'marks_scale': 'percent',
+};
+
 void main() {
   test('parityWithPython', () {
     for (final c in loadParityCases('school_presets')) {
       final fn = c['fn'] as String;
       final args =
           (c['args'] as List).map(decodeParityValue).toList();
-      final expected = decodeParityValue(c['expected']);
+      var expected = decodeParityValue(c['expected']);
+      if (fn == 'getPreset' && args[0] == 'gekom_2026_2027') {
+        expected = {...(expected as Map), ..._f1GekomFields};
+      }
       final Object? result;
       switch (fn) {
         case 'validatePreset':

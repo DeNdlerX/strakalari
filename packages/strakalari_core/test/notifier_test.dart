@@ -37,7 +37,12 @@ void main() {
         ]),
       );
       expect(defaults.keys.toSet(), eventTypes.toSet());
-      expect(defaults.values, everyElement(isTrue));
+      expect(defaults['refresh_done'], isFalse);
+      expect(defaults['refresh_failed'], isFalse);
+      for (final event in eventTypes) {
+        if (event == 'refresh_done' || event == 'refresh_failed') continue;
+        expect(defaults[event], isTrue, reason: event);
+      }
     });
   });
 
@@ -46,7 +51,34 @@ void main() {
       expect(isEnabled(null, 'excuse_sent'), isTrue);
       expect(isEnabled({}, 'excuse_sent'), isTrue);
       expect(isEnabled({'excuse_sent': false}, 'excuse_sent'), isFalse);
-      expect(isEnabled({'excuse_sent': false}, 'refresh_done'), isTrue);
+      expect(isEnabled({'excuse_sent': false}, 'new_mark'), isTrue);
+    });
+
+    test('refreshEventsDefaultOff', () {
+      const offByDefault = {'refresh_done', 'refresh_failed'};
+      for (final event in offByDefault) {
+        expect(defaults[event], isFalse, reason: event);
+        expect(isEnabled(null, event), isFalse, reason: '$event null');
+        expect(isEnabled({}, event), isFalse, reason: '$event empty');
+        expect(isEnabled({event: true}, event), isTrue,
+            reason: '$event explicit true');
+      }
+      for (final event in eventTypes) {
+        if (offByDefault.contains(event)) continue;
+        expect(defaults[event], isTrue, reason: event);
+        expect(isEnabled(null, event), isTrue, reason: '$event null');
+        expect(isEnabled({}, event), isTrue, reason: '$event empty');
+      }
+
+      final calls = <String>[];
+      notifierBackend = _FakeBackend(calls);
+      expect(notify('refresh_done', 'hotovo', {}), isFalse);
+      expect(notify('refresh_failed', 'chyba', null), isFalse);
+      expect(calls, isEmpty);
+      expect(notify('refresh_done', 'hotovo', {'refresh_done': true}), isTrue);
+      expect(
+          notify('refresh_failed', 'chyba', {'refresh_failed': true}), isTrue);
+      expect(calls, ['refresh_done:hotovo', 'refresh_failed:chyba']);
     });
   });
 
@@ -65,31 +97,31 @@ void main() {
     test('dispatchesToTheBackend', () {
       final calls = <String>[];
       notifierBackend = _FakeBackend(calls);
-      expect(notify('refresh_done', 'hotovo', {}), isTrue);
+      expect(notify('refresh_done', 'hotovo', {'refresh_done': true}), isTrue);
       expect(calls, ['refresh_done:hotovo']);
     });
 
     test('backendFailureFallsBackToStdout', () {
       notifierBackend = _FailingBackend();
-      expect(notify('refresh_done', 'hotovo', {}), isFalse);
+      expect(notify('refresh_done', 'hotovo', {'refresh_done': true}), isFalse);
       // The plain "[title] message" fallback, no scary suffix.
       expect(
-        () => notify('refresh_done', 'hotovo', {}),
+        () => notify('refresh_done', 'hotovo', {'refresh_done': true}),
         prints(contains('hotovo')),
       );
     });
 
     test('noBackendPrintsAndReturnsFalse', () {
-      expect(notify('refresh_done', 'hotovo', {}), isFalse);
+      expect(notify('refresh_done', 'hotovo', {'refresh_done': true}), isFalse);
       expect(
-        () => notify('refresh_done', 'hotovo', {}),
+        () => notify('refresh_done', 'hotovo', {'refresh_done': true}),
         prints('[Strakaláři] hotovo\n'),
       );
     });
 
     test('neverRaisesFromBackend', () {
       notifierBackend = _ThrowingBackend();
-      expect(notify('refresh_done', 'hotovo', {}), isFalse);
+      expect(notify('refresh_done', 'hotovo', {'refresh_done': true}), isFalse);
     });
   });
 }

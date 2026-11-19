@@ -1,5 +1,6 @@
 import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import 'package:app/features/settings/settings_controller.dart';
@@ -8,6 +9,7 @@ import 'package:app/features/common/app_tokens.dart';
 import 'package:app/features/common/open_url.dart';
 import 'package:app/platform/scheduler_jobs.dart' show checkIntervalMinutes;
 import 'package:app/widgets/app_widgets.dart' as w;
+import 'package:app/widgets/marks_bands_card.dart';
 import 'package:app/widgets/overlays.dart';
 
 const List<String> kNotificationEvents = [
@@ -44,6 +46,10 @@ class AutosaveField extends StatefulWidget {
   /// for an explicit button handler (port of `_text`).
   final bool draftOnly;
 
+  /// When true, `dispose()` also compares and quietly saves any changed
+  /// parseable text without touching focus or `BuildContext` (O4 / S10).
+  final bool saveOnDispose;
+
   const AutosaveField({
     super.key,
     required this.controller,
@@ -57,6 +63,7 @@ class AutosaveField extends StatefulWidget {
     this.parse,
     this.onSaved,
     this.draftOnly = false,
+    this.saveOnDispose = false,
   });
 
   @override
@@ -91,9 +98,47 @@ class _AutosaveFieldState extends State<AutosaveField> {
 
   @override
   void dispose() {
+    if (widget.saveOnDispose) {
+      _commitOnDispose();
+    }
     text.dispose();
     focus.dispose();
     super.dispose();
+  }
+
+  /// Silent save path for [AutosaveField.saveOnDispose]: runs `_commit`'s
+  /// comparison without checking focus (Flutter detaches child focus nodes
+  /// before parent `dispose()` runs) and without touching `BuildContext`.
+  void _commitOnDispose() {
+    final c = widget.controller;
+    final val = text.text;
+    if (widget.draftOnly) {
+      c.setDraft(widget.draftKey, val);
+      return;
+    }
+    if (widget.password && val.trim().isEmpty) return;
+    Object? newVal = val;
+    if (widget.parse != null) {
+      try {
+        newVal = widget.parse!(val);
+      } catch (_) {
+        return;
+      }
+    }
+    final raw = c.get(widget.configKey);
+    final baseline =
+        (raw == null || '$raw'.isEmpty) && widget.fallback.isNotEmpty
+            ? widget.fallback
+            : raw;
+    if (!widget.password && SettingsController.sameValue(baseline, newVal)) {
+      c.clearDrafts(widget.draftKey);
+      return;
+    }
+    if (!c.saveQuiet({widget.configKey: newVal})) return;
+    if (!widget.password) {
+      c.clearDrafts(widget.draftKey);
+    }
+    widget.onSaved?.call(newVal);
   }
 
   void _commit() {
@@ -190,6 +235,7 @@ class TemplateEditor extends StatefulWidget {
   final String titleKey;
   final Object? Function()? readTemplates;
   final bool Function(List<Map<String, String>> values)? commitTemplates;
+  final bool embedded;
 
   const TemplateEditor(
       {super.key,
@@ -197,7 +243,8 @@ class TemplateEditor extends StatefulWidget {
       required this.configKey,
       required this.titleKey,
       this.readTemplates,
-      this.commitTemplates})
+      this.commitTemplates,
+      this.embedded = false})
       : assert(
           controller != null ||
               (readTemplates != null && commitTemplates != null),
@@ -375,81 +422,141 @@ class _TemplateEditorState extends State<TemplateEditor> {
 
   @override
   Widget build(BuildContext context) {
+    final content = Column(
+      spacing: 20,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!widget.embedded) _CardTitle(Strings.get(widget.titleKey)),
+        for (var i = 0; i < _rows.length; i++)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  spacing: 12,
+                  children: [
+                    TextField(
+                      key: Key('tpl:${widget.configKey}:$i:name'),
+                      decoration: InputDecoration(
+                          labelText:
+                              Strings.format('tpl_name', {'n': i + 1})),
+                      controller: _rows[i].name,
+                      focusNode: _rows[i].nameFocus,
+                      onChanged: (v) {
+                        values[i]['name'] = v;
+                        _dirty = true;
+                      },
+                      onSubmitted: (_) => _commit(),
+                    ),
+                    TextField(
+                      key: Key('tpl:${widget.configKey}:$i:text'),
+                      decoration: InputDecoration(
+                          labelText: Strings.get('tpl_text')),
+                      controller: _rows[i].text,
+                      focusNode: _rows[i].textFocus,
+                      keyboardType: TextInputType.multiline,
+                      minLines: 2,
+                      maxLines: null,
+                      onChanged: (v) {
+                        values[i]['text'] = v;
+                        _dirty = true;
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: Strings.get('delete'),
+                icon: const Icon(Icons.delete_outline),
+                onPressed: () {
+                  setState(() {
+                    values.removeAt(i);
+                    final removed = _rows.removeAt(i);
+                    _pendingDispose.add(removed);
+                  });
+                  _schedulePendingDispose();
+                  _commit();
+                },
+              ),
+            ],
+          ),
+        TextButton(
+          onPressed: () {
+            setState(() {
+              final item = {'name': '', 'text': ''};
+              values.add(item);
+              _rows.add(_makeRow(item));
+            });
+            _commit();
+          },
+          child: Text('+ ${Strings.get('add')}'),
+        ),
+      ],
+    );
+    if (widget.embedded) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+        child: content,
+      );
+    }
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          spacing: 20,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _CardTitle(Strings.get(widget.titleKey)),
-            for (var i = 0; i < _rows.length; i++)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        child: content,
+      ),
+    );
+  }
+}
+
+/// Shared collapsible list of the four excuse-template groups, used in
+/// Settings → Šablony and the wizard's Omluvenky *Pokročilé* section.
+class TemplateGroupsList extends StatelessWidget {
+  final Object? Function(String key) readTemplates;
+  final bool Function(String key, List<Map<String, String>> values)
+      commitTemplates;
+
+  const TemplateGroupsList({
+    super.key,
+    required this.readTemplates,
+    required this.commitTemplates,
+  });
+
+  static const List<(String, String)> groups = [
+    ('late_income_excuses', 'tpl_late'),
+    ('left_soon_excuses', 'tpl_soon'),
+    ('short_absence_excuses', 'tpl_short'),
+    ('long_absence_excuses', 'tpl_long'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      spacing: 8,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final (key, titleKey) in groups)
+          Builder(builder: (context) {
+            final raw = readTemplates(key);
+            final count = raw is List ? raw.length : 0;
+            return Card(
+              child: ExpansionTile(
+                key: Key('tpl_group:$key'),
+                initiallyExpanded: false,
+                maintainState: true,
+                title: Text('${Strings.get(titleKey)} · $count'),
                 children: [
-                  Expanded(
-                    child: Column(
-                      spacing: 12,
-                      children: [
-                        TextField(
-                          key: Key('tpl:${widget.configKey}:$i:name'),
-                          decoration: InputDecoration(
-                              labelText:
-                                  Strings.format('tpl_name', {'n': i + 1})),
-                          controller: _rows[i].name,
-                          focusNode: _rows[i].nameFocus,
-                          onChanged: (v) {
-                            values[i]['name'] = v;
-                            _dirty = true;
-                          },
-                          onSubmitted: (_) => _commit(),
-                        ),
-                        TextField(
-                          key: Key('tpl:${widget.configKey}:$i:text'),
-                          decoration: InputDecoration(
-                              labelText: Strings.get('tpl_text')),
-                          controller: _rows[i].text,
-                          focusNode: _rows[i].textFocus,
-                          keyboardType: TextInputType.multiline,
-                          minLines: 2,
-                          maxLines: null,
-                          onChanged: (v) {
-                            values[i]['text'] = v;
-                            _dirty = true;
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: Strings.get('delete'),
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: () {
-                      setState(() {
-                        values.removeAt(i);
-                        final removed = _rows.removeAt(i);
-                        _pendingDispose.add(removed);
-                      });
-                      _schedulePendingDispose();
-                      _commit();
-                    },
+                  TemplateEditor(
+                    configKey: key,
+                    titleKey: titleKey,
+                    embedded: true,
+                    readTemplates: () => readTemplates(key),
+                    commitTemplates: (values) => commitTemplates(key, values),
                   ),
                 ],
               ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  final item = {'name': '', 'text': ''};
-                  values.add(item);
-                  _rows.add(_makeRow(item));
-                });
-                _commit();
-              },
-              child: Text('+ ${Strings.get('add')}'),
-            ),
-          ],
-        ),
-      ),
+            );
+          }),
+      ],
     );
   }
 }
@@ -780,9 +887,9 @@ class SettingsView extends StatelessWidget {
   List<Widget> _section(BuildContext context, String section) {
     switch (section) {
       case 'limits':
-        return _limits();
+        return _limits(context);
       case 'calendar':
-        return _calendar();
+        return _calendar(context);
       case 'alarm':
         return _alarm();
       case 'templates':
@@ -955,83 +1062,25 @@ class SettingsView extends StatelessWidget {
   }
 
   // -- limits ----------------------------------------------------------------------
-  List<Widget> _limits() {
-    final c = controller;
-    double? num_(String raw) {
-      try {
-        return double.parse(raw.replaceAll(',', '.'));
-      } catch (_) {
-        return null;
-      }
-    }
-
-    final subjects = () {
-      final raw = c.get('absence', {});
-      if (raw is Map) return raw.keys.map((k) => '$k').toList()..sort();
-      return <String>[];
-    }();
-    final limits = c.get('subject_limits', {});
+  List<Widget> _limits(BuildContext context) {
     return [
       Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
-              spacing: 20,
+            spacing: 16,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              AutosaveField(
-                controller: c,
-                label: Strings.get('default_limit'),
-                draftKey: 'lim:default',
-                configKey: 'absence_critical_pct',
-                fallback: '${c.get('absence_critical_pct', 25.0)}',
-                parse: (raw) => num_(raw) ?? 25.0,
-              ),
-              AutosaveField(
-                controller: c,
-                label: Strings.get('warn_limit'),
-                draftKey: 'lim:warn',
-                configKey: 'absence_warn_pct',
-                fallback: '${c.get('absence_warn_pct', 15.0)}',
-                parse: (raw) => num_(raw) ?? 15.0,
-              ),
-              AutosaveField(
-                controller: c,
-                label: Strings.get('reserve_limit'),
-                draftKey: 'lim:reserve',
-                configKey: 'absence_plan_reserve_pct',
-                fallback:
-                    '${c.get('absence_plan_reserve_pct', 10.0)}',
-                parse: (raw) {
-                  final v = num_(raw) ?? 10.0;
-                  return v.clamp(0.0, 99.9);
+              _CardTitle(Strings.get('sec_limits')),
+              _Hint(Strings.get('limits_in_absences_p')),
+              FilledButton.icon(
+                key: const Key('settings:go_absences_limits'),
+                onPressed: () {
+                  GoRouter.maybeOf(context)?.go('/absences/limits?from=settings');
                 },
+                icon: const Icon(Icons.arrow_forward),
+                label: Text(Strings.get('open_limits')),
               ),
-              _Hint(Strings.get('reserve_hint')),
-              for (final subject in subjects)
-                AutosaveField(
-                  key: Key('lim:subj:$subject'),
-                  controller: c,
-                  label: subject,
-                  draftKey: 'lim:subj:$subject',
-                  configKey: 'subject_limits:$subject',
-                  fallback: limits is Map
-                      ? '${limits[subject] ?? ''}'
-                      : '',
-                  parse: (raw) => raw.trim().isEmpty
-                      ? '__blank__'
-                      : num_(raw),
-                  onSaved: (v) {
-                    final current = Map.of(
-                        c.get('subject_limits', {}) ?? {});
-                    if (v == '__blank__') {
-                      current.remove(subject);
-                    } else {
-                      current[subject] = v;
-                    }
-                    c.saveQuiet({'subject_limits': current});
-                  },
-                ),
-              _Hint(Strings.get('limit_subject_hint')),
             ],
           ),
         ),
@@ -1040,8 +1089,9 @@ class SettingsView extends StatelessWidget {
   }
 
   // -- calendar ----------------------------------------------------------------------
-  List<Widget> _calendar() {
+  List<Widget> _calendar(BuildContext context) {
     final c = controller;
+    final tok = tokensOf(context);
     final presetOpts = core.presetOptions(Strings.lang);
     final rawPreset = '${c.get('school_preset_id', 'custom')}';
     final knownIds = {for (final (id, _) in presetOpts) id, 'custom'};
@@ -1051,6 +1101,12 @@ class SettingsView extends StatelessWidget {
     final rawSem2 = '${c.get('sem2_close', '')}';
     final days = c.userFreeDays();
     days.sort((a, b) => '${a['date']}'.compareTo('${b['date']}'));
+    final resolvedBands =
+        core.resolveMarksBands(c.config.cast<String, Object?>());
+    final presetBands = core.presetMarksBands(presetId);
+    final preset = core.getPreset(presetId);
+    final presetTitle =
+        preset != null ? core.presetTitle(preset, Strings.lang) : '';
     return [
       Card(
         child: Padding(
@@ -1073,6 +1129,7 @@ class SettingsView extends StatelessWidget {
                 ],
                 onChanged: (v) {
                   if (v == null || v == presetId) return;
+                  c.clearDrafts('marks:band:');
                   c.save({'school_preset_id': v});
                   onChanged?.call();
                 },
@@ -1112,6 +1169,31 @@ class SettingsView extends StatelessWidget {
             ],
           ),
         ),
+      ),
+      MarksBandsCard(
+        key: ValueKey('cal:bands:$presetId'),
+        tokens: tok,
+        bands: resolvedBands.bands,
+        source: resolvedBands.source,
+        presetBands: presetBands,
+        presetTitle: presetTitle,
+        readDraft: c.draft,
+        writeDraft: c.setDraft,
+        clearDrafts: c.clearDrafts,
+        onSaveBands: (b) {
+          if (b == null) {
+            final ok = c.save({'marks_percent_bands': <double>[]});
+            if (ok) onChanged?.call();
+            return ok;
+          }
+          if (!core.bandsValid(b)) return false;
+          final ok = c.save({'marks_percent_bands': List<double>.of(b)});
+          if (ok) onChanged?.call();
+          return ok;
+        },
+        currentBands: () =>
+            core.resolveMarksBands(c.config.cast<String, Object?>()).bands,
+        onSnack: appSnack,
       ),
       Card(
         child: Padding(
@@ -1267,22 +1349,10 @@ class SettingsView extends StatelessWidget {
   List<Widget> _templates() {
     final c = controller;
     return [
-      TemplateEditor(
-          controller: c,
-          configKey: 'late_income_excuses',
-          titleKey: 'tpl_late'),
-      TemplateEditor(
-          controller: c,
-          configKey: 'left_soon_excuses',
-          titleKey: 'tpl_soon'),
-      TemplateEditor(
-          controller: c,
-          configKey: 'short_absence_excuses',
-          titleKey: 'tpl_short'),
-      TemplateEditor(
-          controller: c,
-          configKey: 'long_absence_excuses',
-          titleKey: 'tpl_long'),
+      TemplateGroupsList(
+        readTemplates: (key) => c.get(key, const <Object?>[]),
+        commitTemplates: (key, values) => c.commitTemplates(key, values),
+      ),
       Card(
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -1819,8 +1889,11 @@ class SettingsView extends StatelessWidget {
   // -- notifications ----------------------------------------------------------------------------
   List<Widget> _notifications() {
     final c = controller;
-    final prefs =
-        Map.of(c.get('notifications', {}) ?? {});
+    final raw = c.get('notifications', {});
+    final prefs = <String, Object?>{
+      if (raw is Map)
+        for (final e in raw.entries) '${e.key}': e.value,
+    };
     return [
       Card(
         child: Padding(
@@ -1834,11 +1907,11 @@ class SettingsView extends StatelessWidget {
                   contentPadding: EdgeInsets.zero,
                   key: Key('notif:$event'),
                   title: Text(Strings.get('notif_$event')),
-                  value: (prefs[event] ?? true) == true,
+                  value: core.isEnabled(prefs, event),
                   onChanged: (v) {
                     prefs[event] = v;
                     c.saveQuiet(
-                        {'notifications': Map.of(prefs)});
+                        {'notifications': Map<String, Object?>.of(prefs)});
                     onChanged?.call();
                   },
                 ),

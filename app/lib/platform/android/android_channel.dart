@@ -55,17 +55,19 @@ class AndroidChannel {
     }
   }
 
-  /// Shows a notification (a tap opens the app). True when posted.
+  /// Shows a notification (a tap opens the app on [route]). True when posted.
   Future<bool> notify({
     required String title,
     required String text,
     required String channelName,
+    String route = 'today',
   }) async {
     try {
       return await _channel.invokeMethod<bool>('notify', {
             'title': title,
             'text': text,
             'channelName': channelName,
+            'route': route,
           }) ??
           false;
     } on MissingPluginException {
@@ -74,6 +76,37 @@ class AndroidChannel {
       _warn('notification failed', e, typed: true);
       return false;
     }
+  }
+
+  /// Reads and clears any pending route from a cold-start notification or
+  /// widget tap (null when launched normally).
+  Future<String?> takeLaunchRoute() async {
+    try {
+      final raw = await _channel.invokeMethod<String>('takeLaunchRoute');
+      if (raw == null) return null;
+      final trimmed = raw.trim();
+      return trimmed.isEmpty ? null : trimmed;
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return null;
+    }
+  }
+
+  /// Listens for warm notification or widget taps delivered via `onNewIntent`.
+  void setLaunchRouteHandler(void Function(String route)? handler) {
+    if (handler == null) {
+      _channel.setMethodCallHandler(null);
+      return;
+    }
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'openRoute') {
+        final raw = call.arguments;
+        if (raw is String && raw.trim().isNotEmpty) {
+          handler(raw.trim());
+        }
+      }
+    });
   }
 
   Future<bool> notificationsEnabled() async {

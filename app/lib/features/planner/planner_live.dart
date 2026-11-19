@@ -1,10 +1,11 @@
-// Bridges [AppState] (Riverpod) to [PlannerController] / [PlannerView].
-import 'package:flutter/material.dart';
+// Bridges [AppState] (Riverpod) to [PlannerController] / [PlannerPage].
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../controllers/app_state.dart' hide PlannerController;
 import '../../l10n/strings.dart';
+import '../common/app_tokens.dart';
 import 'planner_controller.dart';
 import 'planner_view.dart';
 
@@ -22,6 +23,7 @@ void _syncFromState(PlannerController c, AppState s) {
     ..clear()
     ..addAll(s.pendingOrders);
   c.plannerTerm = s.plannerTerm;
+  c.showAllPicks = s.plannerShowAllPicks;
   c.stravaEnabled = s.stravaEnabled();
 }
 
@@ -42,6 +44,10 @@ PlannerController plannerControllerFor(AppState s) {
   };
   c.selectPlannerTermHook = (key) {
     s.selectPlannerTerm(key);
+    _syncFromState(c, s);
+  };
+  c.toggleShowAllPicksHook = () {
+    s.togglePlannerShowAllPicks();
     _syncFromState(c, s);
   };
   c.planCustomSkipHook =
@@ -94,7 +100,7 @@ DayOptionData _dayOption(core.DayOption o) => DayOptionData(
   lateWeek: o.lateWeek,
 );
 
-/// Converts [AppState.yearPlan] into [YearPlanData] for [PlannerView].
+/// Converts [AppState.yearPlan] into [YearPlanData] for [PlannerSections].
 YearPlanData? yearPlanDataFor(AppState s, [DateTime? now]) {
   if (s.timetable().isEmpty) return null;
   final plan = s.yearPlan(now);
@@ -167,7 +173,8 @@ YearPlanData? yearPlanDataFor(AppState s, [DateTime? now]) {
   );
 }
 
-List<ImpactTerm> _convertImpacts(List<(Object?, List<Object?>)> raw) {
+/// Converts raw core impact rows into view [ImpactTerm] entries.
+List<ImpactTerm> convertPlannerImpacts(List<(Object?, List<Object?>)> raw) {
   final out = <ImpactTerm>[];
   for (final (termObj, rowsObj) in raw) {
     final key = termObj is core.TermPlan ? termObj.key : 'sem1';
@@ -190,52 +197,58 @@ List<ImpactTerm> _convertImpacts(List<(Object?, List<Object?>)> raw) {
   return out;
 }
 
-/// Live Riverpod-backed Planner screen.
-class LivePlannerView extends ConsumerWidget {
+/// Formats the school calendar summary footer line for [s].
+String calendarSummaryFor(AppState s) {
+  try {
+    final (presetN, addedN, forcedN, sem1, sem2) = s.calendarSummary();
+    return '${Strings.format('cal_summary', {'preset': presetN, 'added': addedN, 'forced': forcedN})}'
+        ' · ${Strings.format('cal_closes', {'a': sem1.isEmpty ? Strings.get('cal_auto') : sem1, 'b': sem2.isEmpty ? Strings.get('cal_auto') : sem2})}';
+  } catch (_) {
+    return '';
+  }
+}
+
+/// Live Plánovač sub-route (`/absences/plan`) wired to [appStateProvider].
+class LivePlannerPage extends ConsumerWidget {
+  final AppTokens? tokens;
   final bool narrow;
   final DateTime? now;
+  final VoidCallback? onBack;
 
-  const LivePlannerView({super.key, this.narrow = false, this.now});
+  const LivePlannerPage({
+    super.key,
+    this.tokens,
+    this.narrow = false,
+    this.now,
+    this.onBack,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStateProvider);
-    final controller = plannerControllerFor(s);
+    final tok = tokens ?? s.appTokens;
+    final planner = plannerControllerFor(s);
     final hasTimetable = s.timetable().isNotEmpty;
-    final (states, _) = hasTimetable
-        ? s.subjectStates()
-        : (<core.SubjectState>[], <DateTime>[]);
+    final (states, _) = s.subjectStates();
     final hasData = hasTimetable && states.isNotEmpty;
     final planData = hasData ? yearPlanDataFor(s, now) : null;
-
     if (planData != null) {
-      final term =
-          planData.term(controller.plannerTerm) ?? planData.defaultTerm;
+      final term = planData.term(planner.plannerTerm) ?? planData.defaultTerm;
       if (term != null && term.hasData && term.recommended.isNotEmpty) {
-        s.tutorialOffer('planner');
+        s.tutorialOffer('absences_plan');
       }
     }
-
-    var calSummary = '';
-    try {
-      final (presetN, addedN, forcedN, sem1, sem2) = s.calendarSummary();
-      calSummary =
-          '${Strings.format('cal_summary', {'preset': presetN, 'added': addedN, 'forced': forcedN})}'
-          ' · ${Strings.format('cal_closes', {'a': sem1.isEmpty ? Strings.get('cal_auto') : sem1, 'b': sem2.isEmpty ? Strings.get('cal_auto') : sem2})}';
-    } catch (_) {
-      calSummary = '';
-    }
-
-    return PlannerView(
-      controller: controller,
+    return PlannerPage(
+      controller: planner,
+      tokens: tok,
       plan: planData,
       hasTimetable: hasTimetable,
       hasData: hasData,
-      updatedLabel: s.updatedLabel,
-      calendarSummary: calSummary,
+      demoMode: s.demoMode,
+      calendarSummary: calendarSummaryFor(s),
       stravaOn: s.stravaEnabled(),
       narrow: narrow,
-      impactOf: (entry) => _convertImpacts(
+      impactOf: (entry) => convertPlannerImpacts(
         s.planImpact(
           '${entry['start_date'] ?? ''}',
           '${entry['end_date'] ?? ''}',
@@ -244,17 +257,19 @@ class LivePlannerView extends ConsumerWidget {
           now,
         ),
       ),
-      impactOfEntries: (entries) => _convertImpacts(
+      impactOfEntries: (entries) => convertPlannerImpacts(
         s.planImpactEntries([
           for (final e in entries) Map<String, Object?>.of(e),
         ], now),
       ),
+      lessonsFor: (day) => s.pickerSlotsFor(day, now),
+      monthSlotsFor: (month) => s.pickerSlotsForMonth(month, now),
       freeDays: () => s.calendarData().dates,
-      onOpenAbsences: () => s.go('absences'),
       onOpenCalendar: () {
         s.setSettingsSection('calendar');
         s.go('settings');
       },
+      onBack: onBack,
       tutorialEvent: s.tutorialEvent,
     );
   }

@@ -92,6 +92,8 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
     private MethodChannel channel;
     @Nullable
     private MethodChannel.Result pendingPermissionResult;
+    private String pendingLaunchRoute = "";
+    private boolean launchRouteTaken = false;
 
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
@@ -106,6 +108,7 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
     }
 
     public void detach() {
+        launchRouteTaken = false;
         if (pendingPermissionResult != null) {
             pendingPermissionResult.success(null);
             pendingPermissionResult = null;
@@ -115,6 +118,29 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
             channel = null;
         }
         appContext = null;
+    }
+
+    /**
+     * Reads a notification/widget target route from an activity launch or
+     * {@code onNewIntent}, clears the extra so recreation never replays it,
+     * and either invokes {@code openRoute} on Dart (warm start) or stores it
+     * for {@code takeLaunchRoute} (cold start).
+     */
+    public void handleIntent(@Nullable Intent intent) {
+        if (intent == null) {
+            return;
+        }
+        String route = intent.getStringExtra(Notifications.EXTRA_ROUTE);
+        if (route == null || route.isEmpty()) {
+            return;
+        }
+        intent.removeExtra(Notifications.EXTRA_ROUTE);
+        MethodChannel ch = channel;
+        if (launchRouteTaken && ch != null) {
+            ch.invokeMethod("openRoute", route);
+        } else {
+            pendingLaunchRoute = route;
+        }
     }
 
     @Override
@@ -171,7 +197,8 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
                     result.success(notify(
                             stringArg(call, "title"),
                             stringArg(call, "text"),
-                            stringArg(call, "channelName")));
+                            stringArg(call, "channelName"),
+                            stringArg(call, "route")));
                     return;
                 case "notificationsEnabled":
                     result.success(notificationsEnabled());
@@ -270,6 +297,13 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
                     result.success(reason);
                     return;
                 }
+                case "takeLaunchRoute": {
+                    launchRouteTaken = true;
+                    String route = pendingLaunchRoute;
+                    pendingLaunchRoute = "";
+                    result.success(route);
+                    return;
+                }
                 default:
                     result.notImplemented();
             }
@@ -323,14 +357,15 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
 
     // -- notifications -------------------------------------------------------
 
-    private boolean notify(String title, String text, String channelName) {
+    private boolean notify(String title, String text, String channelName, String route) {
         Context ctx = requireContext();
         synchronized (StrakalariChannel.class) {
             nextId = 1000 + (nextId - 1000 + 1) % 5000;
         }
         Notifications.show(ctx, EVENTS_CHANNEL,
                 channelName.isEmpty() ? "Strakaláři" : channelName,
-                title, text, nextId);
+                title, text, nextId,
+                route.isEmpty() ? "today" : route);
         return notificationsEnabled();
     }
 

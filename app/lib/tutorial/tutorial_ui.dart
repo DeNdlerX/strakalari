@@ -98,8 +98,11 @@ class TutorialBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final total = tour.steps.length;
-    final last = index == total - 1;
+    final visible = state.tutorialVisibleStepIndices(tour);
+    final visiblePos = visible.indexOf(index);
+    final total = visible.isEmpty ? tour.steps.length : visible.length;
+    final activeDot = visiblePos >= 0 ? visiblePos : index;
+    final last = activeDot == total - 1;
     final edgeColor = tok.accent.withValues(alpha: 0.8);
 
     double bubbleW = width ??
@@ -222,11 +225,11 @@ class TutorialBubble extends StatelessWidget {
         children: [
           for (var i = 0; i < total; i++)
             Container(
-              width: i == index ? 14 : 6,
+              width: i == activeDot ? 14 : 6,
               height: 6,
               margin: const EdgeInsets.only(right: 4),
               decoration: BoxDecoration(
-                color: i <= index ? tok.accent : tok.border,
+                color: i <= activeDot ? tok.accent : tok.border,
                 borderRadius: BorderRadius.circular(3),
               ),
             ),

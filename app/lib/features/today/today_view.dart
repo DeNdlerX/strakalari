@@ -125,8 +125,8 @@ class TodayView extends StatelessWidget {
                 ),
               ),
               TextButton(
-                onPressed: () => c.onGo('planner'),
-                child: Text(Strings.get('nav_planner')),
+                onPressed: () => c.onGo('absences/plan?from=today'),
+                child: Text(Strings.get('abs_planner_btn')),
               ),
             ],
           ),

@@ -1,21 +1,21 @@
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
+import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../l10n/strings.dart';
-import '../common/format.dart';
 import '../settings/settings_controller.dart' show SettingsController;
 
 /// First-run setup wizard — a `ChangeNotifier` port of
 /// `views/wizard.py`.
 ///
 /// Shown full-screen by the shell while setup is needed. Each
-/// credential step (Bakaláři, Strava, AI key) runs a live test when
+/// credential step (Bakaláři, Strava) runs a live test when
 /// the user presses Continue — the wizard only advances on success.
 /// Finishing kicks off the first data refresh.
 ///
 /// Config keys and file formats are unchanged; the shell provides
 /// persistence ([onSave]), live tests ([onTestRequest]) and side
-/// effects ([onFinishRefresh], [onOpenUrl], [onAlarmPermission]).
+/// effects ([onFinishRefresh], [onAlarmPermission]).
 class WizardController extends ChangeNotifier {
 /// Reads config values.
   final Map<String, Object?> config;
@@ -28,7 +28,7 @@ class WizardController extends ChangeNotifier {
   final bool Function(Map<String, Object?> updates) onSaveQuiet;
 
   /// Starts a live connection test for `service`
-  /// (`bakalari | strava | ai`) with draft-backed overrides. The shell
+  /// (`bakalari | strava`) with draft-backed overrides. The shell
   /// reports back via [recordTestResult].
   final void Function(
       String service, Map<String, String> overrides) onTestRequest;
@@ -36,15 +36,11 @@ class WizardController extends ChangeNotifier {
   /// Runs the first refresh after Finish; true when started.
   final bool Function() onFinishRefresh;
 
-  /// Opens the AI Studio key page.
-  final void Function() onOpenUrl;
-
   /// Requests the exact-alarm permission (Android only).
   final void Function() onAlarmPermission;
 
-  /// Starts the one-time Bakaláři-only refresh when the limits step
-  /// shows with no subjects yet.
-  final Object? Function() onLimitsRefresh;
+  /// Requests Android notification permission when continuing from Telefon.
+  final Future<void> Function()? onRequestNotificationPermission;
 
   /// Sets the app language (`cs | en`).
   final void Function(String lang) onSetLanguage;
@@ -56,6 +52,9 @@ class WizardController extends ChangeNotifier {
   final void Function()? onFinished;
   final void Function(String service, String fp)? onVerified;
 
+  /// Called once Bakaláři credentials are verified and saved (O6 early refresh).
+  final void Function(String fingerprint)? onBakalariSaved;
+
   WizardController({
     Map<String, Object?>? config,
     bool Function(Map<String, Object?> updates)? onSave,
@@ -63,47 +62,54 @@ class WizardController extends ChangeNotifier {
     void Function(String service, Map<String, String> overrides)?
         onTestRequest,
     bool Function()? onFinishRefresh,
-    void Function()? onOpenUrl,
     void Function()? onAlarmPermission,
-    Object? Function()? onLimitsRefresh,
+    this.onRequestNotificationPermission,
     void Function(String lang)? onSetLanguage,
     this.onDraftChanged,
     this.onClearDrafts,
     this.onStepChanged,
     this.onFinished,
     this.onVerified,
+    this.onBakalariSaved,
   })  : config = config ?? {},
         onSave = onSave ?? ((_) => false),
         onSaveQuiet = onSaveQuiet ?? onSave ?? ((_) => false),
         onTestRequest = onTestRequest ?? ((_, _) {}),
         onFinishRefresh = onFinishRefresh ?? (() => false),
-        onOpenUrl = onOpenUrl ?? (() {}),
         onAlarmPermission = onAlarmPermission ?? (() {}),
-        onLimitsRefresh = onLimitsRefresh ?? (() => null),
         onSetLanguage = onSetLanguage ?? ((_) {});
 
   // -- steps ------------------------------------------------------------------------
 
-  static const int stepsTotal = 10;
+  static const int stepsTotal = 7;
   static const int stepWelcome = 0;
-  static const int stepDisclaimer = 1;
+  static const int stepSchool = 1;
   static const int stepBakalari = 2;
-  static const int stepLimits = 3;
-  static const int stepStrava = 4;
-  static const int stepAi = 5;
-  static const int stepCalendar = 6;
-  static const int stepAlarm = 7;
-  static const int stepExcuses = 8;
-  static const int stepDone = 9;
+  static const int stepStrava = 3;
+  static const int stepExcuses = 4;
+  static const int stepPhone = 5;
+  static const int stepDone = 6;
 
   int step = 0;
   bool dismissed = false;
 
-  /// Whether the wake-up alarm step is part of the flow (Android only).
+  /// Whether the Phone step (alarm + notification permission) is part of the
+  /// flow (Android only).
   bool isAndroid = false;
 
-  /// Service currently being tested (`bakalari | strava | ai`), if any.
+  /// Service currently being tested (`bakalari | strava`), if any.
   String? testing;
+
+  /// True while awaiting Android's notification permission prompt on Telefon.
+  bool requestingPermission = false;
+
+  /// True when the Telefon step embeds Settings' live [WakeupCard], which
+  /// persists `wakeup_enabled` and `wakeup_minutes_before` itself.
+  bool useExternalWakeupCard = false;
+
+  /// True once the notification permission prompt has already been shown
+  /// during this session (for instance from inside [WakeupCard]).
+  bool notificationPermissionAlreadyAsked = false;
 
   /// Last test result: `{service, ok, at, message}`.
   Map<String, Object?> lastTest = {};
@@ -116,10 +122,6 @@ class WizardController extends ChangeNotifier {
 
   /// Last user-facing message (snackbar text equivalent).
   String lastMessage = '';
-
-  /// The limits refresh was already triggered once.
-  bool get limitsRefreshStarted =>
-      drafts.containsKey('wiz:limits_refresh');
 
   String draft(String key, [String fallback = '']) =>
       drafts[key] ?? fallback;
@@ -147,7 +149,7 @@ class WizardController extends ChangeNotifier {
 
   List<int> shownSteps() => [
         for (var i = 0; i < stepsTotal; i++)
-          if (i != stepAlarm || isAndroid) i
+          if (i != stepPhone || isAndroid) i
       ];
 
   int stepAfter(int from) {
@@ -188,40 +190,78 @@ class WizardController extends ChangeNotifier {
     return (config['use_strava'] ?? true) == true;
   }
 
-  bool get aiEnabled {
-    final raw = drafts['wiz:ai_enabled'];
-    if (raw != null) return raw == '1';
-    return '${config['gemini_api_key'] ?? ''}'.isNotEmpty;
-  }
-
   bool get alarmEnabled {
     final raw = drafts['wiz:wakeup_enabled'];
     if (raw != null) return raw == '1';
     return (config['wakeup_enabled'] ?? false) == true;
   }
 
-  bool get disclaimerOk =>
-      drafts['wiz:disclaimer']?.isNotEmpty == true ||
-      (config['disclaimer_accepted'] ?? false) == true;
+  bool get disclaimerOk {
+    final raw = drafts['wiz:disclaimer'];
+    if (raw == '1') return true;
+    if (raw == '0') return false;
+    return (config['disclaimer_accepted'] ?? false) == true;
+  }
 
   void setStravaEnabled(bool on) =>
       setDraft('wiz:strava_enabled', on ? '1' : '');
-
-  void setAiEnabled(bool on) =>
-      setDraft('wiz:ai_enabled', on ? '1' : '');
 
   void setAlarmEnabled(bool on) =>
       setDraft('wiz:wakeup_enabled', on ? '1' : '');
 
   void setDisclaimer(bool ack) =>
-      setDraft('wiz:disclaimer', ack ? '1' : '');
+      setDraft('wiz:disclaimer', ack ? '1' : '0');
+
+  // -- prefills -------------------------------------------------------------------------
+
+  String activePresetId() {
+    final picked = calPreset();
+    if (picked.isNotEmpty) return picked;
+    return '${config['school_preset_id'] ?? ''}'.trim();
+  }
+
+  String presetBakalariUrl() => core.presetBakalariUrl(activePresetId());
+
+  String presetCanteenId() => core.presetCanteenId(activePresetId());
+
+  String effectiveBakalariUrl() {
+    final d = drafts['wiz:bakalari_url']?.trim();
+    if (d != null && (d.isNotEmpty || showBakalariUrlField)) return d;
+    final cfg = '${config['bakalari_url'] ?? ''}'.trim();
+    if (cfg.isNotEmpty) return cfg;
+    return presetBakalariUrl();
+  }
+
+  String effectiveCanteenId() {
+    final d = drafts['wiz:strava_canteen_id']?.trim();
+    if (d != null && (d.isNotEmpty || showStravaCanteenField)) return d;
+    final cfg = '${config['strava_canteen_id'] ?? ''}'.trim();
+    if (cfg.isNotEmpty) return cfg;
+    return presetCanteenId();
+  }
+
+  bool get showBakalariUrlField {
+    final preset = presetBakalariUrl();
+    if (preset.isEmpty) return true;
+    final cfg = '${config['bakalari_url'] ?? ''}'.trim();
+    if (cfg.isNotEmpty && cfg != preset) return true;
+    final d = drafts['wiz:bakalari_url']?.trim();
+    return d != null && d.isNotEmpty && d != preset;
+  }
+
+  bool get showStravaCanteenField {
+    final preset = presetCanteenId();
+    if (preset.isEmpty) return true;
+    final cfg = '${config['strava_canteen_id'] ?? ''}'.trim();
+    if (cfg.isNotEmpty && cfg != preset) return true;
+    final d = drafts['wiz:strava_canteen_id']?.trim();
+    return d != null && d.isNotEmpty && d != preset;
+  }
 
   // -- per-step saves -------------------------------------------------------------------
 
   bool saveBakalari() {
-    final url = draft('wiz:bakalari_url',
-            '${config['bakalari_url'] ?? ''}')
-        .trim();
+    final url = effectiveBakalariUrl();
     final user = draft('wiz:bakalari_username',
             '${config['bakalari_username'] ?? ''}')
         .trim();
@@ -243,9 +283,7 @@ class WizardController extends ChangeNotifier {
             '${config['strava_username'] ?? ''}')
         .trim();
     final pw = draft('wiz:strava_password', '');
-    final cid = draft('wiz:strava_canteen_id',
-            '${config['strava_canteen_id'] ?? ''}')
-        .trim();
+    final cid = effectiveCanteenId();
     final hasPw = pw.trim().isNotEmpty ||
         '${config['strava_password'] ?? ''}'.isNotEmpty;
     if (user.isEmpty || !hasPw || cid.isEmpty) return false;
@@ -258,155 +296,101 @@ class WizardController extends ChangeNotifier {
     return _save(updates);
   }
 
-  bool saveAi() {
-    if (!aiEnabled) {
-      // Disabling must stick: clear the stored key (encrypt("") reads
-      // back falsy), otherwise the old key silently re-enables AI.
-      return _save(
-          {'gemini_api_key': '', 'gemini_api_key_encrypted': false});
-    }
-    final key = draft('wiz:ai_key', '').trim();
-    final hasKey = key.isNotEmpty ||
-        '${config['gemini_api_key'] ?? ''}'.isNotEmpty;
-    if (!hasKey) return false;
-    final updates = <String, Object?>{};
-    if (key.isNotEmpty) updates['gemini_api_key'] = key;
-    final model = draft('wiz:ai_model',
-            '${config['gemini_model'] ?? 'gemini-3.8-flash'}')
-        .trim();
-    if (model.isNotEmpty) updates['gemini_model'] = model;
-    if (updates.isEmpty) return true;
-    return _save(updates);
-  }
-
-  // -- limits -------------------------------------------------------------------------------
-
-  /// Subjects the limits step lists (shell: stable + tracked, else
-  /// absence keys) — like `wizard._limit_subjects`.
-  List<String> limitSubjectsInput = [];
-  List<String> absenceKeys = [];
-
-  List<String> limitSubjects() => limitSubjectsInput.isNotEmpty
-      ? List<String>.of(limitSubjectsInput)
-      : (List<String>.of(absenceKeys)..sort());
-
-  /// Whether the limits step must trigger the one-time Bakaláři-only
-  /// refresh — like `wizard._start_limits_refresh`.
-  bool get limitsNeedsRefresh =>
-      !limitsRefreshStarted &&
-      !refreshRunning &&
-      hasCredentials &&
-      limitSubjects().isEmpty;
-
-  bool refreshRunning = false;
-  String refreshStep = '';
-  bool hasCredentials = false;
-
   /// Android exact-alarm status: show the "exact alarms off" hint and
   /// the allow button when true (shell: available && !allowed).
   bool alarmExactOff = false;
 
-  void markLimitsRefreshStarted() {
-    drafts['wiz:limits_refresh'] = '1';
-    notifyListeners();
-  }
+  // -- school / calendar ---------------------------------------------------------------------
 
-  /// Triggers a limits refresh from the retry button and returns whether a
-  /// new refresh started (false when one is already running).
-  bool retryLimitsRefresh() {
-    if (refreshRunning) return false;
-    final result = onLimitsRefresh();
-    if (result is bool) return result;
-    return true;
-  }
+  /// Grouped school presets for the Škola step (`schoolGroups`).
+  List<core.SchoolGroup> schoolOptions = [];
 
-  /// A limit in percent; null when blank. Throws [FormatException]
-  /// when invalid — like `wizard._limit_value`.
-  static double? limitValue(String raw) {
-    final text = raw.trim().replaceAll(',', '.');
-    if (text.isEmpty) return null;
-    final num = double.parse(text); // throws when invalid
-    if (num < 0 || num > 100) throw FormatException(raw);
-    return num;
-  }
-
-  /// Config updates for the limits step; null when a value is invalid.
-  /// A blank subject falls back to the default limit (no own entry).
-  Map<String, Object?>? limitsUpdates() {
-    try {
-      final defaultLimit = limitValue(draft('wiz:limit_default',
-          '${config['absence_critical_pct'] ?? 25.0}'));
-      final limits = <String, double>{
-        for (final e in ((config['subject_limits'] as Map?) ?? const {})
-            .entries)
-          '${e.key}': (e.value as num).toDouble(),
-      };
-      for (final subject in limitSubjects()) {
-        final value = limitValue(draft('wiz:limit:$subject',
-            '${limits[subject] ?? ''}'));
-        if (value == null) {
-          limits.remove(subject);
-        } else {
-          limits[subject] = value;
-        }
-      }
-      final updates = <String, Object?>{'subject_limits': limits};
-      if (defaultLimit != null) {
-        updates['absence_critical_pct'] = defaultLimit;
-      }
-      return updates;
-    } on FormatException {
-      return null;
-    }
-  }
-
-  // -- calendar -------------------------------------------------------------------------------
-
-  /// Selectable school calendars (shipped + user presets, then custom).
+  /// Selectable school calendars (legacy flat list used by tests).
   List<CalendarPreset> calendarOptions = [];
+
+  Set<String> _knownSchoolPresetIds() => {
+        for (final g in schoolOptions)
+          for (final p in g.presets) p.id,
+        for (final p in calendarOptions) p.id,
+        if (schoolOptions.isNotEmpty) core.customId,
+      };
 
   /// The explicitly picked card (`wiz:cal_preset`), or ''.
   String calPreset() {
     final raw = drafts['wiz:cal_preset'];
-    if (raw == null) return '';
-    if (raw.isNotEmpty &&
-        calendarOptions.any((p) => p.id == raw)) {
-      return raw;
+    if (raw == null || raw.isEmpty) return '';
+    if (_knownSchoolPresetIds().contains(raw)) return raw;
+    return '';
+  }
+
+  /// Selected school card name (`SchoolGroup.name` or `core.customId`), or ''.
+  String selectedSchoolGroup() {
+    final rawGroup = drafts['wiz:school_group'];
+    if (rawGroup != null && rawGroup.isNotEmpty) {
+      if (rawGroup == core.customId ||
+          schoolOptions.any((g) => g.name == rawGroup)) {
+        return rawGroup;
+      }
+    }
+    final picked = calPreset();
+    if (picked == core.customId) return core.customId;
+    for (final g in schoolOptions) {
+      if (g.presets.any((p) => p.id == picked)) return g.name;
     }
     return '';
   }
 
+  void selectSchoolGroup(String groupName) {
+    setDraftSilent('wiz:school_group', groupName);
+    if (groupName == core.customId) {
+      setDraft('wiz:cal_preset', core.customId);
+      return;
+    }
+    final match = schoolOptions.where((g) => g.name == groupName).toList();
+    if (match.isEmpty) {
+      notifyListeners();
+      return;
+    }
+    final group = match.first;
+    if (group.presets.length == 1) {
+      setDraft('wiz:cal_preset', group.presets.single.id);
+    } else if (group.presets.any((p) => p.id == calPreset())) {
+      notifyListeners();
+    } else {
+      setDraft('wiz:cal_preset', '');
+    }
+  }
+
+  void selectSchoolPreset(String presetId) {
+    for (final g in schoolOptions) {
+      if (g.presets.any((p) => p.id == presetId)) {
+        setDraftSilent('wiz:school_group', g.name);
+        break;
+      }
+    }
+    setDraft('wiz:cal_preset', presetId);
+  }
+
   bool saveCalendar() {
     final preset = calPreset();
-    if (preset.isEmpty ||
-        !calendarOptions.any((p) => p.id == preset)) {
+    if (preset.isEmpty || !_knownSchoolPresetIds().contains(preset)) {
       return false;
     }
+    if ('${config['school_preset_id'] ?? ''}' == preset) return true;
     return _save({'school_preset_id': preset});
   }
 
-  // -- alarm + signature --------------------------------------------------------------------------
+  // -- phone + signature --------------------------------------------------------------------------
 
-  /// Typed minutes (clamped 1–720), null when not a number —
-  /// like `wizard._alarm_minutes`.
-  int? alarmMinutes() {
-    final stored = clampWakeupMinutes(config['wakeup_minutes_before']);
-    final raw = draft('wiz:wakeup_minutes', '$stored')
-        .trim()
-        .replaceAll(',', '.');
-    if (double.tryParse(raw) == null) return null;
-    return clampWakeupMinutes(raw);
-  }
+  bool get shouldAskNotificationPermission =>
+      (config['run_in_background'] ?? true) == true ||
+      (config['wakeup_enabled'] ?? false) == true ||
+      alarmEnabled;
 
-  bool saveAlarm() {
-    if (!alarmEnabled) return _save({'wakeup_enabled': false});
-    final minutes = alarmMinutes();
-    if (minutes == null) return false;
-    if (!_save(
-        {'wakeup_enabled': true, 'wakeup_minutes_before': minutes})) {
-      return false;
-    }
-    onAlarmPermission();
+  bool savePhone() {
+    if (useExternalWakeupCard) return true;
+    if (!_save({'wakeup_enabled': alarmEnabled})) return false;
+    if (alarmEnabled) onAlarmPermission();
     return true;
   }
 
@@ -435,9 +419,7 @@ class WizardController extends ChangeNotifier {
     switch (service) {
       case 'bakalari':
         final ov = {
-          'bakalari_url': draft('wiz:bakalari_url',
-                  '${config['bakalari_url'] ?? ''}')
-              .trim(),
+          'bakalari_url': effectiveBakalariUrl(),
           'bakalari_username': draft(
                   'wiz:bakalari_username',
                   '${config['bakalari_username'] ?? ''}')
@@ -451,23 +433,13 @@ class WizardController extends ChangeNotifier {
           'strava_username': draft('wiz:strava_username',
                   '${config['strava_username'] ?? ''}')
               .trim(),
-          'strava_canteen_id': draft(
-                  'wiz:strava_canteen_id',
-                  '${config['strava_canteen_id'] ?? ''}')
-              .trim(),
+          'strava_canteen_id': effectiveCanteenId(),
         };
         final pw = draft('wiz:strava_password', '');
         if (pw.trim().isNotEmpty) ov['strava_password'] = pw;
         return ov;
       default:
-        final ov = <String, String>{};
-        final key = draft('wiz:ai_key', '').trim();
-        if (key.isNotEmpty) ov['gemini_api_key'] = key;
-        final model = draft('wiz:ai_model',
-                '${config['gemini_model'] ?? 'gemini-3.8-flash'}')
-            .trim();
-        if (model.isNotEmpty) ov['gemini_model'] = model;
-        return ov;
+        return {};
     }
   }
 
@@ -497,16 +469,8 @@ class WizardController extends ChangeNotifier {
         (ov['strava_canteen_id']?.isNotEmpty == true);
   }
 
-  bool readyAi() {
-    if (!aiEnabled) return true;
-    final ov = overridesFor('ai');
-    return (ov['gemini_api_key']?.isNotEmpty == true) ||
-        '${config['gemini_api_key'] ?? ''}'.isNotEmpty;
-  }
-
   bool _testNeeded(String service) {
     if (service == 'strava' && !stravaEnabled) return false;
-    if (service == 'ai' && !aiEnabled) return false;
     return verified[service] != fingerprintFor(service);
   }
 
@@ -516,8 +480,12 @@ class WizardController extends ChangeNotifier {
   String? continueTestStep(
       String service, int atStep, bool readyOk, String needKey) {
     if (!readyOk) return Strings.get(needKey);
-    if (verified[service] == fingerprintFor(service)) {
+    final fp = fingerprintFor(service);
+    if (verified[service] == fp) {
       if (!_saveFor(service)) return Strings.get('save_failed');
+      if (service == 'bakalari') {
+        onBakalariSaved?.call(fp);
+      }
       goTo(stepAfter(atStep));
       return null;
     }
@@ -535,7 +503,7 @@ class WizardController extends ChangeNotifier {
       case 'strava':
         return saveStrava();
       default:
-        return saveAi();
+        return false;
     }
   }
 
@@ -558,6 +526,9 @@ class WizardController extends ChangeNotifier {
     if (!_saveFor(service)) return Strings.get('save_failed');
     verified[service] = fp;
     onVerified?.call(service, fp);
+    if (service == 'bakalari') {
+      onBakalariSaved?.call(fp);
+    }
     // Auto-advance only when still on the same step with unchanged fields.
     if (fingerprintFor(service) == fp) {
       // The caller re-reads the current step; the view passes it in.
@@ -590,6 +561,29 @@ class WizardController extends ChangeNotifier {
   ({bool advanced, String? snack, String? finishedMessage}) pressNext() {
     final atStep = step.clamp(0, stepDone);
     switch (atStep) {
+      case stepWelcome:
+        if (!disclaimerOk) {
+          return (
+            advanced: false,
+            snack: Strings.get('wiz_disclaimer_need'),
+            finishedMessage: null
+          );
+        }
+        if (config['disclaimer_accepted'] != true) {
+          _save({'disclaimer_accepted': true});
+        }
+        break;
+      case stepSchool:
+        if (!saveCalendar()) {
+          return (
+            advanced: false,
+            snack: Strings.get(calPreset().isEmpty
+                ? 'wiz_cal_pick'
+                : 'save_failed'),
+            finishedMessage: null
+          );
+        }
+        break;
       case stepBakalari:
         final snack = continueTestStep(
             'bakalari', atStep, readyBakalari(), 'wiz_need_bakalari');
@@ -613,71 +607,6 @@ class WizardController extends ChangeNotifier {
         final snack = continueTestStep(
             'strava', atStep, readyStrava(), 'wiz_need_strava');
         return (advanced: false, snack: snack, finishedMessage: null);
-      case stepAi:
-        if (!aiEnabled) {
-          if (saveAi()) {
-            goTo(stepAfter(atStep));
-            return (
-              advanced: true,
-              snack: null,
-              finishedMessage: null
-            );
-          }
-          return (
-            advanced: false,
-            snack: Strings.get('save_failed'),
-            finishedMessage: null
-          );
-        }
-        final snack = continueTestStep(
-            'ai', atStep, readyAi(), 'wiz_need_ai_key');
-        return (advanced: false, snack: snack, finishedMessage: null);
-      case stepLimits:
-        final updates = limitsUpdates();
-        if (updates == null || !_save(updates)) {
-          return (
-            advanced: false,
-            snack: Strings.get(updates == null
-                ? 'wiz_limits_invalid'
-                : 'save_failed'),
-            finishedMessage: null
-          );
-        }
-        break;
-      case stepDisclaimer:
-        if (!disclaimerOk) {
-          return (
-            advanced: false,
-            snack: Strings.get('wiz_disclaimer_need'),
-            finishedMessage: null
-          );
-        }
-        if (config['disclaimer_accepted'] != true) {
-          _save({'disclaimer_accepted': true});
-        }
-        break;
-      case stepCalendar:
-        if (!saveCalendar()) {
-          return (
-            advanced: false,
-            snack: Strings.get(calPreset().isEmpty
-                ? 'wiz_cal_pick'
-                : 'save_failed'),
-            finishedMessage: null
-          );
-        }
-        break;
-      case stepAlarm:
-        if (!saveAlarm()) {
-          return (
-            advanced: false,
-            snack: Strings.get(alarmMinutes() == null
-                ? 'wakeup_minutes_invalid'
-                : 'save_failed'),
-            finishedMessage: null
-          );
-        }
-        break;
       case stepExcuses:
         if (!saveSignature()) {
           return (
@@ -687,6 +616,29 @@ class WizardController extends ChangeNotifier {
                 : 'save_failed'),
             finishedMessage: null
           );
+        }
+        break;
+      case stepPhone:
+        if (!savePhone()) {
+          return (
+            advanced: false,
+            snack: Strings.get('save_failed'),
+            finishedMessage: null
+          );
+        }
+        final ask = onRequestNotificationPermission;
+        if (shouldAskNotificationPermission &&
+            !notificationPermissionAlreadyAsked &&
+            ask != null) {
+          if (!requestingPermission) {
+            requestingPermission = true;
+            notifyListeners();
+            ask().whenComplete(() {
+              requestingPermission = false;
+              goTo(stepAfter(atStep));
+            });
+          }
+          return (advanced: false, snack: null, finishedMessage: null);
         }
         break;
       default:
@@ -718,7 +670,6 @@ class WizardController extends ChangeNotifier {
     const tested = {
       stepBakalari: 'bakalari',
       stepStrava: 'strava',
-      stepAi: 'ai',
     };
     final service = tested[step];
     if (service != null && _testNeeded(service)) {
@@ -727,20 +678,18 @@ class WizardController extends ChangeNotifier {
     return Strings.get('wiz_next');
   }
 
-  /// Whether Skip is offered on this step (welcome has nothing to
-  /// skip; the disclaimer must be accepted).
+  /// Whether Skip is offered on this step (welcome includes the required
+  /// disclaimer and cannot be skipped).
   bool get canSkip =>
       step != stepWelcome &&
-      step != stepDisclaimer &&
       step < stepDone;
 
-  /// Whether Continue is enabled (calendar needs a pick, disclaimer
-  /// an ack, and no advance while a test or the limits load runs).
+  /// Whether Continue is enabled (welcome needs disclaimer ack, school
+  /// needs a pick, and no advance while a test runs).
   bool get nextEnabled {
-    if (step == stepCalendar && calPreset().isEmpty) return false;
-    if (step == stepDisclaimer && !disclaimerOk) return false;
-    if (testing != null) return false;
-    if (step == stepLimits && refreshRunning) return false;
+    if (step == stepWelcome && !disclaimerOk) return false;
+    if (step == stepSchool && calPreset().isEmpty) return false;
+    if (testing != null || requestingPermission) return false;
     return true;
   }
 

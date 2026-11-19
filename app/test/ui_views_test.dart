@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:app/controllers/app_state.dart' hide ActivityController;
 import 'package:app/features/absences/absences_live.dart';
+import 'package:app/features/absences/limits_page.dart';
 import 'package:app/features/activity/activity_controller.dart';
 import 'package:app/features/activity/activity_live.dart';
 import 'package:app/features/activity/activity_view.dart';
@@ -383,13 +384,49 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(LiveMarksView), findsOneWidget);
 
-      // 5. Planner
+      // 5. Absences, Planner, and Limits with timetable/plan data
+      final planState = container.read(appStateProvider);
+      planState.data = {
+        'absence': {'Matematika': 8.0},
+        'timetable': {
+          '11.09.2026': [
+            {'subject': 'Matematika', 'time': '1. 8:00 - 8:45'},
+          ],
+        },
+      };
+      planState.demoMode = false;
       await tester.pumpWidget(_app(
-        const LivePlannerView(narrow: false),
+        LiveAbsencesView(
+          tokens: tokens,
+          narrow: false,
+          now: DateTime(2026, 9, 10, 10, 0),
+        ),
         container: container,
       ));
       await tester.pumpAndSettle();
-      expect(find.byType(LivePlannerView), findsOneWidget);
+      expect(find.byType(LiveAbsencesView), findsOneWidget);
+
+      await tester.pumpWidget(_app(
+        LivePlannerPage(
+          tokens: tokens,
+          narrow: false,
+          now: DateTime(2026, 9, 10, 10, 0),
+        ),
+        container: container,
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byType(LivePlannerPage), findsOneWidget);
+
+      await tester.pumpWidget(_app(
+        LiveLimitsPage(
+          tokens: tokens,
+          narrow: false,
+          onBack: () {},
+        ),
+        container: container,
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byType(LiveLimitsPage), findsOneWidget);
 
       // 6. Lunches
       await tester.pumpWidget(_app(

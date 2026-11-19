@@ -1,9 +1,12 @@
 import 'dart:io';
 
 import 'package:app/controllers/app_state.dart';
+import 'package:app/features/planner/planner_live.dart';
+import 'package:app/l10n/strings.dart';
 import 'package:app/shell/router.dart';
 import 'package:app/shell/scaffold.dart';
 import 'package:app/shell/theme.dart';
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -160,15 +163,16 @@ void main() {
     });
 
     // test_mobile.py::test_every_screen_builds: phone page 390x844, no
-    // `report_error` for any of the 9 routes.
+    // `report_error` for any of the live routes; `/planner` redirects to `/absences/plan`.
     testWidgets('everyScreenBuilds', (tester) async {
       setViewport(tester, 390, 844);
       for (final route in [
         '/today',
         '/timetable',
         '/absences',
+        '/absences/plan',
+        '/absences/limits',
         '/marks',
-        '/planner',
         '/lunches',
         '/activity',
         '/settings',
@@ -186,6 +190,20 @@ void main() {
         expect(state.lastError, isNull, reason: route);
         container.dispose();
       }
+      // Compatibility redirect: `/planner` lands on `/absences/plan`.
+      expect(routeForLocation('/planner'), 'absences/plan');
+      final container = ProviderContainer();
+      final state = container.read(appStateProvider);
+      state.wizardDismissed = true;
+      await tester.pumpWidget(
+        buildShellHarness(container: container, initialLocation: '/planner'),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(state.lastError, isNull);
+      final router = GoRouter.of(tester.element(find.byType(NavigationBar)));
+      expect(router.routerDelegate.currentConfiguration.uri.path, '/absences/plan');
+      container.dispose();
     });
 
     test('backStepsUp', () {
@@ -194,7 +212,7 @@ void main() {
         isNull,
       );
       expect(
-        backTarget(route: 'planner', narrow: true, wizardShown: false),
+        backTarget(route: 'absences', narrow: true, wizardShown: false),
         'more',
       );
       expect(
@@ -206,11 +224,11 @@ void main() {
         'today',
       );
       expect(
-        backTarget(route: 'planner', narrow: false, wizardShown: false),
+        backTarget(route: 'absences', narrow: false, wizardShown: false),
         'today',
       );
       expect(
-        backTarget(route: 'planner', narrow: true, wizardShown: true),
+        backTarget(route: 'absences', narrow: true, wizardShown: true),
         isNull,
       );
     });
@@ -268,7 +286,7 @@ void main() {
       expect(find.byKey(const ValueKey('topbar_back_btn')), findsNothing);
 
       // Visiting each More subpage on phone shows top-bar back button -> /more.
-      for (final loc in ['/absences', '/planner', '/activity', '/settings']) {
+      for (final loc in ['/absences', '/activity', '/settings']) {
         final c = ProviderContainer();
         addTearDown(c.dispose);
         final s = c.read(appStateProvider);
@@ -318,6 +336,267 @@ void main() {
       await tester.pumpAndSettle();
       expect(state.settingsOpen, isFalse);
       expect(find.byKey(const ValueKey('topbar_back_btn')), findsOneWidget);
+    });
+
+    test('O7 backTarget honors sanitized ?from= origin for absences sub-routes',
+        () {
+      expect(
+        backTarget(
+          route: 'absences/limits',
+          narrow: true,
+          wizardShown: false,
+          from: 'settings',
+        ),
+        'settings',
+      );
+      expect(
+        backTarget(
+          route: 'absences/limits',
+          narrow: true,
+          wizardShown: false,
+          from: null,
+        ),
+        'absences',
+      );
+      expect(
+        backTarget(
+          route: 'absences/limits',
+          narrow: true,
+          wizardShown: false,
+          from: 'absences',
+        ),
+        'absences',
+      );
+      expect(
+        backTarget(
+          route: 'absences/limits',
+          narrow: true,
+          wizardShown: false,
+          from: 'bogus',
+        ),
+        'absences',
+      );
+      expect(
+        backTarget(
+          route: 'absences/plan',
+          narrow: true,
+          wizardShown: false,
+          from: 'today',
+        ),
+        'today',
+      );
+      expect(
+        backTarget(
+          route: 'absences/plan',
+          narrow: true,
+          wizardShown: false,
+          from: null,
+        ),
+        'absences',
+      );
+      expect(
+        backTarget(
+          route: 'absences/plan',
+          narrow: true,
+          wizardShown: false,
+          from: 'absences',
+        ),
+        'absences',
+      );
+      expect(
+        backTarget(
+          route: 'absences/plan',
+          narrow: true,
+          wizardShown: false,
+          from: 'bogus',
+        ),
+        'absences',
+      );
+      expect(
+        backTarget(
+          route: 'absences/plan',
+          narrow: true,
+          wizardShown: true,
+          from: 'today',
+        ),
+        isNull,
+      );
+    });
+
+    testWidgets(
+        'O7 AppScaffold keeps Absences selected on wide rail and More on phone bar without duplicate topbar_back_btn',
+        (tester) async {
+      for (final loc in ['/absences/plan', '/absences/limits']) {
+        // Wide rail: Absences selected, no topbar_back_btn.
+        setViewport(tester, 1240, 800);
+        final wideContainer = ProviderContainer();
+        addTearDown(wideContainer.dispose);
+        final wideState = wideContainer.read(appStateProvider);
+        wideState.wizardDismissed = true;
+        wideState.setTutorialsEnabled(false);
+
+        await tester.pumpWidget(
+          buildShellHarness(container: wideContainer, initialLocation: loc),
+        );
+        await tester.pumpAndSettle();
+
+        final rail = tester.widget<NavigationRail>(find.byType(NavigationRail));
+        expect(rail.selectedIndex, shellRoutes.indexOf('absences'), reason: loc);
+        expect(find.byKey(const ValueKey('topbar_back_btn')), findsNothing,
+            reason: loc);
+
+        // Phone portrait: More selected, no topbar_back_btn (page owns single arrow).
+        setViewport(tester, 390, 844);
+        final phoneContainer = ProviderContainer();
+        addTearDown(phoneContainer.dispose);
+        final phoneState = phoneContainer.read(appStateProvider);
+        phoneState.wizardDismissed = true;
+        phoneState.setTutorialsEnabled(false);
+
+        await tester.pumpWidget(
+          buildShellHarness(container: phoneContainer, initialLocation: loc),
+        );
+        await tester.pumpAndSettle();
+
+        final navBar = tester.widget<NavigationBar>(find.byType(NavigationBar));
+        expect(navBar.selectedIndex, narrowTabs.indexOf('more'), reason: loc);
+        expect(find.byKey(const ValueKey('topbar_back_btn')), findsNothing,
+            reason: loc);
+      }
+    });
+
+    testWidgets(
+        'O7/M4 live Today tip opens /absences/plan?from=today, plan:back_btn returns to /today, and bogus pendingRoute is cleared',
+        (tester) async {
+      setViewport(tester, 390, 844);
+      Strings.lang = 'cs';
+      final fixedNow = DateTime(2026, 9, 10, 10, 0);
+      await withClock(Clock.fixed(fixedNow), () async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+        final state = container.read(appStateProvider);
+        state.wizardDismissed = true;
+        state.setTutorialsEnabled(false);
+        state.demoMode = false;
+        state.data = {
+          'absence': {'Matematika': 2.0},
+          'timetable': {
+            '11.09.2026': [
+              {'subject': 'Matematika', 'time': '1. 8:00 - 8:45'},
+            ],
+          },
+        };
+
+        final router = buildRouter(initialLocation: '/today');
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: MaterialApp.router(
+              routerConfig: router,
+              theme: tokensFor('dark').toThemeData(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final tipBtn = find.widgetWithText(
+          TextButton,
+          Strings.get('abs_planner_btn'),
+        );
+        expect(tipBtn, findsOneWidget);
+        await tester.tap(tipBtn);
+        await tester.pumpAndSettle();
+
+        expect(
+          router.routerDelegate.currentConfiguration.uri.toString(),
+          '/absences/plan?from=today',
+        );
+        expect(find.byType(LivePlannerPage), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('plan:back_btn')));
+        await tester.pumpAndSettle();
+        expect(router.routerDelegate.currentConfiguration.uri.path, '/today');
+
+        // A pendingRoute that matches nothing is cleared rather than sticking.
+        state.pendingRoute = 'bogus/nowhere';
+        state.onChanged();
+        await tester.pumpAndSettle();
+        expect(state.pendingRoute, isNull);
+        expect(router.routerDelegate.currentConfiguration.uri.path, '/today');
+      });
+    });
+
+    testWidgets(
+        'O8 applyLaunchRoute opens matching routes, legacy planner, alarm section, unknown -> today, and drops while wizard is open',
+        (tester) async {
+      setViewport(tester, 390, 844);
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final state = container.read(appStateProvider);
+      state.wizardDismissed = true;
+      state.setTutorialsEnabled(false);
+
+      final router = buildRouter(initialLocation: '/today');
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(
+            routerConfig: router,
+            theme: tokensFor('dark').toThemeData(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      String currentPath() =>
+          router.routerDelegate.currentConfiguration.uri.path;
+
+      state.applyLaunchRoute('marks');
+      await tester.pumpAndSettle();
+      expect(currentPath(), '/marks');
+
+      state.applyLaunchRoute('absences/plan');
+      await tester.pumpAndSettle();
+      expect(currentPath(), '/absences/plan');
+
+      state.applyLaunchRoute('planner');
+      await tester.pumpAndSettle();
+      expect(currentPath(), '/absences/plan');
+
+      state.applyLaunchRoute('alarm');
+      await tester.pumpAndSettle();
+      expect(currentPath(), '/settings');
+      expect(state.settingsSection, 'alarm');
+      expect(state.settingsOpen, isTrue);
+
+      state.applyLaunchRoute('not/a/real/route');
+      await tester.pumpAndSettle();
+      expect(currentPath(), '/today');
+
+      // While wizard is open (setupPending), launch routes are dropped and
+      // never hijack /wizard.
+      final wizContainer = ProviderContainer();
+      addTearDown(wizContainer.dispose);
+      final wizState = wizContainer.read(appStateProvider);
+      expect(wizState.setupPending, isTrue);
+      final wizRouter = buildRouter(initialLocation: '/today');
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          key: const ValueKey('o8_wizard_scope'),
+          container: wizContainer,
+          child: MaterialApp.router(
+            routerConfig: wizRouter,
+            theme: tokensFor('dark').toThemeData(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(wizRouter.routerDelegate.currentConfiguration.uri.path, '/wizard');
+
+      wizState.applyLaunchRoute('marks');
+      await tester.pumpAndSettle();
+      expect(wizState.pendingRoute, isNull);
+      expect(wizRouter.routerDelegate.currentConfiguration.uri.path, '/wizard');
     });
   });
 }

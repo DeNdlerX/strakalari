@@ -7,8 +7,8 @@
 // without one, [notify] falls back to printing, exactly like Python.
 //
 // Each event type can be toggled in settings under the ``notifications``
-// config key, e.g. ``{"excuse_sent": true}``. Unknown keys default to ON so
-// new event types are visible until the user opts out.
+// config key, e.g. ``{"excuse_sent": true}``. Missing keys fall back to
+// [defaults] (and unknown events default to ON).
 
 /// Application name shown in notifications.
 const String appName = 'Strakaláři';
@@ -34,12 +34,12 @@ const List<String> eventTypes = [
   'update_available',
 ];
 
-/// Default preference per event (all ON).
+/// Default preference per event (all ON except refresh_done and refresh_failed).
 const Map<String, bool> defaults = {
   'excuse_sent': true,
   'excuse_needs_confirm': true,
-  'refresh_done': true,
-  'refresh_failed': true,
+  'refresh_done': false,
+  'refresh_failed': false,
   'lunch_ordered': true,
   'lunch_skipped': true,
   'planner_suggestion': true,
@@ -60,10 +60,11 @@ bool _truthy(Object? value) {
   return true;
 }
 
-/// True unless the user explicitly disabled [event].
+/// Whether [event] is enabled under [prefs], falling back to [defaults].
 bool isEnabled(Map<String, Object?>? prefs, String event) {
-  if (prefs == null) return true;
-  if (!prefs.containsKey(event)) return true;
+  if (prefs == null || !prefs.containsKey(event)) {
+    return defaults[event] ?? true;
+  }
   return _truthy(prefs[event]);
 }
 

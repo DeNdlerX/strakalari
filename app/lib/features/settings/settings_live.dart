@@ -65,7 +65,11 @@ SettingsController settingsControllerFor(
     isAndroid: Platform.isAndroid,
     wakeupAvailable: s.wakeupAvailable,
   );
-  if (s.wakeupAvailable) c.wakeupPhone = wakeupPhone ?? _channelPhone(s);
+  if (wakeupPhone != null) {
+    c.wakeupPhone = wakeupPhone;
+  } else if (s.wakeupAvailable) {
+    c.wakeupPhone = channelWakeupPhone(s);
+  }
   c.backgroundStatusInputs = s.backgroundStatusInputs;
   c.drafts.addAll(s.drafts);
   c.settingsSection = s.settingsSection;
@@ -78,8 +82,14 @@ SettingsController settingsControllerFor(
 
 /// The wake-up card's phone side, backed by the platform channel. The two
 /// permission flags are answered asynchronously, so they start as "allowed"
-/// and the live screen refreshes them (see `_LiveSettingsViewState`).
-WakeupPhone _channelPhone(AppState s, {bool notif = true, bool exact = true}) {
+/// and the live screen refreshes them (see `_LiveSettingsViewState` and
+/// `_LiveWizardViewState`).
+WakeupPhone channelWakeupPhone(
+  AppState s, {
+  bool notif = true,
+  bool exact = true,
+  Future<void> Function()? onPermissionChecked,
+}) {
   const channel = AndroidChannel();
   return WakeupPhone(
     notificationsEnabled: notif,
@@ -88,8 +98,11 @@ WakeupPhone _channelPhone(AppState s, {bool notif = true, bool exact = true}) {
     skippedDays: () => s.skippedWakeupDays(),
     openSystemAlarm: (h, m, message, {int? weekday}) =>
         channel.openSystemAlarm(h, m, message: message, weekday: weekday),
-    requestNotificationPermission: () =>
-        unawaited(channel.requestNotificationPermission()),
+    requestNotificationPermission: () => unawaited(() async {
+      s.notificationPermissionAsked = true;
+      await channel.requestNotificationPermission();
+      await onPermissionChecked?.call();
+    }()),
     openNotificationSettings: () =>
         unawaited(channel.openNotificationSettings()),
     openExactAlarmSettings: () => unawaited(channel.openExactAlarmSettings()),
@@ -141,7 +154,12 @@ class _LiveSettingsViewState extends ConsumerState<LiveSettingsView> {
     final controller = settingsControllerFor(
       s,
       wakeupPhone: s.wakeupAvailable
-          ? _channelPhone(s, notif: _notifOn, exact: _exactOn)
+          ? channelWakeupPhone(
+              s,
+              notif: _notifOn,
+              exact: _exactOn,
+              onPermissionChecked: _loadPermissions,
+            )
           : null,
       confirmAutoMode: (key) {
         final completer = Completer<String>();

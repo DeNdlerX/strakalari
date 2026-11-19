@@ -146,7 +146,7 @@ class TodayController extends ChangeNotifier {
   /// Starts a refresh (`state.start_refresh("all")`); true = started.
   final bool Function() onRefreshRequest;
 
-  /// Asks the shell to navigate (`state.go("settings"|"planner")`).
+  /// Asks the shell to navigate (`state.go("settings"|"absences")`).
   final void Function(String route) onGo;
 
   /// Sends one request in a Bakaláři session (holds the session lock,

@@ -117,7 +117,7 @@ public class KeepAliveService extends Service {
                 ctx, CHANNEL_ID, prefs.getString("channel", "Background"),
                 NotificationManager.IMPORTANCE_LOW,
                 title.isEmpty() ? "Strakaláři" : title,
-                prefs.getString("text", ""), prefs.getString("sub", ""), true);
+                prefs.getString("text", ""), prefs.getString("sub", ""), true, "today");
         StatusViews.apply(ctx, b, prefs.getString("rows", ""));
         return b.build();
     }

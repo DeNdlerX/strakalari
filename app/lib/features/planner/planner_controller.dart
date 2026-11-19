@@ -26,11 +26,13 @@ class PlannerController {
   final bool Function(String dayLabel)? isLunchOpen;
 
   String? plannerTerm;
+  bool showAllPicks = false;
   bool stravaEnabled = false;
 
   /// Optional live-state delegation hooks (wired by `planner_live.dart`).
   bool Function(int days)? setPlannerTargetHook;
   void Function(String? key)? selectPlannerTermHook;
+  void Function()? toggleShowAllPicksHook;
   bool Function(
     String startIso,
     String endIso,
@@ -93,6 +95,12 @@ class PlannerController {
   void selectPlannerTerm(String? key) {
     plannerTerm = key;
     selectPlannerTermHook?.call(key);
+    _emit();
+  }
+
+  void toggleShowAllPicks() {
+    showAllPicks = !showAllPicks;
+    toggleShowAllPicksHook?.call();
     _emit();
   }
 
@@ -282,22 +290,28 @@ class PlannerController {
     return plannedSkips.length < before;
   }
 
-  Map<String, dynamic>? plannedFor(String dayIso) {
+  List<Map<String, dynamic>> plannedEntriesFor(String dayIso) {
     DateTime? day;
     try {
       day = DateTime.parse(dayIso);
     } catch (_) {
       day = null;
     }
+    final out = <Map<String, dynamic>>[];
     for (final entry in plannedSkips) {
       final days = entryDays(entry);
       if (day != null) {
-        if (days.any((d) => d == day)) return entry;
+        if (days.any((d) => d == day)) out.add(entry);
       } else if (entryStartIso(entry) == dayIso) {
-        return entry;
+        out.add(entry);
       }
     }
-    return null;
+    return out;
+  }
+
+  Map<String, dynamic>? plannedFor(String dayIso) {
+    final entries = plannedEntriesFor(dayIso);
+    return entries.isEmpty ? null : entries.first;
   }
 
   static bool _sameEntry(Map<String, dynamic> a, Map<String, dynamic> b) {

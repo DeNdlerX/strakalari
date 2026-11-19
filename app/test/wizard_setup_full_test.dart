@@ -100,19 +100,6 @@ void main() {
       expect(saved['use_strava'], isTrue);
     });
 
-    test('testAiOptional', () {
-      final c = WizardController(
-        config: {},
-        onSave: (_) => true,
-      );
-      c.setAiEnabled(false);
-      expect(c.saveAi(), isTrue);
-      c.setAiEnabled(true);
-      expect(c.saveAi(), isFalse);
-      c.setDraft('wiz:ai_key', 'AIza-test');
-      expect(c.saveAi(), isTrue);
-    });
-
     test('testWizardGotoClampsAndFinishClears', () {
       final c = WizardController(
         config: {},
@@ -152,16 +139,16 @@ void main() {
       );
       c.goTo(WizardController.stepWelcome);
       expect(c.canSkip, isFalse);
-      c.goTo(WizardController.stepDisclaimer);
-      expect(c.canSkip, isFalse);
       c.goTo(WizardController.stepDone);
       expect(c.canSkip, isFalse);
+      c.goTo(WizardController.stepSchool);
+      expect(c.canSkip, isTrue);
       c.goTo(WizardController.stepBakalari);
       expect(c.canSkip, isTrue);
     });
   });
 
-  group('Calendar, limits, and signature steps', () {
+  group('School, signature, and step order', () {
     test('testCalendarStepRequiresExplicitPick', () {
       final saved = <String, Object?>{};
       final c = WizardController(
@@ -195,44 +182,6 @@ void main() {
       c.setDraft('wiz:signature', '  Jan Novák  ');
       expect(c.saveSignature(), isTrue);
       expect(saved['your_signature'], equals('Jan Novák'));
-    });
-
-    test('testLimitsStepUpdates', () {
-      final c = WizardController(
-        config: {
-          'subject_limits': {'Fyzika': 20.0, 'Dějepis': 30.0},
-          'absence_critical_pct': 25.0,
-        },
-        onSave: (_) => true,
-      );
-      c.limitSubjectsInput = ['Matematika', 'Fyzika'];
-      c.setDraft('wiz:limit:Matematika', '30,5');
-      c.setDraft('wiz:limit:Fyzika', '');
-      final updates = c.limitsUpdates();
-      expect(updates, isNotNull);
-      final limits = updates!['subject_limits'] as Map<String, double>;
-      expect(limits['Matematika'], equals(30.5));
-      expect(limits['Dějepis'], equals(30.0));
-      expect(limits.containsKey('Fyzika'), isFalse);
-
-      for (final bad in ['abc', '150', '-1']) {
-        c.setDraft('wiz:limit:Matematika', bad);
-        expect(c.limitsUpdates(), isNull);
-      }
-    });
-
-    test('testLimitsStepLoadsSubjectsOnce', () {
-      final c = WizardController(
-        config: {},
-        onSave: (_) => true,
-      );
-      c.step = WizardController.stepLimits;
-      expect(c.limitsNeedsRefresh, isFalse); // no credentials yet
-
-      c.hasCredentials = true;
-      expect(c.limitsNeedsRefresh, isTrue); // creds present, no subjects
-      c.markLimitsRefreshStarted();
-      expect(c.limitsNeedsRefresh, isFalse); // started once, never triggers again
     });
 
     test('testCalendarPresetLinesTotal', () {
@@ -297,36 +246,33 @@ void main() {
     });
   });
 
-  group('Step sequence and Android alarm', () {
+  group('Step sequence and Android phone step', () {
     test('testStepOrder', () {
-      expect(WizardController.stepDisclaimer < WizardController.stepBakalari, isTrue);
-      expect(WizardController.stepBakalari < WizardController.stepLimits, isTrue);
-      expect(WizardController.stepLimits < WizardController.stepStrava, isTrue);
-      expect(WizardController.stepStrava < WizardController.stepAi, isTrue);
-      expect(WizardController.stepAi < WizardController.stepCalendar, isTrue);
-      expect(WizardController.stepCalendar < WizardController.stepAlarm, isTrue);
-      expect(WizardController.stepAlarm < WizardController.stepExcuses, isTrue);
-      expect(WizardController.stepExcuses < WizardController.stepDone, isTrue);
-      expect(WizardController.stepsTotal, equals(WizardController.stepDone + 1));
+      expect(WizardController.stepWelcome, equals(0));
+      expect(WizardController.stepSchool, equals(1));
+      expect(WizardController.stepBakalari, equals(2));
+      expect(WizardController.stepStrava, equals(3));
+      expect(WizardController.stepExcuses, equals(4));
+      expect(WizardController.stepPhone, equals(5));
+      expect(WizardController.stepDone, equals(6));
+      expect(WizardController.stepsTotal, equals(7));
     });
 
-    test('testAlarmStepOnlyOnAndroid', () {
+    test('testPhoneStepOnlyOnAndroid', () {
       final cDesktop = WizardController(config: {}, onSave: (_) => true)
         ..isAndroid = false;
-      expect(cDesktop.shownSteps().contains(WizardController.stepAlarm), isFalse);
-      expect(cDesktop.stepAfter(WizardController.stepCalendar), equals(WizardController.stepExcuses));
-      expect(cDesktop.stepBefore(WizardController.stepExcuses), equals(WizardController.stepCalendar));
-      expect(cDesktop.shownSteps().length, equals(WizardController.stepsTotal - 1));
+      expect(cDesktop.shownSteps(), equals([0, 1, 2, 3, 4, 6]));
+      expect(cDesktop.stepAfter(WizardController.stepExcuses), equals(WizardController.stepDone));
+      expect(cDesktop.stepBefore(WizardController.stepDone), equals(WizardController.stepExcuses));
 
       final cAndroid = WizardController(config: {}, onSave: (_) => true)
         ..isAndroid = true;
-      expect(cAndroid.shownSteps().contains(WizardController.stepAlarm), isTrue);
-      expect(cAndroid.stepAfter(WizardController.stepCalendar), equals(WizardController.stepAlarm));
-      expect(cAndroid.stepBefore(WizardController.stepExcuses), equals(WizardController.stepAlarm));
-      expect(cAndroid.shownSteps().length, equals(WizardController.stepsTotal));
+      expect(cAndroid.shownSteps(), equals([0, 1, 2, 3, 4, 5, 6]));
+      expect(cAndroid.stepAfter(WizardController.stepExcuses), equals(WizardController.stepPhone));
+      expect(cAndroid.stepBefore(WizardController.stepDone), equals(WizardController.stepPhone));
     });
 
-    test('testAlarmStepSavesTheAlarm', () {
+    test('testPhoneStepSavesWakeupWithoutMinutes', () {
       final saved = <String, Object?>{};
       var askedPermission = false;
       final c = WizardController(
@@ -339,20 +285,17 @@ void main() {
           askedPermission = true;
         },
       );
-      // Off by default: Continue saves false, no permission asked
-      expect(c.saveAlarm(), isTrue);
+      // Off by default: Continue saves false, no alarm permission asked,
+      // and never writes wakeup_minutes_before.
+      expect(c.savePhone(), isTrue);
       expect(saved['wakeup_enabled'], isFalse);
+      expect(saved.containsKey('wakeup_minutes_before'), isFalse);
       expect(askedPermission, isFalse);
 
       c.setAlarmEnabled(true);
-      c.setDraft('wiz:wakeup_minutes', 'abc');
-      expect(c.saveAlarm(), isFalse); // not a valid number
-      expect(saved['wakeup_enabled'], isFalse);
-
-      c.setDraft('wiz:wakeup_minutes', '45');
-      expect(c.saveAlarm(), isTrue);
+      expect(c.savePhone(), isTrue);
       expect(saved['wakeup_enabled'], isTrue);
-      expect(saved['wakeup_minutes_before'], equals(45));
+      expect(saved.containsKey('wakeup_minutes_before'), isFalse);
       expect(askedPermission, isTrue);
     });
   });
@@ -369,8 +312,6 @@ void main() {
       expect(c.readyStrava(), isFalse);
       c.setStravaEnabled(false);
       expect(c.readyStrava(), isTrue);
-
-      expect(c.readyAi(), isTrue); // disabled by default
     });
 
     test('testFingerprintChangesOnEdit', () {
@@ -445,12 +386,14 @@ void main() {
           return true;
         },
       );
-      c.step = WizardController.stepDisclaimer;
+      c.step = WizardController.stepWelcome;
       expect(c.disclaimerOk, isFalse);
+      expect(c.nextEnabled, isFalse);
       c.setDisclaimer(false);
       expect(c.disclaimerOk, isFalse);
       c.setDisclaimer(true);
       expect(c.disclaimerOk, isTrue);
+      expect(c.nextEnabled, isTrue);
 
       final cWithSaved = WizardController(
         config: {'disclaimer_accepted': true},

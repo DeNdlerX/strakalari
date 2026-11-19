@@ -8,6 +8,27 @@ import 'package:strakalari_core/strakalari_core.dart';
 
 import 'android_channel.dart';
 
+/// Target app route for every notification event in core `eventTypes` (O8).
+const Map<String, String> notificationEventRoutes = {
+  'excuse_needs_confirm': 'today',
+  'excuse_sent': 'activity',
+  'refresh_done': 'today',
+  'refresh_failed': 'activity',
+  'lunch_ordered': 'lunches',
+  'lunch_skipped': 'lunches',
+  'planner_suggestion': 'absences/plan',
+  'automation_failed': 'activity',
+  'new_mark': 'marks',
+  'new_quarterly_mark': 'marks',
+  'new_absence': 'absences',
+  'timetable_change': 'timetable',
+  'update_available': 'activity',
+};
+
+/// Resolves the target route for notification event [tag] (defaults to `'today'`).
+String routeForNotificationEvent(String tag) =>
+    notificationEventRoutes[tag] ?? 'today';
+
 /// Posts event notifications through the Android backend.
 ///
 /// Register at startup (Android only):
@@ -34,6 +55,7 @@ class AndroidNotifications implements NotifierBackend {
       title: title,
       text: body,
       channelName: english ? 'Automation' : 'Automatizace',
+      route: routeForNotificationEvent(tag),
     );
     return true;
   }

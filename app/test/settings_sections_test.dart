@@ -2,8 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:app/controllers/app_state.dart';
+import 'package:app/features/absences/limits_page.dart';
 import 'package:app/features/settings/settings_live.dart';
 import 'package:app/l10n/strings.dart';
+import 'package:app/shell/router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -534,6 +536,43 @@ void main() {
     });
   });
 
+  group('O1 notification defaults', () {
+    testWidgets(
+        'refresh_done and refresh_failed default to off while other events stay on',
+        (t) async {
+      const offByDefault = {'refresh_done', 'refresh_failed'};
+
+      for (final initial in [null, <String, dynamic>{}]) {
+        final c = _controller({'notifications': initial});
+        await _openSection(t, c, 'notifications');
+
+        for (final event in kNotificationEvents) {
+          final tile = t.widget<SwitchListTile>(
+            find.byKey(Key('notif:$event')),
+          );
+          expect(
+            tile.value,
+            offByDefault.contains(event) ? isFalse : isTrue,
+            reason: '$event with $initial',
+          );
+        }
+      }
+
+      final enabled = _controller({
+        'notifications': {'refresh_done': true, 'refresh_failed': true},
+      });
+      await _openSection(t, enabled, 'notifications');
+      expect(
+        t.widget<SwitchListTile>(find.byKey(const Key('notif:refresh_done'))).value,
+        isTrue,
+      );
+      expect(
+        t.widget<SwitchListTile>(find.byKey(const Key('notif:refresh_failed'))).value,
+        isTrue,
+      );
+    });
+  });
+
   group('B9 background switch rebuilds', () {
     testWidgets('tapping run_in_background updates switch state immediately',
         (t) async {
@@ -663,6 +702,128 @@ void main() {
         expect(t.widget<SwitchListTile>(switchFinder).value, spec.initial);
       });
     }
+  });
+
+  group('F1 Settings → Škola & limits link', () {
+    testWidgets(
+        'sec_calendar is localized as Škola/School and hosts MarksBandsCard saving & resetting bands',
+        (t) async {
+      final prevLang = Strings.lang;
+      addTearDown(() => Strings.lang = prevLang);
+
+      Strings.lang = 'cs';
+      expect(Strings.get('sec_calendar'), 'Škola');
+      Strings.lang = 'en';
+      expect(Strings.get('sec_calendar'), 'School');
+      Strings.lang = 'cs';
+
+      final c = _controller({
+        'school_preset_id': 'gekom_2026_2027',
+        'marks_percent_bands': <double>[],
+        'user_free_days': [],
+      });
+      t.view.physicalSize = const Size(800, 4000);
+      t.view.devicePixelRatio = 1.0;
+      addTearDown(t.view.reset);
+      c.settingsSection = 'calendar';
+      c.settingsOpen = true;
+      await t.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) => SettingsView(
+                controller: c,
+                narrow: true,
+                onChanged: () => setState(() {}),
+              ),
+            ),
+          ),
+        ),
+      );
+      await t.pump();
+
+      // GEKOM preset bands displayed.
+      expect(
+        find.text(Strings.format(
+            'marks_bands_src_preset', {'school': 'GEKOM 2026/2027'})),
+        findsOneWidget,
+      );
+      expect(find.text('1: 100–87 · 2: 87–72 · 3: 72–55 · 4: 55–40 · 5: 40–0 %'),
+          findsOneWidget);
+
+      // Edit first boundary and save -> writes marks_percent_bands and shows Reset.
+      await t.enterText(find.byKey(const Key('marks:band:1')), '90');
+      await t.tap(find.byKey(const Key('marks:bands_save')));
+      await t.pumpAndSettle();
+
+      expect(c.get('marks_percent_bands'), [90.0, 72.0, 55.0, 40.0]);
+      expect(find.text(Strings.get('marks_bands_src_user')), findsOneWidget);
+
+      // Reset with "Podle školy" clears marks_percent_bands.
+      await t.tap(find.byKey(const Key('marks:bands_reset')));
+      await t.pumpAndSettle();
+      expect(c.get('marks_percent_bands'), isEmpty);
+      expect(
+        find.text(Strings.format(
+            'marks_bands_src_preset', {'school': 'GEKOM 2026/2027'})),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+        'Settings → limits shows link to Absences instead of duplicate editor',
+        (t) async {
+      Strings.lang = 'cs';
+      final c = _controller({'absence': {'Matematika': 10.0}});
+      await _openSection(t, c, 'limits');
+
+      expect(find.byKey(const Key('settings:go_absences_limits')), findsOneWidget);
+      expect(find.text(Strings.get('open_limits')), findsOneWidget);
+      expect(find.byType(LimitsPage), findsNothing);
+      expect(find.byType(AutosaveField), findsNothing);
+
+      // Tapping the button navigates to /absences/limits?from=settings.
+      final tmp = Directory.systemTemp.createTempSync('strakalari_set_lim_');
+      addTearDown(() => tmp.deleteSync(recursive: true));
+      core.setEnvironmentOverride(
+          {'STRAKALARI_DATA_DIR': tmp.path, 'STRAKALARI_NO_KEYRING': '1'});
+      addTearDown(() => core.setEnvironmentOverride(null));
+
+      final s = AppState(
+        configData: {
+          'language': 'cs',
+          'tutorials_enabled': false,
+          'bakalari_url': 'http://127.0.0.1:18080',
+          'bakalari_username': 'demo',
+          'bakalari_password': 'pw',
+        },
+        data: {
+          'absence': {'Matematika': 10.0},
+        },
+      );
+      s.demoMode = false;
+      s.setSettingsSection('limits');
+
+      final router = buildRouter(initialLocation: '/settings');
+      addTearDown(router.dispose);
+      await t.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppState(s)),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await t.pumpAndSettle();
+
+      await t.tap(find.byKey(const Key('settings:go_absences_limits')));
+      await t.pumpAndSettle();
+      expect(
+        router.routerDelegate.currentConfiguration.uri.toString(),
+        '/absences/limits?from=settings',
+      );
+      expect(find.byType(LimitsPage), findsOneWidget);
+    });
   });
 }
 

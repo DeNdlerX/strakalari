@@ -48,16 +48,15 @@ Want test versions before everyone else? Switch the update channel to **Beta** i
 
 - **Today** — pending excuses, sent with one click: late arrivals, early leaves, single lessons and whole days (pictured above).
 - **Timetable** — the week as in Bakaláři, with absences, substitutions, cancelled lessons and rooms.
-- **Absences** — the percentage for every subject, with a warning before you go over the limit.
+- **Absences** — the percentage for every subject, warnings before you go over the limit, quick *Limits* editing, and a *Planner* showing how many days you can still afford to miss evenly up to the closure.
 - **Marks** — weighted averages, a report-card estimate, "what do I need on the next test" and "what if" predictions.
-- **Planner** — how many days you can still afford to miss, and when, spread evenly up to the absence closure.
 - **Lunches** — the weekly menu, ordering everything at once, an ingredient blacklist and optional AI recommendations.
 
 | Timetable | Marks |
 |---|---|
 | <img src="docs/images/timetable-en.png" alt="Timetable"> | <img src="docs/images/marks-en.png" alt="Marks"> |
-| **Planner** (with an interactive tutorial) | **Lunches** |
-| <img src="docs/images/planner-en.png" alt="Planner with an interactive tutorial"> | <img src="docs/images/lunches-en.png" alt="Lunches"> |
+| **Absences** | **Lunches** |
+| <img src="docs/images/absences-en.png" alt="Absences"> | <img src="docs/images/lunches-en.png" alt="Lunches"> |
 
 <sub>Screenshots use made-up sample data.</sub>
 
@@ -85,7 +84,7 @@ Also:
   |---|---|
   | **GEKOM** | 2026/2027 |
 
-  At another school? Choose **Custom days** in the wizard (or in *Settings → School calendar*) and enter your school's dates. Everything else works the same.
+  At another school? Choose **Another school** in the wizard (or in *Settings → School*) and enter your school's dates. Everything else works the same.
 - **Want a preset for your school?** Send a link to the school calendar as an [issue](https://github.com/DeNdlerX/strakalari/issues/new), or add it yourself following [docs/SCHOOL_PRESETS.md](docs/SCHOOL_PRESETS.md).
 
 ---

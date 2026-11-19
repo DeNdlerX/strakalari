@@ -1,10 +1,18 @@
+import 'dart:io';
+
+import 'package:app/controllers/app_state.dart' hide PlannerController;
 import 'package:app/features/absences/absences_controller.dart';
 import 'package:app/features/absences/absences_view.dart';
+import 'package:app/features/absences/limits_page.dart';
 import 'package:app/features/common/app_tokens.dart';
+import 'package:app/features/planner/planner_view.dart';
 import 'package:app/l10n/strings.dart';
+import 'package:app/shell/router.dart';
 import 'package:app/widgets/app_widgets.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:strakalari_core/strakalari_core.dart' as core;
 
 /// Checkpoint B BR3-M2: Absences looks like `views/absences.py`:
 /// the percentage right of every bar (`components.meter`, track 140 px),
@@ -104,4 +112,340 @@ void main() {
     expect(heights[1], heights[0]);
     expect(heights[2], heights[0]);
   });
+
+  testWidgets(
+      'F1 Absence tab shows no-limits hint and opens shared limits editor that saves to config',
+      (t) async {
+    final tmp = Directory.systemTemp.createTempSync('strakalari_abs_lim_');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    core.setEnvironmentOverride(
+        {'STRAKALARI_DATA_DIR': tmp.path, 'STRAKALARI_NO_KEYRING': '1'});
+    Strings.lang = 'cs';
+
+    final s = AppState(
+      configData: {
+        'language': 'cs',
+        'tutorials_enabled': false,
+        'subject_limits': <String, double>{},
+        'absence_critical_pct': 25.0,
+        'bakalari_url': 'http://127.0.0.1:18080',
+        'bakalari_username': 'demo',
+        'bakalari_password': 'pw',
+      },
+      data: {
+        'absence': {'Matematika': 10.0},
+      },
+    );
+    s.demoMode = false;
+
+    final router = buildRouter(initialLocation: '/absences');
+    addTearDown(router.dispose);
+    await t.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appStateProvider.overrideWith(() => _SeededAbsAppState(s)),
+        ],
+        child: MaterialApp.router(
+          theme: AppTokens.dark().toThemeData(),
+          routerConfig: router,
+        ),
+      ),
+    );
+    await t.pumpAndSettle();
+
+    expect(find.byKey(const Key('abs:limits_btn')), findsOneWidget);
+    expect(find.byKey(const Key('abs:no_limits_banner')), findsOneWidget);
+    expect(find.text('Všechny předměty mají výchozí limit 25 %.'),
+        findsOneWidget);
+
+    // Changing absence_critical_pct updates the displayed default limit.
+    s.config.set('absence_critical_pct', 30.0);
+    s.onChanged();
+    await t.pump();
+    expect(find.text('Všechny předměty mají výchozí limit 30 %.'),
+        findsOneWidget);
+
+    await t.tap(find.byKey(const Key('abs:no_limits_btn')));
+    await t.pumpAndSettle();
+
+    expect(find.byType(LimitsPage), findsOneWidget);
+    await t.tap(find.byKey(const Key('lim:row:Matematika')));
+    await t.pumpAndSettle();
+    final matField = find.byKey(const Key('lim:subj:Matematika'));
+    await t.ensureVisible(matField);
+    await t.enterText(matField, '18');
+    await t.tap(find.byKey(const Key('lim:back_btn')));
+    await t.pumpAndSettle();
+
+    expect(s.get('subject_limits'), {'Matematika': 18.0});
+    expect(find.byKey(const Key('abs:no_limits_banner')), findsNothing);
+    expect(find.byKey(const Key('abs:limits_btn')), findsOneWidget);
+  });
+
+  testWidgets(
+      'F1b each subject renders once with badge precedence and Meter fallback without budget row',
+      (t) async {
+    t.view.physicalSize = const Size(1280, 1800);
+    t.view.devicePixelRatio = 1.0;
+    addTearDown(t.view.reset);
+
+    final tok = AppTokens.dark();
+    final abs = AbsencesController()
+      ..subjects = const [
+        // Absence critical beats budget ok -> state_critical.
+        SubjectAbsence(
+          name: 'Matematika',
+          currentPct: 27.5,
+          status: 'critical',
+          limitPct: 25.0,
+          effectivePlanLimit: 22.5,
+          effectivePlanSafe: 0,
+        ),
+        // Tie warning (absence warning vs budget tight) -> budget_tight wins.
+        SubjectAbsence(
+          name: 'Fyzika',
+          currentPct: 19.0,
+          status: 'warning',
+          limitPct: 25.0,
+          effectivePlanLimit: 22.5,
+          effectivePlanSafe: 2,
+        ),
+        // Subject without a budget row falls back to Meter + detail line.
+        SubjectAbsence(
+          name: 'Dějepis',
+          currentPct: 10.0,
+          status: 'ok',
+          limitPct: 25.0,
+          effectivePlanLimit: 22.5,
+          effectivePlanSafe: 4,
+        ),
+      ];
+    final term = TermPlanData(
+      key: 'sem1',
+      start: DateTime(2026, 9, 1),
+      close: DateTime(2027, 1, 25),
+      capacity: 4,
+      hasData: true,
+      active: true,
+      remainingDays: [DateTime(2026, 10, 5)],
+      budgets: const [
+        BudgetRowData(
+          name: '  matematika ',
+          missed: 5,
+          planned: 0,
+          free: 3,
+          buffer: 1,
+          schoolCap: 10,
+          schoolLeft: 5,
+          projectedPct: 24.0,
+          limitPct: 25.0,
+          status: 'ok',
+        ),
+        BudgetRowData(
+          name: 'Fyzika',
+          missed: 4,
+          planned: 1,
+          free: 1,
+          buffer: 1,
+          schoolCap: 8,
+          schoolLeft: 3,
+          projectedPct: 22.0,
+          limitPct: 25.0,
+          status: 'tight',
+        ),
+      ],
+    );
+    final plan = YearPlanData(
+      today: DateTime(2026, 9, 26),
+      firstDay: DateTime(2026, 9, 28),
+      terms: [term],
+      lessonsOn: (_) => 5,
+    );
+
+    await t.pumpWidget(MaterialApp(
+      theme: tok.toThemeData(),
+      home: Scaffold(
+        body: AbsencesView(
+          controller: abs,
+          tokens: tok,
+          plan: plan,
+          hasTimetable: true,
+        ),
+      ),
+    ));
+    await t.pump();
+
+    // 3 KPI cards in short Absence screen (O3).
+    expect(find.byType(StatCard), findsNWidgets(3));
+
+    // Each subject appears exactly once (no duplicate budget/absence lists).
+    expect(find.text('Matematika'), findsOneWidget);
+    expect(find.text('Fyzika'), findsOneWidget);
+    expect(find.text('Dějepis'), findsOneWidget);
+
+    // Budget rows render projected % + budget lines + badge precedence.
+    expect(find.text('27.5 %'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('abs:subjects')),
+        matching: find.text(Strings.get('state_critical')),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text(Strings.get('budget_tight')), findsOneWidget);
+    expect(
+      find.text(Strings.format('budget_final', {'p': '24.0', 'limit': 25.0})),
+      findsOneWidget,
+    );
+
+    // Subject missing from term.budgets falls back to Meter (exactly 1 Meter).
+    expect(find.byType(Meter), findsOneWidget);
+    expect(find.text('10.0 %'), findsOneWidget);
+  });
+
+  testWidgets('F1b budget bar segments are drawn (R3b code M1)', (t) async {
+    t.view.physicalSize = const Size(1280, 1800);
+    t.view.devicePixelRatio = 1.0;
+    addTearDown(t.view.reset);
+    final tok = AppTokens.dark();
+    final abs = AbsencesController()
+      ..subjects = const [
+        SubjectAbsence(
+          name: 'Matematika',
+          currentPct: 12.0,
+          status: 'ok',
+          limitPct: 25.0,
+          effectivePlanLimit: 22.5,
+          effectivePlanSafe: 4,
+        ),
+      ];
+    final term = TermPlanData(
+      key: 'sem1',
+      start: DateTime(2026, 9, 1),
+      close: DateTime(2027, 1, 25),
+      capacity: 4,
+      hasData: true,
+      active: true,
+      remainingDays: [DateTime(2026, 10, 5)],
+      budgets: const [
+        BudgetRowData(
+          name: 'Matematika',
+          missed: 4,
+          planned: 2,
+          free: 3,
+          buffer: 1,
+          schoolCap: 10,
+          schoolLeft: 5,
+          projectedPct: 20.0,
+          limitPct: 25.0,
+          status: 'ok',
+        ),
+      ],
+    );
+    await t.pumpWidget(MaterialApp(
+      theme: tok.toThemeData(),
+      home: Scaffold(
+        body: AbsencesView(
+          controller: abs,
+          tokens: tok,
+          plan: YearPlanData(
+            today: DateTime(2026, 9, 26),
+            firstDay: DateTime(2026, 9, 28),
+            terms: [term],
+            lessonsOn: (_) => 5,
+          ),
+          hasTimetable: true,
+        ),
+      ),
+    ));
+    await t.pump();
+    final segments = find.descendant(
+      of: find.byKey(const Key('abs:subjects')),
+      matching: find.byType(ColoredBox),
+    );
+    // missed, planned, free, reserve
+    expect(segments, findsNWidgets(4));
+    for (final e in segments.evaluate()) {
+      final size = (e.renderObject! as RenderBox).size;
+      expect(size.height, 8);
+      expect(size.width, greaterThan(0));
+    }
+  });
+
+  testWidgets(
+      'O3 short Absence screen opens Planner from header and next-day shortcut, omits calendar/recommended/planned, and lays narrow actions on one row',
+      (t) async {
+    t.view.physicalSize = const Size(390, 844);
+    t.view.devicePixelRatio = 1.0;
+    addTearDown(t.view.reset);
+    Strings.lang = 'cs';
+
+    var plannerOpens = 0;
+    var limitsOpens = 0;
+    final tok = AppTokens.dark();
+    final abs = build()..hasSubjectLimits = false;
+    final term = TermPlanData(
+      key: 'sem1',
+      start: DateTime(2026, 9, 1),
+      close: DateTime(2027, 1, 25),
+      capacity: 4,
+      hasData: true,
+      active: true,
+      recommended: [
+        DayOptionData(day: DateTime(2026, 10, 5), lessonsCount: 5),
+      ],
+    );
+
+    await t.pumpWidget(MaterialApp(
+      theme: tok.toThemeData(),
+      home: Scaffold(
+        body: AbsencesView(
+          controller: abs,
+          tokens: tok,
+          narrow: true,
+          term: term,
+          onOpenLimits: () => limitsOpens++,
+          onOpenPlanner: () => plannerOpens++,
+        ),
+      ),
+    ));
+    await t.pump();
+
+    expect(find.byKey(const Key('abs:no_limits_banner')), findsOneWidget);
+    final limRect = t.getRect(find.byKey(const Key('abs:limits_btn')));
+    final planRect = t.getRect(find.byKey(const Key('abs:planner_btn')));
+    expect((limRect.center.dy - planRect.center.dy).abs(), lessThan(4));
+
+    // Planner-only sections are NOT rendered on AbsencesView.
+    expect(find.text(Strings.get('section_overview').toUpperCase()), findsNothing);
+    expect(find.textContaining(Strings.get('section_plan').toUpperCase()), findsNothing);
+    expect(find.textContaining(Strings.get('planned_title').toUpperCase()), findsNothing);
+
+    await t.tap(find.byKey(const Key('abs:planner_btn')));
+    await t.pump();
+    expect(plannerOpens, 1);
+
+    await t.tap(find.byKey(const Key('abs:next_plan_row')));
+    await t.pump();
+    expect(plannerOpens, 2);
+
+    await t.tap(find.byKey(const Key('abs:limits_btn')));
+    await t.pump();
+    expect(limitsOpens, 1);
+  });
+}
+
+class _SeededAbsAppState extends AppStateController {
+  final AppState seeded;
+  _SeededAbsAppState(this.seeded);
+
+  @override
+  AppState build() {
+    seeded.onChanged = () {
+      // ignore: avoid_self_assignment
+      state = state;
+    };
+    seeded.onProgress = seeded.onChanged;
+    return seeded;
+  }
 }

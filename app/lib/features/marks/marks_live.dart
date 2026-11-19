@@ -54,6 +54,7 @@ MarksController marksControllerFor(AppState s, {DateTime? todayOverride}) {
   };
   c.quarterlyMarks = s.quarterlyMarks();
   final presetId = '${s.get('school_preset_id', '')}';
+  c.presetScale = core.presetMarksScale(presetId);
   c.presetBands = core.presetMarksBands(presetId);
   final preset = core.getPreset(presetId);
   c.presetTitle = preset != null ? core.presetTitle(preset, lang) : '';

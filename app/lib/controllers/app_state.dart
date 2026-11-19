@@ -22,7 +22,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:strakalari_core/strakalari_core.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
+import '../features/planner/planner_view.dart' show PickerSlot;
 import '../l10n/strings.dart';
+import '../shell/router.dart' show routeForLocation;
 import '../shell/theme.dart';
 import '../tutorial/tours.dart';
 
@@ -130,7 +132,12 @@ class AppState {
       return (v == 'table' || v == 'list') ? v : 'table';
     }();
     final savedStep = _savedWizardStep;
-    if (savedStep > 0) wizardStep = savedStep;
+    if (savedStep > 0) {
+      wizardStep = config.get('disclaimer_accepted', false) == true
+          ? (savedStep > 1 ? 1 : savedStep)
+          : 0;
+    }
+    if (savedStep >= 0) _seedSchoolPresetDraft(savedStep);
     try {
       final cached = loadCached(updateChannel);
       if (cached != null &&
@@ -204,7 +211,11 @@ class AppState {
   bool tutorialAnchored = false;
   bool wizardDismissed = false;
   bool wizardShown = false;
+  bool notificationPermissionAsked = false;
   final Map<String, String> wizardVerified = {};
+  String? wizardEarlyRefreshedFp;
+  bool earlyRefreshInFlight = false;
+  bool pendingFullRefresh = false;
 
   // -- marks UI memory (predictions are what-ifs, never saved) --------------
   Map<String, Map<String, Object?>> marksPredictions = {};
@@ -214,6 +225,7 @@ class AppState {
 
   // -- planner UI memory ------------------------------------------------------
   String? plannerTerm;
+  bool plannerShowAllPicks = false;
 
   // -- tutorial progress -------------------------------------------------------
   Set<String> tutorialsDoneSession = {};
@@ -226,6 +238,8 @@ class AppState {
   // -- caches --------------------------------------------------------------------
   Object? yearPlanCacheKey;
   Object? yearPlanCache;
+  Object? monthSlotsCacheKey;
+  Map<DateTime, List<PickerSlot>>? monthSlotsCache;
   (int, Map<String, Object?>)? baselineCacheKey;
   Map<(int, int), Object>? baselineCache;
 
@@ -837,10 +851,20 @@ class AppState {
     return wizardShown || needsSetup();
   }
 
+  void _seedSchoolPresetDraft(int savedStep) {
+    if (drafts.containsKey('wiz:cal_preset')) return;
+    final savedPreset = '${config.get('school_preset_id', '')}'.trim();
+    if (savedPreset.isEmpty) return;
+    if (savedStep > 1 || savedPreset != core.customId) {
+      drafts['wiz:cal_preset'] = savedPreset;
+    }
+  }
+
   /// The wizard is on screen: remember it across app restarts.
   void wizardOpened() {
     if (wizardDismissed) return;
     wizardShown = true;
+    _seedSchoolPresetDraft(_savedWizardStep);
     _saveWizardStep(wizardStep);
   }
 
@@ -862,6 +886,7 @@ class AppState {
     wizardStep = 0;
     drafts.removeWhere((k, _) => k.startsWith('wiz:'));
     wizardVerified.clear();
+    wizardEarlyRefreshedFp = null;
     tutorialOffer(firstTourId);
     _saveWizardStep(-1);
     _emit();
@@ -909,6 +934,26 @@ class AppState {
     _emit();
   }
 
+  /// Applies a route tapped from an Android notification or widget (O8).
+  ///
+  /// Drops the route while [setupPending] is true (wizard stays in charge),
+  /// never triggers refreshes/sends/orders, and falls back to `'today'` for
+  /// unknown routes.
+  void applyLaunchRoute(String rawRoute) {
+    if (setupPending) return;
+    final trimmed = rawRoute.trim();
+    if (trimmed.isEmpty) return;
+    if (trimmed == 'alarm') {
+      settingsSection = 'alarm';
+      settingsOpen = true;
+      pendingRoute = 'settings';
+      _emit();
+      return;
+    }
+    pendingRoute = routeForLocation(trimmed);
+    _emit();
+  }
+
   // -- logging (activity mixin backing; richer API in activity.dart) ---------
   void logLine(String message) {
     final stamp = fmtClock(clock.now());
@@ -926,6 +971,7 @@ class AppStateController extends Notifier<AppState> {
   AppState build() {
     final state = AppState();
     state.onChanged = () {
+      if (!ref.mounted) return;
       // ignore: avoid_self_assignment
       this.state = this.state;
     };
@@ -933,6 +979,9 @@ class AppStateController extends Notifier<AppState> {
     state.spawn = AppState.liveSpawn;
     return state;
   }
+
+  /// True while this Riverpod provider container is still mounted.
+  bool get isMounted => ref.mounted;
 
   /// The shared [AppState] is mutated in place, so the same instance must
   /// still notify listeners (Riverpod skips equal values by default).

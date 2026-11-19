@@ -1,30 +1,136 @@
 import '../../l10n/strings.dart';
 import 'package:flutter/material.dart';
+import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../widgets/app_widgets.dart' as w;
 import '../common/app_tokens.dart';
-import '../settings/settings_view.dart' show TemplateEditor;
+import '../settings/settings_controller.dart' show SettingsController;
+import '../settings/settings_view.dart' show TemplateGroupsList;
+import '../settings/wakeup_card.dart' show WakeupCard;
 import 'wizard_controller.dart';
 
-/// First-run setup wizard — port of `views/wizard.py`.
+/// Placeholder welcome logo (app icon in an accent badge) so a dedicated logo
+/// asset can later replace it in one place.
+class WelcomeLogo extends StatelessWidget {
+  final AppTokens tokens;
+  final double size;
+
+  const WelcomeLogo({
+    super.key,
+    required this.tokens,
+    this.size = 72,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = tokens;
+    return Container(
+      width: size,
+      height: size,
+      padding: EdgeInsets.all(size * 0.16),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: tintColor(t.accent, 0.16),
+        border: Border.all(color: tintColor(t.accent, 0.45), width: 1.5),
+      ),
+      child: ClipOval(
+        child: Image.asset(
+          'assets/tray-icon.png',
+          fit: BoxFit.contain,
+          errorBuilder: (_, _, _) => Icon(
+            Icons.school_outlined,
+            size: size * 0.5,
+            color: t.accent,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// First-run setup wizard.
 ///
-/// Full-screen card with a step indicator: welcome, disclaimer,
-/// Bakaláři login, subject limits, Strava login, AI key, school
-/// calendar, wake-up alarm (Android only), excuses, done. Credential
-/// steps run a live test on Continue and advance only on success.
-/// Stateless; state lives in [WizardController] via
-/// [ListenableBuilder].
-class WizardView extends StatelessWidget {
+/// Steps: welcome (+ language & disclaimer), school, Bakaláři login, Strava
+/// login, excuses, phone (Android only), done. Credential steps run a live
+/// test on Continue and advance only on success.
+class WizardView extends StatefulWidget {
   final WizardController controller;
   final AppTokens tokens;
   final bool narrow;
+  final SettingsController? wakeupController;
 
   const WizardView({
     super.key,
     required this.controller,
     required this.tokens,
     this.narrow = false,
+    this.wakeupController,
   });
+
+  @override
+  State<WizardView> createState() => _WizardViewState();
+}
+
+class _WizardViewState extends State<WizardView>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _welcomeCtrl;
+  bool _welcomeStarted = false;
+  int _lastStep = 0;
+  bool _goingBack = false;
+
+  WizardController get controller => widget.controller;
+  AppTokens get tokens => widget.tokens;
+  bool get narrow => widget.narrow;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastStep = controller.step.clamp(0, WizardController.stepDone);
+    controller.addListener(_onControllerChanged);
+    _welcomeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant WizardView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_onControllerChanged);
+      widget.controller.addListener(_onControllerChanged);
+      _lastStep = widget.controller.step.clamp(0, WizardController.stepDone);
+      _goingBack = false;
+    }
+  }
+
+  void _onControllerChanged() {
+    final next = controller.step.clamp(0, WizardController.stepDone);
+    if (next != _lastStep) {
+      _goingBack = next < _lastStep;
+      _lastStep = next;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_welcomeStarted) return;
+    _welcomeStarted = true;
+    if (MediaQuery.disableAnimationsOf(context) ||
+        controller.step != WizardController.stepWelcome) {
+      _welcomeCtrl.value = 1.0;
+    } else {
+      _welcomeCtrl.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_onControllerChanged);
+    _welcomeCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,118 +140,276 @@ class WizardView extends StatelessWidget {
     );
   }
 
+  Widget _stepSwitcher(BuildContext context, int step, Widget child) {
+    final noAnim = MediaQuery.disableAnimationsOf(context);
+    return ClipRect(
+      child: AnimatedSwitcher(
+        duration: noAnim ? Duration.zero : const Duration(milliseconds: 250),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        layoutBuilder: (currentChild, previousChildren) => Stack(
+          alignment: Alignment.topCenter,
+          children: [
+            ...previousChildren,
+            ?currentChild,
+          ],
+        ),
+        transitionBuilder: (child, animation) {
+          if (noAnim) return child;
+          final dx = _goingBack ? -0.08 : 0.08;
+          final offset = Tween<Offset>(
+            begin: Offset(dx, 0),
+            end: Offset.zero,
+          ).animate(animation);
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(position: offset, child: child),
+          );
+        },
+        child: KeyedSubtree(
+          key: ValueKey('wiz_step_$step'),
+          child: child,
+        ),
+      ),
+    );
+  }
+
   Widget _body(BuildContext context) {
     final c = controller;
     final t = tokens;
-final step = c.step.clamp(0, WizardController.stepDone);
+    final step = c.step.clamp(0, WizardController.stepDone);
 
-    // The subjects are loading: stay here (Skip still leaves).
-    if (step == WizardController.stepLimits && c.limitsNeedsRefresh) {
-      c.markLimitsRefreshStarted();
-      c.onLimitsRefresh();
+    final shown = c.shownSteps();
+    final stepPos = shown.where((x) => x <= step).length;
+    final primaryLabel = step < WizardController.stepDone
+        ? c.nextLabel()
+        : Strings.get('wiz_finish');
+    final VoidCallback? primaryPressed = step < WizardController.stepDone
+        ? (c.nextEnabled ? () => _next(context) : null)
+        : () => _next(context);
+
+    if (narrow) {
+      final heading = _stepHeading(step);
+      final bodyChildren =
+          _stepContent(context, step, includeHeading: false);
+      final header = Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              Strings.format('wiz_step_of', {
+                'i': stepPos,
+                'n': shown.length,
+              }),
+              style: TextStyle(color: t.muted, fontSize: t.fsSmall),
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: shown.isEmpty ? 0 : stepPos / shown.length,
+                minHeight: 5,
+                backgroundColor: t.border,
+                color: t.accent,
+              ),
+            ),
+            if (heading != null) ...[
+              const SizedBox(height: 12),
+              _h(heading, 20),
+            ],
+          ],
+        ),
+      );
+      final bottomBar = Material(
+        key: const Key('wiz:bottom_bar'),
+        color: t.surface,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 16, 10),
+          child: Row(
+            children: [
+              if (step > 0) ...[
+                TextButton(
+                  key: const Key('wiz:back_btn'),
+                  style: TextButton.styleFrom(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                    minimumSize: const Size(0, 44),
+                  ),
+                  onPressed: c.pressBack,
+                  child: Text(Strings.get('wiz_back'),
+                      maxLines: 1, softWrap: false),
+                ),
+                const SizedBox(width: 4),
+              ],
+              if (step < WizardController.stepDone && c.canSkip) ...[
+                TextButton(
+                  key: const Key('wiz:skip_btn'),
+                  style: TextButton.styleFrom(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                    minimumSize: const Size(0, 44),
+                  ),
+                  onPressed: c.pressSkip,
+                  child: Text(Strings.get('wiz_skip'),
+                      maxLines: 1, softWrap: false),
+                ),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: FilledButton(
+                  key: const Key('wiz:next_btn'),
+                  style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+                  onPressed: primaryPressed,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(primaryLabel, maxLines: 1, softWrap: false),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      return Material(
+        color: t.bg,
+        child: AnimatedPadding(
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 120),
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.viewInsetsOf(context).bottom),
+          child: SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                header,
+                Divider(height: 1, color: t.border),
+                Expanded(
+                  child: _stepSwitcher(
+                    context,
+                    step,
+                    SingleChildScrollView(
+                      key: ValueKey('wiz_scroll_$step'),
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: bodyChildren,
+                      ),
+                    ),
+                  ),
+                ),
+                Divider(height: 1, color: t.border),
+                bottomBar,
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
     final content = _stepContent(context, step);
-    final shown = c.shownSteps();
     final dots = Wrap(
       spacing: 6,
       children: [
         for (final i in shown)
-          _dot(i < step
-              ? 'ok'
-              : (i == step ? 'working' : 'idle')),
+          _dot(i < step ? 'ok' : (i == step ? 'working' : 'idle')),
       ],
     );
 
-    final nextLabel = c.nextLabel();
     final nav = <Widget>[];
-    if (step > 0 &&
-        !(step == WizardController.stepLimits &&
-            c.refreshRunning)) {
+    if (step > 0) {
       nav.add(TextButton(
+          key: const Key('wiz:back_btn'),
           onPressed: c.pressBack,
           child: Text(Strings.get('wiz_back'))));
     }
     nav.add(const Spacer());
-    if (step < WizardController.stepDone) {
-      if (step != WizardController.stepWelcome &&
-          step != WizardController.stepDisclaimer) {
-        nav.add(TextButton(
-            onPressed: c.pressSkip,
-            child: Text(Strings.get('wiz_skip'))));
-      }
-      nav.add(ElevatedButton(
-        onPressed: c.nextEnabled ? () => _next(context) : null,
-        child: Text(nextLabel),
-      ));
-    } else {
-      nav.add(ElevatedButton(
-        onPressed: () => _next(context),
-        child: Text(Strings.get('wiz_finish')),
-      ));
+    if (step < WizardController.stepDone && c.canSkip) {
+      nav.add(TextButton(
+          key: const Key('wiz:skip_btn'),
+          onPressed: c.pressSkip,
+          child: Text(Strings.get('wiz_skip'))));
     }
+    nav.add(FilledButton(
+      key: const Key('wiz:next_btn'),
+      onPressed: primaryPressed,
+      child: Text(primaryLabel),
+    ));
 
     Widget buildCard(bool scrollBody) => Card(
-      color: t.card,
-      // `components.card`: a 1 px outline in the border colour.
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(t.radiusMd),
-          side: BorderSide(color: t.border)),
-      child: Padding(
-        padding: EdgeInsets.all(t.pad),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-                Strings.format('wiz_step_of', {
-                  'i': shown.where((x) => x <= step).length,
-                  'n': shown.length,
-                }),
-                style:
-                    TextStyle(color: t.muted, fontSize: t.fsSmall)),
-            const SizedBox(height: 8),
-            dots,
-            const Divider(height: 24),
-            if (scrollBody)
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: content,
-                  ),
-                ),
-              )
-            else
-              ...content,
-            const Divider(height: 24),
-            if (narrow)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  nav.last,
-                  if (nav.length > 1)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        for (final w in nav
-                            .sublist(0, nav.length - 1)
-                            .where((w) => w is! Spacer))
-                          w,
-                      ],
+          color: t.card,
+          // `components.card`: a 1 px outline in the border colour.
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(t.radiusMd),
+              side: BorderSide(color: t.border)),
+          child: Padding(
+            padding: EdgeInsets.all(t.pad),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                    Strings.format('wiz_step_of', {
+                      'i': stepPos,
+                      'n': shown.length,
+                    }),
+                    style:
+                        TextStyle(color: t.muted, fontSize: t.fsSmall)),
+                const SizedBox(height: 8),
+                dots,
+                const Divider(height: 24),
+                if (scrollBody)
+                  Flexible(
+                    child: _stepSwitcher(
+                      context,
+                      step,
+                      SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: content,
+                        ),
+                      ),
                     ),
-                ],
-              )
-            else
-              Row(children: nav),
-          ],
-        ),
-      ),
-    );
+                  )
+                else
+                  _stepSwitcher(
+                    context,
+                    step,
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: content,
+                    ),
+                  ),
+                const Divider(height: 24),
+                LayoutBuilder(
+                  builder: (context, footerConstraints) {
+                    final items = [
+                      for (final w in nav)
+                        if (w is! Spacer) w
+                    ];
+                    if (footerConstraints.maxWidth < 560 && items.length > 1) {
+                      return Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: items,
+                      );
+                    }
+                    return Row(children: nav);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
     return Container(
       color: t.bg,
-      padding: EdgeInsets.all(narrow ? 8 : 24),
+      padding: const EdgeInsets.all(24),
       child: LayoutBuilder(
         // Top of the page (`MainAxisAlignment.START` in Python), centred
         // sideways.
@@ -155,7 +419,7 @@ final step = c.step.clamp(0, WizardController.stepDone);
             // Python: ResponsiveRow col {xs: 12, md: 9, lg: 7, xl: 6, xxl: 5}
             // (Flet breakpoints 768 / 992 / 1200 / 1400), centered.
             width: constraints.maxWidth *
-                _wizardColumns(constraints.maxWidth + (narrow ? 16 : 48)) /
+                _wizardColumns(constraints.maxWidth + 48) /
                 12,
             child: constraints.hasBoundedHeight
                 ? buildCard(true)
@@ -179,6 +443,7 @@ final step = c.step.clamp(0, WizardController.stepDone);
   }
 
   void _next(BuildContext context) {
+    FocusManager.instance.primaryFocus?.unfocus();
     final c = controller;
     final result = c.pressNext();
     final msg = result.finishedMessage ?? result.snack;
@@ -209,58 +474,135 @@ final step = c.step.clamp(0, WizardController.stepDone);
 
   // -- step content ---------------------------------------------------------------
 
-  List<Widget> _stepContent(BuildContext context, int step) {
+  Widget _welcomeSlide(double begin, double end, Widget child) {
+    final fade = CurvedAnimation(
+      parent: _welcomeCtrl,
+      curve: Interval(begin, end, curve: Curves.easeOutCubic),
+    );
+    final slide = Tween<Offset>(
+      begin: const Offset(0, 0.16),
+      end: Offset.zero,
+    ).animate(fade);
+    return FadeTransition(
+      opacity: fade,
+      child: SlideTransition(position: slide, child: child),
+    );
+  }
+
+  List<Widget> _welcomeContent() {
     final c = controller;
     final t = tokens;
-switch (step) {
+    final lang = '${c.config['language'] ?? 'cs'}';
+    final logoFade = CurvedAnimation(
+      parent: _welcomeCtrl,
+      curve: const Interval(0.0, 0.45, curve: Curves.easeOut),
+    );
+    final logoScale = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _welcomeCtrl,
+        curve: const Interval(0.0, 0.65, curve: Curves.easeOutBack),
+      ),
+    );
+    return [
+      Center(
+        child: FadeTransition(
+          opacity: logoFade,
+          child: ScaleTransition(
+            scale: logoScale,
+            child: WelcomeLogo(tokens: t),
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
+      _welcomeSlide(0.42, 0.76, _h(Strings.get('wiz_welcome_h'), 22)),
+      const SizedBox(height: 6),
+      _welcomeSlide(0.55, 0.88, _p(Strings.get('wiz_welcome_p'))),
+      const SizedBox(height: 16),
+      _welcomeSlide(
+        0.65,
+        0.95,
+        Wrap(
+          spacing: 8,
+          children: [
+            lang != 'cs'
+                ? w.GhostButton(
+                    label: 'Čeština',
+                    tok: t,
+                    onPressed: () => c.onSetLanguage('cs'))
+                : w.PrimaryButton(
+                    label: 'Čeština', tok: t, onPressed: () {}),
+            lang != 'en'
+                ? w.GhostButton(
+                    label: 'English',
+                    tok: t,
+                    onPressed: () => c.onSetLanguage('en'))
+                : w.PrimaryButton(
+                    label: 'English', tok: t, onPressed: () {}),
+          ],
+        ),
+      ),
+      const SizedBox(height: 16),
+      _welcomeSlide(
+        0.72,
+        1.0,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(Strings.get('wiz_disclaimer_p'),
+                style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
+            const SizedBox(height: 8),
+            CheckboxListTile(
+              value: c.disclaimerOk,
+              activeColor: t.accent,
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: Text(Strings.get('wiz_disclaimer_ack')),
+              onChanged: (v) => c.setDisclaimer(v ?? false),
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  String? _stepHeading(int step) {
+    switch (step) {
+      case WizardController.stepSchool:
+        return Strings.get('wiz_cal_h');
+      case WizardController.stepBakalari:
+        return Strings.get('wiz_bakalari_h');
+      case WizardController.stepStrava:
+        return Strings.get('wiz_strava_h');
+      case WizardController.stepExcuses:
+        return Strings.get('wiz_excuses_h');
+      case WizardController.stepPhone:
+        return Strings.get('wiz_phone_h');
+      case WizardController.stepDone:
+        return Strings.get('wiz_done_h');
+      default:
+        return null;
+    }
+  }
+
+  List<Widget> _stepContent(BuildContext context, int step,
+      {bool includeHeading = true}) {
+    final c = controller;
+    switch (step) {
       case WizardController.stepWelcome:
-        final lang = '${c.config['language'] ?? 'cs'}';
-        return [
-          _h(Strings.get('wiz_welcome_h'), 22),
-          _p(Strings.get('wiz_welcome_p')),
-          Wrap(
-            spacing: 8,
-            children: [
-              lang != 'cs'
-                  ? w.GhostButton(
-                      label: 'Čeština',
-                      tok: t,
-                      onPressed: () => c.onSetLanguage('cs'))
-                  : w.PrimaryButton(
-                      label: 'Čeština', tok: t, onPressed: () {}),
-              lang != 'en'
-                  ? w.GhostButton(
-                      label: 'English',
-                      tok: t,
-                      onPressed: () => c.onSetLanguage('en'))
-                  : w.PrimaryButton(
-                      label: 'English', tok: t, onPressed: () {}),
-            ],
-          ),
-        ];
-      case WizardController.stepDisclaimer:
-        return [
-          _h(Strings.get('wiz_disclaimer_h'), 19),
-          _p(Strings.get('wiz_disclaimer_p')),
-          _p(Strings.get('wiz_disclaimer_rules')),
-          CheckboxListTile(
-            value: c.disclaimerOk,
-            activeColor: t.accent,
-            contentPadding: EdgeInsets.zero,
-            controlAffinity:
-                ListTileControlAffinity.leading,
-            title: Text(Strings.get('wiz_disclaimer_ack')),
-            onChanged: (v) =>
-                c.setDisclaimer(v ?? false),
-          ),
-        ];
+        return _welcomeContent();
+      case WizardController.stepSchool:
+        return _schoolContent(includeHeading: includeHeading);
       case WizardController.stepBakalari:
         return [
-          _h(Strings.get('wiz_bakalari_h'), 19),
-          _p(Strings.get('wiz_bakalari_p')),
-          _field(Strings.get('bakalari_url'), 'wiz:bakalari_url',
-              '${c.config['bakalari_url'] ?? ''}',
-              hint: Strings.get('bakalari_url_hint')),
+          if (includeHeading) _h(Strings.get('wiz_bakalari_h'), 19),
+          _p(Strings.get(c.showBakalariUrlField
+              ? 'wiz_bakalari_p'
+              : 'wiz_bakalari_p_preset')),
+          const SizedBox(height: 16),
+          if (c.showBakalariUrlField)
+            _field(Strings.get('bakalari_url'), 'wiz:bakalari_url',
+                c.effectiveBakalariUrl(),
+                hint: Strings.get('bakalari_url_hint')),
           _field(Strings.get('username'), 'wiz:bakalari_username',
               '${c.config['bakalari_username'] ?? ''}'),
           _field(
@@ -272,13 +614,14 @@ switch (step) {
                   : Strings.get('secret_empty')),
           ..._testRows('bakalari'),
         ];
-      case WizardController.stepLimits:
-        return _limitsContent(context);
       case WizardController.stepStrava:
         final enabled = c.stravaEnabled;
         return [
-          _h(Strings.get('wiz_strava_h'), 19),
-          _p(Strings.get('wiz_strava_p')),
+          if (includeHeading) _h(Strings.get('wiz_strava_h'), 19),
+          _p(Strings.get(c.showStravaCanteenField
+              ? 'wiz_strava_p'
+              : 'wiz_strava_p_preset')),
+          const SizedBox(height: 16),
           SwitchListTile(
             value: enabled,
             contentPadding: EdgeInsets.zero,
@@ -286,6 +629,11 @@ switch (step) {
             onChanged: c.setStravaEnabled,
           ),
           if (enabled) ...[
+            const SizedBox(height: 12),
+            if (c.showStravaCanteenField)
+              _field(Strings.get('canteen_id'), 'wiz:strava_canteen_id',
+                  c.effectiveCanteenId(),
+                  hint: Strings.get('canteen_id_hint')),
             _field(Strings.get('username'), 'wiz:strava_username',
                 '${c.config['strava_username'] ?? ''}'),
             _field(Strings.get('password'),
@@ -296,67 +644,41 @@ switch (step) {
                             .isNotEmpty
                         ? Strings.get('new_password')
                         : Strings.get('secret_empty')),
-            _field(
-                Strings.get('canteen_id'), 'wiz:strava_canteen_id',
-                '${c.config['strava_canteen_id'] ?? ''}',
-                hint: Strings.get('canteen_id_hint')),
             ..._testRows('strava'),
           ],
         ];
-      case WizardController.stepAi:
-        final enabled = c.aiEnabled;
-        return [
-          _h(Strings.get('wiz_ai_h'), 19),
-          _p(Strings.get('wiz_ai_p')),
-          SwitchListTile(
-            value: enabled,
-            contentPadding: EdgeInsets.zero,
-            title: Text(Strings.get('wiz_use_ai')),
-            onChanged: c.setAiEnabled,
-          ),
-          if (enabled) ...[
-            _field(Strings.get('gemini_key'), 'wiz:ai_key', '',
-                password: true,
-                hint: '${c.config['gemini_api_key'] ?? ''}'
-                        .isNotEmpty
-                    ? Strings.get('new_password')
-                    : Strings.get('secret_empty')),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                onPressed: c.onOpenUrl,
-                icon: const Icon(
-                    Icons.open_in_new, size: 16),
-                label: Text(Strings.get('ai_key_link')),
-              ),
-            ),
-            _hint(Strings.get('ai_key_steps')),
-            _field(
-                Strings.get('gemini_model'), 'wiz:ai_model',
-                '${c.config['gemini_model'] ?? 'gemini-3.8-flash'}'),
-            _hint(Strings.get('ai_model_hint')),
-            ..._testRows('ai'),
-          ],
-        ];
-      case WizardController.stepCalendar:
-        return _calendarContent();
-      case WizardController.stepAlarm:
-        return _alarmContent();
       case WizardController.stepExcuses:
         return [
-          _h(Strings.get('wiz_excuses_h'), 19),
-          _p(Strings.get('wiz_excuses_p')),
-          _field(Strings.get('signature'), 'wiz:signature',
+          if (includeHeading) ...[
+            _h(Strings.get('wiz_excuses_h'), 19),
+            const SizedBox(height: 16),
+          ],
+          _field(Strings.get('wiz_signature_label'), 'wiz:signature',
               '${c.config['your_signature'] ?? ''}',
               hint: Strings.get('signature_hint')),
-          _hint(Strings.get('wiz_excuses_tpl')),
-          ..._templateEditors(context),
+          _hint(Strings.get('wiz_excuses_p')),
+          const SizedBox(height: 12),
+          ExpansionTile(
+            key: const Key('wiz:excuses_advanced'),
+            initiallyExpanded: false,
+            maintainState: true,
+            tilePadding: EdgeInsets.zero,
+            title: Text(Strings.get('sec_advanced')),
+            children: [
+              TemplateGroupsList(
+                readTemplates: (key) => c.config[key] ?? const <Object?>[],
+                commitTemplates: (key, values) =>
+                    c.saveTemplateList(key, values),
+              ),
+            ],
+          ),
         ];
+      case WizardController.stepPhone:
+        return _phoneContent(includeHeading: includeHeading);
       default:
         return [
-          _h(Strings.get('wiz_done_h'), 19),
+          if (includeHeading) _h(Strings.get('wiz_done_h'), 19),
           _p(Strings.get('wiz_done_p')),
-          _hint(Strings.get('wiz_done_next')),
         ];
     }
   }
@@ -399,237 +721,182 @@ if (c.testing == service) {
     return [];
   }
 
-  List<Widget> _limitsContent(BuildContext context) {
+  List<Widget> _schoolContent({bool includeHeading = true}) {
     final c = controller;
     final t = tokens;
-final rows = <Widget>[
-      _h(Strings.get('wiz_limits_h'), 19),
-      _p(Strings.get('wiz_limits_p')),
-    ];
-    if (c.refreshRunning) {
-      // No inputs while loading: every progress tick rebuilds.
-      rows.add(Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                  strokeWidth: 2, color: t.accent)),
-          const SizedBox(width: 8),
-          Text(Strings.get('wiz_limits_loading'),
-              style:
-                  TextStyle(color: t.muted, fontSize: t.fsSmall)),
-        ],
-      ));
-      if (c.refreshStep.isNotEmpty) {
-        rows.add(Text(c.refreshStep,
-            style: TextStyle(
-                color: t.faint, fontSize: t.fsSmall)));
-      }
-      return rows;
-    }
-    final subjects = c.limitSubjects();
-    if (subjects.isEmpty) {
-      rows.add(_hint(Strings.get('wiz_limits_none')));
-      rows.add(Align(
-        alignment: Alignment.centerLeft,
-        child: OutlinedButton.icon(
-          onPressed: () {
-            final started = c.retryLimitsRefresh();
-            if (context.mounted && !started) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                      content:
-                          Text(Strings.get('already_running'))));
-            }
-          },
-          icon: const Icon(Icons.refresh, size: 18),
-          label: Text(Strings.get('wiz_limits_retry')),
-        ),
-      ));
-      return rows;
-    }
-    final limits =
-        (c.config['subject_limits'] as Map?) ?? const {};
-    rows.add(_field(Strings.get('default_limit'), 'wiz:limit_default',
-        '${c.config['absence_critical_pct'] ?? 25.0}'));
-    rows.add(_hint(Strings.get('limit_subject_hint')));
-    for (final subject in subjects) {
-      rows.add(_field(subject, 'wiz:limit:$subject',
-          '${limits[subject] ?? ''}'));
-    }
-    return rows;
-  }
+    final selectedGroup = c.selectedSchoolGroup();
+    final pickedPreset = c.calPreset();
 
-  List<Widget> _calendarContent() {
-    final c = controller;
-    final t = tokens;
-final preset = c.calPreset();
-    Widget card(CalendarPreset p) {
-      final selected = preset == p.id;
-      return InkWell(
-        onTap: () => c.setDraft('wiz:cal_preset', p.id),
-        borderRadius: BorderRadius.circular(t.radiusMd),
-        child: Container(
-          width: narrow ? null : 280,
-          decoration: BoxDecoration(
-            color: t.card,
-            border: Border.all(
-                color: selected ? t.accent : t.border,
-                width: selected ? 2 : 1),
-            borderRadius:
-                BorderRadius.circular(t.radiusMd),
+    Widget schoolCard(core.SchoolGroup group) {
+      final isSelected = selectedGroup == group.name;
+      final multi = group.presets.length > 1;
+      final hasPreset =
+          pickedPreset.isNotEmpty && group.presets.any((p) => p.id == pickedPreset);
+      return SizedBox(
+        width: narrow ? null : 280,
+        child: Material(
+          color: t.card,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(t.radiusMd),
+            side: BorderSide(
+                color: isSelected ? t.accent : t.border,
+                width: isSelected ? 2 : 1),
           ),
-          padding: EdgeInsets.all(t.pad),
-          child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-            children: [
-              Row(
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            key: ValueKey('school:${group.name}'),
+            onTap: () => c.selectSchoolGroup(group.name),
+            child: Padding(
+              padding: EdgeInsets.all(t.pad),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                      child: Text(p.title,
-                          style: TextStyle(
-                              color: t.text,
-                              fontWeight: FontWeight.bold))),
-                  Icon(
-                      selected
-                          ? Icons.check_circle
-                          : Icons.radio_button_unchecked,
-                      color: selected
-                          ? t.accent
-                          : t.faint,
-                      size: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(group.name,
+                            style: TextStyle(
+                                color: t.text, fontWeight: FontWeight.bold)),
+                      ),
+                      Icon(
+                        isSelected
+                            ? Icons.check_circle
+                            : Icons.radio_button_unchecked,
+                        color: isSelected ? t.accent : t.faint,
+                        size: 20,
+                      ),
+                    ],
+                  ),
+                  if (isSelected && multi) ...[
+                    const SizedBox(height: 8),
+                    RadioGroup<String>(
+                      groupValue: hasPreset ? pickedPreset : null,
+                      onChanged: (v) {
+                        if (v != null) c.selectSchoolPreset(v);
+                      },
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (final opt in group.presets)
+                            RadioListTile<String>(
+                              key: ValueKey('preset:${opt.id}'),
+                              value: opt.id,
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              activeColor: t.accent,
+                              title: Text(opt.category,
+                                  style: TextStyle(
+                                      color: t.text, fontSize: t.fsSmall)),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (isSelected && hasPreset) ...[
+                    const SizedBox(height: 6),
+                    Text(Strings.get('wiz_school_preset_p'),
+                        style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
+                  ],
                 ],
               ),
-              const SizedBox(height: 4),
-              if (!p.custom) ...[
-                Text(
-                    Strings.format('cal_closes', {
-                      'a': p.closesA.isEmpty
-                          ? Strings.get('cal_auto')
-                          : p.closesA,
-                      'b': p.closesB.isEmpty
-                          ? Strings.get('cal_auto')
-                          : p.closesB,
-                    }),
-                    style: TextStyle(
-                        color: t.muted,
-                        fontSize: t.fsSmall)),
-                Text(
-                    Strings.format('wiz_cal_days', {
-                      'n': p.totalDays,
-                      'end': p.endText.isEmpty
-                          ? Strings.get('cal_auto')
-                          : p.endText,
-                    }),
-                    style: TextStyle(
-                        color: t.text,
-                        fontSize: t.fsSmall,
-                        fontWeight: FontWeight.bold)),
-                Text(
-                    p.groups
-                        .map((g) =>
-                            '${g.label} ${g.count}')
-                        .join(' · '),
-                    style: TextStyle(
-                        color: t.muted,
-                        fontSize: t.fsSmall)),
-                Text(Strings.get('wiz_cal_only_school'),
-                    style: TextStyle(
-                        color: t.faint,
-                        fontSize: t.fsSmall)),
-              ] else
-                Text(Strings.get('wiz_cal_custom_p'),
-                    style: TextStyle(
-                        color: t.muted,
-                        fontSize: t.fsSmall)),
-            ],
+            ),
           ),
         ),
       );
     }
 
-    final cards = [for (final p in c.calendarOptions) card(p)];
+    Widget customCard() {
+      final isSelected = selectedGroup == core.customId;
+      return SizedBox(
+        width: narrow ? null : 280,
+        child: Material(
+          color: t.card,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(t.radiusMd),
+            side: BorderSide(
+                color: isSelected ? t.accent : t.border,
+                width: isSelected ? 2 : 1),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            key: const ValueKey('school:custom'),
+            onTap: () => c.selectSchoolGroup(core.customId),
+            child: Padding(
+              padding: EdgeInsets.all(t.pad),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(Strings.get('wiz_cal_custom'),
+                            style: TextStyle(
+                                color: t.text, fontWeight: FontWeight.bold)),
+                      ),
+                      Icon(
+                        isSelected
+                            ? Icons.check_circle
+                            : Icons.radio_button_unchecked,
+                        color: isSelected ? t.accent : t.faint,
+                        size: 20,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(Strings.get('wiz_cal_custom_p'),
+                      style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final cards = [
+      for (final g in c.schoolOptions) schoolCard(g),
+      customCard(),
+    ];
     return [
-      _h(Strings.get('wiz_cal_h'), 19),
+      if (includeHeading) _h(Strings.get('wiz_cal_h'), 19),
       _p(Strings.get('wiz_cal_p')),
+      const SizedBox(height: 16),
       narrow
           ? Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.stretch,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 for (var i = 0; i < cards.length; i++) ...[
                   cards[i],
-                  if (i != cards.length - 1)
-                    const SizedBox(height: 8),
+                  if (i != cards.length - 1) const SizedBox(height: 12),
                 ],
               ],
             )
           : Wrap(spacing: 8, runSpacing: 8, children: cards),
-      if (preset.isEmpty) _hint(Strings.get('wiz_cal_pick')),
+      if (pickedPreset.isEmpty) ...[
+        const SizedBox(height: 8),
+        _hint(Strings.get('wiz_cal_pick')),
+      ],
     ];
   }
 
-  List<Widget> _alarmContent() {
+  List<Widget> _phoneContent({bool includeHeading = true}) {
     final c = controller;
-    final t = tokens;
-final enabled = c.alarmEnabled;
-    final rows = <Widget>[
-      _h(Strings.get('wiz_alarm_h'), 19),
-      _p(Strings.get('wiz_alarm_p')),
-      SwitchListTile(
-        value: enabled,
-        contentPadding: EdgeInsets.zero,
-        title: Text(Strings.get('wakeup_enable')),
-        onChanged: c.setAlarmEnabled,
-      ),
-    ];
-    if (enabled) {
-      final minutes = c.alarmMinutes() ?? 60;
-      rows.add(_field(Strings.get('wakeup_minutes'),
-          'wiz:wakeup_minutes', '$minutes'));
-      rows.add(_hint(Strings.format('wakeup_hint', {'n': minutes})));
-      if (c.alarmExactOff) {
-        rows.add(Text(Strings.get('wakeup_exact_off'),
-            style: TextStyle(
-                color: t.yellow,
-                fontSize: t.fsSmall)));
-        rows.add(Align(
-          alignment: Alignment.centerLeft,
-          child: OutlinedButton.icon(
-            onPressed: c.onAlarmPermission,
-            icon:
-                const Icon(Icons.alarm_on, size: 18),
-            label: Text(Strings.get('wakeup_exact_allow')),
-          ),
-        ));
-      }
-    }
-    rows.add(_hint(Strings.get('wiz_alarm_later')));
-    return rows;
-  }
-
-  List<Widget> _templateEditors(BuildContext context) {
-    final c = controller;
-    const entries = [
-      ('late_income_excuses', 'tpl_late'),
-      ('left_soon_excuses', 'tpl_soon'),
-      ('short_absence_excuses', 'tpl_short'),
-      ('long_absence_excuses', 'tpl_long'),
-    ];
+    final wc = widget.wakeupController ??
+        SettingsController(
+          c.config,
+          persist: (u) => c.onSave(Map<String, Object?>.of(u)),
+          persistQuiet: (u) => c.onSaveQuiet(Map<String, Object?>.of(u)),
+          onDraftChanged: c.onDraftChanged,
+          onClearDrafts: c.onClearDrafts,
+        );
     return [
-      for (final (key, titleKey) in entries)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: TemplateEditor(
-            configKey: key,
-            titleKey: titleKey,
-            readTemplates: () => c.config[key] ?? const <Object?>[],
-            commitTemplates: (values) => c.saveTemplateList(key, values),
-          ),
-        ),
+      if (includeHeading) ...[
+        _h(Strings.get('wiz_phone_h'), 19),
+        const SizedBox(height: 6),
+      ],
+      _p(Strings.get('wiz_phone_p')),
+      const SizedBox(height: 16),
+      WakeupCard(controller: wc),
     ];
   }
 
@@ -730,7 +997,7 @@ class _DraftFieldState extends State<_DraftField> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
         controller: _ctrl,
         focusNode: _focus,

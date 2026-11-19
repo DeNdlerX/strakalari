@@ -259,7 +259,7 @@ Map<String, dynamic>? normalizePlannedEntry(Map<String, dynamic> raw) {
     'start_period': startP,
     'end_period': endP,
     'template': '${raw['template'] ?? ''}',
-    'cancel_lunch': raw['cancel_lunch'] == true,
+    'cancel_lunch': raw['cancel_lunch'] != false,
   };
 }
 
