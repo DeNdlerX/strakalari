@@ -1,6 +1,6 @@
-# F1c design note: short Absence + one-calendar Plánovač (O3), full-page Limits (O4), real Budík step (O5), early setup refresh (O6), return-to-opener back (O7)
+# F1c design note: short Absence + one-calendar Plánovač (O3), full-page Limits (O4), real Budík step (O5), early setup refresh (O6), return-to-opener back (O7), notification & widget tap routing (O8)
 
-Status: **design note only, awaiting R3c design re-review — no O3–O7 code yet.**
+Status: **design note only, awaiting R3c design re-review — no O3–O8 code yet.**
 Written 2026-11-19 after fixing R3b code review findings M1, M2, S1–S3 (`7329221` … `64b5ccf`), updated for R3c review findings (M1, M2, S1–S9) and owner changes.
 
 Sources: owner's 2026-11-19 phone test of F1b (`STATUS.md` *Owner decisions*),
@@ -17,6 +17,7 @@ Follow-up improvements from the owner's phone test of F1b:
 - **O5:** The Android wizard's *Telefon* step embeds the real Settings `WakeupCard` (enable switch, minutes before first lesson, notification + exact-alarm permissions, and next wake-up preview) instead of a lone switch.
 - **O6:** Once the Bakaláři login test passes and saves in the wizard, the app immediately starts a background Bakaláři-only refresh with an **in-memory** `automation_paused: true` config copy, so timetable, absences, subjects, and the *Telefon* step's next wake-up are already populated while zero excuses or lunch orders can fire before setup finishes.
 - **O7:** Both sub-pages (`/absences/limits` and `/absences/plan`) go back to the screen that opened them — via both their own back arrow (phone and desktop) and Android system Back — while preserving S4's save-on-leave guarantee.
+- **O8:** On Android, tapping any event notification, the ongoing status notification, the status-bar alarm icon, the ringing wake-up alarm notification, or the home-screen timetable widget carries its target route and opens the matching screen (from both cold start and while running), without leaving the setup wizard or triggering any refresh/send/order. (Desktop notifications go through PowerShell, `osascript`, or `notify-send` and cannot navigate the running app, so desktop is out of scope.)
 
 ---
 
@@ -278,7 +279,79 @@ Lives in `app/lib/features/planner/planner_view.dart` (widget `PlannerPage`) and
 
 ---
 
-## 7. Config keys, safety rules, strings, and docs
+## 7. O8 — Tap on a phone notification or widget opens the matching screen
+
+### 7.1 Target screen for every notification event and Android surface
+
+Every event in core `eventTypes` (`packages/strakalari_core/lib/src/platform/notifier.dart:21–35`) is mapped in a top-level `const Map<String, String> notificationEventRoutes` in `app/lib/platform/android/android_notifications.dart` (with `routeForNotificationEvent(tag)` defaulting to `'today'`):
+
+| Tap on | Route | Screen opened |
+|---|---|---|
+| `excuse_needs_confirm` | `today` | *Dnes* (pending excuse confirmation card) |
+| `excuse_sent` | `activity` | *Aktivita* (run & audit log) |
+| `refresh_done` | `today` | *Dnes* |
+| `refresh_failed` | `activity` | *Aktivita* (failed run details) |
+| `lunch_ordered` | `lunches` | *Obědy* |
+| `lunch_skipped` | `lunches` | *Obědy* |
+| `planner_suggestion` | `absences/plan` | *Plánovač* (`/absences/plan`) |
+| `automation_failed` | `activity` | *Aktivita* (automation error details) |
+| `new_mark` | `marks` | *Známky* |
+| `new_quarterly_mark` | `marks` | *Známky* |
+| `new_absence` | `absences` | *Absence* |
+| `timetable_change` | `timetable` | *Rozvrh* |
+| `update_available` | `activity` | *Aktivita* (update card at `activity_view.dart:395`) |
+| Ongoing background status notification (`KeepAliveService`) | `today` | *Dnes* |
+| Status-bar alarm clock icon (`AlarmReceiver` `AlarmClockInfo`) | `alarm` | *Budík* (`openMoreRoute(state, 'alarm', ...)` → `/settings` with `settingsSection = 'alarm'`, `settingsOpen = true`) |
+| Ringing wake-up alarm notification (`AlarmRingService` & `AlarmReceiver` fallback) | `today` | *Dnes* |
+| Home-screen timetable widget (`TimetableWidgetProvider`) | `timetable` | *Rozvrh* |
+
+### 7.2 Android side (Java / Kotlin)
+
+- **`Notifications.java`:**
+  - Add `static final String EXTRA_ROUTE = "strakalari_route";`.
+  - Add `static PendingIntent openApp(Context ctx, String route)` (keeping 1-arg `openApp(ctx)` delegating to `openApp(ctx, "today")`):
+    - Builds the package launch intent with `Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED | Intent.FLAG_ACTIVITY_SINGLE_TOP`.
+    - Sets `launch.putExtra(EXTRA_ROUTE, target)` (`target` defaults to `"today"` when null/empty). Does **not** set `intent.setData(...)` so `FlutterActivity` / `go_router` never misinterprets the intent as a deep-link URI.
+    - Passes a **distinct deterministic per-route `requestCode`** (fixed mapping per known route, with `1000 + (target.hashCode() & 0x7fff)` fallback — never a shared `0`) to `PendingIntent.getActivity(ctx, requestCode, launch, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)`, so multiple posted notifications for different routes never overwrite each other's route extra.
+  - Add 7-arg `Notifications.show(ctx, channelId, channelName, title, text, id, route)` and `Notifications.builder(..., route)` wiring `openApp(ctx, route)` (existing overloads delegate with `"today"`).
+- **Android callers:**
+  - `KeepAliveService.java:116`: passes `"today"`.
+  - `AlarmReceiver.java:117` (`AlarmClockInfo`): calls `Notifications.openApp(ctx, "alarm")`.
+  - `AlarmReceiver.java:204` and `AlarmRingService.java:193` (ringing alarm notification): call `Notifications.openApp(ctx, "today")`.
+  - `TimetableWidgetProvider.java:429` (`openAppIntent`): calls `Notifications.openApp(ctx, "timetable")`.
+- **`StrakalariChannel.java`:**
+  - `case "notify"`: reads optional `stringArg(call, "route")` (defaults to `"today"`) and forwards it to `Notifications.show(...)`.
+  - Stores `private String pendingLaunchRoute = "";`, adds `public void handleIntent(Intent intent)` (reads `EXTRA_ROUTE`, removes the extra via `intent.removeExtra(EXTRA_ROUTE)` so activity recreation never replays it; when the channel is attached for a warm `onNewIntent`, invokes `"openRoute"` on Dart, and stores `pendingLaunchRoute` for cold start until Dart consumes it), and adds `case "takeLaunchRoute"` (returns and clears `pendingLaunchRoute`).
+- **`MainActivity.kt`** (`launchMode="singleTop"`, `AndroidManifest.xml:37`):
+  - `configureFlutterEngine`: calls `attached.handleIntent(intent)` to capture a cold-start launch route.
+  - Overrides `onNewIntent(intent: Intent)`: calls `super.onNewIntent(intent); setIntent(intent); channel?.handleIntent(intent)` so taps while the app is running open the route immediately.
+
+### 7.3 Dart & background side
+
+- **`AndroidChannel`** (`app/lib/platform/android/android_channel.dart`):
+  - `notify(..., {String route = 'today'})` sends `'route': route` over `strakalari/android`.
+  - Adds `Future<String?> takeLaunchRoute()` and `void setLaunchRouteHandler(void Function(String route)? handler)` listening for `'openRoute'` calls from `MainActivity.onNewIntent`.
+- **`AndroidNotifications`** (`app/lib/platform/android/android_notifications.dart`):
+  - Passes `route: routeForNotificationEvent(tag)` to `channel.notify(...)`.
+  - Headless background refreshes (`app/lib/platform/android/background.dart:223`) already register `AndroidNotifications`, so background notifications carry the same routes automatically.
+- **`AppState.applyLaunchRoute(String rawRoute)`** (`app/lib/controllers/app_state.dart`):
+  - If `setupPending` (wizard is open): drops the route immediately (`return` without setting `pendingRoute` — wizard stays in charge).
+  - If `rawRoute == 'alarm'`: sets `settingsSection = 'alarm'`, `settingsOpen = true`, `pendingRoute = 'settings'` (matching `openMoreRoute`), and emits.
+  - Otherwise: resolves via `routeForLocation(rawRoute)` (old `'planner'` → `'absences/plan'`, unknown → `'today'`, known routes → themselves), sets `pendingRoute = resolved`, and emits.
+- **`startPlatformServices`** (`app/lib/platform/startup.dart`, Android branch): registers `channel.setLaunchRouteHandler(state.applyLaunchRoute)` and awaits `takeLaunchRoute()` to apply any cold-start route once the shell is mounted.
+- **`AppScaffold`** (`app/lib/shell/scaffold.dart:215–236`):
+  - Expands the `pendingRoute` allow-list to include `'absences/plan'` and `'absences/limits'` alongside `shellRoutes`, `'more'`, `'wizard'`.
+  - When `appState.setupPending` is true, also clears `appState.pendingRoute = null` before redirecting to `/wizard` so a queued tap route can never fire while or right after the wizard closes.
+
+### 7.4 Constraints
+
+- Tapping only navigates: no refresh, excuse send, lunch order, or config save.
+- Notification texts, per-event toggles in *Nastavení → Oznámení*, and channels stay unchanged. Zero new config keys, zero new strings.
+- **Desktop out of scope:** desktop notifications use PowerShell, `osascript`, or `notify-send` (`app/lib/platform/desktop/notifications.dart`), which cannot open a screen in the running app; the owner can ask for desktop click-to-open separately.
+
+---
+
+## 8. Config keys, safety rules, strings, and docs
 
 - **Config keys:** **zero** added, removed, or renamed. `config.example.json`, `config.dart`, and all frozen parity fixtures stay completely untouched.
 - **Safety rules (`CONTRIBUTING.md` §5):** `runRefresh`, `withSessionLock`, `Strakalari.sendExcuse`, `HistoryLock`, `audit.dart`, `planCustomSkip` / `planEntries` / `unplanEntry` / lunch-cancel staging stay completely intact; O6's early refresh adds an in-memory-only `automation_paused: true` guard and never mutates saved config.
@@ -322,11 +395,11 @@ Lives in `app/lib/features/planner/planner_view.dart` (widget `PlannerPage`) and
 
 ---
 
-## 8. Exact tests to update and add
+## 9. Exact tests to update and add
 
 Baseline after R3b fixes: core **809 passed / 2 skipped**, app **739 passed / 1 skipped**. The app count may only go up; zero tests are deleted or weakened (every test stays unless its code goes, and none is expected to be removed).
 
-### 8.1 Every existing test that changes (one line per test)
+### 9.1 Every existing test that changes (one line per test)
 
 | File | Test name | Builds & taps afterwards | Assertions kept word for word | Assertions changed / moved (with new target) |
 |---|---|---|---|---|
@@ -368,7 +441,7 @@ Baseline after R3b fixes: core **809 passed / 2 skipped**, app **739 passed / 1 
 | `app/test/scroll_keeps_offset_test.dart` | `a scrolled screen keeps its offset across an AppState emit` | Pumps `LiveAbsencesView` (with enough subjects so `maxScrollExtent > 100` on short Absence) and adds a second test for `LivePlannerPage`. | Offset `100` preserved across `s.onChanged()`. | Adds extra subjects in `LiveAbsencesView` fixture if needed so the shorter screen still scrolls, plus a matching `LivePlannerPage` test. |
 | `app/test/wizard_live_test.dart` | `F1 Telefon step`: `shows only wakeup switch...` & `Skip on Telefon saves nothing and asks no permission` (`:1485`, `:1549`) | Pumps `LiveWizardView` on `stepPhone` with injected/mocked `WakeupPhone`. | `run_in_background` absent; `wakeup_enable` present; permission asked on Continue; Skip asks no permission and saves nothing. | Updates first test to assert `WakeupCard` (`wakeup_minutes`, permission prompts, next alarm / `wakeup_none`, immediate `wakeup_enabled` save, `wakeup_minutes_before` save on Continue); updates Skip test not to toggle `WakeupCard`'s live-saving switch before tapping *Přeskočit*. |
 
-### 8.2 New tests added for F1c
+### 9.2 New tests added for F1c
 
 1. **Navigation & Back (`app/test/mobile_narrow_shell_test.dart`, `app/test/android_back_test.dart`):**
    - `backTarget` for every opener (O7): `'absences/limits'` with `from: 'settings'` → `'settings'`, `from: null` / `'absences'` / `'bogus'` → `'absences'`; `'absences/plan'` with `from: 'today'` → `'today'`, `from: null` / `'absences'` / `'bogus'` → `'absences'`.
@@ -398,25 +471,32 @@ Baseline after R3b fixes: core **809 passed / 2 skipped**, app **739 passed / 1 
      - Control run on the same fake app with `state.startRefresh('bakalari', pauseAutomation: false)`: `excusePending` **is called** (`>= 1`), proving the test detects a send when the pause is absent.
    - Wizard tests (`wizard_live_test.dart`): verified Bakaláři login triggers early refresh once; stepping Back to Bakaláři and pressing *Pokračovat* again with unchanged credentials does **not** trigger a second early refresh (changing credentials & re-verifying does); failed login does NOT trigger it; failed early refresh does not block wizard navigation.
    - S5 queued-finish tests (`app_state_excuses_and_planner_test.dart`, `wizard_live_test.dart`): early `'bakalari'` refresh still in flight at *Dokončit* → *Dokončit* shows `wiz_finishing_refresh` and when the early run finishes, exactly one `'all'` run starts automatically with `pauseAutomation: false`; when no early run is in flight, `'all'` runs once immediately; when a non-early refresh is busy, B7 `already_running` still fires.
+7. **O8 Notification & widget tap routing (`app/test/android_phone_background_test.dart` / `app/test/android_notifications_test.dart`, `app/test/mobile_narrow_shell_test.dart`):**
+   - Event-route coverage: fails if any event in core `eventTypes` has no entry in `notificationEventRoutes`, and verifies every mapped route resolves to itself under `routeForLocation`.
+   - `AndroidNotifications.sendNotification` passes the expected `route` argument for each event tag through a fake `AndroidChannel`.
+   - Java source text check (like N1): `Notifications.java` passes distinct per-route request codes (never hardcoded `0` for all routes), `TimetableWidgetProvider.java` opens `'timetable'`, `AlarmReceiver.java` opens `'alarm'` for `AlarmClockInfo` and `'today'` for ringing, `KeepAliveService.java` opens `'today'`.
+   - Shell routing (`mobile_narrow_shell_test.dart`): `applyLaunchRoute` opens the matching screen (`marks`, `absences/plan`, legacy `planner` → `/absences/plan`, `alarm` → `/settings` with `settingsSection == 'alarm'` & `settingsOpen == true`); drops the route while `setupPending == true` (stays on `/wizard`); unknown route opens `/today`.
 
 ---
 
-## 9. Done when (and commit plan)
+## 10. Done when (and commit plan)
 
-Implement only **after** this design note passes review, in 5 green commits (one per O-item, each with its own tests, never breaking the tree):
+Implement only **after** this design note passes review, in 6 green commits (one per O-item, each with its own tests, never breaking the tree):
 1. `F1c (O6): start paused Bakaláři refresh after wizard login test`
 2. `F1c (O5): embed WakeupCard in wizard Telefon step`
 3. `F1c (O4): full-page Limits editor with quick-pick value chips`
 4. `F1c (O3): short Absence screen and single-calendar Plánovač sub-route` (+ tours, strings, `demo_data.py`, README & `docs/images/absences-*.png`)
 5. `F1c (O7): return Limity and Plánovač to the screen that opened them`
+6. `F1c (O8): open the matching screen when tapping a phone notification or widget`
 
 **Done when:**
 - `/absences` is short (header with *Limity* + *Plánovač*, 3 KPIs, optional `planner_next` shortcut, subject cards with M1 stacked budget bars); no new rail or *More* tab.
 - `/absences/plan` and `/absences/limits` each have a single back arrow on phone and desktop (no duplicate top-bar arrow), keep *Absence* selected on the wide rail and *Více* on the phone bottom bar, and return via both their own arrow and Android Back to the screen that opened them (Settings *Limity* section → Settings *Limity*, *Dnes* tip → *Dnes*, Absence / `/planner` → Absence); at `390 × 844` the month calendar starts on the first screen.
-- One month calendar shows past days greyed and non-tappable (past planned days keep *passed* look), supports single-day tap (whole day or partial lessons via M2 `pickerSlotsFor`), and *Vybrat více dní* multi-day selection with impact preview and single-save atomic `planEntries` confirmation; separate `CustomPlanDialog` is gone.
-- `/absences/limits` is a full-width page with global defaults at top, clear default/custom subject rows, tappable already-used value chips + *Výchozí* clear chip, and *Nastavení → Limity* opens it.
-- Wizard *Telefon* step embeds `WakeupCard` (switch, minutes, notification + exact-alarm permissions, next wake-up preview) while preserving B9 and *Přeskočit*.
-- Verified Bakaláři login in the wizard starts a `'bakalari'` refresh via `startRefresh` with in-memory `automation_paused: true` (never saved to `config.json`); *Dokončit* starts a normal `'all'` refresh (or queues one to run right after an in-flight early refresh finishes, showing `wiz_finishing_refresh`; non-early busy still shows B7 `already_running`).
+- One month calendar shows past days greyed and non-tappable (past planned days keep *passed* look), resolves each cell from its owning term, supports single-day tap (whole day, partial lessons via M2 `pickerSlotsFor`, partly planned days splitting around existing plans, and multi-entry `showPlannedDialog`), defaults *Odhlásit oběd* off for partial-day plans, computes one month slot map instead of per-cell recomputation, and supports *Vybrat více dní* multi-day selection with impact preview and single-save atomic `planEntries` confirmation; separate `CustomPlanDialog` is gone.
+- `/absences/limits` is a full-width page with global defaults at top, clear default/custom subject rows, tappable already-used value chips + *Výchozí* clear chip, flushes focused fields and runs one normal `s.save(const {})` on every way out, and *Nastavení → Limity* opens it.
+- Wizard *Telefon* step always embeds `WakeupCard` (switch, minutes, notification + exact-alarm permissions, next wake-up preview) while preserving B9 and *Přeskočit*.
+- Verified Bakaláři login in the wizard starts a `'bakalari'` refresh once per verified fingerprint via `startRefresh` with in-memory `automation_paused: true` (never saved to `config.json`); *Dokončit* starts a normal `'all'` refresh (or queues one to run right after an in-flight early refresh finishes, showing `wiz_finishing_refresh`; non-early busy still shows B7 `already_running`).
+- On Android, tapping any event notification (all 13 `eventTypes`), the ongoing status notification, the alarm clock icon, the ringing alarm notification, or the timetable widget carries its route with distinct per-route `PendingIntent` request codes and opens the matching screen from cold start and while running, without leaving the setup wizard or triggering any refresh/send/order; desktop is out of scope.
 - Zero config keys changed; all safety rules intact; cs/en ARBs + `strings.dart` in sync; tutorials split (`absences` + `absences_plan`).
 - Visual evidence in `build/qa-evidence/F1c/` at 390 px and 1280 px (cs/en, light/dark) for `/absences`, `/absences/plan` (single & multi-select), `/absences/limits`, and wizard *Telefon*.
 - **Phone evidence for O5 and O6** (Pixel 7 Pro `2C221FDH3002NZ`, `.test` app `io.github.dendlerx.strakalari.test` only, against `tools/bakalari_demo_server.py` on port `18080`, saved in `build/qa-evidence/F1c/`):
@@ -426,4 +506,8 @@ Implement only **after** this design note passes review, in 5 green commits (one
   - the next wake-up preview shown on *Telefon* once O6's early refresh completes;
   - after *Dokončit*: `adb -s 2C221FDH3002NZ shell dumpsys alarm` output listing the `.test` alarm;
   - *Aktivita* showing the early `bakalari` run followed by the full `all` run.
+- **Phone evidence for O8** (Pixel 7 Pro `2C221FDH3002NZ`, `.test` app `io.github.dendlerx.strakalari.test` only, against `tools/bakalari_demo_server.py`, saved in `build/qa-evidence/F1c/O8/`):
+  - From a **closed** app and from a **running** app (on another tab), tapping an event notification opens its matching screen;
+  - Tapping the ongoing status notification opens *Dnes*;
+  - Tapping the timetable home-screen widget opens *Rozvrh*.
 - Core (`dart analyze && dart test`) and app (`flutter analyze && flutter test`, count >= 739) are completely green.
