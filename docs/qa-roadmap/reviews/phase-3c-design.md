@@ -817,3 +817,81 @@ would let a student plan today's lessons that already started (S11).
    Flutter tool, never committed.
 7. **Not checked:** the phone (no code yet); macOS and iOS (not possible
    here).
+
+---
+
+## Re-review 2 2026-11-19
+
+After reading the re-review, the owner wrote "you can fix it." (word for
+word in STATUS), under the standing invitation of 2026-11-18 to improve
+the designs. So the reviewer fixed the four open findings in
+`design-F1c.md` itself, in the reviewer's commit after `405b8e0`. The note
+changes only; no code, config key, string or parity fixture.
+
+### Verdict: PASS
+
+M3, M4, S10 and S11 are fixed in the note as the re-review asked, and
+nothing else in the note contradicts them. The agent may now write the
+O3–O8 code as the note says, in its six commits (§10). Baseline for that
+code: core 809 passed / 2 skipped, app 739 passed / 1 skipped.
+
+Because the reviewer wrote these paragraphs, the code review checks them
+like the agent's own: above all the four tests named below, which must
+fail without their fix.
+
+### What changed in `design-F1c.md`
+
+- **M3** (§5): the queued *Dokončit* run starts in a `finally` around
+  `_refreshWork`'s whole body, after `withSessionLockAsync` has returned,
+  never from `finishRun` or a microtask scheduled there; the reason is
+  written next to it. `earlyRefreshInFlight` is cleared there too. New
+  test in §9.2 item 6: synchronous spawn, real session lock, fake fetch
+  held by a `Completer`; the `'all'` run must be recorded with `ok == true`
+  and no `session_busy` line. *Done when* (§10) says the queued run really
+  runs.
+- **M4** (§2.1, §6, §7.3): `AppScaffold` matches the path part of
+  `pendingRoute` against the allow-list, navigates with the whole string
+  (so `?from=today` stays) and clears `pendingRoute` whether or not it
+  matched. New test in §9.2 item 1: the *Dnes* tip through the real shell
+  lands on `/absences/plan?from=today`, and Back and `plan:back_btn` return
+  to `/today`. The §9.1 line for `Today planner suggestion opens absences`
+  points to it. The `routeLocation` misquote (N28) is corrected in the same
+  place.
+- **S10** (§3.1): `AutosaveField(saveOnDispose: true)` compares and saves
+  in `dispose()` without the focus check, never touching `context`. The
+  back arrow only unfocuses and calls `onBack()`; every exit ends in the
+  page's `dispose()`, which schedules the one normal save post-frame, after
+  the values. `_notifiedLeave` is gone. The S4 test in §9.2 item 4 gains
+  the arrow-while-focused case.
+- **S11** (§2.3): today's slots are computed live on every
+  `pickerSlotsForMonth` call; only the other days are cached. New test in
+  §9.2 item 3: the same page at 7:50 and 8:05 without a refresh, the first
+  lesson goes from pickable to `pick_started`.
+- **N32 (found while fixing, fixed):** §5 gave `startRefresh([String scope
+  = 'all', {bool pauseAutomation = false}])`, which Dart doesn't compile
+  (optional positional and named parameters can't be mixed). The note now
+  has `startRefresh([String scope = 'all', bool pauseAutomation =
+  false])`, so every existing call stays as it is, and says the early call
+  reads `startRefresh('bakalari', true)`; the §5 code snippet uses it.
+- The note's status line says it passed.
+- **N29 and N30** stay notes: the agent may keep *Klikněte* / *Click* on
+  the desktop, and should rename the `case 3 … 4 KPIs` test when its count
+  becomes 3.
+
+### What the reviewer verified, and how
+
+1. `git diff 405b8e0..HEAD --stat` (the note commit) touches only
+   `design-F1c.md`.
+2. Every changed paragraph re-read against the code lines the re-review
+   cites (`activity.dart:322`, `:343–365`, `:476–479`, `:583`,
+   `app_state.dart:251–257`, `:925–928`, `scaffold.dart:215–223`,
+   `today_live.dart:22`, `router.dart:54`, `settings_view.dart:78–80`,
+   `:95–131`, `controllers/planner.dart:406`, `:456–459`, `:526–527`).
+3. A search of the whole note for what the fixes replace: no
+   `_notifiedLeave` logic, no focus check in `dispose()`, no run started
+   from `finishRun`, no exact-match allow-list, no named
+   `pauseAutomation:` in a code line, and no cached today, are left.
+4. Suites unchanged since the re-review (no code change): core 809 passed
+   / 2 skipped, app 739 passed / 1 skipped, both analyzers clean.
+5. No new string or config key comes with the fixes (the 8 new and 4
+   removed strings of §8 are unchanged).
