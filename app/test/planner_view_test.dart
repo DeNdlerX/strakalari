@@ -631,7 +631,10 @@ void _setViewport(WidgetTester t) {
   addTearDown(t.view.resetDevicePixelRatio);
 }
 
-Widget _app(Widget child) => MaterialApp(
-      theme: AppTokens.dark().toThemeData(),
-      home: Scaffold(body: child),
-    );
+Widget _app(Widget child) {
+  SnackLog.clear();
+  return MaterialApp(
+    theme: AppTokens.dark().toThemeData(),
+    home: Scaffold(body: child),
+  );
+}
