@@ -95,24 +95,29 @@ Lives in `app/lib/features/planner/planner_view.dart` (widget `PlannerPage`) and
        - **Past day** (`day.isBefore(_d(p.firstDay))`, OR `day == _d(p.today)` with zero pickable M2 slots when `lessonsFor` is provided):
          - If planned (`isPlanned`): dimmed `tintColor(over ? tok.red : tok.accent, 0.45)` — keeps its *passed* look, `onTap: null`.
          - Otherwise: dimmed `tintColor(tok.overlay, 0.55)` with `tok.faint` number, `onTap: null`.
-       - **Planned future day** (`isPlanned && !past`): solid `over ? tok.red : tok.accent`.
-         - Single-day mode: tap opens `showPlannedDialog` (view/unplan).
-         - Multi-day mode: `onTap: null` (already planned).
+       - **Planned future day** — decided from the day's M2 slots (`PickerSlot`s), **not** from `term.plannedDates` alone (falling back to `term.plannedDates` as fully planned only when `lessonsFor == null`):
+         - **Fully planned** (taught slots exist and none is pickable because they are `planned`, or `lessonsFor == null && isPlanned`): solid `over ? tok.red : tok.accent`.
+           - Single-day mode: tap opens `showPlannedDialog(context, entries)` showing **all** planned entries touching `day` (`controller.plannedEntriesFor(_iso(day))` — `PlannerController` gains `List<Map<String, dynamic>> plannedEntriesFor(String dayIso)`, while `plannedFor` returns `plannedEntriesFor(dayIso).firstOrNull`). Each entry renders with its `entryLabel(e)`, template preview, and its own *Zrušit plán* button (calling `controller.unplanEntry(e)`, removing that row or closing when the last entry is removed, and showing `plan_removed` / `save_failed`).
+           - Multi-day mode: `onTap: null` (fully planned, as in `CustomPlanDialog` today).
+         - **Partly planned** (some slots are `planned`, and at least one slot is still `pickable`): keeps the planned colour (`over ? tok.red : tok.accent`) plus a small `4 px` `tok.accentText` dot marker at bottom-centre of the cell (and tooltip notes both planned and remaining pickable lessons) so the student can tell at a glance that more lessons are still open.
+           - Single-day mode: tap opens the upgraded `PlanDayDialog` with *Vybrat jen některé hodiny* **already expanded**, showing planned lessons locked (`onChanged: null`) with `cal_tip_planned`, the remaining pickable lessons checked and pickable, and the whole-day toggle meaning **"all that are still pickable"** (`all pickable` ↔ `none`). Confirm builds entries via `core.entriesForSelection(picked: {day: sel}, lessons: {day: taughtPeriods}, template: tpl, cancelLunch: cancelLunch)` — splitting around already-planned lessons (e.g. period 3 planned → `(null, 2)` and `(4, null)`) — and saves them atomically with one `controller.planEntries(entries)`. The dialog also lists the day's existing planned entries (`controller.plannedEntriesFor(_iso(day))`) with a *Zrušit plán* button per entry so the student can either add more lessons or remove an existing partial plan from the same tap (existing entries also stay removable in *Naplánované* below the calendar).
+           - Multi-day mode: tapping toggles the day in `selectedDays` and adds **only its still-pickable lessons** (`pickablePeriods`, matching today's `CustomPlanDialog._tapDay`); on confirm in `PlanMultiDialog`, `core.entriesForSelection` passes `taughtPeriods` as `lessons[day]` so the new entries split cleanly around already-planned lessons.
        - **Selectable future school day** (not free, not past, not planned, within `[term.start, term.close]` and either has pickable M2 slots or `lessonsFor == null` with `option != null`):
          - Colors kept: `tok.green` (recommended), `tintColor(tok.red, 0.35)` (blocked / doesn't fit), `tok.overlay` (normal school day).
          - Today keeps its 2 px `tok.text` border.
          - In **multi-day mode**, a selected day renders with an accent fill/border (`tok.accent` with `tok.accentText` number and small check indicator) so selection is unmistakable.
    - **Single-day tap (multi-select OFF):**
-     - Opens upgraded **`PlanDayDialog`** for `day` (passing `lessonsFor: lessonsFor` and `impactOfEntries: impactOfEntries`):
-       - Default state: whole day selected (identical to today — 1 tap *Potvrdit* plans the whole day via `controller.planSkip(...)`).
-       - When `lessonsFor != null` and the day has slots, shows a collapsible toggle **`Vybrat jen některé hodiny`** (`Key('plan:choose_lessons')`, existing string `pick_choose_lessons`).
-       - Expanding it lists every `PickerSlot` (from M2's `AppState.pickerSlotsFor(day, now)`):
+     - Opens upgraded **`PlanDayDialog`** for `day` (passing `slots: daySlots`, `existingEntries: controller.plannedEntriesFor(_iso(day))`, and `impactOfEntries: impactOfEntries`):
+       - Default state for an unplanned day with all lessons pickable: whole day selected (1 tap *Potvrdit* plans the whole day via `controller.planSkip(...)`).
+       - When `slots` has any `planned` lesson (partly planned day), *Vybrat jen některé hodiny* opens **already expanded** with `sel = pickablePeriods` (planned lessons locked with `cal_tip_planned`, remaining pickable lessons checked). Also shows any `existingEntries` touching `day`, each with its own *Zrušit plán* button.
+       - Otherwise, when `slots` is non-empty, shows a collapsible toggle **`Vybrat jen některé hodiny`** (`Key('plan:choose_lessons')`, existing string `pick_choose_lessons`).
+       - Expanding it lists every `PickerSlot`:
          - `CheckboxListTile` with title `'${slot.period}. ${slot.subject}'`, subtitle combining status tag (`pick_started` / `status_lesson_cancelled` / `pick_event` / `cal_tip_planned` / `pick_change`) + `slot.detail`, disabled when `!slot.pickable`.
-         - Includes a quick whole-day toggle checkbox (`all pickable` ↔ `none`).
-         - Unticking any lesson switches the previewed entries to `core.entriesForSelection(picked: {day: sel}, lessons: {day: taughtPeriods}, template: tpl, cancelLunch: cancelLunch)` — splitting non-contiguous periods cleanly, recalculating impact via `impactOfEntries`, and saving all resulting entries in one atomic `controller.planEntries(entries)` call on *Potvrdit*!
+         - Includes a quick whole-day toggle checkbox (`Key('plan:whole_day_check')`, `all pickable` ↔ `none`).
+         - Whenever `sel` does not cover every taught period (e.g. a lesson was unticked, already planned, or already started today), the dialog builds entries via `core.entriesForSelection(picked: {day: sel}, lessons: {day: taughtPeriods}, template: tpl, cancelLunch: cancelLunch)` — splitting non-contiguous periods cleanly around planned/unticked lessons, recalculating impact via `impactOfEntries`, and saving all resulting entries in one atomic `controller.planEntries(entries)` call on *Potvrdit*.
          - If zero lessons remain checked, *Potvrdit* is disabled (`onPressed: null`).
    - **Multi-day mode (multi-select ON):**
-     - Tapping a selectable future school day toggles it in `selectedDays` (`Set<DateTime>`).
+     - Tapping a selectable or partly planned future school day toggles it in `selectedDays` (`Set<DateTime>`), selecting its `pickablePeriods` (only remaining pickable lessons on a partly planned day).
      - Below the grid (inside the calendar card), a **selection bar** (`Key('plan:multi_bar')`) renders:
        - Empty: `pick_empty`.
        - Non-empty:
