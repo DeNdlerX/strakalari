@@ -217,15 +217,21 @@ Lives in `app/lib/features/planner/planner_view.dart` (widget `PlannerPage`) and
 
 ## 5. O6 — Early first refresh during setup
 
-- **Exact place it starts:**
-  - `WizardController` gains `final void Function()? onBakalariSaved;`.
+- **Exact place it starts (once per verified Bakaláři fingerprint):**
+  - `AppState` holds an in-memory-only `String? wizardEarlyRefreshedFp` (alongside `wizardVerified`, never saved to `config.json`).
+  - `WizardController` gains `final void Function(String fingerprint)? onBakalariSaved;`.
   - In `wizard_live.dart` (`wizardControllerFor`), wire:
     ```dart
-    onBakalariSaved: () => s.startRefresh('bakalari', pauseAutomation: true),
+    onBakalariSaved: (fp) {
+      if (s.wizardEarlyRefreshedFp == fp) return;
+      if (s.startRefresh('bakalari', pauseAutomation: true)) {
+        s.wizardEarlyRefreshedFp = fp;
+      }
+    },
     ```
   - Called in `WizardController` right after `saveBakalari()` succeeds on a verified login:
-    1. In `recordTestResult('bakalari', true, msg)` immediately after `_saveFor('bakalari')` succeeds (the normal first-time path when *Otestovat a pokračovat* passes).
-    2. In `continueTestStep('bakalari', ...)` immediately after `_saveFor('bakalari')` succeeds when continuing on an already-verified fingerprint (idempotent: `claimFlight('refresh_running')` ensures at most one refresh runs).
+    1. In `recordTestResult('bakalari', true, msg)` immediately after `_saveFor('bakalari')` succeeds (passing `fp`).
+    2. In `continueTestStep('bakalari', ...)` immediately after `_saveFor('bakalari')` succeeds when continuing on an already-verified fingerprint (passing `fp`). Because `s.wizardEarlyRefreshedFp` guards against repeats, stepping Back to Bakaláři and pressing *Pokračovat* again with unchanged credentials does **not** re-run a ~1 MB refresh, while a resumed wizard (fresh session, `wizardEarlyRefreshedFp == null`) or changed credentials (new `fp`) still triggers it once.
   - **Scope:** `'bakalari'` only (Strava comes on the next step).
 - **Exact `automation_paused` guarantee (`app/lib/controllers/activity.dart`):**
   - Update `startRefresh([String scope = 'all', {bool pauseAutomation = false}])` → `_refreshWork(scope, pauseAutomation: pauseAutomation)` → `_refreshLocked(scope, started, pauseAutomation: pauseAutomation)`.
@@ -365,8 +371,10 @@ Baseline after R3b fixes: core **809 passed / 2 skipped**, app **739 passed / 1 
 5. **O5 Wizard `WakeupCard` (`app/test/wizard_live_test.dart`):**
    - `WakeupCard` shows permission prompts when `WakeupPhone` reports permissions off, shows next alarm preview when timetable is cached (`wakeup_none` when empty), and preserves B9 when leaving the alarm off and tapping *Pokračovat*.
 6. **O6 Early setup refresh (`app/test/wizard_live_test.dart`, `app/test/app_state_excuses_and_planner_test.dart`):**
-   - Unit test on `AppState.startRefresh('bakalari', pauseAutomation: true)` verifying scope `'bakalari'`, in-memory `automation_paused: true`, untouched `config.json` on disk, and zero excuses/orders.
-   - Wizard tests: verified Bakaláři login triggers early refresh; failed login does NOT; failed early refresh does not block wizard navigation.
+   - S6 pause-proof test (`app_state_excuses_and_planner_test.dart`, modeled on `refreshReportsNewsAgainstTheCache` with `state.createApp` and `state.spawn`): config sets `excuse_mode: 'auto'`, fake app's outbox read succeeds and `excusePending` counts calls:
+     - With `state.startRefresh('bakalari', pauseAutomation: true)`: `excusePending` has **0 calls**, `state.logLines` contains `Strings.get('automation_paused_log')`, and `config.json` on disk has **no** `automation_paused: true`.
+     - Control run on the same fake app with `state.startRefresh('bakalari', pauseAutomation: false)`: `excusePending` **is called** (`>= 1`), proving the test detects a send when the pause is absent.
+   - Wizard tests (`wizard_live_test.dart`): verified Bakaláři login triggers early refresh once; stepping Back to Bakaláři and pressing *Pokračovat* again with unchanged credentials does **not** trigger a second early refresh (changing credentials & re-verifying does); failed login does NOT trigger it; failed early refresh does not block wizard navigation.
    - S5 queued-finish tests (`app_state_excuses_and_planner_test.dart`, `wizard_live_test.dart`): early `'bakalari'` refresh still in flight at *Dokončit* → *Dokončit* shows `wiz_finishing_refresh` and when the early run finishes, exactly one `'all'` run starts automatically with `pauseAutomation: false`; when no early run is in flight, `'all'` runs once immediately; when a non-early refresh is busy, B7 `already_running` still fires.
 
 ---
