@@ -292,6 +292,76 @@ void main() {
     expect(find.byType(Meter), findsOneWidget);
     expect(find.text('10.0 %'), findsOneWidget);
   });
+
+  testWidgets('F1b budget bar segments are drawn (R3b code M1)', (t) async {
+    t.view.physicalSize = const Size(1280, 1800);
+    t.view.devicePixelRatio = 1.0;
+    addTearDown(t.view.reset);
+    final tok = AppTokens.dark();
+    final abs = AbsencesController()
+      ..subjects = const [
+        SubjectAbsence(
+          name: 'Matematika',
+          currentPct: 12.0,
+          status: 'ok',
+          limitPct: 25.0,
+          effectivePlanLimit: 22.5,
+          effectivePlanSafe: 4,
+        ),
+      ];
+    final term = TermPlanData(
+      key: 'sem1',
+      start: DateTime(2026, 9, 1),
+      close: DateTime(2027, 1, 25),
+      capacity: 4,
+      hasData: true,
+      active: true,
+      remainingDays: [DateTime(2026, 10, 5)],
+      budgets: const [
+        BudgetRowData(
+          name: 'Matematika',
+          missed: 4,
+          planned: 2,
+          free: 3,
+          buffer: 1,
+          schoolCap: 10,
+          schoolLeft: 5,
+          projectedPct: 20.0,
+          limitPct: 25.0,
+          status: 'ok',
+        ),
+      ],
+    );
+    await t.pumpWidget(MaterialApp(
+      theme: tok.toThemeData(),
+      home: Scaffold(
+        body: AbsencesView(
+          controller: abs,
+          tokens: tok,
+          planner: PlannerController({}),
+          plan: YearPlanData(
+            today: DateTime(2026, 9, 26),
+            firstDay: DateTime(2026, 9, 28),
+            terms: [term],
+            lessonsOn: (_) => 5,
+          ),
+          hasTimetable: true,
+        ),
+      ),
+    ));
+    await t.pump();
+    final segments = find.descendant(
+      of: find.byKey(const Key('abs:subjects')),
+      matching: find.byType(ColoredBox),
+    );
+    // missed, planned, free, reserve
+    expect(segments, findsNWidgets(4));
+    for (final e in segments.evaluate()) {
+      final size = (e.renderObject! as RenderBox).size;
+      expect(size.height, 8);
+      expect(size.width, greaterThan(0));
+    }
+  });
 }
 
 class _SeededAbsAppState extends AppStateController {

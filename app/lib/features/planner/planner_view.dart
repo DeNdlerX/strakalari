@@ -309,7 +309,10 @@ Widget plannerBudgetBar(Tokens tok, BudgetRowData b) {
       color: tok.overlay,
       borderRadius: BorderRadius.circular(4),
     ),
-    child: Row(children: parts),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: parts,
+    ),
   );
 }
 
