@@ -56,10 +56,11 @@ Four follow-up improvements from the owner's phone test of F1b:
 3. **Case 1 — no subjects (`c.subjects.isEmpty`)**: `EmptyState(no_data)`, plus `planner_need_refresh` when `!hasTimetable`, plus `need_credentials` when `c.demoMode`.
 4. **Case 2 & 3 — subjects present**:
    - **3-card KPI row** (`TutorialAnchor(anchorKey: 'abs_stats')`, equalized with `IntrinsicHeight`): *Průměrná absence*, *Varovné předměty*, *Kritické předměty*. (Fits on a single compact row even at 390 px, so subject cards begin immediately on the first screen; *Můžete vynechat* and *Naplánováno* move into Plánovač's summary line.)
-   - **Optional 1-line planner shortcut** (`Key('abs:next_plan_row')`): shown when `term != null && term.recommended.isNotEmpty && onOpenPlanner != null`. A compact clickable `Card` / `InkWell` row reading `Strings.format('planner_next', {'day': '${w.dayName(next, true)} ${w.czDay(next)}'})` + trailing `Icons.chevron_right` that opens `/absences/plan`.
+   - **Always uses the current term (`yp.defaultTerm`):** both `absencesControllerFor` (`absences_live.dart:40`) and `LiveAbsencesView` (`absences_live.dart:82`) read `yp.defaultTerm` / `planData.defaultTerm`, **never** `s.plannerTerm`. Picking *2. pololetí* in Plánovač only affects `/absences/plan`, so returning to `/absences` never silently switches Absence's budget rows or `planner_next` shortcut to another term.
+   - **Optional 1-line planner shortcut** (`Key('abs:next_plan_row')`): shown when `term != null && term.recommended.isNotEmpty && onOpenPlanner != null` (using `plan.defaultTerm`). A compact clickable `Card` / `InkWell` row reading `Strings.format('planner_next', {'day': '${w.dayName(next, true)} ${w.czDay(next)}'})` + trailing `Icons.chevron_right` that opens `/absences/plan`.
    - **Subjects & hour budgets list** (`Key('abs:subjects')`, first card wrapped in `TutorialAnchor(anchorKey: 'abs_first')`):
      - Section header `abs_subjects_section` + 4-color legend when `term != null && term.budgets.isNotEmpty`.
-     - Each subject appears once with its current %, single badge (same tier precedence as F1b), and the M1-fixed `plannerBudgetBar` + `budget_final` / `budget_line` when a matching budget row exists for the active/selected term, else `w.Meter` + `c.detail(subject)`.
+     - Each subject appears once with its current %, single badge (same tier precedence as F1b), and the M1-fixed `plannerBudgetBar` + `budget_final` / `budget_line` when a matching budget row exists for `yp.defaultTerm`, else `w.Meter` + `c.detail(subject)`.
    - Moved out of `/absences` to `/absences/plan`: term selector, warnings card, calendar overview, recommended list, planned list, calendar footer, and `showCustomPlanDialog`.
 
 ### 2.3 Dedicated Plánovač sub-route (`/absences/plan`, `PlannerPage` + `LivePlannerPage`)
@@ -336,8 +337,9 @@ Baseline after R3b fixes: core **809 passed / 2 skipped**, app **739 passed / 1 
 1. **Navigation & Back (`app/test/mobile_narrow_shell_test.dart`, `app/test/android_back_test.dart`):**
    - `backTarget` returns `'absences'` for `'absences/plan'` and `'absences/limits'` on narrow screens; Android Back on `/absences/plan` and `/absences/limits` lands on `/absences`.
    - `AppScaffold` keeps *Absence* selected in the wide rail and *Více* selected in the narrow bottom bar on `/absences/plan` and `/absences/limits`, and hides `topbar_back_btn` on both sub-routes (single back arrow).
-2. **Short Absence screen (`app/test/absences_view_test.dart`):**
+2. **Short Absence screen (`app/test/absences_view_test.dart`, `app/test/absences_live_test.dart`):**
    - Tapping `abs:planner_btn` and `abs:next_plan_row` invokes `onOpenPlanner`; overview/recommended/planned sections are NOT rendered on `AbsencesView`; narrow `AbsencesView` places `abs:limits_btn` and `abs:planner_btn` side-by-side on one row and renders `abs:no_limits_banner` when `hasSubjectLimits == false`.
+   - S1 term-isolation test (`absences_live_test.dart`): select `'sem2'` in `LivePlannerPage` (setting `s.plannerTerm = 'sem2'`), then render `LiveAbsencesView` (`/absences`) → budget rows and `planner_next` still reflect `sem1` (`yp.defaultTerm`).
 3. **Plánovač calendar & partly planned days (`app/test/plan_picker_test.dart`, `app/test/ui_views_test.dart`):**
    - `alreadyPlannedLessonsSplitInMultiMode`: multi-day selection on a partly planned day (period 3 planned) splits into `(null, 2)` and `(4, null)`.
    - `showPlannedDialog` on a day with two partial entries lists both entries with independent *Zrušit plán* buttons and removes only the chosen one.
