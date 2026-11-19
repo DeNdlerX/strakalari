@@ -77,7 +77,7 @@ MENUS = [
      "Buchtičky se šodó"),
 ]
 
-TOURS_DONE = ["intro", "excuse", "timetable", "absences", "lunches", "marks",
+TOURS_DONE = ["intro", "excuse", "timetable", "lunches", "marks",
               "settings", "activity"]
 
 
@@ -185,7 +185,7 @@ def generate(out_dir: str, lang: str = "cs", theme: str = "dark",
         "theme": theme,
         "disclaimer_accepted": True,
         "school_preset_id": PRESET_ID,
-        # Off: no bubbles at all. On: only the Planner tour is left to show.
+        # Off: no bubbles at all. On: only the Absence tour (with planning) is left to show.
         "tutorials_enabled": tutorials,
         "tutorials_done": TOURS_DONE if tutorials else [],
         "use_strava": True,
@@ -207,7 +207,7 @@ def _cli() -> None:
     g.add_argument("--lang", choices=["cs", "en"], default="cs")
     g.add_argument("--theme", choices=["dark", "light"], default="dark")
     g.add_argument("--tutorials", action="store_true",
-                   help="leave the Planner tutorial on (as in the README image)")
+                   help="leave the Absence tutorial (with planning) on")
     args = parser.parse_args()
     if args.cmd == "generate":
         print(generate(args.dir, args.lang, args.theme, args.tutorials))
