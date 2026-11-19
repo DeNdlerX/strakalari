@@ -1,20 +1,22 @@
-# F1c design note: short Absence + one-calendar Plánovač (O3), full-page Limits (O4), real Budík step (O5), early setup refresh (O6)
+# F1c design note: short Absence + one-calendar Plánovač (O3), full-page Limits (O4), real Budík step (O5), early setup refresh (O6), return-to-opener back (O7)
 
-Status: **design note only, awaiting R3c design review — no O3–O6 code yet.**
-Written 2026-11-19 after fixing R3b code review findings M1, M2, S1–S3 (`7329221` … `64b5ccf`).
+Status: **design note only, awaiting R3c design re-review — no O3–O7 code yet.**
+Written 2026-11-19 after fixing R3b code review findings M1, M2, S1–S3 (`7329221` … `64b5ccf`), updated for R3c review findings (M1, M2, S1–S9) and owner changes.
 
-Sources: owner's 2026-11-19 phone test of F1b (`STATUS.md` *Owner decisions*) and
-the reviewer's direction in [`reviews/phase-3b.md`](reviews/phase-3b.md#owner-changes-need-design-f1cmd-first-no-code-before-it-passes).
+Sources: owner's 2026-11-19 phone test of F1b (`STATUS.md` *Owner decisions*),
+[`reviews/phase-3b.md`](reviews/phase-3b.md#owner-changes-need-design-f1cmd-first-no-code-before-it-passes), and
+[`reviews/phase-3c-design.md`](reviews/phase-3c-design.md#owner-changes-2026-11-19-after-the-review).
 
 ---
 
 ## 1. What changes, in one paragraph
 
-Four follow-up improvements from the owner's phone test of F1b:
+Follow-up improvements from the owner's phone test of F1b:
 - **O3:** **Absence** (`/absences`) becomes short and focused again (header with *Limity* and **Plánovač** buttons, 3 KPI cards, optional 1-line next-recommended-day shortcut, and the unified subject + M1 stacked budget-bar list). Planning moves into a sub-route **`/absences/plan`** (no new rail or *More* tab) holding the term selector, a compact summary line, **one month-at-a-time calendar** (showing past days dimmed and non-tappable, replacing both the long multi-month semester overview and the separate *Naplánovat vlastní termín* dialog, supporting both single-day whole/partial-lesson planning via M2's `pickerSlotsFor` and a *Vybrat více dní* multi-day mode), the 3-day recommended list, planned days, and the calendar footer.
 - **O4:** Limits editing moves out of its narrow 480 px `AlertDialog` into a full-width sub-route **`/absences/limits`** with default/warning/reserve settings at the top and tappable subject rows whose inline editor offers chips for the default and every value already used in `subject_limits`. *Nastavení → Limity* links straight to `/absences/limits`.
 - **O5:** The Android wizard's *Telefon* step embeds the real Settings `WakeupCard` (enable switch, minutes before first lesson, notification + exact-alarm permissions, and next wake-up preview) instead of a lone switch.
 - **O6:** Once the Bakaláři login test passes and saves in the wizard, the app immediately starts a background Bakaláři-only refresh with an **in-memory** `automation_paused: true` config copy, so timetable, absences, subjects, and the *Telefon* step's next wake-up are already populated while zero excuses or lunch orders can fire before setup finishes.
+- **O7:** Both sub-pages (`/absences/limits` and `/absences/plan`) go back to the screen that opened them — via both their own back arrow (phone and desktop) and Android system Back — while preserving S4's save-on-leave guarantee.
 
 ---
 
@@ -24,24 +26,22 @@ Four follow-up improvements from the owner's phone test of F1b:
 
 - **`shellRoutes`** stays 7 items (`today, timetable, absences, marks, lunches, activity, settings`); **`moreRoutes`** stays 3 items (`absences, activity, settings`; Android *More* stays 4 with *Budík*). No new rail or *More* entry.
 - **New sub-routes inside `ShellRoute`** (`app/lib/shell/router.dart`):
-  - `'/absences/plan'` (route key `'absences/plan'`) → `ShellBackScope(route: 'absences/plan', child: LivePlannerPage(tokens: tokens, narrow: narrow))`
-  - `'/absences/limits'` (route key `'absences/limits'`) → `ShellBackScope(route: 'absences/limits', child: LiveLimitsPage(tokens: tokens, narrow: narrow))` (O4)
+  - `'/absences/plan'` (route key `'absences/plan'`) → reads `from = sanitizeBackOrigin(state.uri.queryParameters['from'])`, wraps `LivePlannerPage(tokens: tokens, narrow: narrow, onBack: () => context.go(routeLocation(from ?? 'absences')))` inside `ShellBackScope(route: 'absences/plan', from: from, ...)`
+  - `'/absences/limits'` (route key `'absences/limits'`) → reads `from = sanitizeBackOrigin(state.uri.queryParameters['from'])`, wraps `LiveLimitsPage(tokens: tokens, narrow: narrow, onBack: () => context.go(routeLocation(from ?? 'absences')))` inside `ShellBackScope(route: 'absences/limits', from: from, ...)` (O4 & O7)
 - **Compatibility redirect:**
   - `GoRoute(path: '/planner', redirect: (_, _) => '/absences/plan')`
-  - `routeForLocation(location)`:
+  - `routeForLocation(location)` already strips `?query` and `#fragment` (`router.dart:58`):
     - `'planner'` → `'absences/plan'`
     - `'absences/plan'` → `'absences/plan'`
     - `'absences/limits'` → `'absences/limits'`
     - `routeLocation(route)` already returns `'/$route'`, so `'absences/plan'` → `'/absences/plan'` and `'absences/limits'` → `'/absences/limits'`.
   - Add `'absences/plan'` and `'absences/limits'` to `PlaceholderScreen` `titles` fallback (`planner_title`, `sec_limits`) and to `AppScaffold`'s `pendingRoute` allow-list (`scaffold.dart:216`).
 - **Rail / bottom bar selection (`scaffold.dart`):**
-  - `final navRoute = route.startsWith('absences/') ? 'absences' : route;`
-  - Wide `NavigationRail` selects `shellRoutes.indexOf(navRoute)` (*Absence* stays highlighted on both sub-routes).
-  - Narrow `NavigationBar` / side `NavigationRail` keeps *Více* selected (since `'absences'` is in `moreRoutes`).
-- **Back navigation (`scaffold.dart`):**
-  - `backTarget`: when `!wizardShown && (route == 'absences/plan' || route == 'absences/limits')`, return `'absences'`. Android system Back (`ShellBackScope`) therefore steps from `/absences/plan` or `/absences/limits` back to `/absences` (and from `/absences` to `/more` on phone, unchanged).
-  - `_buildTopBar`: suppress `topbar_back_btn` on `'absences/plan'` and `'absences/limits'` (same single-arrow rule as an open Settings section, `d7e3a78`), because both sub-pages render their own `IconButton(Icons.arrow_back)` in their page header on **both** narrow and wide viewports (giving desktop users a back button too without ever doubling arrows on phones).
-- **`TodayView`** (`app/lib/features/today/today_view.dart:128`): the planner tip button opens `'absences/plan'` with label `Strings.get('abs_planner_btn')` (*Plánovač* / *Planner*).
+  - `final navRoute = route.startsWith('absences/') ? 'absences' : route;` — used for **both** the wide `NavigationRail` (*Absence* stays highlighted on both sub-routes) **and** the narrow `NavigationBar` / side `NavigationRail` (*Více* stays selected, since `'absences'` is in `moreRoutes`, avoiding `NavigationBar` falling back to index `0` / *Dnes*). The real `route` (`'absences/plan'` / `'absences/limits'`) stays for `tutorialBegin`, `ViewErrorBoundary`, and `ShellBackScope`.
+- **Back navigation (`scaffold.dart`, see also §6 O7):**
+  - `backTarget({required String route, required bool narrow, required bool wizardShown, String? from})`: when `!wizardShown && (route == 'absences/plan' || route == 'absences/limits')`, returns `sanitizeBackOrigin(from) ?? 'absences'`. Android system Back (`ShellBackScope`) and the page's own back arrow therefore return to the opener (or `/absences` by default), while `/absences` still steps back to `/more` on phone.
+  - `_buildTopBar`: keep `topbar_back_btn` absent on `'absences/plan'` and `'absences/limits'` (they are not in `moreRoutes`, and stay excluded even if `navRoute` is used elsewhere), because both sub-pages render their own `IconButton(Icons.arrow_back)` in their page header on **both** narrow and wide viewports (single back arrow rule, `d7e3a78`).
+- **`TodayView`** (`app/lib/features/today/today_view.dart:128`): the planner tip button opens `'absences/plan?from=today'` with label `Strings.get('abs_planner_btn')` (*Plánovač* / *Planner*).
 
 ### 2.2 Short `/absences` screen (`AbsencesView` + `LiveAbsencesView`)
 
@@ -183,7 +183,7 @@ Lives in `app/lib/features/planner/planner_view.dart` (widget `PlannerPage`) and
       - Commits on submit, blur, switching to another row, tapping Done, and `dispose` (when navigating back).
   - **Footer hint:** `limit_subject_hint` (*Prázdné = platí výchozí limit výše.*). When `subjects` is empty, shows `no_data` muted hint under the global defaults card.
 - **`SettingsView._limits`** (`app/lib/features/settings/settings_view.dart:1034`):
-  - `settings:go_absences_limits` navigates to `'/absences/limits'` (instead of `'/absences'`) with label `Strings.get('open_limits')` (*Otevřít limity* / *Open limits*).
+  - `settings:go_absences_limits` navigates to `'/absences/limits?from=settings'` (instead of `'/absences'`) with label `Strings.get('open_limits')` (*Otevřít limity* / *Open limits*).
 - **Removed:** `_openLimitsDialog` in `AbsencesView` and `LimitsEditorContent` in `settings_view.dart` (replaced by `LimitsPage`).
 - **Config keys:** exact same keys (`absence_critical_pct`, `absence_warn_pct`, `absence_plan_reserve_pct`, `subject_limits`), zero new keys.
 
@@ -262,7 +262,23 @@ Lives in `app/lib/features/planner/planner_view.dart` (widget `PlannerPage`) and
 
 ---
 
-## 6. Config keys, safety rules, strings, and docs
+## 6. O7 — Limity and Plánovač go back to where they were opened
+
+- **Mechanism (`?from=` query parameter + pure `backTarget`):**
+  - Openers pass their origin in the query string:
+    - *Nastavení → Limity* (`settings:go_absences_limits`) → `/absences/limits?from=settings`. Because `AppState.settingsSection` (`'limits'`) and `AppState.settingsOpen` (`true`) stay in memory, going back to `/settings` lands directly on the open *Limity* section.
+    - *Absence* (*Limity* header button or no-limits banner) → `/absences/limits` (defaults to `absences`).
+    - *Dnes* planner tip (`TodayView`) → `/absences/plan?from=today` (using `TodayController.onGo('absences/plan?from=today')`, with `routeLocation` preserving query parameters when passed to `context.go` — `routeLocation` returns `route.startsWith('/') ? route : '/$route'`).
+    - *Absence* (*Plánovač* header button or `abs:next_plan_row`) → `/absences/plan` (defaults to `absences`).
+    - Old `/planner` redirect or notification tap → `/absences/plan` (defaults to `absences`, its parent).
+  - Pure allow-list helper `String? sanitizeBackOrigin(String? raw)` in `app/lib/shell/router.dart`: accepts only known routes (`shellRoutes` or `'more'`); `null` or any unknown value returns `null` (falling back to `'absences'`).
+  - `backTarget({required String route, required bool narrow, required bool wizardShown, String? from})` (`scaffold.dart`) stays a pure function: for `'absences/plan'` and `'absences/limits'` (when `!wizardShown`), returns `sanitizeBackOrigin(from) ?? 'absences'`.
+  - Both the page's own back arrow (phone and desktop) and Android system Back (`ShellBackScope`, receiving `from: from`) navigate to `routeLocation(backTarget(...) ?? 'absences')`. The wide rail and narrow bottom bar stay unchanged (*Absence* selected on wide rail; *Více* selected on narrow bottom bar).
+- **Invariants:** S4 still flushes focused limit fields and runs one normal `s.save(const {})` on every way out (including back to `/settings`); zero config keys; zero new strings.
+
+---
+
+## 7. Config keys, safety rules, strings, and docs
 
 - **Config keys:** **zero** added, removed, or renamed. `config.example.json`, `config.dart`, and all frozen parity fixtures stay completely untouched.
 - **Safety rules (`CONTRIBUTING.md` §5):** `runRefresh`, `withSessionLock`, `Strakalari.sendExcuse`, `HistoryLock`, `audit.dart`, `planCustomSkip` / `planEntries` / `unplanEntry` / lunch-cancel staging stay completely intact; O6's early refresh adds an in-memory-only `automation_paused: true` guard and never mutates saved config.
@@ -306,11 +322,11 @@ Lives in `app/lib/features/planner/planner_view.dart` (widget `PlannerPage`) and
 
 ---
 
-## 7. Exact tests to update and add
+## 8. Exact tests to update and add
 
 Baseline after R3b fixes: core **809 passed / 2 skipped**, app **739 passed / 1 skipped**. The app count may only go up; zero tests are deleted or weakened (every test stays unless its code goes, and none is expected to be removed).
 
-### 7.1 Every existing test that changes (one line per test)
+### 8.1 Every existing test that changes (one line per test)
 
 | File | Test name | Builds & taps afterwards | Assertions kept word for word | Assertions changed / moved (with new target) |
 |---|---|---|---|---|
@@ -335,7 +351,7 @@ Baseline after R3b fixes: core **809 passed / 2 skipped**, app **739 passed / 1 
 | `app/test/absences_view_test.dart` | `F1 Absence tab shows no-limits hint and opens shared limits editor that saves to config` | Pumps `LiveAbsencesView` inside `buildRouter(initialLocation: '/absences')`, taps `abs:no_limits_btn` → opens `/absences/limits` (`LimitsPage`), taps `lim:row:Matematika`, enters `'18'` in `lim:subj:Matematika`, taps `lim:back_btn` → returns to `/absences`. | `abs:limits_btn`, `abs:no_limits_banner`, default `25 %` → `30 %` update, `s.get('subject_limits') == {'Matematika': 18.0}`, banner disappears, `abs:limits_btn` remains. | Replaces `find.byType(LimitsEditorContent)` + `abs:limits_done` with `find.byType(LimitsPage)` + `lim:row:Matematika` + `lim:back_btn` (save check moves intact to the live flow and `limits_page_test.dart`). |
 | `app/test/absences_view_test.dart` | `F1b each subject renders once with badge precedence and Meter fallback without budget row` | Same `AbsencesView`. | Each subject once, `27.5 %`, `state_critical`, `budget_tight`, `budget_final`, 1 `Meter`, `10.0 %`. | `find.byType(StatCard)` expected count changes from `4` to `3` (`_threeCardStats`). (All other tests in `absences_view_test.dart` stay untouched.) |
 | `app/test/absences_live_test.dart` | `/planner redirects to /absences` | Pumps `buildRouter(initialLocation: '/planner')`. | `NavigationRail` has 7 destinations; *Absence* selected (`selectedIndex == shellRoutes.indexOf('absences')`). | Expected path changes from `'/absences'` to `'/absences/plan'`; expected widget changes from `LiveAbsencesView` to `LivePlannerPage`. |
-| `app/test/absences_live_test.dart` | `Today planner suggestion opens absences` | Pumps `TodayView`, taps tip button. | Button exists and invokes `onGo`. | Button label changes from `nav_absences` to `abs_planner_btn`; navigated target changes from `'absences'` to `'absences/plan'`. |
+| `app/test/absences_live_test.dart` | `Today planner suggestion opens absences` | Pumps `TodayView`, taps tip button. | Button exists and invokes `onGo`. | Button label changes from `nav_absences` to `abs_planner_btn`; navigated target changes from `'absences'` to `'absences/plan?from=today'`. |
 | `app/test/absences_live_test.dart` | `case 2: closed school year (term == null) ...` | Pumps `LiveAbsencesView` (closed year), then `LivePlannerPage` (same `s` and `closedNow`). | Keeps **both** halves: 3 `StatCard`s + 1 `Meter` on `LiveAbsencesView`; `term_nothing`, `cal_open_calendar`, `planned_title`, `20.06.2027`, tap `unplan` → `s.plannedSkips` isEmpty on `LivePlannerPage`. | Split across the two routes that now own each half. |
 | `app/test/absences_live_test.dart` | `case 3: active term ...` | Pumps `LiveAbsencesView` (active term). | `Matematika`, `8.0 %`, `abs_subjects_section`, `Meter` findsNothing. | `find.byType(StatCard)` changes from `4` to `3`; adds `abs:next_plan_row` check when recommended days exist. |
 | `app/test/absences_live_test.dart` | `F1b custom calendar receives real lessons and plans a day (R3b code M2)` | Pumps `LivePlannerPage` (instead of tapping `plan_custom` on `LiveAbsencesView`), taps `day_2026_9_14` → `PlanDayDialog` → taps *Potvrdit*. | Past day (`day_2026_9_8`) and free day (`day_2026_9_15`) have `onTap == null`; `s.plannedSkips` length 1 (`2026-09-14`..`2026-09-14`). | Replaces tapping `plan_custom` + pre-tap disabled confirm with tapping `day_2026_9_14` directly on `LivePlannerPage`'s month calendar. |
@@ -347,15 +363,16 @@ Baseline after R3b fixes: core **809 passed / 2 skipped**, app **739 passed / 1 
 | `app/test/tutorial_test.dart` | `LiveAbsencesView offers tour only when recommended days exist` (`:602`) | Pumps `LiveAbsencesView` and `LivePlannerPage` with blocked vs ready states. | Blocked state does NOT offer `'absences_plan'`; ready state DOES offer `'absences_plan'` with steps `[0, 1]` (even if old `'planner'` is in `tutorials_done`). | `LiveAbsencesView` offers `'absences'` whenever `subjects.isNotEmpty` (and not when empty); the recommended-days offer gate moves to `LivePlannerPage` (`'absences_plan'`). |
 | `app/test/calendar_days_dst_test.dart` | `wide: today sits in the Thursday row, 13 Nov in the Friday row` (`:164`) & `phone: today sits in the Thursday column, 13 Nov in the Friday column` (`:181`) | Pump `PlannerPage` (`narrow: false` / `narrow: true`) on 12 Nov 2026, then tap `cal:prev_month` to October 2026 (across 25 Oct DST). | `cell(today)` and `cell(friday)` present, Sunday 8 Nov absent, `outlinedToday(today) == true`, `outlinedToday(friday) == false`, same weekday column before & after DST (`22 Oct` / `12 Nov`, `23 Oct` / `13 Nov`). | Wide grid now uses 5 weekday columns too (same `dx` comparison as phone), and 22/23 Oct are checked after tapping `cal:prev_month` (different month page). |
 | `app/test/calendar_days_dst_test.dart` | `custom dialog: October 2026 ends with Friday 30 Oct` (`:197`) | Pumps `PlannerMonthCalendar(initialMonth: DateTime(2026, 10, 1))`. | `day(30)` & `day(26)` present, `day(25)` absent, `day(30).dx == day(2).dx`, `day(26).dx == day(5).dx`. | Host widget changes from `CustomPlanDialog` to `PlannerMonthCalendar`. |
-| `app/test/settings_sections_test.dart` | `Settings → limits shows link to Absences instead of duplicate editor` (`:771`) | Opens Settings `limits` section. | `settings:go_absences_limits` present; `find.byType(AutosaveField)` findsNothing. | Replaces removed `find.byType(LimitsEditorContent)` with `find.byType(LimitsPage)` findsNothing; verifies button label `Strings.get('open_limits')` and navigation to `/absences/limits`. |
+| `app/test/settings_sections_test.dart` | `Settings → limits shows link to Absences instead of duplicate editor` (`:771`) | Opens Settings `limits` section. | `settings:go_absences_limits` present; `find.byType(AutosaveField)` findsNothing. | Replaces removed `find.byType(LimitsEditorContent)` with `find.byType(LimitsPage)` findsNothing; verifies button label `Strings.get('open_limits')` and navigation to `/absences/limits?from=settings`. |
 | `app/test/mobile_narrow_shell_test.dart` | `everyScreenBuilds` (`:164`) | Pumps every route at `390 × 844`. | Zero exceptions and `state.lastError == null` for all routes. | Adds `/absences/plan` and `/absences/limits`; updates `/planner` redirect assertion to `routeForLocation('/planner') == 'absences/plan'` and `uri.path == '/absences/plan'`. |
 | `app/test/scroll_keeps_offset_test.dart` | `a scrolled screen keeps its offset across an AppState emit` | Pumps `LiveAbsencesView` (with enough subjects so `maxScrollExtent > 100` on short Absence) and adds a second test for `LivePlannerPage`. | Offset `100` preserved across `s.onChanged()`. | Adds extra subjects in `LiveAbsencesView` fixture if needed so the shorter screen still scrolls, plus a matching `LivePlannerPage` test. |
 | `app/test/wizard_live_test.dart` | `F1 Telefon step`: `shows only wakeup switch...` & `Skip on Telefon saves nothing and asks no permission` (`:1485`, `:1549`) | Pumps `LiveWizardView` on `stepPhone` with injected/mocked `WakeupPhone`. | `run_in_background` absent; `wakeup_enable` present; permission asked on Continue; Skip asks no permission and saves nothing. | Updates first test to assert `WakeupCard` (`wakeup_minutes`, permission prompts, next alarm / `wakeup_none`, immediate `wakeup_enabled` save, `wakeup_minutes_before` save on Continue); updates Skip test not to toggle `WakeupCard`'s live-saving switch before tapping *Přeskočit*. |
 
-### 7.2 New tests added for F1c
+### 8.2 New tests added for F1c
 
 1. **Navigation & Back (`app/test/mobile_narrow_shell_test.dart`, `app/test/android_back_test.dart`):**
-   - `backTarget` returns `'absences'` for `'absences/plan'` and `'absences/limits'` on narrow screens; Android Back on `/absences/plan` and `/absences/limits` lands on `/absences`.
+   - `backTarget` for every opener (O7): `'absences/limits'` with `from: 'settings'` → `'settings'`, `from: null` / `'absences'` / `'bogus'` → `'absences'`; `'absences/plan'` with `from: 'today'` → `'today'`, `from: null` / `'absences'` / `'bogus'` → `'absences'`.
+   - Live router & Android Back (O7): opening `/absences/limits?from=settings` from *Nastavení → Limity* returns to `/settings` with `settingsSection == 'limits'` and `settingsOpen == true` via both `lim:back_btn` and Android Back (`handlePopRoute`); opening `/absences/limits` from Absence returns to `/absences`; opening `/absences/plan?from=today` from *Dnes* tip returns to `/today`; opening `/planner` redirects to `/absences/plan` and back lands on `/absences`.
    - `AppScaffold` keeps *Absence* selected in the wide rail and *Více* selected in the narrow bottom bar on `/absences/plan` and `/absences/limits`, and hides `topbar_back_btn` on both sub-routes (single back arrow).
 2. **Short Absence screen (`app/test/absences_view_test.dart`, `app/test/absences_live_test.dart`):**
    - Tapping `abs:planner_btn` and `abs:next_plan_row` invokes `onOpenPlanner`; overview/recommended/planned sections are NOT rendered on `AbsencesView`; narrow `AbsencesView` places `abs:limits_btn` and `abs:planner_btn` side-by-side on one row and renders `abs:no_limits_banner` when `hasSubjectLimits == false`.
@@ -384,17 +401,18 @@ Baseline after R3b fixes: core **809 passed / 2 skipped**, app **739 passed / 1 
 
 ---
 
-## 8. Done when (and commit plan)
+## 9. Done when (and commit plan)
 
-Implement only **after** this design note passes review, in 4 green commits (one per O-item, each with its own tests, never breaking the tree):
+Implement only **after** this design note passes review, in 5 green commits (one per O-item, each with its own tests, never breaking the tree):
 1. `F1c (O6): start paused Bakaláři refresh after wizard login test`
 2. `F1c (O5): embed WakeupCard in wizard Telefon step`
 3. `F1c (O4): full-page Limits editor with quick-pick value chips`
 4. `F1c (O3): short Absence screen and single-calendar Plánovač sub-route` (+ tours, strings, `demo_data.py`, README & `docs/images/absences-*.png`)
+5. `F1c (O7): return Limity and Plánovač to the screen that opened them`
 
 **Done when:**
 - `/absences` is short (header with *Limity* + *Plánovač*, 3 KPIs, optional `planner_next` shortcut, subject cards with M1 stacked budget bars); no new rail or *More* tab.
-- `/absences/plan` has a single back arrow on phone and desktop (no duplicate top-bar arrow), Android Back returns to `/absences`, `/planner` and *Dnes* tip open `/absences/plan`, and at `390 × 844` the month calendar starts on the first screen.
+- `/absences/plan` and `/absences/limits` each have a single back arrow on phone and desktop (no duplicate top-bar arrow), keep *Absence* selected on the wide rail and *Více* on the phone bottom bar, and return via both their own arrow and Android Back to the screen that opened them (Settings *Limity* section → Settings *Limity*, *Dnes* tip → *Dnes*, Absence / `/planner` → Absence); at `390 × 844` the month calendar starts on the first screen.
 - One month calendar shows past days greyed and non-tappable (past planned days keep *passed* look), supports single-day tap (whole day or partial lessons via M2 `pickerSlotsFor`), and *Vybrat více dní* multi-day selection with impact preview and single-save atomic `planEntries` confirmation; separate `CustomPlanDialog` is gone.
 - `/absences/limits` is a full-width page with global defaults at top, clear default/custom subject rows, tappable already-used value chips + *Výchozí* clear chip, and *Nastavení → Limity* opens it.
 - Wizard *Telefon* step embeds `WakeupCard` (switch, minutes, notification + exact-alarm permissions, next wake-up preview) while preserving B9 and *Přeskočit*.
