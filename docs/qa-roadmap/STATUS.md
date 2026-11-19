@@ -1,7 +1,7 @@
 # QA & roadmap status
 
-Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3b (F1b code done, awaiting R3b code review)
-Next step: Stop for R3b code review of F1b (`5a59960`, `0797906`, `7b674bb`). Do not start phase 4 (F2) until R3b passes and the owner answers D2 and says "go".
+Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3b (F1b code review FAIL, fixes next)
+Next step: Fix every finding in `reviews/phase-3b.md` (blockers first), one commit per finding, then stop for re-review.
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -89,6 +89,7 @@ Next step: Stop for R3b code review of F1b (`5a59960`, `0797906`, `7b674bb`). Do
 
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
 ### Phase 3b (`F1b` complete, checkpoint ⛔ R3b code review)
+- **2026-11-19 R3b code review: FAIL**: the merge works (one Absence screen, `/planner` redirect, each subject once, closed year keeps the planned days, 3-day list, merged tour; every commit green, no test lost), but the hour-budget bar on every subject card is empty, so the Absence screen lost its gauge (M1, must-fix, one line, tested by the reviewer). Plus S1 (planner test helper no longer clears `SnackLog`) and S2 (`tools/demo_data.py --tutorials` still means the Plánovač tour). Baseline: core 809 passed / 2 skipped, app 735 passed / 1 skipped. See [`reviews/phase-3b.md`](reviews/phase-3b.md).
 - **What was done (2026-11-18):**
   - `5a59960`: Removed `'planner'` from `shellRoutes` (7 items), `moreRoutes` (3 items), `MorePage.entries` (fixing Android `visibleEntries()` to `entries.take(entries.length - 1)` so *Budík* sits before *Nastavení* with no duplicate), `scaffold.dart`, `router.dart`, and `today_controller.dart` doc comment; added `/planner` → `/absences` redirect (`buildRouter` and `routeForLocation`) and pointed *Dnes* planner tip to `/absences`; updated `widget_test.dart`, `more_page_test.dart`, `mobile_narrow_shell_test.dart`, `android_back_test.dart`, and added redirect + *Dnes* tip tests in `absences_live_test.dart`.
   - `0797906`: Replaced `PlannerView` / `LivePlannerView` with `PlannerSections` (keeping all dialogs, `PlannerController`, and lunch-cancel staging intact) and merged it into `AbsencesView` / `LiveAbsencesView` (`now:` parameter added); added unified 4-card KPIs + compact horizon/tightest line (3-card fallback when `term == null`), single unified subject + budget card list with tier precedence and `Meter` fallback, real data cases 1–3 (including planned entries + calendar footer on closed school year `term == null`), and §3 item 8's 3-day recommended list with in-memory `AppState.plannerShowAllPicks` / `togglePlannerShowAllPicks()` (no config write) and `plan_explain` dropped from screen; added the 4 new string keys (`abs_subjects_section`, `plan_show_all`, `plan_show_less`, `stat_warn_crit`); updated `planner_view_test.dart` (all 12 widget tests + new-student P9a+b + new 3-day pick toggle test), `planner_live_test.dart` (+ in-memory flag / no-config-write test), `absences_view_test.dart`, `absences_live_test.dart` (cases 1–3), `calendar_days_dst_test.dart`, `scroll_keeps_offset_test.dart`, and `ui_views_test.dart`.
