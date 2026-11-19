@@ -36,6 +36,12 @@ button (S4); tapping *Dokončit* while the early refresh still runs would
 skip the full first refresh, so lunches would be missing for up to an
 hour (S5).
 
+**Update the same day, after the owner read this review:** two owner
+changes for the same note (section
+[*Owner changes*](#owner-changes-2026-11-19-after-the-review) below). O7:
+Limity and Plánovač go back to where they were opened. O8: a tap on a
+phone notification or the home-screen widget opens the matching screen.
+
 ---
 
 ## Must-fix
@@ -332,6 +338,128 @@ hour (S5).
 
 ---
 
+## Owner changes (2026-11-19, after the review)
+
+The owner read this review and wrote: "Can it go back from where you
+opened it? Also thats another thing, can you make the app open the
+correct tab when clicking on a notification or a widget?" (word for word
+in STATUS). Both go into `design-F1c.md` with the fixes above: exact
+behaviour, tests and *Done when*, like the rest of the note, and one
+commit each when the code is written. Below is the reviewer's direction,
+checked against the code. Where the agent sees a better way, the note
+says why.
+
+### O7: Limity and Plánovač go back to where they were opened
+
+- **Today's note:** both sub-pages always go back to Absence
+  (`design-F1c.md` l.42, l.146; N24).
+- **Direction:**
+  - `/absences/limits` opened from *Nastavení → Limity* goes back to
+    Settings, with the *Limity* section still open (`settingsSection` /
+    `settingsOpen` stay in memory, so `/settings` shows it); opened from
+    Absence (the *Limity* button or the no-limits banner), back to
+    Absence.
+  - The reviewer applies the same rule to `/absences/plan`, since the
+    owner asked it of the sub-page that has two ways in, and Plánovač has
+    them too: opened from the *Dnes* tip, back to Dnes; from Absence,
+    back to Absence; from the old `/planner` link or a notification (O8),
+    back to Absence, its parent.
+  - "Back" means all of them: the page's own arrow (phone and desktop) and
+    Android Back. The rail and the bottom bar stay as they are.
+  - One way to do it: the opener adds where it came from,
+    `/absences/limits?from=settings`; the route builder reads
+    `state.uri.queryParameters['from']` and gives it to `ShellBackScope`
+    and the page's arrow; `backTarget` takes it as a parameter (it stays a
+    pure function, easy to test); only known routes are accepted, anything
+    else means Absence. `routeForLocation` already drops the query
+    (`router.dart:57–58`). If the agent prefers `context.push` / `pop`, the
+    note says how Android Back and a cold start (nothing to pop) behave.
+- **Must stay true:** S4 (the typed value is saved whichever way the
+  student leaves); no config key; the wide rail keeps *Absence* selected
+  on both sub-pages.
+- **Tests:** `backTarget` for each opener; Limity from Settings → Android
+  Back and the arrow land on `/settings` with the *Limity* section open;
+  from Absence → `/absences`; Plánovač from the *Dnes* tip → `/today`;
+  `/planner` → Plánovač → back → `/absences`.
+
+### O8: a tap on a notification or the widget opens the right screen
+
+- **Today (checked on the code):** every tap opens the app the same way,
+  with no screen in it:
+  - event notifications: `Notifications.openApp`
+    (`Notifications.java:89–96`), one launch intent with request code `0`
+    for all of them; Dart's `AndroidNotifications.sendNotification`
+    (`android_notifications.dart:24–39`) has the event as `tag` but passes
+    only title and text (`android_channel.dart:59`, `StrakalariChannel.java:170–175`,
+    `:326–334`);
+  - the ongoing status notification (`KeepAliveService.java:116`), the
+    wake-up alarm (`AlarmReceiver.java:117`, `:204`;
+    `AlarmRingService.java:193`): the same `openApp`;
+  - the timetable widget: `openAppIntent` (`TimetableWidgetProvider.java:429–436`)
+    on the subtitle, the empty text and every lesson row (`:215–219`);
+  - `MainActivity.kt` doesn't read the intent at all. The app opens on
+    `/today` from cold, or wherever it was when it is already running.
+- **Direction:** the tap carries a route, and the app opens it.
+  - **Which screen** (reviewer's proposal; the note gives the final table,
+    one row per event in core `eventTypes`):
+
+    | Tap on | Opens |
+    |---|---|
+    | `excuse_needs_confirm` | Dnes (the excuse card where it is confirmed) |
+    | `excuse_sent`, `automation_failed`, `refresh_failed`, `update_available` | Aktivita (the run, the error, the update card at `activity_view.dart:395`) |
+    | `refresh_done` | Dnes |
+    | `lunch_ordered`, `lunch_skipped` | Obědy |
+    | `planner_suggestion` | Plánovač (`/absences/plan`) |
+    | `new_absence` | Absence |
+    | `new_mark`, `new_quarterly_mark` | Známky |
+    | `timetable_change` | Rozvrh |
+    | the ongoing status notification | Dnes |
+    | the alarm icon in the status bar (`AlarmClockInfo`) | Budík (`openMoreRoute(…, 'alarm')`) |
+    | the ringing alarm's notification | Dnes |
+    | the timetable widget | Rozvrh |
+
+  - **Android side:** `openApp(ctx, route)` puts the route in an extra
+    and makes each route's `PendingIntent` distinct (its own request code,
+    or a data URI with the route). Without that, Android keeps one intent
+    for request code `0` and every notification opens the last route
+    posted. The `notify` channel call gets a `route` argument.
+  - **App side:** `MainActivity` (`launchMode="singleTop"`) hands the
+    route to Dart both at a cold start (the launch intent) and while
+    running (`onNewIntent`). Dart sets `appState.pendingRoute`;
+    `AppScaffold` already goes there (`scaffold.dart:216–222`); its
+    allow-list gets the F1c sub-routes.
+  - **Background:** notifications from the background refresh go through
+    the same `AndroidNotifications` (`background.dart:223`) and channel,
+    so they carry the route too.
+- **Must stay true:**
+  - A tap only opens a screen: no refresh, send, order or save.
+  - While the setup wizard is open, a tap doesn't leave it
+    (`setupPending` wins; the route is dropped).
+  - A route the app doesn't know opens Dnes (`routeForLocation`); an old
+    `planner` opens Plánovač.
+  - The notification texts, the per-event switches in *Nastavení →
+    Oznámení* and the channels stay as they are. No config key, no new
+    string.
+  - Desktop is out: notifications there go through PowerShell,
+    `osascript` or `notify-send` (`desktop/notifications.dart`), which
+    can't open a screen in the running app. The note says so in one
+    line; the owner can ask for it separately.
+- **Tests:**
+  - a Dart table from event to route with a test that fails when an event
+    in `eventTypes` has no route, and that every route resolves to itself
+    with `routeForLocation`;
+  - `AndroidNotifications` passes the route for the tag (fake channel);
+  - a launch route opens that screen in the shell; it is dropped while the
+    wizard is shown; an unknown route opens Dnes.
+  - The Java part can't run in a Dart test, like N1: a text check of the
+    distinct request codes is fine, and the proof is the phone.
+- **Phone evidence** (`.test` app only, demo server): from a closed app
+  and from a running one, a tap on an event notification opens its
+  screen; the status notification opens Dnes; the widget opens Rozvrh.
+  Screenshots in `build/qa-evidence/F1c/O8/`.
+
+---
+
 ## Notes (no action needed)
 
 - **N22 (accepted):** the sub-routes `/absences/plan` and
@@ -348,8 +476,8 @@ hour (S5).
   sub-routes (they aren't in `moreRoutes`, `scaffold.dart:626–628`), so
   the note's suppression only matters if `navRoute` is used there.
 - **N24 (O4, owner):** `/absences/limits` always goes back to Absence,
-  also when opened from *Nastavení → Limity*. Accepted: one tap from where
-  the student was. If the owner wants it to go back to Settings, say so.
+  also when opened from *Nastavení → Limity*. **Superseded by O7:** the
+  owner wants it to go back to where it was opened.
 - **N25 (O5, one way):** the note keeps the old lone switch "only in
   headless/non-wired unit tests". A screen that exists only for tests
   means the tests don't test the real step. Better: on Android the step

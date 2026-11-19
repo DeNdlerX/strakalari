@@ -1,7 +1,7 @@
 # QA & roadmap status
 
 Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3c (F1b passed; `design-F1c.md` failed R3c, fixing the note ⛔)
-Next step: Fix every finding in `reviews/phase-3c-design.md` (blockers first), one commit per finding, then stop for re-review.
+Next step: Fix every finding in `reviews/phase-3c-design.md` (blockers first), one commit per finding, and add the owner changes O7 and O8 from that file to `design-F1c.md`, then stop for re-review.
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -69,6 +69,7 @@ Next step: Fix every finding in `reviews/phase-3c-design.md` (blockers first), o
 
   Also the limits page is pretty ugly and I am not a big fan of how it populates just a part of the screen, so work on that a little. Because many subjects have the same absence, maybe it offers you to pick a already used value to just tap when you start editing it so that you dont have to write it that many times?" → findings M2 and S3 and owner changes O3–O6 in `reviews/phase-3b.md` (*Owner's phone test*).
 - **Phone test of F1b, calendar (2026-11-19, right after):** "Also, another, maybe better idea is it show the calendar instead of the view and you can see the past as well, it will just be unselectable i guess or something." → O3: one month calendar in place of the semester overview, past days shown but not selectable.
+- **After the R3c design review (2026-11-19):** "Can it go back from where you opened it? Also thats another thing, can you make the app open the correct tab when clicking on a notification or a widget?" → O7 (Limity and Plánovač go back to where they were opened) and O8 (a tap on a phone notification or the widget opens the matching screen), both for `design-F1c.md`; see `reviews/phase-3c-design.md` (*Owner changes*).
 - **New features from the F6 research (2026-11-17):** "we could do calendar and homeworks and the notification, but our school adds new stuff to the nástěnka instead. And we have no homeworks in our school on bakalari" → ideas only, not in PLAN: school calendar, Komens new-message notification and Nástěnka new posts; homework dropped for GEKOM (`research-F6-bakalari-web.md` §10).
 
 ## Questions for the owner / reviewer
@@ -104,6 +105,7 @@ Next step: Fix every finding in `reviews/phase-3c-design.md` (blockers first), o
 
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
 ### Phase 3b re-review & Phase 3c design note (`M1`, `M2`, `S1`–`S3` fixed + `design-F1c.md`, checkpoint ⛔)
+- **2026-11-19 owner changes after R3c:** O7 (Limity from Settings goes back to Settings, from Absence to Absence; the reviewer applies the same rule to Plánovač opened from the *Dnes* tip) and O8 (event notifications, the status notification, the wake-up alarm and the timetable widget open their screen; Android only, desktop notifications can't). Direction, tests and phone evidence in [`reviews/phase-3c-design.md`](reviews/phase-3c-design.md#owner-changes-2026-11-19-after-the-review). They go into `design-F1c.md` with the R3c fixes.
 - **2026-11-19 R3c design review: FAIL**: the F1c note is mostly right about the code, and the early setup refresh is safe (automation paused in memory only, nothing automatic can run). But the one calendar would stop a partly planned day from getting more lessons, which the old custom dialog allowed (M1), and the test list promises checks that can't hold and leaves tests without a fate (M2). Nine should-fix: Absence silently showing the other term (S1), the other term's days in the calendar (S2), a single planned lesson cancelling the lunch by default (S3), a typed limit lost on Android Back (S4), *Dokončit* during the early refresh skipping the full first refresh (S5), the early run starting again on every *Pokračovat* and a test that proves the pause (S6), month slots computed per cell (S7), phone evidence (S8), strings (S9). No O3–O6 code until the note passes. See [`reviews/phase-3c-design.md`](reviews/phase-3c-design.md).
 - **2026-11-19 R3b code re-review: PASS**: M1, M2, S1, S2 and S3 are fixed as asked, and each code fix's test fails without it. F1b is done. Baseline for F1c code: core 809 passed / 2 skipped, app 739 passed / 1 skipped. See [`reviews/phase-3b.md`](reviews/phase-3b.md#re-review-2026-11-19).
 - **What was done (2026-11-19):**
