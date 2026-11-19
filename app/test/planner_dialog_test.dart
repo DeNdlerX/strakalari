@@ -265,4 +265,31 @@ void main() {
     );
     expect(tester.widget<CheckboxListTile>(lunchBox()).value, isTrue);
   });
+
+  testWidgets(
+    'PlanMultiDialog skips days missing from non-null pickedByDay (R3c code M5)',
+    (tester) async {
+      final day1 = DateTime(2026, 9, 22);
+      final day2 = DateTime(2026, 9, 23);
+      final c = createPlannerController()..stravaEnabled = true;
+
+      await tester.pumpWidget(
+        buildDialogHost(
+          child: PlanMultiDialog(
+            controller: c,
+            days: [day1, day2],
+            pickedByDay: {day2: {1, 2}},
+            taughtByDay: {day1: {1, 2}, day2: {1, 2}},
+            stravaOn: true,
+          ),
+        ),
+      );
+      await tester.tap(find.widgetWithText(FilledButton, Strings.get('confirm')));
+      await tester.pumpAndSettle();
+
+      expect(c.plannedSkips, hasLength(1));
+      expect(c.plannedSkips.single['start_date'], '2026-09-23');
+      expect(c.plannedSkips.single['end_date'], '2026-09-23');
+    },
+  );
 }

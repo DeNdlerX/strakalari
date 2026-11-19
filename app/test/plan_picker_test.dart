@@ -563,4 +563,97 @@ void main() {
     expect(find.text('Prosinec 2026'), findsOneWidget);
     expect(dayCell(DateTime(2026, 12, 1)), findsOneWidget);
   });
+
+  testWidgets(
+    'a picked day planned elsewhere before confirming gets no extra entry (R3c code M5)',
+    (tester) async {
+      setViewport(tester);
+      final c = createPickerPlannerController();
+      String iso(DateTime d) =>
+          '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      List<PickerSlot> lessons(DateTime d) => mockLessonsFor(
+        d,
+        plannedPeriods: c.plannedSkips.any((e) => e['start_date'] == iso(d))
+            ? {1, 2, 3, 4, 5}
+            : const {},
+      );
+      Widget host() => buildPickerHost(controller: c, lessonsFor: lessons);
+
+      await tester.pumpWidget(host());
+      await tester.tap(find.byKey(const Key('plan:multi_toggle')));
+      await tester.pumpAndSettle();
+      await tester.tap(dayCell(monday));
+      await tester.pump();
+      await tester.tap(dayCell(tuesday));
+      await tester.pump();
+
+      // Monday is planned another way, keeping its lunch.
+      expect(
+        c.planSkip('2026-11-09', 'Důvod absence.', cancelLunch: false),
+        isTrue,
+      );
+      await tester.pumpWidget(host());
+      await tester.pump();
+
+      // Monday is no longer rendered as selected (no check icon on its cell),
+      // and the selection bar counts only the 1 remaining day (Tuesday).
+      expect(
+        find.descendant(of: dayCell(monday), matching: find.byIcon(Icons.check)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: dayCell(tuesday), matching: find.byIcon(Icons.check)),
+        findsOneWidget,
+      );
+      expect(find.textContaining('1 den'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('plan:multi_confirm')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, Strings.get('confirm')));
+      await tester.pumpAndSettle();
+
+      expect(c.plannedSkips, hasLength(2));
+      final mon = c.plannedSkips
+          .where((e) => e['start_date'] == '2026-11-09')
+          .toList();
+      expect(mon, hasLength(1));
+      expect(mon.single['cancel_lunch'], isFalse);
+    },
+  );
+
+  testWidgets(
+    'confirming multi-day when all picked days became unpickable clears selection without opening dialog (R3c code M5)',
+    (tester) async {
+      setViewport(tester);
+      final c = createPickerPlannerController();
+      String iso(DateTime d) =>
+          '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      List<PickerSlot> lessons(DateTime d) => mockLessonsFor(
+        d,
+        plannedPeriods: c.plannedSkips.any((e) => e['start_date'] == iso(d))
+            ? {1, 2, 3, 4, 5}
+            : const {},
+      );
+      Widget host() => buildPickerHost(controller: c, lessonsFor: lessons);
+
+      await tester.pumpWidget(host());
+      await tester.tap(find.byKey(const Key('plan:multi_toggle')));
+      await tester.pumpAndSettle();
+      await tester.tap(dayCell(monday));
+      await tester.pump();
+
+      // Plan Monday without rebuilding the calendar first, then tap Naplánovat.
+      expect(
+        c.planSkip('2026-11-09', 'Důvod absence.', cancelLunch: false),
+        isTrue,
+      );
+      await tester.tap(find.byKey(const Key('plan:multi_confirm')));
+      await tester.pumpAndSettle();
+
+      // Dialog must not open, selection must be cleared, and no extra entry added.
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text(Strings.get('pick_empty')), findsOneWidget);
+      expect(c.plannedSkips, hasLength(1));
+    },
+  );
 }

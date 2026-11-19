@@ -1320,18 +1320,52 @@ class _PlannerMonthCalendarState extends State<PlannerMonthCalendar> {
     });
   }
 
+  List<PickerSlot>? _slotsFor(
+    DateTime day,
+    Map<DateTime, List<PickerSlot>>? monthSlots,
+  ) {
+    if (monthSlots != null && monthSlots.containsKey(day)) {
+      return monthSlots[day];
+    }
+    if (widget.monthSlotsFor != null) {
+      return widget.monthSlotsFor!(DateTime(day.year, day.month, 1))[day];
+    }
+    if (widget.lessonsFor != null) {
+      try {
+        return widget.lessonsFor!(day);
+      } catch (_) {
+        return const [];
+      }
+    }
+    return _selectedSlots[day];
+  }
+
   Map<DateTime, Set<int>> _pickedPeriodsForSelected(
     Map<DateTime, List<PickerSlot>>? monthSlots,
   ) {
     final picked = <DateTime, Set<int>>{};
+    final effectiveFree = {...widget.freeDays, ...?widget.plan?.holidays};
+    final earliestStart = _earliestTermStart();
+    final maxClose = widget.term != null ? _d(widget.term!.close) : null;
     final sorted = _selectedDays.toList()..sort();
     for (final day in sorted) {
-      final slots = monthSlots?[day] ?? _selectedSlots[day];
+      final outOfRange =
+          (maxClose != null && day.isAfter(maxClose)) ||
+          (earliestStart != null && day.isBefore(earliestStart));
+      if (outOfRange || effectiveFree.contains(day)) continue;
+      if (widget.plan != null && day.isBefore(_d(widget.plan!.firstDay))) {
+        continue;
+      }
+      final slots = _slotsFor(day, monthSlots);
       if (slots != null) {
         final p = {for (final s in slots) if (s.pickable) s.period!};
         if (p.isNotEmpty) picked[day] = p;
       } else {
-        picked[day] = {1};
+        final cellTerm = _owningTerm(day);
+        final isFullyPlanned = cellTerm?.plannedDates.contains(day) ?? false;
+        if (!isFullyPlanned && cellTerm?.options[day] != null) {
+          picked[day] = {1};
+        }
       }
     }
     return picked;
@@ -1343,7 +1377,7 @@ class _PlannerMonthCalendarState extends State<PlannerMonthCalendar> {
     final lessons = <DateTime, Set<int>>{};
     final sorted = _selectedDays.toList()..sort();
     for (final day in sorted) {
-      final slots = monthSlots?[day] ?? _selectedSlots[day];
+      final slots = _slotsFor(day, monthSlots);
       if (slots != null) {
         final t = {
           for (final s in slots)
@@ -1374,10 +1408,13 @@ class _PlannerMonthCalendarState extends State<PlannerMonthCalendar> {
         .toList();
   }
 
-  int _totalMultiHours(Map<DateTime, List<PickerSlot>>? monthSlots) {
+  int _totalMultiHours(
+    Map<DateTime, List<PickerSlot>>? monthSlots,
+    List<DateTime> days,
+  ) {
     var total = 0;
-    for (final day in _selectedDays) {
-      final slots = monthSlots?[day] ?? _selectedSlots[day];
+    for (final day in days) {
+      final slots = _slotsFor(day, monthSlots);
       if (slots != null) {
         total += slots.where((s) => s.pickable).length;
       } else {
@@ -1600,7 +1637,8 @@ class _PlannerMonthCalendarState extends State<PlannerMonthCalendar> {
     Tokens tok,
     Map<DateTime, List<PickerSlot>>? monthSlots,
   ) {
-    final chosen = _selectedDays.toList()..sort();
+    final picked = _pickedPeriodsForSelected(monthSlots);
+    final chosen = picked.keys.toList()..sort();
     if (chosen.isEmpty) {
       return Container(
         key: const Key('plan:multi_bar'),
@@ -1617,7 +1655,7 @@ class _PlannerMonthCalendarState extends State<PlannerMonthCalendar> {
     }
     final prospective = _prospectiveMultiEntries(monthSlots);
     final impacts = widget.impactOfEntries?.call(prospective) ?? const [];
-    final totalHours = _totalMultiHours(monthSlots);
+    final totalHours = _totalMultiHours(monthSlots, chosen);
     return Container(
       key: const Key('plan:multi_bar'),
       padding: const EdgeInsets.all(10),
@@ -1659,14 +1697,23 @@ class _PlannerMonthCalendarState extends State<PlannerMonthCalendar> {
               FilledButton(
                 key: const Key('plan:multi_confirm'),
                 onPressed: () async {
-                  final picked = _pickedPeriodsForSelected(monthSlots);
-                  final taught = _taughtPeriodsForSelected(monthSlots);
+                  final freshSlots = _buildMonthSlots();
+                  final freshPicked = _pickedPeriodsForSelected(freshSlots);
+                  final validDays = freshPicked.keys.toList()..sort();
+                  if (validDays.isEmpty) {
+                    setState(() {
+                      _selectedDays.clear();
+                      _selectedSlots.clear();
+                    });
+                    return;
+                  }
+                  final taught = _taughtPeriodsForSelected(freshSlots);
                   final confirmed = await showDialog<bool>(
                     context: context,
                     builder: (ctx) => PlanMultiDialog(
                       controller: widget.controller,
-                      days: chosen,
-                      pickedByDay: picked,
+                      days: validDays,
+                      pickedByDay: freshPicked,
                       taughtByDay: taught,
                       stravaOn: widget.stravaOn,
                       impactOfEntries: widget.impactOfEntries,
@@ -1748,7 +1795,15 @@ class _PlannerMonthCalendarState extends State<PlannerMonthCalendar> {
     final isRecommended =
         cellTerm != null &&
         cellTerm.recommended.any((o) => _d(o.day) == day);
-    final isSelected = _multiMode && _selectedDays.contains(day);
+    final canPickInMulti =
+        !outOfRange &&
+        !isFree &&
+        !isPast &&
+        !isFullyPlanned &&
+        ((slots != null && pickableSlots!.isNotEmpty) ||
+            (slots == null && option != null));
+    final isSelected =
+        _multiMode && canPickInMulti && _selectedDays.contains(day);
 
     Color? fill;
     Color? border;
@@ -1780,10 +1835,6 @@ class _PlannerMonthCalendarState extends State<PlannerMonthCalendar> {
     VoidCallback? onTap;
     if (!outOfRange && !isFree && !isPast) {
       if (_multiMode) {
-        final canPickInMulti =
-            !isFullyPlanned &&
-            ((slots != null && pickableSlots!.isNotEmpty) ||
-                (slots == null && option != null));
         if (canPickInMulti) {
           onTap = () => _toggleMultiDay(day, slots);
         }
@@ -2320,13 +2371,22 @@ class _PlanMultiDialogState extends State<PlanMultiDialog> {
   List<Map<String, dynamic>> _entries(String template) {
     final chosen = <DateTime, Set<int>>{};
     final lessons = <DateTime, Set<int>>{};
+    final pMap = widget.pickedByDay;
     for (final raw in widget.days) {
       final d = _d(raw);
-      final p = widget.pickedByDay?[d];
-      final t = widget.taughtByDay?[d];
-      chosen[d] = (p != null && p.isNotEmpty) ? p : {1};
-      lessons[d] = (t != null && t.isNotEmpty) ? t : chosen[d]!;
+      if (pMap != null) {
+        final p = pMap[d];
+        if (p == null || p.isEmpty) continue;
+        final t = widget.taughtByDay?[d];
+        chosen[d] = p;
+        lessons[d] = (t != null && t.isNotEmpty) ? t : p;
+      } else {
+        final t = widget.taughtByDay?[d];
+        chosen[d] = {1};
+        lessons[d] = (t != null && t.isNotEmpty) ? t : {1};
+      }
     }
+    if (chosen.isEmpty) return const [];
     return core
         .entriesForSelection(
           picked: chosen,
@@ -2350,7 +2410,14 @@ class _PlanMultiDialogState extends State<PlanMultiDialog> {
     final tpl = options[picked.clamp(0, options.length - 1)];
     final entries = _entries(tpl);
     final impacts = widget.impactOfEntries?.call(entries) ?? const [];
-    final listing = widget.days.map(_cz).join(', ');
+    final pMap = widget.pickedByDay;
+    final listedDays = pMap == null
+        ? widget.days
+        : [
+            for (final raw in widget.days)
+              if (pMap[_d(raw)] != null && pMap[_d(raw)]!.isNotEmpty) raw,
+          ];
+    final listing = listedDays.map(_cz).join(', ');
 
     return AlertDialog(
       title: Text(Strings.get('plan_multi_btn')),
