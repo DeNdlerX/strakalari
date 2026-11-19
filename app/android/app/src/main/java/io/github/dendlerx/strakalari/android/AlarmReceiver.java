@@ -114,7 +114,8 @@ public class AlarmReceiver extends BroadcastReceiver {
         if (exactAllowed(alarms)) {
             try {
                 alarms.setAlarmClock(
-                        new AlarmManager.AlarmClockInfo(at, Notifications.openApp(ctx)), op);
+                        new AlarmManager.AlarmClockInfo(at, Notifications.openApp(ctx, "alarm")),
+                        op);
                 return;
             } catch (SecurityException ignored) {
                 // Permission withdrawn meanwhile: the inexact alarm below.
@@ -201,7 +202,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 .setAutoCancel(true)
                 .addAction(new Notification.Action.Builder(R.drawable.ic_stat_strakalari,
                         prefs.getString("dismiss", "Dismiss"), dismiss).build());
-        PendingIntent open = Notifications.openApp(ctx);
+        PendingIntent open = Notifications.openApp(ctx, "today");
         if (open != null) {
             b.setContentIntent(open);
         }

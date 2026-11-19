@@ -190,7 +190,7 @@ public class AlarmRingService extends Service {
                 .setDeleteIntent(dismiss)
                 .addAction(new Notification.Action.Builder(R.drawable.ic_stat_strakalari,
                         prefs.getString("dismiss", "Dismiss"), dismiss).build());
-        PendingIntent open = Notifications.openApp(this);
+        PendingIntent open = Notifications.openApp(this, "today");
         if (open != null) {
             b.setContentIntent(open);
         }

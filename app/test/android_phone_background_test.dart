@@ -8,7 +8,9 @@ import 'dart:io';
 import 'package:app/controllers/app_state.dart';
 import 'package:app/l10n/strings.dart';
 import 'package:app/platform/android/android_channel.dart';
+import 'package:app/platform/android/android_notifications.dart';
 import 'package:app/platform/startup.dart';
+import 'package:app/shell/router.dart';
 import 'package:app/tutorial/tours.dart';
 import 'package:clock/clock.dart';
 import 'package:flutter/services.dart';
@@ -487,6 +489,106 @@ void main() {
       expect(channel, contains('onRequestPermissionsResult'));
       expect(channel, contains('pendingPermissionResult'));
       expect(activity, contains('onRequestPermissionsResult'));
+    });
+  });
+
+  group('F1c O8 notification and widget tap routing', () {
+    const java = 'android/app/src/main/java/io/github/dendlerx/strakalari/android';
+
+    test('notificationEventRoutes covers every core eventType and maps to valid routes',
+        () {
+      for (final event in eventTypes) {
+        expect(
+          notificationEventRoutes.containsKey(event),
+          isTrue,
+          reason: 'Missing route mapping for core eventType: $event',
+        );
+        final mapped = notificationEventRoutes[event]!;
+        expect(
+          routeForLocation(mapped),
+          mapped,
+          reason: 'Mapped route $mapped for $event must resolve to itself',
+        );
+      }
+      expect(routeForNotificationEvent('unknown_event'), 'today');
+    });
+
+    test('AndroidNotifications.sendNotification forwards the expected route per event tag',
+        () async {
+      final backend = AndroidNotifications(const AndroidChannel(), () => 'cs');
+      for (final event in eventTypes) {
+        calls.clear();
+        expect(
+          backend.sendNotification(title: 'T', body: 'B', tag: event),
+          isTrue,
+        );
+        await _settle();
+        final call = calls.singleWhere((c) => c.method == 'notify');
+        final args = call.arguments as Map;
+        expect(args['route'], notificationEventRoutes[event], reason: event);
+      }
+    });
+
+    test('AndroidChannel takeLaunchRoute and setLaunchRouteHandler bridge cold and warm taps',
+        () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(AndroidChannel.channel, (call) async {
+        calls.add(call);
+        if (call.method == 'takeLaunchRoute') return 'marks';
+        return null;
+      });
+      const ch = AndroidChannel();
+      expect(await ch.takeLaunchRoute(), 'marks');
+
+      final received = <String>[];
+      ch.setLaunchRouteHandler(received.add);
+      addTearDown(() => ch.setLaunchRouteHandler(null));
+      final codec = const StandardMethodCodec();
+      await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .handlePlatformMessage(
+        androidChannelName,
+        codec.encodeMethodCall(const MethodCall('openRoute', 'timetable')),
+        (_) {},
+      );
+      expect(received, ['timetable']);
+    });
+
+    test('Java and Kotlin sources pass distinct per-route request codes and wire all tap surfaces',
+        () {
+      final notifications = File('$java/Notifications.java').readAsStringSync();
+      expect(notifications, contains('EXTRA_ROUTE = "strakalari_route"'));
+      expect(notifications, contains('requestCodeForRoute'));
+      expect(
+        notifications.contains('PendingIntent.getActivity(ctx, 0,'),
+        isFalse,
+        reason: 'Notifications.openApp must never share hardcoded requestCode 0',
+      );
+      expect(notifications, isNot(contains('.setData(')));
+
+      final widget = File('$java/TimetableWidgetProvider.java').readAsStringSync();
+      expect(widget, contains('Notifications.openApp(ctx, "timetable")'));
+
+      final alarmReceiver = File('$java/AlarmReceiver.java').readAsStringSync();
+      expect(alarmReceiver, contains('Notifications.openApp(ctx, "alarm")'));
+      expect(alarmReceiver, contains('Notifications.openApp(ctx, "today")'));
+
+      final alarmRing = File('$java/AlarmRingService.java').readAsStringSync();
+      expect(alarmRing, contains('Notifications.openApp(this, "today")'));
+
+      final keepAlive = File('$java/KeepAliveService.java').readAsStringSync();
+      expect(keepAlive, contains('"today"'));
+
+      final channel = File('$java/StrakalariChannel.java').readAsStringSync();
+      expect(channel, contains('case "takeLaunchRoute":'));
+      expect(channel, contains('handleIntent'));
+      expect(channel, contains('"openRoute"'));
+
+      final activity = File(
+        'android/app/src/main/kotlin/io/github/dendlerx/strakalari/MainActivity.kt',
+      ).readAsStringSync();
+      expect(activity, contains('attached.handleIntent(intent)'));
+      expect(activity, contains('onNewIntent'));
+      expect(activity, contains('channel?.handleIntent(intent)'));
     });
   });
 }

@@ -24,6 +24,7 @@ import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../features/planner/planner_view.dart' show PickerSlot;
 import '../l10n/strings.dart';
+import '../shell/router.dart' show routeForLocation;
 import '../shell/theme.dart';
 import '../tutorial/tours.dart';
 
@@ -930,6 +931,26 @@ class AppState {
   /// Port of `go()`.
   void go(String route) {
     pendingRoute = route;
+    _emit();
+  }
+
+  /// Applies a route tapped from an Android notification or widget (O8).
+  ///
+  /// Drops the route while [setupPending] is true (wizard stays in charge),
+  /// never triggers refreshes/sends/orders, and falls back to `'today'` for
+  /// unknown routes.
+  void applyLaunchRoute(String rawRoute) {
+    if (setupPending) return;
+    final trimmed = rawRoute.trim();
+    if (trimmed.isEmpty) return;
+    if (trimmed == 'alarm') {
+      settingsSection = 'alarm';
+      settingsOpen = true;
+      pendingRoute = 'settings';
+      _emit();
+      return;
+    }
+    pendingRoute = routeForLocation(trimmed);
     _emit();
   }
 

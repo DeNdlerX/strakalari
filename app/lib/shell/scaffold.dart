@@ -232,6 +232,21 @@ class AppScaffold extends ConsumerWidget {
     appState.narrow = narrow;
     appState.navSide = layout == ShellLayout.side;
 
+    // First-run wizard owns the screen until finished or dismissed
+    // (gates automation, like `setup_pending` in app.py). Clear any queued
+    // launch/navigation route so a notification tap never fires over or right
+    // after the wizard closes (O8).
+    if (appState.setupPending) {
+      appState.pendingRoute = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) context.go('/wizard');
+      });
+      return Scaffold(
+        backgroundColor: tok.bg,
+        body: const SizedBox.shrink(),
+      );
+    }
+
     final pending = appState.pendingRoute;
     if (pending != null) {
       appState.pendingRoute = null;
@@ -245,18 +260,6 @@ class AppScaffold extends ConsumerWidget {
           if (context.mounted) context.go(routeLocation(pending));
         });
       }
-    }
-
-    // First-run wizard owns the screen until finished or dismissed
-    // (gates automation, like `setup_pending` in app.py).
-    if (appState.setupPending) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) context.go('/wizard');
-      });
-      return Scaffold(
-        backgroundColor: tok.bg,
-        body: const SizedBox.shrink(),
-      );
     }
 
     popPendingMessages(context, appState, tok, controller);

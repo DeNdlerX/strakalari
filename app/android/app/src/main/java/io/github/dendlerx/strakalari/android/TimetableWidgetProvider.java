@@ -50,7 +50,6 @@ public class TimetableWidgetProvider extends AppWidgetProvider {
     static final String ACTION_TODAY =
             "io.github.dendlerx.strakalari.android.ACTION_WIDGET_TODAY";
     static final String EXTRA_WIDGET_ID = "app_widget_id";
-    private static final int REQUEST_OPEN = 7310;
     private static final int REQUEST_TICK = 7311;
     /** Inexact refreshes (no exact alarms allowed) land within this window. */
     private static final long TICK_WINDOW_MS = 10 * 60 * 1000L;
@@ -427,12 +426,6 @@ public class TimetableWidgetProvider extends AppWidgetProvider {
     }
 
     private static PendingIntent openAppIntent(Context ctx) {
-        Intent launch = ctx.getPackageManager().getLaunchIntentForPackage(ctx.getPackageName());
-        if (launch == null) {
-            return null;
-        }
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-        return PendingIntent.getActivity(ctx, REQUEST_OPEN, launch,
-                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        return Notifications.openApp(ctx, "timetable");
     }
 }

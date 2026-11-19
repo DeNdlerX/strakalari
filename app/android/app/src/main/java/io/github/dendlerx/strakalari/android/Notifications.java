@@ -16,17 +16,25 @@ import android.os.Build;
  * the background service and the boot receiver.
  */
 public final class Notifications {
+    static final String EXTRA_ROUTE = "strakalari_route";
+
     private Notifications() {}
 
     /** Posts (or replaces) notification {@code id} on {@code channelId}. */
     public static void show(Context ctx, String channelId, String channelName,
                             String title, String text, int id) {
+        show(ctx, channelId, channelName, title, text, id, "today");
+    }
+
+    /** Posts (or replaces) notification {@code id} opening {@code route} on tap. */
+    public static void show(Context ctx, String channelId, String channelName,
+                            String title, String text, int id, String route) {
         NotificationManager nm = ctx.getSystemService(NotificationManager.class);
         if (nm == null) {
             return;
         }
         nm.notify(id, build(ctx, channelId, channelName,
-                NotificationManager.IMPORTANCE_DEFAULT, title, text, false));
+                NotificationManager.IMPORTANCE_DEFAULT, title, text, "", false, route));
     }
 
     /** False when the user turned the app's notifications off (or never allowed them). */
@@ -37,12 +45,19 @@ public final class Notifications {
 
     static Notification build(Context ctx, String channelId, String channelName,
                               int importance, String title, String text, boolean ongoing) {
-        return build(ctx, channelId, channelName, importance, title, text, "", ongoing);
+        return build(ctx, channelId, channelName, importance, title, text, "", ongoing, "today");
     }
 
     static Notification build(Context ctx, String channelId, String channelName, int importance,
                               String title, String text, String sub, boolean ongoing) {
-        return builder(ctx, channelId, channelName, importance, title, text, sub, ongoing).build();
+        return build(ctx, channelId, channelName, importance, title, text, sub, ongoing, "today");
+    }
+
+    static Notification build(Context ctx, String channelId, String channelName, int importance,
+                              String title, String text, String sub, boolean ongoing,
+                              String route) {
+        return builder(ctx, channelId, channelName, importance, title, text, sub, ongoing, route)
+                .build();
     }
 
     /**
@@ -54,6 +69,12 @@ public final class Notifications {
     static Notification.Builder builder(Context ctx, String channelId, String channelName,
                                         int importance, String title, String text, String sub,
                                         boolean ongoing) {
+        return builder(ctx, channelId, channelName, importance, title, text, sub, ongoing, "today");
+    }
+
+    static Notification.Builder builder(Context ctx, String channelId, String channelName,
+                                        int importance, String title, String text, String sub,
+                                        boolean ongoing, String route) {
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationManager nm = ctx.getSystemService(NotificationManager.class);
             if (nm != null) {
@@ -75,7 +96,7 @@ public final class Notifications {
         if (sub != null && !sub.isEmpty()) {
             b.setSubText(sub);
         }
-        PendingIntent open = openApp(ctx);
+        PendingIntent open = openApp(ctx, route);
         if (open != null) {
             b.setContentIntent(open);
         }
@@ -85,14 +106,51 @@ public final class Notifications {
         return b;
     }
 
-    /** Opens the app (a notification tap, the alarm clock icon). */
+    /** Distinct deterministic requestCode per target route so PendingIntents never collide. */
+    private static int requestCodeForRoute(String route) {
+        switch (route) {
+            case "today":
+                return 101;
+            case "timetable":
+                return 102;
+            case "absences":
+                return 103;
+            case "absences/plan":
+                return 104;
+            case "absences/limits":
+                return 105;
+            case "marks":
+                return 106;
+            case "lunches":
+                return 107;
+            case "activity":
+                return 108;
+            case "settings":
+                return 109;
+            case "alarm":
+                return 110;
+            default:
+                return 1000 + (route.hashCode() & 0x7fff);
+        }
+    }
+
+    /** Opens the app on Today (compatibility overload). */
     static PendingIntent openApp(Context ctx) {
+        return openApp(ctx, "today");
+    }
+
+    /** Opens the app on {@code route} (notification tap, alarm clock icon, widget). */
+    static PendingIntent openApp(Context ctx, String route) {
         Intent launch = ctx.getPackageManager().getLaunchIntentForPackage(ctx.getPackageName());
         if (launch == null) {
             return null;
         }
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-        return PendingIntent.getActivity(ctx, 0, launch,
+        String target = (route == null || route.isEmpty()) ? "today" : route;
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+                | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        launch.putExtra(EXTRA_ROUTE, target);
+        return PendingIntent.getActivity(ctx, requestCodeForRoute(target), launch,
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
     }
 }

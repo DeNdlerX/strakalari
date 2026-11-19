@@ -132,7 +132,13 @@ Future<void> startPlatformServices(
   } catch (_) {}
 
   if (Platform.isAndroid) {
-    final phone = PhoneBackground(state, loop, const AndroidChannel());
+    const channel = AndroidChannel();
+    channel.setLaunchRouteHandler(state.applyLaunchRoute);
+    final launchRoute = await channel.takeLaunchRoute();
+    if (launchRoute != null && launchRoute.isNotEmpty) {
+      state.applyLaunchRoute(launchRoute);
+    }
+    final phone = PhoneBackground(state, loop, channel);
     container.listen(appStateProvider, (_, _) => phone.notifier.poke());
     startPhoneBackground(state, phone);
     AppLifecycleListener(onStateChange: (s) {

@@ -1,5 +1,6 @@
 package io.github.dendlerx.strakalari
 
+import android.content.Intent
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.github.dendlerx.strakalari.android.StrakalariChannel
@@ -14,7 +15,14 @@ class MainActivity : FlutterActivity() {
         // The notification permission prompt needs the screen (Python asks
         // through the activity too, core/android.py).
         attached.setActivity(this)
+        attached.handleIntent(intent)
         channel = attached
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        channel?.handleIntent(intent)
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {

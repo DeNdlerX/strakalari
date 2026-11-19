@@ -525,5 +525,78 @@ void main() {
         expect(router.routerDelegate.currentConfiguration.uri.path, '/today');
       });
     });
+
+    testWidgets(
+        'O8 applyLaunchRoute opens matching routes, legacy planner, alarm section, unknown -> today, and drops while wizard is open',
+        (tester) async {
+      setViewport(tester, 390, 844);
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final state = container.read(appStateProvider);
+      state.wizardDismissed = true;
+      state.setTutorialsEnabled(false);
+
+      final router = buildRouter(initialLocation: '/today');
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(
+            routerConfig: router,
+            theme: tokensFor('dark').toThemeData(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      String currentPath() =>
+          router.routerDelegate.currentConfiguration.uri.path;
+
+      state.applyLaunchRoute('marks');
+      await tester.pumpAndSettle();
+      expect(currentPath(), '/marks');
+
+      state.applyLaunchRoute('absences/plan');
+      await tester.pumpAndSettle();
+      expect(currentPath(), '/absences/plan');
+
+      state.applyLaunchRoute('planner');
+      await tester.pumpAndSettle();
+      expect(currentPath(), '/absences/plan');
+
+      state.applyLaunchRoute('alarm');
+      await tester.pumpAndSettle();
+      expect(currentPath(), '/settings');
+      expect(state.settingsSection, 'alarm');
+      expect(state.settingsOpen, isTrue);
+
+      state.applyLaunchRoute('not/a/real/route');
+      await tester.pumpAndSettle();
+      expect(currentPath(), '/today');
+
+      // While wizard is open (setupPending), launch routes are dropped and
+      // never hijack /wizard.
+      final wizContainer = ProviderContainer();
+      addTearDown(wizContainer.dispose);
+      final wizState = wizContainer.read(appStateProvider);
+      expect(wizState.setupPending, isTrue);
+      final wizRouter = buildRouter(initialLocation: '/today');
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          key: const ValueKey('o8_wizard_scope'),
+          container: wizContainer,
+          child: MaterialApp.router(
+            routerConfig: wizRouter,
+            theme: tokensFor('dark').toThemeData(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(wizRouter.routerDelegate.currentConfiguration.uri.path, '/wizard');
+
+      wizState.applyLaunchRoute('marks');
+      await tester.pumpAndSettle();
+      expect(wizState.pendingRoute, isNull);
+      expect(wizRouter.routerDelegate.currentConfiguration.uri.path, '/wizard');
+    });
   });
 }
