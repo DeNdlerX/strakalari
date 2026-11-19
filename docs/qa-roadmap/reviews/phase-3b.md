@@ -466,9 +466,17 @@ stops for review. Where the agent sees a better way, the note says why.
   dropdown), the planned days with *Zrušit plán*, and the calendar
   footer.
 - **One calendar instead of two.** The semester strip and the custom
-  calendar are the same thing twice. Keep one month-style grid:
-  - **only the future**: from the current week to the selected term's
-    closure (past weeks are not shown);
+  calendar are the same thing twice. Keep one calendar, in place of the
+  semester overview (owner's later note: "show the calendar instead of
+  the view and you can see the past as well, it will just be
+  unselectable"):
+  - **one month at a time**, opening on the current month, with arrows to
+    the months before and after, from the start of the school year to the
+    selected term's closure. That keeps it short on a phone without
+    hiding anything;
+  - **past days are shown but greyed and can't be tapped** (today's
+    lessons that already started can't be picked either, as the M2 slots
+    say); a planned day in the past keeps its *passed* look;
   - the colours stay (recommended, planned, doesn't fit, day off, today);
   - **tap a day** = today's day dialog (plan the whole day with the
     template and the lunch-cancel choice, with the cost preview), plus
