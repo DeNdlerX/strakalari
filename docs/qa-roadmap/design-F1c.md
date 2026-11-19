@@ -197,7 +197,7 @@ Lives in `app/lib/features/planner/planner_view.dart` (widget `PlannerPage`) and
   - Build a `SettingsController` via `settingsControllerFor(s, wakeupPhone: ...)` when `Platform.isAndroid` (using the same `_channelPhone` helper exported from `settings_live.dart` as `channelWakeupPhone`, with `requestNotificationPermission` marking `s.notificationPermissionAsked = true`, awaiting `channel.requestNotificationPermission()`, and refreshing `_notifOn`).
   - Pass `SettingsController? wakeupController` to `WizardView`.
 - **What `_phoneContent` renders:**
-  - Keeps the short intro (`wiz_phone_p`), followed by `WakeupCard(controller: wakeupController!)` (when `wakeupController != null`; falls back to the simple switch only in headless/non-wired unit tests that don't pass `wakeupController`).
+  - Keeps the short intro (`wiz_phone_p`), followed directly by `WakeupCard(controller: wakeupController)` — always the real `WakeupCard` (no separate lone-switch fallback screen; unit/widget tests pass a `SettingsController` with a fake `WakeupPhone`, matching `wakeup_settings_card_test.dart`, so tests exercise the real step).
   - Inside `WakeupCard`, the student sees and controls:
     1. *Budík před první hodinou* (`wakeup_enabled` switch) — toggling ON immediately saves `wakeup_enabled: true` and asks for notification permission.
     2. *Kolik minut před první hodinou budit* (`wakeup_minutes_before` `AutosaveField`) — saves on blur/submit (clamped 1..720).
@@ -397,4 +397,11 @@ Implement only **after** this design note passes review, in 4 green commits (one
 - Verified Bakaláři login in the wizard starts a `'bakalari'` refresh via `startRefresh` with in-memory `automation_paused: true` (never saved to `config.json`); *Dokončit* starts a normal `'all'` refresh (or queues one to run right after an in-flight early refresh finishes, showing `wiz_finishing_refresh`; non-early busy still shows B7 `already_running`).
 - Zero config keys changed; all safety rules intact; cs/en ARBs + `strings.dart` in sync; tutorials split (`absences` + `absences_plan`).
 - Visual evidence in `build/qa-evidence/F1c/` at 390 px and 1280 px (cs/en, light/dark) for `/absences`, `/absences/plan` (single & multi-select), `/absences/limits`, and wizard *Telefon*.
+- **Phone evidence for O5 and O6** (Pixel 7 Pro `2C221FDH3002NZ`, `.test` app `io.github.dendlerx.strakalari.test` only, against `tools/bakalari_demo_server.py` on port `18080`, saved in `build/qa-evidence/F1c/`):
+  - *Telefon* step showing `WakeupCard`;
+  - switching the alarm ON (capturing the Android notification permission prompt);
+  - tapping *Povolit přesné budíky* → system *Alarms & reminders* screen → returning back → the exact-alarm warning is gone;
+  - the next wake-up preview shown on *Telefon* once O6's early refresh completes;
+  - after *Dokončit*: `adb -s 2C221FDH3002NZ shell dumpsys alarm` output listing the `.test` alarm;
+  - *Aktivita* showing the early `bakalari` run followed by the full `all` run.
 - Core (`dart analyze && dart test`) and app (`flutter analyze && flutter test`, count >= 739) are completely green.
