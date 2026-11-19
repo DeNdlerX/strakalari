@@ -539,3 +539,281 @@ says why.
    upstream; no trailers; no personal files).
 8. **Not checked:** the phone (no code yet); macOS and iOS builds (not
    possible here).
+
+---
+
+## Re-review 2026-11-19
+
+Reviewed at `qa-roadmap` @ `91ae11f` (base `main` @ `f8d5582`; `main` has
+no commits the branch lacks). Commits since the review (`b77994c`, owner
+changes in `5401453`): `224f5a1` (M1), `ada7340` (M2), `f05c318` (S1),
+`54c65ea` (S2), `a4d6d45` (S3), `ad4693c` (S4), `b4c3497` (S5),
+`18d230f` (S6), `c24ab03` (S7), `10b5d6f` (S8), `8c9df9e` (S9),
+`1513a22` (O7), `0cd2e21` (O8), `91ae11f` (STATUS). One commit per
+finding. `git diff 5401453..HEAD --stat` touches only `design-F1c.md` and
+`STATUS.md`: no code, config key, string or parity fixture.
+
+### Verdict: FAIL
+
+The note is close. Every earlier finding (M1, M2, S1–S9) is now in the
+note, and both owner changes (O7, O8) are designed with routes, tests and
+phone evidence. The reviewer checked the O8 Android part against the Java
+and Kotlin code, and the partly-planned-day design (M1) against the lesson
+data: both hold.
+
+Two of the new fixes would not work in the real app, and the tests the
+note lists would still pass, so nobody would notice before the phone:
+
+- **M3:** the full first refresh queued at *Dokončit* (the S5 fix) is
+  started while the early refresh still holds the "one refresh at a time"
+  lock, so it is refused as busy and never runs. That is the problem S5
+  was meant to fix.
+- **M4:** the *Plánovač* tip on *Dnes* (O7) would do nothing: the app only
+  follows a pending screen whose name matches its list exactly, and the
+  tip adds `?from=today` to the name.
+
+Two smaller ones: the way the limits page saves a focused field when the
+student leaves can't work as written (S10), and the calendar's month cache
+would let a student plan today's lessons that already started (S11).
+
+### Earlier findings, checked in the note
+
+- **M1 fixed** (§2.3 item 6, l.102–108, l.116, l.125; tests l.412–413,
+  l.454–455). A cell's state comes from the day's `PickerSlot`s. The data
+  supports it: `planned` is set per lesson (`controllers/planner.dart:529`,
+  `entryCovers(e, day, period)`), and `pickable` excludes planned lessons
+  (`planner_view.dart:223`). Fully planned, partly planned (planned colour
+  plus a 4 px dot), the split through `entriesForSelection` with the taught
+  periods as `lessons` (as `CustomPlanDialog._entries` does today,
+  `planner_view.dart:1578–1598`), multi mode adding only pickable lessons,
+  and a planned dialog that lists every entry with its own *Zrušit plán*.
+  The two picker tests keep their assertions.
+- **M2 fixed** (§9.1, l.406–442). One line per changing test with what it
+  builds and taps, what stays and what changes. The reviewer listed every
+  test file that uses anything F1c changes (23 files). The 12 in §9.1 are
+  the ones that change; the other 11 don't need to: `card_outline_test`
+  (subject rows only), `planner_reserve_test` (`ReserveDialog`),
+  `ui_views_test` (smoke builds, §9.2 adds two), `strings_table_parity_test`,
+  `activity_live_test`, `app_state_lunches_test`, `wizard_setup_full_test`
+  (step indices unchanged), `android_phone_background_test`,
+  `wakeup_settings_card_test`, `wakeup_ui_test` (no change to
+  `WakeupCard`), `app_state_excuses_and_planner_test` (only additions).
+  Every test name in §9.1 exists, and the kept assertions match the files
+  (e.g. *Prosinec 2026* is the cs `pick_months` entry, the three-card
+  equal-height check is `absences_view_test.dart:85`). No test is deleted.
+- **S1 fixed** (§2.2 l.60; test l.452). **S2 fixed** (l.87; test l.456).
+  **S3 fixed** (l.122, l.132; tests l.457). **S6 fixed** (§5 l.222–236;
+  test l.469–472). The S6 test can see a send: the pause gate reads the
+  config passed to `runRefresh` (`refresh.dart:590–598`), the excuse mode
+  comes from the app object, so the control run calls `excusePending`.
+  `automation_paused_log` reaches `logLines` through `workerLog` with a
+  time stamp in front, so the check is "some line contains it". **S8
+  fixed** (§10 l.502–508). **S9 fixed** (l.59, l.371, l.379–385; the
+  even-spread words `rovnoměrně` / `evenly` that `tutorial_test.dart:663`
+  checks are kept).
+- **S4, S5, S7 written into the note**, but each fix has a gap: S10, M3
+  and S11 below.
+- **O7** (§6, §2.1): written as asked (`?from=`, pure `backTarget`, both
+  arrows and Android Back, `navRoute` for the rail and the bottom bar).
+  `settingsSection` / `settingsOpen` really stay in memory when leaving
+  Settings (only `closeSettingsSection` and `openMoreRoute('settings')`
+  reset them), so back from Limity lands on the open *Limity* section.
+  One gap: M4.
+- **O8** (§7): complete, see N31.
+- **N25 adopted:** the Telefon step always shows `WakeupCard`.
+
+### Must-fix
+
+#### M3 (O6, S5, §5 l.261): the queued full refresh is started inside the session lock and is refused
+
+- **Where:** `design-F1c.md` l.261 ("When the early run exits
+  `finishRun` … `finishRun` clears `pendingFullRefresh = false` and starts
+  exactly one normal `startRefresh('all')`"), test l.473, *Done when*
+  l.498. Code: `activity.dart:343–348` (`_refreshLocked` runs inside
+  `withSessionLockAsync`), `:476–479` (`finishRun` is called from
+  `_refreshLocked`'s `finally`, so while the lock is held), `:322`
+  (`startRefresh` calls `spawn`), `app_state.dart:251–257` (`liveSpawn`
+  calls the job at once, so `_refreshWork` runs up to the lock attempt
+  synchronously), `session_lock.dart:67–75` (one try, timeout 0),
+  `storage/helpers.dart:418` (a lock this process already holds is
+  refused).
+- **What is wrong:** the flight latch is free after `finishRun`
+  (`:583`), so `startRefresh('all')` returns `true`, but its
+  `_refreshWork` tries the session lock while the early run still holds
+  it. It gets `held == false`, logs `session_busy` and records a skipped
+  `'all'` run (`:361–365`). The Strava menus, orders and the student's
+  automatic modes then wait for the next scheduled refresh, the exact
+  thing S5 asked to prevent. The reviewer checked the lock with a
+  throwaway test (not committed): a second `withSessionLockAsync` inside a
+  first one, same lock file, gets `held == false`; after the first one
+  ends, `true`. A test that only checks that `startRefresh('all')` was
+  called (as l.473 reads) passes anyway.
+- **What correct looks like:**
+  - Start the queued run after the lock is released: in `_refreshWork`,
+    in a `finally` around its whole body (it runs after
+    `withSessionLockAsync` has returned, and also after the
+    missing-credentials, busy and lock-failure exits). There: if
+    `pendingFullRefresh`, clear it and `earlyRefreshInFlight`, then call
+    `startRefresh('all')`. Not in `finishRun`, and not in a microtask
+    scheduled from it (that still runs before the lock is released).
+  - Test (in `app_state_excuses_and_planner_test.dart`): `state.spawn`
+    calls the job at once and keeps its future (like `liveSpawn` and
+    `refreshReportsNewsAgainstTheCache`), the real session lock, a fake
+    app whose Bakaláři fetch waits on a `Completer`. Start the early run,
+    call `finishWizardRefresh()` while it waits (returns `true`), complete
+    the fetch, await every job: `state.runs` holds the `'bakalari'` run
+    and then one `'all'` run with `ok == true`, and no line in
+    `state.logLines` contains `Strings.get('session_busy')`.
+
+#### M4 (O7, §2.1 l.45, §6 l.272, §7.3 l.343): the *Dnes* tip with `?from=today` does nothing
+
+- **Where:** `design-F1c.md` l.45 and l.272 (the tip calls
+  `TodayController.onGo('absences/plan?from=today')`), l.39 and l.343
+  (the `pendingRoute` allow-list gets `'absences/plan'` and
+  `'absences/limits'`), tests l.427 and l.448. Code:
+  `today_live.dart:22` (`onGo: s.go`), `app_state.dart:925–928` (`go`
+  only sets `pendingRoute`), `scaffold.dart:215–223` (the shell navigates
+  only when `pendingRoute` is exactly a shell route, `'more'` or
+  `'wizard'`).
+- **What is wrong:** `pendingRoute` becomes
+  `'absences/plan?from=today'`, which matches no entry, even with the two
+  new ones. The shell doesn't navigate, and the value stays in
+  `pendingRoute` (it is cleared only when it matches). The student taps
+  *Plánovač* on *Dnes* and nothing happens. The test at l.427 checks only
+  the string handed to `onGo`, and l.448 can open the location directly,
+  so both pass.
+- **What correct looks like:**
+  - `AppScaffold` checks the path part of `pendingRoute` (before `?`)
+    against the allow-list (shell routes, `'more'`, `'wizard'`, the two
+    sub-routes), navigates with the whole string
+    (`context.go(routeLocation(pending))` keeps `?from=today`), and clears
+    `pendingRoute` whether or not it matched, so a bad value can't stick.
+    O8's `applyLaunchRoute` keeps working (its routes carry no query).
+  - Test (in §9.2 item 1, the line at l.427 points to it): the real shell
+    (`buildRouter` + `AppScaffold`) on `/today` at 390 × 844 with a
+    recommended day, tap the tip: the location is
+    `/absences/plan?from=today` and `LivePlannerPage` is shown; Android
+    Back (`handlePopRoute`) and `plan:back_btn` land on `/today`.
+
+### Should-fix
+
+#### S10 (O4, S4, §3.1 l.158–160): a field that owns its focus no longer has it in `dispose()`
+
+- **Where:** `design-F1c.md` l.158 ("in `_AutosaveFieldState.dispose()`,
+  when `saveOnDispose` is true and `focus.hasFocus`, it runs the parse +
+  `c.saveQuiet`"), l.159–160. Code: `settings_view.dart:78–80` (commit on
+  blur), `:95–99` (`dispose`).
+- **What is wrong:**
+  - Flutter disposes the children first: the `TextField`'s own `Focus`
+    detaches the node before `_AutosaveFieldState.dispose()` runs, so
+    `focus.hasFocus` is `false` there, and the blur listener doesn't fire
+    either. The reviewer checked it with a throwaway widget test (not
+    committed): a field typed into and then removed with its page prints
+    `deactivate hasFocus=true text=30`, then `dispose hasFocus=false
+    text=30`. Built as written, the typed *Výchozí limit* is still lost on
+    Android Back. The S4 test at l.465 would fail, so it can't ship, but
+    the agent would have to leave the note.
+  - The back arrow (l.159) runs `onLeave` (the normal save)
+    synchronously after `unfocus()`, while the blur commit comes in the
+    next microtask: the normal save runs before the field's value is
+    saved. The old dialog did it the other way round (`absences_view.dart:82`
+    unfocus, `:90` `onLimitsUpdated` after the dialog closed).
+- **What correct looks like:**
+  - With `saveOnDispose`, `dispose()` runs `_commit`'s comparison without
+    looking at the focus: it saves quietly only when the parsed text
+    differs from the saved value (`SettingsController.sameValue`, as
+    `_commit` does), skips a value that doesn't parse, and never touches
+    `context`. (Remembering `focus.hasFocus` in `deactivate()`, where it is
+    still true, is fine too.)
+  - One way out for every exit: the back arrow unfocuses and calls
+    `onBack()` only; the page's `dispose()` flushes the subject row and
+    schedules the one `onLeave` post-frame, as l.160 already says for the
+    other exits. `_notifiedLeave` goes.
+  - Tests: l.465 as written, plus the arrow with the field still focused:
+    the value is saved and the one normal save comes after it.
+
+#### S11 (O3, S7, §2.3 l.92): the month cache keeps today's started lessons pickable
+
+- **Where:** `design-F1c.md` l.92 (cache key: month, `dataRev`, planned
+  entries, `today`, closures, holidays). Code: `controllers/planner.dart:406`,
+  `:456–459`, `:526–527` (for today, `pickerSlotsFor` marks a lesson
+  `past` from the clock: it has started). Today `lessonsFor` is live on
+  every call (`absences_live.dart:110`).
+- **What is wrong:** the key has the date but not the time. Within a
+  day nothing in the key changes until the next refresh (60 minutes by
+  default), so a lesson that started at 8:00 stays pickable in the cell
+  and in the dialog. A student planning "the rest of today" at 10:00 could
+  include a lesson they sat in, which `startedLessonsTodayCannotBePicked`
+  exists to stop. That test builds fresh state, so it passes anyway.
+- **What correct looks like:** today's slots are never served from the
+  cache: `pickerSlotsForMonth` computes today with `pickerSlotsFor(today,
+  now)` on every call (one day) and caches the others. Test (one
+  `AppState`, no refresh between): clock 7:50, today's first lesson is
+  pickable; clock 8:05, the same `LivePlannerPage` after a rebuild shows
+  it locked with `pick_started`.
+
+### Notes (no action needed)
+
+- **N28 (O7, l.272):** the note quotes `routeLocation` as
+  `route.startsWith('/') ? route : '/$route'`; the code is `'/$route'`
+  (`router.dart:54`). Both give `/absences/plan?from=today`, so
+  `routeLocation` needs no change.
+- **N29 (§8 l.383, l.385):** `overview_hint` and `tut_plan_strip_body`
+  change from *Klikněte* / *Click* to *Klepněte* / *Tap*, also on the
+  desktop. The app already mixes them (`pick_how` says *Klepněte*), so it
+  isn't required. If wanted: keep the desktop words in the base text and
+  put the tap wording in `_mobileCs` / `_mobileEn`
+  (`strings.dart:1620–1636`).
+- **N30 (§9.1 l.429):** the test name `case 3: active term shows 4 KPIs,
+  …` should say 3 once the count changes. A name change, not a weaker test.
+- **N31 (O8, checked):** `MainActivity` is `singleTop`
+  (`AndroidManifest.xml:37`), so a tap on a running app reaches
+  `onNewIntent`. It creates its channel per engine and uses no cached
+  engine (`MainActivity.kt`), so after a cold start Dart runs `main` again
+  and `takeLaunchRoute` picks the route up. The only other activity
+  `PendingIntent` is the widget's (`REQUEST_OPEN = 7310`,
+  `TimetableWidgetProvider.java:53`, `:435`), which the note replaces with
+  `openApp(ctx, "timetable")`, so no request code is shared by accident.
+  The event name already reaches `AndroidNotifications` as `tag`
+  (`notifier.dart:96`). The line numbers the note gives for
+  `Notifications.java`, `KeepAliveService.java`, `AlarmReceiver.java`,
+  `AlarmRingService.java` and `TimetableWidgetProvider.java` are right.
+
+### What the reviewer verified, and how
+
+1. **Suites** at `91ae11f`: `dart pub get --enforce-lockfile` at the root;
+   core `dart analyze` no issues, `dart test` **809 passed, 2 skipped**;
+   app `flutter analyze` no issues, `flutter test` **739 passed,
+   1 skipped**. Same as the baseline, as expected with no code change.
+2. **The note against the code**, for every fix and owner change:
+   `planner_view.dart` (`PickerSlot`, `_cell`, `PlanDayDialog`,
+   `showPlannedDialog`, `CustomPlanDialog`), `controllers/planner.dart`
+   (`pickerSlotsFor`, `firstPlannableDay`, `yearPlan` cache),
+   `planner_controller.dart`, core `entriesForSelection`,
+   `settings_view.dart` (`AutosaveField`), `absences_view.dart` /
+   `absences_live.dart`, `app_state.dart` (`save`, `saveQuiet`, `go`,
+   `liveSpawn`), `activity.dart` (`startRefresh`, `_refreshWork`,
+   `_refreshLocked`, `finishRun`, `testConnection`: the Strava login test
+   takes no session lock, so it works during the early run), core
+   `session_lock.dart` and `InterProcessLock`, core `refresh.dart`
+   (`_autoPhases`), `router.dart`, `scaffold.dart`, `more.dart`,
+   `today_live.dart`, `wizard_controller.dart`, `settings_live.dart`, the
+   Android Java and Kotlin files and `android_notifications.dart`.
+3. **Two throwaway tests** in a separate worktree in the reviewer's
+   scratch folder (removed afterwards, nothing committed): the nested
+   session lock (M3) and a focused field's `hasFocus` in `deactivate` and
+   `dispose` (S10).
+4. **Tests:** every test file in `app/test` that uses what F1c changes,
+   against §9.1 (M2 above).
+5. **Strings:** a script over both ARB files: the 8 new keys don't exist
+   yet, every reused key exists in cs and en (796 keys each), and the 4
+   removed keys are used only where the note removes them
+   (`absences_view.dart:186`, `:192`, `:379`, `planner_view.dart:1614`,
+   `settings_view.dart:1039`).
+6. **Hygiene:** no upstream; no `Co-Authored-By`, `Claude-Session` or
+   "Generated with" lines since `b77994c`; no personal files. The worktree
+   has uncommitted line-ending-only changes in the generated plugin
+   registrant files (`app/linux`, `app/macos`, `app/windows`), made by the
+   Flutter tool, never committed.
+7. **Not checked:** the phone (no code yet); macOS and iOS (not possible
+   here).
