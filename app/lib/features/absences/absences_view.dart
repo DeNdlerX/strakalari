@@ -7,7 +7,6 @@ import '../common/app_tokens.dart';
 import '../planner/plan_reserve.dart' show daysText, hoursText;
 import '../planner/planner_controller.dart';
 import '../planner/planner_view.dart';
-import '../settings/settings_view.dart' show LimitsEditorContent;
 import 'absences_controller.dart';
 
 /// Unified Absences & Planner (Absence) screen.
@@ -30,6 +29,7 @@ class AbsencesView extends StatelessWidget {
   final List<PickerSlot> Function(DateTime day)? lessonsFor;
   final Set<DateTime> Function()? freeDays;
   final VoidCallback? onOpenCalendar;
+  final VoidCallback? onOpenLimits;
   final void Function(String template)? tutorialEvent;
 
   const AbsencesView({
@@ -47,6 +47,7 @@ class AbsencesView extends StatelessWidget {
     this.lessonsFor,
     this.freeDays,
     this.onOpenCalendar,
+    this.onOpenLimits,
     this.tutorialEvent,
   });
 
@@ -61,38 +62,9 @@ class AbsencesView extends StatelessWidget {
     );
   }
 
-  Future<void> _openLimitsDialog(BuildContext context) async {
-    final builder = controller.createLimitsController;
-    if (builder == null) return;
-    final limitsCtrl = builder();
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(Strings.get('sec_limits')),
-        content: SizedBox(
-          width: 480,
-          child: SingleChildScrollView(
-            child: LimitsEditorContent(controller: limitsCtrl),
-          ),
-        ),
-        actions: [
-          FilledButton(
-            key: const Key('abs:limits_done'),
-            onPressed: () {
-              FocusManager.instance.primaryFocus?.unfocus();
-              Navigator.of(ctx).pop();
-            },
-            child: Text(Strings.get('close')),
-          ),
-        ],
-      ),
-    );
-    controller.onLimitsUpdated?.call();
-  }
-
   Widget? _noLimitsBanner(BuildContext context) {
     final c = controller;
-    if (c.hasSubjectLimits || c.createLimitsController == null) return null;
+    if (c.hasSubjectLimits || onOpenLimits == null) return null;
     final t = tokens;
     return Card(
       key: const Key('abs:no_limits_banner'),
@@ -114,7 +86,7 @@ class AbsencesView extends StatelessWidget {
             const SizedBox(width: 8),
             TextButton(
               key: const Key('abs:no_limits_btn'),
-              onPressed: () => _openLimitsDialog(context),
+              onPressed: onOpenLimits,
               child: Text(Strings.get('abs_limits_btn')),
             ),
           ],
@@ -168,11 +140,11 @@ class AbsencesView extends StatelessWidget {
     final compactTextStyle = narrow ? TextStyle(fontSize: t.fsSmall) : null;
 
     final actions = <Widget>[
-      if (c.createLimitsController != null)
+      if (onOpenLimits != null)
         OutlinedButton.icon(
           key: const Key('abs:limits_btn'),
           style: compactStyle,
-          onPressed: () => _openLimitsDialog(context),
+          onPressed: onOpenLimits,
           icon: Icon(Icons.tune, size: narrow ? 16 : 18),
           label: Text(
             Strings.get('abs_limits_btn'),

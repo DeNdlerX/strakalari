@@ -2,13 +2,13 @@ import 'dart:io';
 
 import 'package:app/controllers/app_state.dart' hide PlannerController;
 import 'package:app/features/absences/absences_controller.dart';
-import 'package:app/features/absences/absences_live.dart';
 import 'package:app/features/absences/absences_view.dart';
+import 'package:app/features/absences/limits_page.dart';
 import 'package:app/features/common/app_tokens.dart';
 import 'package:app/features/planner/planner_controller.dart';
 import 'package:app/features/planner/planner_view.dart';
-import 'package:app/features/settings/settings_view.dart';
 import 'package:app/l10n/strings.dart';
+import 'package:app/shell/router.dart';
 import 'package:app/widgets/app_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -129,26 +129,30 @@ void main() {
         'tutorials_enabled': false,
         'subject_limits': <String, double>{},
         'absence_critical_pct': 25.0,
+        'bakalari_url': 'http://127.0.0.1:18080',
+        'bakalari_username': 'demo',
+        'bakalari_password': 'pw',
       },
       data: {
         'absence': {'Matematika': 10.0},
       },
     );
+    s.demoMode = false;
 
+    final router = buildRouter(initialLocation: '/absences');
+    addTearDown(router.dispose);
     await t.pumpWidget(
       ProviderScope(
         overrides: [
           appStateProvider.overrideWith(() => _SeededAbsAppState(s)),
         ],
-        child: MaterialApp(
+        child: MaterialApp.router(
           theme: AppTokens.dark().toThemeData(),
-          home: Scaffold(
-            body: LiveAbsencesView(tokens: AppTokens.dark(), narrow: true),
-          ),
+          routerConfig: router,
         ),
       ),
     );
-    await t.pump();
+    await t.pumpAndSettle();
 
     expect(find.byKey(const Key('abs:limits_btn')), findsOneWidget);
     expect(find.byKey(const Key('abs:no_limits_banner')), findsOneWidget);
@@ -165,11 +169,13 @@ void main() {
     await t.tap(find.byKey(const Key('abs:no_limits_btn')));
     await t.pumpAndSettle();
 
-    expect(find.byType(LimitsEditorContent), findsOneWidget);
+    expect(find.byType(LimitsPage), findsOneWidget);
+    await t.tap(find.byKey(const Key('lim:row:Matematika')));
+    await t.pumpAndSettle();
     final matField = find.byKey(const Key('lim:subj:Matematika'));
     await t.ensureVisible(matField);
     await t.enterText(matField, '18');
-    await t.tap(find.byKey(const Key('abs:limits_done')));
+    await t.tap(find.byKey(const Key('lim:back_btn')));
     await t.pumpAndSettle();
 
     expect(s.get('subject_limits'), {'Matematika': 18.0});

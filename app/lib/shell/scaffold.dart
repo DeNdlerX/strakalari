@@ -56,6 +56,7 @@ String? backTarget({
   required bool wizardShown,
 }) {
   if (route == 'today' || wizardShown) return null;
+  if (route == 'absences/limits') return 'absences';
   return (moreRoutes.contains(route) && narrow) ? 'more' : 'today';
 }
 
@@ -213,14 +214,17 @@ class AppScaffold extends ConsumerWidget {
     appState.navSide = layout == ShellLayout.side;
 
     final pending = appState.pendingRoute;
-    if (pending != null &&
-        (shellRoutes.contains(pending) ||
-            pending == 'more' ||
-            pending == 'wizard')) {
+    if (pending != null) {
       appState.pendingRoute = null;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) context.go(routeLocation(pending));
-      });
+      final pendingPath = pending.split('?').first.split('#').first;
+      if (shellRoutes.contains(pendingPath) ||
+          pendingPath == 'more' ||
+          pendingPath == 'wizard' ||
+          pendingPath == 'absences/limits') {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) context.go(routeLocation(pending));
+        });
+      }
     }
 
     // First-run wizard owns the screen until finished or dismissed
@@ -290,13 +294,14 @@ class AppScaffold extends ConsumerWidget {
     // Phone Back is handled per page by [ShellBackScope] (router.dart), under
     // go_router's inner navigator: a PopScope here, above that navigator, was
     // overruled by it, so Android closed the app on every screen.
+    final navRoute = route.startsWith('absences/') ? 'absences' : route;
     switch (layout) {
       case ShellLayout.bar:
         final tabs = narrowTabs;
-        var index = tabs.indexOf(route);
+        var index = tabs.indexOf(navRoute);
         if (index < 0) {
           index = tabs.indexOf('more');
-          if (moreRoutes.contains(route)) {
+          if (moreRoutes.contains(navRoute)) {
             // Bar keeps More selected while a More screen is open.
           } else {
             index = 0;
@@ -330,7 +335,7 @@ class AppScaffold extends ConsumerWidget {
         );
       case ShellLayout.side:
         final tabs = narrowTabs;
-        var sideIndex = tabs.indexOf(route);
+        var sideIndex = tabs.indexOf(navRoute);
         if (sideIndex < 0) sideIndex = tabs.indexOf('more');
         return Scaffold(
           backgroundColor: tok.bg,
@@ -377,7 +382,7 @@ class AppScaffold extends ConsumerWidget {
           ),
         );
       case ShellLayout.wide:
-        var railIndex = shellRoutes.indexOf(route);
+        var railIndex = shellRoutes.indexOf(navRoute);
         if (railIndex < 0) railIndex = 0;
         return Scaffold(
           backgroundColor: tok.bg,

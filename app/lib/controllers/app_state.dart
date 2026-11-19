@@ -948,6 +948,7 @@ class AppStateController extends Notifier<AppState> {
   AppState build() {
     final state = AppState();
     state.onChanged = () {
+      if (!ref.mounted) return;
       // ignore: avoid_self_assignment
       this.state = this.state;
     };
@@ -955,6 +956,9 @@ class AppStateController extends Notifier<AppState> {
     state.spawn = AppState.liveSpawn;
     return state;
   }
+
+  /// True while this Riverpod provider container is still mounted.
+  bool get isMounted => ref.mounted;
 
   /// The shared [AppState] is mutated in place, so the same instance must
   /// still notify listeners (Riverpod skips equal values by default).

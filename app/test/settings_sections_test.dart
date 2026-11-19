@@ -2,8 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:app/controllers/app_state.dart';
+import 'package:app/features/absences/limits_page.dart';
 import 'package:app/features/settings/settings_live.dart';
 import 'package:app/l10n/strings.dart';
+import 'package:app/shell/router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -776,8 +778,51 @@ void main() {
       await _openSection(t, c, 'limits');
 
       expect(find.byKey(const Key('settings:go_absences_limits')), findsOneWidget);
-      expect(find.byType(LimitsEditorContent), findsNothing);
+      expect(find.text(Strings.get('open_limits')), findsOneWidget);
+      expect(find.byType(LimitsPage), findsNothing);
       expect(find.byType(AutosaveField), findsNothing);
+
+      // Tapping the button navigates to /absences/limits?from=settings.
+      final tmp = Directory.systemTemp.createTempSync('strakalari_set_lim_');
+      addTearDown(() => tmp.deleteSync(recursive: true));
+      core.setEnvironmentOverride(
+          {'STRAKALARI_DATA_DIR': tmp.path, 'STRAKALARI_NO_KEYRING': '1'});
+      addTearDown(() => core.setEnvironmentOverride(null));
+
+      final s = AppState(
+        configData: {
+          'language': 'cs',
+          'tutorials_enabled': false,
+          'bakalari_url': 'http://127.0.0.1:18080',
+          'bakalari_username': 'demo',
+          'bakalari_password': 'pw',
+        },
+        data: {
+          'absence': {'Matematika': 10.0},
+        },
+      );
+      s.demoMode = false;
+      s.setSettingsSection('limits');
+
+      final router = buildRouter(initialLocation: '/settings');
+      addTearDown(router.dispose);
+      await t.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppState(s)),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await t.pumpAndSettle();
+
+      await t.tap(find.byKey(const Key('settings:go_absences_limits')));
+      await t.pumpAndSettle();
+      expect(
+        router.routerDelegate.currentConfiguration.uri.toString(),
+        '/absences/limits?from=settings',
+      );
+      expect(find.byType(LimitsPage), findsOneWidget);
     });
   });
 }

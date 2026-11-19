@@ -46,6 +46,10 @@ class AutosaveField extends StatefulWidget {
   /// for an explicit button handler (port of `_text`).
   final bool draftOnly;
 
+  /// When true, `dispose()` also compares and quietly saves any changed
+  /// parseable text without touching focus or `BuildContext` (O4 / S10).
+  final bool saveOnDispose;
+
   const AutosaveField({
     super.key,
     required this.controller,
@@ -59,6 +63,7 @@ class AutosaveField extends StatefulWidget {
     this.parse,
     this.onSaved,
     this.draftOnly = false,
+    this.saveOnDispose = false,
   });
 
   @override
@@ -93,9 +98,47 @@ class _AutosaveFieldState extends State<AutosaveField> {
 
   @override
   void dispose() {
+    if (widget.saveOnDispose) {
+      _commitOnDispose();
+    }
     text.dispose();
     focus.dispose();
     super.dispose();
+  }
+
+  /// Silent save path for [AutosaveField.saveOnDispose]: runs `_commit`'s
+  /// comparison without checking focus (Flutter detaches child focus nodes
+  /// before parent `dispose()` runs) and without touching `BuildContext`.
+  void _commitOnDispose() {
+    final c = widget.controller;
+    final val = text.text;
+    if (widget.draftOnly) {
+      c.setDraft(widget.draftKey, val);
+      return;
+    }
+    if (widget.password && val.trim().isEmpty) return;
+    Object? newVal = val;
+    if (widget.parse != null) {
+      try {
+        newVal = widget.parse!(val);
+      } catch (_) {
+        return;
+      }
+    }
+    final raw = c.get(widget.configKey);
+    final baseline =
+        (raw == null || '$raw'.isEmpty) && widget.fallback.isNotEmpty
+            ? widget.fallback
+            : raw;
+    if (!widget.password && SettingsController.sameValue(baseline, newVal)) {
+      c.clearDrafts(widget.draftKey);
+      return;
+    }
+    if (!c.saveQuiet({widget.configKey: newVal})) return;
+    if (!widget.password) {
+      c.clearDrafts(widget.draftKey);
+    }
+    widget.onSaved?.call(newVal);
   }
 
   void _commit() {
@@ -1033,10 +1076,10 @@ class SettingsView extends StatelessWidget {
               FilledButton.icon(
                 key: const Key('settings:go_absences_limits'),
                 onPressed: () {
-                  GoRouter.maybeOf(context)?.go('/absences');
+                  GoRouter.maybeOf(context)?.go('/absences/limits?from=settings');
                 },
                 icon: const Icon(Icons.arrow_forward),
-                label: Text(Strings.get('open_absences')),
+                label: Text(Strings.get('open_limits')),
               ),
             ],
           ),
@@ -1964,86 +2007,5 @@ class SettingsView extends StatelessWidget {
         ),
       ),
     ];
-  }
-}
-
-/// Shared attendance limits editor used by the Absences screen dialog.
-class LimitsEditorContent extends StatelessWidget {
-  final SettingsController controller;
-
-  const LimitsEditorContent({super.key, required this.controller});
-
-  static double? _parseNum(String raw) {
-    try {
-      return double.parse(raw.replaceAll(',', '.'));
-    } catch (_) {
-      return null;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = controller;
-    final subjects = () {
-      final raw = c.get('absence', {});
-      if (raw is Map) return raw.keys.map((k) => '$k').toList()..sort();
-      return <String>[];
-    }();
-    final limits = c.get('subject_limits', {});
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      spacing: 20,
-      children: [
-        AutosaveField(
-          controller: c,
-          label: Strings.get('default_limit'),
-          draftKey: 'lim:default',
-          configKey: 'absence_critical_pct',
-          fallback: '${c.get('absence_critical_pct', 25.0)}',
-          parse: (raw) => _parseNum(raw) ?? 25.0,
-        ),
-        AutosaveField(
-          controller: c,
-          label: Strings.get('warn_limit'),
-          draftKey: 'lim:warn',
-          configKey: 'absence_warn_pct',
-          fallback: '${c.get('absence_warn_pct', 15.0)}',
-          parse: (raw) => _parseNum(raw) ?? 15.0,
-        ),
-        AutosaveField(
-          controller: c,
-          label: Strings.get('reserve_limit'),
-          draftKey: 'lim:reserve',
-          configKey: 'absence_plan_reserve_pct',
-          fallback: '${c.get('absence_plan_reserve_pct', 10.0)}',
-          parse: (raw) {
-            final v = _parseNum(raw) ?? 10.0;
-            return v.clamp(0.0, 99.9);
-          },
-        ),
-        _Hint(Strings.get('reserve_hint')),
-        for (final subject in subjects)
-          AutosaveField(
-            key: Key('lim:subj:$subject'),
-            controller: c,
-            label: subject,
-            draftKey: 'lim:subj:$subject',
-            configKey: 'subject_limits:$subject',
-            fallback: limits is Map ? '${limits[subject] ?? ''}' : '',
-            parse: (raw) => raw.trim().isEmpty ? '__blank__' : _parseNum(raw),
-            onSaved: (v) {
-              final current = Map.of(c.get('subject_limits', {}) ?? {});
-              if (v == '__blank__') {
-                current.remove(subject);
-              } else {
-                current[subject] = v;
-              }
-              c.saveQuiet({'subject_limits': current});
-            },
-          ),
-        _Hint(Strings.get('limit_subject_hint')),
-      ],
-    );
   }
 }

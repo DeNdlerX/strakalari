@@ -1,12 +1,12 @@
 // Live wiring of the unified Absences & Planner screen to the shared AppState.
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../controllers/app_state.dart' hide PlannerController;
 
 import '../common/app_tokens.dart';
 import '../planner/planner_live.dart';
-import '../settings/settings_live.dart';
 import 'absences_controller.dart';
 import 'absences_view.dart';
 
@@ -21,8 +21,6 @@ AbsencesController absencesControllerFor(AppState s, [DateTime? now]) {
   c.defaultLimitPct = rawDefaultLimit is num
       ? rawDefaultLimit.toDouble()
       : double.tryParse('$rawDefaultLimit') ?? 25.0;
-  c.createLimitsController = () => settingsControllerFor(s);
-  c.onLimitsUpdated = () => s.save(const {});
   final (states, _) = s.subjectStates();
   c.subjects = [
     for (final st in states)
@@ -112,6 +110,14 @@ class LiveAbsencesView extends ConsumerWidget {
       onOpenCalendar: () {
         s.setSettingsSection('calendar');
         s.go('settings');
+      },
+      onOpenLimits: () {
+        final router = GoRouter.maybeOf(context);
+        if (router != null) {
+          router.go('/absences/limits');
+        } else {
+          s.go('absences/limits');
+        }
       },
       tutorialEvent: s.tutorialEvent,
     );

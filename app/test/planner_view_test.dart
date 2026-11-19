@@ -1,7 +1,6 @@
 import 'package:app/features/absences/absences_controller.dart';
 import 'package:app/features/absences/absences_view.dart';
 import 'package:app/features/common/app_tokens.dart';
-import 'package:app/features/settings/settings_controller.dart';
 import 'package:app/l10n/strings.dart';
 import 'package:app/features/planner/plan_reserve.dart' show daysText;
 import 'package:app/widgets/app_widgets.dart' show StatCard;
@@ -31,13 +30,11 @@ AbsencesController _absController({
   bool demoMode = false,
   String updatedLabel = 'now',
   bool hasSubjectLimits = true,
-  SettingsController Function()? createLimitsController,
 }) {
   return AbsencesController()
     ..demoMode = demoMode
     ..updatedLabel = updatedLabel
     ..hasSubjectLimits = hasSubjectLimits
-    ..createLimitsController = createLimitsController
     ..subjects = subjects ??
         const [
           SubjectAbsence(
@@ -565,7 +562,6 @@ void main() {
       final abs = _absController(
         updatedLabel: '15.11.2026 18:56:41 · před 4 min',
         hasSubjectLimits: false,
-        createLimitsController: () => SettingsController({}),
         subjects: const [
           SubjectAbsence(
             name: 'Tělesná výchova',
@@ -589,6 +585,7 @@ void main() {
               plan: yearPlan,
               hasTimetable: true,
               narrow: true,
+              onOpenLimits: () {},
             ),
           ),
         ),
