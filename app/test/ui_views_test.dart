@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:app/controllers/app_state.dart' hide ActivityController;
 import 'package:app/features/absences/absences_live.dart';
+import 'package:app/features/absences/limits_page.dart';
 import 'package:app/features/activity/activity_controller.dart';
 import 'package:app/features/activity/activity_live.dart';
 import 'package:app/features/activity/activity_view.dart';
@@ -9,6 +10,7 @@ import 'package:app/features/common/app_tokens.dart';
 import 'package:app/features/lunches/lunches_format.dart';
 import 'package:app/features/lunches/lunches_live.dart';
 import 'package:app/features/marks/marks_live.dart';
+import 'package:app/features/planner/planner_live.dart';
 import 'package:app/features/settings/settings_controller.dart';
 import 'package:app/features/settings/settings_live.dart';
 import 'package:app/features/timetable/timetable_controller.dart';
@@ -382,7 +384,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(LiveMarksView), findsOneWidget);
 
-      // 5. Merged Absences & Planner with timetable/plan data
+      // 5. Absences, Planner, and Limits with timetable/plan data
       final planState = container.read(appStateProvider);
       planState.data = {
         'absence': {'Matematika': 8.0},
@@ -403,6 +405,28 @@ void main() {
       ));
       await tester.pumpAndSettle();
       expect(find.byType(LiveAbsencesView), findsOneWidget);
+
+      await tester.pumpWidget(_app(
+        LivePlannerPage(
+          tokens: tokens,
+          narrow: false,
+          now: DateTime(2026, 9, 10, 10, 0),
+        ),
+        container: container,
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byType(LivePlannerPage), findsOneWidget);
+
+      await tester.pumpWidget(_app(
+        LiveLimitsPage(
+          tokens: tokens,
+          narrow: false,
+          onBack: () {},
+        ),
+        container: container,
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byType(LiveLimitsPage), findsOneWidget);
 
       // 6. Lunches
       await tester.pumpWidget(_app(

@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:app/controllers/app_state.dart';
 import 'package:app/features/absences/absences_live.dart';
 import 'package:app/features/common/app_tokens.dart';
+import 'package:app/features/planner/planner_live.dart';
+import 'package:app/features/planner/planner_view.dart' show PlanDayDialog;
 import 'package:app/features/today/today_controller.dart';
 import 'package:app/features/today/today_view.dart';
 import 'package:app/l10n/strings.dart';
@@ -106,7 +108,7 @@ void main() {
     );
   });
 
-  testWidgets('/planner redirects to /absences', (tester) async {
+  testWidgets('/planner redirects to /absences/plan', (tester) async {
     tester.view.physicalSize = const Size(1280, 800);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -118,6 +120,7 @@ void main() {
     s.setTutorialsEnabled(false);
 
     final router = buildRouter(initialLocation: '/planner');
+    addTearDown(router.dispose);
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
@@ -129,11 +132,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(router.routerDelegate.currentConfiguration.uri.path, '/absences');
-    expect(find.byType(LiveAbsencesView), findsOneWidget);
+    expect(
+      router.routerDelegate.currentConfiguration.uri.path,
+      '/absences/plan',
+    );
+    expect(find.byType(LivePlannerPage), findsOneWidget);
     expect(find.byType(NavigationRail), findsOneWidget);
     final rail = tester.widget<NavigationRail>(find.byType(NavigationRail));
     expect(rail.destinations, hasLength(7));
+    expect(rail.selectedIndex, shellRoutes.indexOf('absences'));
   });
 
   testWidgets('Today planner suggestion opens absences', (tester) async {
@@ -157,12 +164,12 @@ void main() {
 
     final tipButton = find.widgetWithText(
       TextButton,
-      Strings.get('nav_absences'),
+      Strings.get('abs_planner_btn'),
     );
     expect(tipButton, findsOneWidget);
     await tester.tap(tipButton);
     await tester.pump();
-    expect(navigated, 'absences');
+    expect(navigated, 'absences/plan?from=today');
   });
 
   group('F1b real AppState data cases 1-3', () {
@@ -255,6 +262,27 @@ void main() {
 
         expect(find.byType(StatCard), findsNWidgets(3));
         expect(find.byType(Meter), findsOneWidget);
+
+        await tester.pumpWidget(
+          ProviderScope(
+            key: const ValueKey('closed_planner'),
+            overrides: [
+              appStateProvider.overrideWith(() => _FixedAbsState(s)),
+            ],
+            child: MaterialApp(
+              theme: AppTokens.dark().toThemeData(),
+              home: Scaffold(
+                body: LivePlannerPage(
+                  tokens: AppTokens.dark(),
+                  narrow: false,
+                  now: closedNow,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
         expect(find.text(Strings.get('term_nothing')), findsOneWidget);
         expect(find.text(Strings.get('cal_open_calendar')), findsOneWidget);
         expect(
@@ -272,7 +300,7 @@ void main() {
     });
 
     testWidgets(
-        'case 3: active term shows 4 KPIs, budget bars, projected %, and single subject card',
+        'case 3: active term shows 3 KPIs, budget bars, projected %, and single subject card',
         (tester) async {
       tester.view.physicalSize = const Size(1280, 1800);
       tester.view.devicePixelRatio = 1.0;
@@ -317,7 +345,8 @@ void main() {
         );
         await tester.pump();
 
-        expect(find.byType(StatCard), findsNWidgets(4));
+        expect(find.byType(StatCard), findsNWidgets(3));
+        expect(find.byKey(const Key('abs:next_plan_row')), findsOneWidget);
         expect(
           find.descendant(
             of: find.byKey(const Key('abs:subjects')),
@@ -392,7 +421,7 @@ void main() {
           child: MaterialApp(
             theme: AppTokens.dark().toThemeData(),
             home: Scaffold(
-              body: LiveAbsencesView(
+              body: LivePlannerPage(
                 tokens: AppTokens.dark(),
                 narrow: false,
                 now: activeNow,
@@ -402,9 +431,6 @@ void main() {
         ),
       );
       await tester.pump();
-
-      await tester.tap(find.text(Strings.get('plan_custom')));
-      await tester.pumpAndSettle();
 
       // Past day (Sep 8) and free day (Sep 15) cannot be tapped.
       final pastCell = tester.widget<InkWell>(
@@ -416,15 +442,15 @@ void main() {
       );
       expect(freeCell.onTap, isNull);
 
+      // Tapping a future school day (Mon Sep 14) opens PlanDayDialog and confirms.
+      await tester.tap(find.byKey(const ValueKey('day_2026_9_14')));
+      await tester.pumpAndSettle();
+      expect(find.byType(PlanDayDialog), findsOneWidget);
+
       final confirmFinder = find.widgetWithText(
         FilledButton,
         Strings.get('confirm'),
       );
-      expect(tester.widget<FilledButton>(confirmFinder).onPressed, isNull);
-
-      // Tapping a future school day (Mon Sep 14) enables Confirm.
-      await tester.tap(find.byKey(const ValueKey('day_2026_9_14')));
-      await tester.pump();
       expect(tester.widget<FilledButton>(confirmFinder).onPressed, isNotNull);
 
       await tester.tap(confirmFinder);
@@ -433,6 +459,176 @@ void main() {
       expect(s.plannedSkips, hasLength(1));
       expect(s.plannedSkips.first['start_date'], '2026-09-14');
       expect(s.plannedSkips.first['end_date'], '2026-09-14');
+    });
+  });
+
+  testWidgets(
+      'S1 selecting sem2 in LivePlannerPage never switches LiveAbsencesView away from defaultTerm',
+      (tester) async {
+    tester.view.physicalSize = const Size(1280, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    Strings.lang = 'cs';
+
+    final now = DateTime(2026, 11, 10, 10, 0);
+    await withClock(Clock.fixed(now), () async {
+      final s = AppState(
+        configData: {
+          'tutorials_enabled': false,
+          'school_preset_id': 'custom',
+          'sem1_close': '25.01.2027',
+          'sem2_close': '26.04.2027',
+        },
+        data: {
+          'absence': {'Matematika': 8.0},
+          'timetable': {
+            '09.11.2026': [
+              {'subject': 'Matematika', 'time': '1 (8:00 - 8:45)'},
+            ],
+            '11.11.2026': [
+              {'subject': 'Matematika', 'time': '1 (8:00 - 8:45)'},
+            ],
+          },
+        },
+      )..demoMode = false;
+
+      final sem1Default = s.yearPlan(now).defaultTerm!;
+      expect(sem1Default.key, 'sem1');
+      final sem1Next = sem1Default.recommended.first.day;
+
+      // Switch Plánovač to sem2.
+      s.selectPlannerTerm('sem2');
+      expect(s.plannerTerm, 'sem2');
+
+      // AbsencesController and LiveAbsencesView still stay on sem1 (defaultTerm).
+      final absCtrl = absencesControllerFor(s, now);
+      expect(
+        absCtrl.budgets?['matematika']?.freeHours,
+        sem1Default.budgetByCanon['matematika']?.freeHours,
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _FixedAbsState(s)),
+          ],
+          child: MaterialApp(
+            theme: AppTokens.dark().toThemeData(),
+            home: Scaffold(
+              body: LiveAbsencesView(
+                tokens: AppTokens.dark(),
+                narrow: false,
+                now: now,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('abs:next_plan_row')),
+          matching: find.textContaining('${sem1Next.day}. ${sem1Next.month}.'),
+        ),
+        findsOneWidget,
+      );
+    });
+  });
+
+  testWidgets(
+      'S11 pickerSlotsForMonth recomputes today live: lesson pickable at 7:50 becomes pick_started at 8:05 without refresh',
+      (tester) async {
+    tester.view.physicalSize = const Size(1280, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    Strings.lang = 'cs';
+
+    final t750 = DateTime(2026, 9, 10, 7, 50);
+    final t805 = DateTime(2026, 9, 10, 8, 5);
+    final s = AppState(
+      configData: {
+        'tutorials_enabled': false,
+        'school_preset_id': 'custom',
+        'sem1_close': '25.01.2027',
+        'sem2_close': '26.04.2027',
+      },
+      data: {
+        'absence': {'Matematika': 5.0, 'Fyzika': 5.0},
+        'timetable': {
+          '10.09.2026': [
+            {'subject': 'Matematika', 'time': '1 (8:00 - 8:45)'},
+            {'subject': 'Fyzika', 'time': '2 (9:55 - 10:40)'},
+          ],
+        },
+      },
+    )..demoMode = false;
+
+    final revBefore = s.dataRev;
+
+    // 7:50 -> lesson 1 (8:00) is pickable.
+    await withClock(Clock.fixed(t750), () async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _FixedAbsState(s)),
+          ],
+          child: MaterialApp(
+            theme: AppTokens.dark().toThemeData(),
+            home: Scaffold(
+              body: LivePlannerPage(
+                tokens: AppTokens.dark(),
+                narrow: false,
+                now: t750,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('day_2026_9_10')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('plan:choose_lessons')));
+      await tester.pumpAndSettle();
+
+      final mat750 = tester.widget<CheckboxListTile>(
+        find.widgetWithText(CheckboxListTile, '1. Matematika'),
+      );
+      expect(mat750.onChanged, isNotNull);
+      await tester.tap(find.text(Strings.get('cancel')));
+      await tester.pumpAndSettle();
+    });
+
+    // 8:05, SAME AppState and dataRev (no refresh between) -> lesson 1 is locked with pick_started.
+    expect(s.dataRev, revBefore);
+    await withClock(Clock.fixed(t805), () async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _FixedAbsState(s)),
+          ],
+          child: MaterialApp(
+            theme: AppTokens.dark().toThemeData(),
+            home: Scaffold(
+              body: LivePlannerPage(
+                tokens: AppTokens.dark(),
+                narrow: false,
+                now: t805,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('day_2026_9_10')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('plan:choose_lessons')));
+      await tester.pumpAndSettle();
+
+      final mat805 = tester.widget<CheckboxListTile>(
+        find.widgetWithText(CheckboxListTile, '1. Matematika'),
+      );
+      expect(mat805.onChanged, isNull);
+      expect(find.textContaining(Strings.get('pick_started')), findsOneWidget);
     });
   });
 

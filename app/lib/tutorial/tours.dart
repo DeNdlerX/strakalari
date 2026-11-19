@@ -108,13 +108,15 @@ const Map<String, Tour> tours = {
   'absences': Tour('absences', 'absences', [
     TourStep('abs_stats',
         anchor: 'abs_stats', icon: Icons.pie_chart_outline),
+    TourStep('abs_subject', anchor: 'abs_first', icon: Icons.percent),
+  ]),
+  'absences_plan': Tour('absences_plan', 'absences/plan', [
     TourStep('plan_strip',
         anchor: 'plan_strip', icon: Icons.calendar_view_month_outlined),
     TourStep('plan_pick',
         anchor: 'plan_first',
         until: 'day_planned',
         icon: Icons.beach_access_outlined),
-    TourStep('abs_subject', anchor: 'abs_first', icon: Icons.percent),
   ]),
   'lunches': Tour('lunches', 'lunches', [
     TourStep('lunch_pick',

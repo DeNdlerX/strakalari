@@ -1,9 +1,6 @@
-import 'package:app/features/absences/absences_controller.dart';
-import 'package:app/features/absences/absences_view.dart';
 import 'package:app/features/common/app_tokens.dart';
 import 'package:app/l10n/strings.dart';
 import 'package:app/features/planner/plan_reserve.dart' show daysText;
-import 'package:app/widgets/app_widgets.dart' show StatCard;
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,29 +20,6 @@ PlannerController _controller([Map<String, dynamic>? config]) {
   );
   c.stravaEnabled = false;
   return c;
-}
-
-AbsencesController _absController({
-  List<SubjectAbsence>? subjects,
-  bool demoMode = false,
-  String updatedLabel = 'now',
-  bool hasSubjectLimits = true,
-}) {
-  return AbsencesController()
-    ..demoMode = demoMode
-    ..updatedLabel = updatedLabel
-    ..hasSubjectLimits = hasSubjectLimits
-    ..subjects = subjects ??
-        const [
-          SubjectAbsence(
-            name: 'Matematika',
-            currentPct: 12.0,
-            status: 'ok',
-            limitPct: 25.0,
-            effectivePlanLimit: 22.5,
-            effectivePlanSafe: 4,
-          ),
-        ];
 }
 
 YearPlanData _plan([Set<DateTime> planned = const {}]) {
@@ -152,12 +126,12 @@ void main() {
 
     testWidgets('empty state without timetable', (t) async {
       final c = _controller();
-      await t.pumpWidget(_app(AbsencesView(
-        controller: _absController(subjects: const [], updatedLabel: 'never'),
+      await t.pumpWidget(_app(PlannerPage(
+        controller: c,
         tokens: AppTokens.dark(),
-        planner: c,
         plan: null,
         hasTimetable: false,
+        hasData: false,
       )));
       expect(find.text(Strings.get('no_data')), findsOneWidget);
       expect(find.text(Strings.get('planner_need_refresh')), findsOneWidget);
@@ -166,21 +140,23 @@ void main() {
     testWidgets('empty state asks for credentials when timetable exists',
         (t) async {
       final c = _controller();
-      await t.pumpWidget(_app(AbsencesView(
-        controller: _absController(subjects: const [], demoMode: true),
+      await t.pumpWidget(_app(PlannerPage(
+        controller: c,
         tokens: AppTokens.dark(),
-        planner: c,
         plan: null,
         hasTimetable: true,
+        hasData: false,
+        demoMode: true,
       )));
       expect(find.text(Strings.get('need_credentials')), findsOneWidget);
 
-      await t.pumpWidget(_app(AbsencesView(
-        controller: _absController(subjects: const [], demoMode: false),
+      await t.pumpWidget(_app(PlannerPage(
+        controller: c,
         tokens: AppTokens.dark(),
-        planner: c,
         plan: null,
         hasTimetable: true,
+        hasData: false,
+        demoMode: false,
       )));
       expect(find.text(Strings.get('no_data')), findsOneWidget);
       expect(find.text(Strings.get('need_credentials')), findsNothing);
@@ -190,24 +166,21 @@ void main() {
         (t) async {
       _setViewport(t);
       final c = _controller();
-      await t.pumpWidget(_app(AbsencesView(
-        controller: _absController(updatedLabel: 'now'),
+      await t.pumpWidget(_app(PlannerPage(
+        controller: c,
         tokens: AppTokens.dark(),
-        planner: c,
         plan: _plan(),
         hasTimetable: true,
+        hasData: true,
       )));
-      expect(find.text(Strings.get('absence_title')), findsWidgets);
+      expect(find.text(Strings.get('planner_title')), findsOneWidget);
+      expect(find.byKey(const Key('plan:summary')), findsOneWidget);
       expect(find.text(Strings.get('section_overview').toUpperCase()),
           findsOneWidget);
       // Below the fold: ListView builds lazily, so scroll first.
       await t.scrollUntilVisible(
           find.textContaining(Strings.get('section_plan').toUpperCase()), 300);
       expect(find.textContaining(Strings.get('section_plan').toUpperCase()),
-          findsOneWidget);
-      await t.scrollUntilVisible(
-          find.text(Strings.get('abs_subjects_section').toUpperCase()), 300);
-      expect(find.text(Strings.get('abs_subjects_section').toUpperCase()),
           findsOneWidget);
     });
 
@@ -221,12 +194,12 @@ void main() {
         _setViewport(t);
         final maximum = 5 + planned.length;
         final c = _controller();
-        await t.pumpWidget(_app(AbsencesView(
-          controller: _absController(updatedLabel: 'now'),
+        await t.pumpWidget(_app(PlannerPage(
+          controller: c,
           tokens: AppTokens.dark(),
-          planner: c,
           plan: _plan(planned),
           hasTimetable: true,
+          hasData: true,
         )));
         await t.scrollUntilVisible(
             find.textContaining(Strings.get('section_plan').toUpperCase()), 300);
@@ -242,12 +215,12 @@ void main() {
     testWidgets('plan dialog confirm plans the day', (t) async {
       _setViewport(t);
       final c = _controller();
-      await t.pumpWidget(_app(AbsencesView(
-        controller: _absController(),
+      await t.pumpWidget(_app(PlannerPage(
+        controller: c,
         tokens: AppTokens.dark(),
-        planner: c,
         plan: _plan(),
         hasTimetable: true,
+        hasData: true,
       )));
       // Open the recommend-row plan button.
       await t.scrollUntilVisible(find.text(Strings.get('plan_skip')).first, 300);
@@ -263,12 +236,12 @@ void main() {
     testWidgets('plan dialog cancel closes without planning', (t) async {
       _setViewport(t);
       final c = _controller();
-      await t.pumpWidget(_app(AbsencesView(
-        controller: _absController(),
+      await t.pumpWidget(_app(PlannerPage(
+        controller: c,
         tokens: AppTokens.dark(),
-        planner: c,
         plan: _plan(),
         hasTimetable: true,
+        hasData: true,
       )));
       await t.scrollUntilVisible(find.text(Strings.get('plan_skip')).first, 300);
       await t.tap(find.text(Strings.get('plan_skip')).first);
@@ -281,12 +254,12 @@ void main() {
     testWidgets('plan-all dialog plans recommended days', (t) async {
       _setViewport(t);
       final c = _controller();
-      await t.pumpWidget(_app(AbsencesView(
-        controller: _absController(),
+      await t.pumpWidget(_app(PlannerPage(
+        controller: c,
         tokens: AppTokens.dark(),
-        planner: c,
         plan: _plan(),
         hasTimetable: true,
+        hasData: true,
       )));
       await t.scrollUntilVisible(find.textContaining(Strings.get('plan_all')).first, 300);
       await t.tap(find.textContaining(Strings.get('plan_all')).first);
@@ -303,12 +276,12 @@ void main() {
       _setViewport(t);
       final c = _controller();
       c.planSkip('2026-10-05', 'Omluvte absenci.');
-      await t.pumpWidget(_app(AbsencesView(
-        controller: _absController(),
+      await t.pumpWidget(_app(PlannerPage(
+        controller: c,
         tokens: AppTokens.dark(),
-        planner: c,
         plan: _plan(),
         hasTimetable: true,
+        hasData: true,
       )));
       final unplan = find.text(Strings.get('unplan'));
       await t.scrollUntilVisible(unplan, 300);
@@ -326,12 +299,12 @@ void main() {
         _setViewport(t);
         final c = _controller();
         c.planSkip('2026-10-05', 'Omluvte absenci.');
-        await t.pumpWidget(_app(AbsencesView(
-          controller: _absController(),
+        await t.pumpWidget(_app(PlannerPage(
+          controller: c,
           tokens: AppTokens.dark(),
-          planner: c,
           plan: _plan(),
           hasTimetable: true,
+          hasData: true,
         )));
         await t.scrollUntilVisible(find.text(Strings.get('day_passed')), 300);
         expect(find.text(Strings.get('day_passed')), findsOneWidget);
@@ -342,42 +315,30 @@ void main() {
     testWidgets('custom picker taps a day whole and confirms', (t) async {
       _setViewport(t);
       final c = _controller();
-      await t.pumpWidget(_app(AbsencesView(
-        controller: _absController(),
+      await t.pumpWidget(_app(PlannerPage(
+        controller: c,
         tokens: AppTokens.dark(),
-        planner: c,
         plan: _plan(),
         hasTimetable: true,
+        hasData: true,
         lessonsFor: (_) => const [
           PickerSlot(period: 1, subject: 'M'),
           PickerSlot(period: 2, subject: 'F'),
         ],
       )));
-      final view =
-          t.widget<PlannerSections>(find.byType(PlannerSections));
-      final ctx = t.element(find.byType(PlannerSections));
-      view.showCustomPlanDialog(ctx);
+      await t.tap(find.byKey(const Key('plan:multi_toggle')));
       await t.pumpAndSettle();
-      // The dialog title shadows the view button: take the dialog one.
-      expect(find.text(Strings.get('plan_custom')), findsWidgets);
-      // Confirm is disabled with nothing picked.
-      final confirm = find.widgetWithText(FilledButton, Strings.get('confirm'));
-      expect(t.widget<FilledButton>(confirm).onPressed, isNull);
-      // Tap the first visible weekday cell (day numbers vary by month;
-      // weekends are not shown, so scan for an existing one).
-      var tapped = false;
-      for (var d = 10; d <= 28; d++) {
-        final f = find.text('$d');
-        if (f.evaluate().isNotEmpty) {
-          await t.tap(f.first);
-          tapped = true;
-          break;
-        }
-      }
-      expect(tapped, isTrue);
+      // Multi-confirm is absent before any day is picked.
+      expect(find.byKey(const Key('plan:multi_confirm')), findsNothing);
+      // Tap a future weekday cell in September 2026 (Tue 29 Sep, after today 26 Sep).
+      await t.tap(find.byKey(const ValueKey('day_2026_9_29')));
       await t.pumpAndSettle();
-      expect(t.widget<FilledButton>(confirm).onPressed, isNotNull);
-      await t.tap(confirm);
+      final multiConfirm = find.byKey(const Key('plan:multi_confirm'));
+      expect(multiConfirm, findsOneWidget);
+      expect(t.widget<FilledButton>(multiConfirm).onPressed, isNotNull);
+      await t.tap(multiConfirm);
+      await t.pumpAndSettle();
+      await t.tap(find.widgetWithText(FilledButton, Strings.get('confirm')));
       await t.pumpAndSettle();
       expect(c.plannedSkips, hasLength(1));
       expect(SnackLog.last, Strings.get('skip_planned_keep_lunch'));
@@ -414,12 +375,12 @@ void main() {
       final c = _controller()
         ..toggleShowAllPicksHook = () => hookCalls++;
 
-      await t.pumpWidget(_app(AbsencesView(
-        controller: _absController(),
+      await t.pumpWidget(_app(PlannerPage(
+        controller: c,
         tokens: AppTokens.dark(),
-        planner: c,
         plan: _planWithPicks(fiveDays),
         hasTimetable: true,
+        hasData: true,
       )));
       await t.pump();
 
@@ -483,12 +444,12 @@ void main() {
 
       // With exactly 3 picks, all 3 cards show and there is no toggle button.
       final c3 = _controller();
-      await t.pumpWidget(_app(AbsencesView(
-        controller: _absController(),
+      await t.pumpWidget(_app(PlannerPage(
+        controller: c3,
         tokens: AppTokens.dark(),
-        planner: c3,
         plan: _planWithPicks(fiveDays.take(3).toList()),
         hasTimetable: true,
+        hasData: true,
       )));
       await t.pump();
       expect(find.text(Strings.get('plan_skip')), findsNWidgets(3));
@@ -527,20 +488,6 @@ void main() {
           free: 4,
           status: 'warning',
         ),
-        budgets: const [
-          BudgetRowData(
-            name: 'Tělesná výchova',
-            missed: 8,
-            planned: 0,
-            free: 4,
-            buffer: 1,
-            schoolCap: 12,
-            schoolLeft: 4,
-            projectedPct: 20.0,
-            limitPct: 25.0,
-            status: 'warning',
-          ),
-        ],
       );
       final sem2 = TermPlanData(
         key: 'sem2',
@@ -559,62 +506,88 @@ void main() {
 
       final tok = AppTokens.dark();
       final c = _controller();
-      final abs = _absController(
-        updatedLabel: '15.11.2026 18:56:41 · před 4 min',
-        hasSubjectLimits: false,
-        subjects: const [
-          SubjectAbsence(
-            name: 'Tělesná výchova',
-            currentPct: 20.0,
-            status: 'warning',
-            limitPct: 25.0,
-            effectivePlanLimit: 22.5,
-            effectivePlanSafe: 4,
-          ),
-        ],
-      );
       await t.pumpWidget(MaterialApp(
         theme: tok.toThemeData(),
         home: Scaffold(
           body: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            child: AbsencesView(
-              controller: abs,
+            child: PlannerPage(
+              controller: c,
               tokens: tok,
-              planner: c,
               plan: yearPlan,
               hasTimetable: true,
+              hasData: true,
               narrow: true,
-              onOpenLimits: () {},
             ),
           ),
         ),
       ));
       await t.pump();
 
-      expect(find.byKey(const Key('abs:no_limits_banner')), findsOneWidget);
-
-      final cards = find.byType(StatCard);
-      expect(cards, findsNWidgets(4));
-      expect(t.getSize(cards.at(0)).height, t.getSize(cards.at(1)).height);
-      expect(t.getSize(cards.at(2)).height, t.getSize(cards.at(3)).height);
-
-      // Action buttons (Limits + Plan custom) and semester buttons each sit
-      // side-by-side on one row.
-      final limitsRect = t.getRect(find.byKey(const Key('abs:limits_btn')));
-      final customRect = t.getRect(find.text(Strings.get('plan_custom')));
-      expect((limitsRect.center.dy - customRect.center.dy).abs(), lessThan(4));
-
       final sem1Btn = find.textContaining('1. pololetí');
       final sem2Btn = find.textContaining('2. pololetí');
       expect((t.getCenter(sem1Btn).dy - t.getCenter(sem2Btn).dy).abs(),
           lessThan(4));
 
-      // Calendar section header fits inside the ~708 px phone body even with
-      // wide Ahem test metrics (in real Roboto, multiple week rows fit too).
+      // Calendar section header fits well inside the ~708 px phone body.
       final calHeader = find.text(Strings.get('section_overview').toUpperCase());
       expect(calHeader, findsOneWidget);
       expect(t.getBottomLeft(calHeader).dy, lessThan(708));
+    });
+
+    testWidgets(
+        'S2 cross-term calendar: paging back to December while sem2 is selected in November keeps sem1 days tappable',
+        (t) async {
+      _setViewport(t);
+      final decDay = DateTime(2026, 12, 10);
+      final sem1 = TermPlanData(
+        key: 'sem1',
+        start: DateTime(2026, 9, 1),
+        close: DateTime(2027, 1, 25),
+        capacity: 5,
+        hasData: true,
+        active: true,
+        options: {
+          decDay: DayOptionData(
+            day: decDay,
+            lessonsCount: 5,
+            cost: 5,
+            budgetHours: 5,
+            feasible: true,
+          ),
+        },
+      );
+      final sem2 = TermPlanData(
+        key: 'sem2',
+        start: DateTime(2027, 1, 26),
+        close: DateTime(2027, 4, 26),
+        capacity: 8,
+        hasData: true,
+        active: false,
+      );
+      final yp = YearPlanData(
+        today: DateTime(2026, 11, 15),
+        firstDay: DateTime(2026, 11, 16),
+        terms: [sem1, sem2],
+        lessonsOn: (_) => 5,
+      );
+      final c = _controller()..plannerTerm = 'sem2';
+      await t.pumpWidget(_app(PlannerPage(
+        controller: c,
+        tokens: AppTokens.dark(),
+        plan: yp,
+        hasTimetable: true,
+        hasData: true,
+      )));
+      await t.pumpAndSettle();
+
+      // sem2 opens in Jan 2027; tap prev_month once -> Dec 2026 (owned by sem1).
+      await t.tap(find.byKey(const Key('cal:prev_month')));
+      await t.pumpAndSettle();
+
+      await t.tap(find.byKey(const ValueKey('day_2026_12_10')));
+      await t.pumpAndSettle();
+      expect(find.byType(PlanDayDialog), findsOneWidget);
     });
   });
 }

@@ -13,7 +13,8 @@ const weekDays = [
   ['Chemie', 'Matematika', 'Biologie', 'Fyzika', 'Dějepis'],
 ];
 
-List<PickerSlot> mockLessonsFor(DateTime day, {
+List<PickerSlot> mockLessonsFor(
+  DateTime day, {
   Set<int> cancelledPeriods = const {},
   Set<int> pastPeriods = const {},
   Set<int> plannedPeriods = const {},
@@ -38,7 +39,9 @@ List<PickerSlot> mockLessonsFor(DateTime day, {
   ];
 }
 
-PlannerController createPickerPlannerController({List<Map<String, dynamic>>? planned}) {
+PlannerController createPickerPlannerController({
+  List<Map<String, dynamic>>? planned,
+}) {
   final c = PlannerController({
     'long_absence_excuses': ['Důvod absence.'],
     'short_absence_excuses': <String>[],
@@ -57,27 +60,31 @@ Widget buildPickerHost({
   required List<PickerSlot> Function(DateTime) lessonsFor,
   Set<DateTime> freeDays = const {},
   DateTime? initialMonth,
-  DateTime? preselect,
   DateTime? firstMonth,
   DateTime? lastMonth,
 }) {
   return MaterialApp(
     home: Scaffold(
-      body: CustomPlanDialog(
-        controller: controller,
-        stravaOn: false,
-        lessonsFor: lessonsFor,
-        freeDays: freeDays,
-        initialMonth: initialMonth ?? DateTime(2026, 11, 1),
-        preselect: preselect,
-        firstMonth: firstMonth,
-        lastMonth: lastMonth,
+      body: SingleChildScrollView(
+        child: PlannerMonthCalendar(
+          controller: controller,
+          stravaOn: false,
+          lessonsFor: lessonsFor,
+          freeDays: freeDays,
+          initialMonth: initialMonth ?? DateTime(2026, 11, 1),
+          firstMonth: firstMonth,
+          lastMonth: lastMonth,
+        ),
       ),
     ),
   );
 }
 
 void main() {
+  setUp(() {
+    Strings.lang = 'cs';
+  });
+
   void setViewport(WidgetTester tester) {
     tester.view.physicalSize = const Size(1280, 1024);
     tester.view.devicePixelRatio = 1.0;
@@ -87,7 +94,8 @@ void main() {
     });
   }
 
-  Finder dayCell(DateTime d) => find.byKey(ValueKey('day_${d.year}_${d.month}_${d.day}'));
+  Finder dayCell(DateTime d) =>
+      find.byKey(ValueKey('day_${d.year}_${d.month}_${d.day}'));
 
   testWidgets('tappingADayTakesItOffWhole', (tester) async {
     setViewport(tester);
@@ -99,12 +107,10 @@ void main() {
       ),
     );
 
-    final confirmBtn = find.widgetWithText(FilledButton, Strings.get('confirm'));
-    expect(tester.widget<FilledButton>(confirmBtn).onPressed, isNull);
-
     await tester.tap(dayCell(monday));
     await tester.pumpAndSettle();
 
+    final confirmBtn = find.widgetWithText(FilledButton, Strings.get('confirm'));
     expect(tester.widget<FilledButton>(confirmBtn).onPressed, isNotNull);
 
     await tester.tap(confirmBtn);
@@ -128,15 +134,21 @@ void main() {
       ),
     );
 
-    final confirmBtn = find.widgetWithText(FilledButton, Strings.get('confirm'));
+    await tester.tap(find.byKey(const Key('plan:multi_toggle')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('plan:multi_confirm')), findsNothing);
+    expect(find.text(Strings.get('pick_empty')), findsOneWidget);
 
     await tester.tap(dayCell(monday));
     await tester.pumpAndSettle();
-    expect(tester.widget<FilledButton>(confirmBtn).onPressed, isNotNull);
+    final multiConfirm = find.byKey(const Key('plan:multi_confirm'));
+    expect(multiConfirm, findsOneWidget);
+    expect(tester.widget<FilledButton>(multiConfirm).onPressed, isNotNull);
 
     await tester.tap(dayCell(monday));
     await tester.pumpAndSettle();
-    expect(tester.widget<FilledButton>(confirmBtn).onPressed, isNull);
+    expect(find.byKey(const Key('plan:multi_confirm')), findsNothing);
+    expect(find.text(Strings.get('pick_empty')), findsOneWidget);
   });
 
   testWidgets('untickedLessonsStayAttended', (tester) async {
@@ -152,7 +164,10 @@ void main() {
     await tester.tap(dayCell(monday));
     await tester.pumpAndSettle();
 
-    // In open Monday block, untick Matematika (period 1) and Fyzika (period 2)
+    await tester.tap(find.byKey(const Key('plan:choose_lessons')));
+    await tester.pumpAndSettle();
+
+    // Untick Matematika (period 1) and Fyzika (period 2)
     await tester.tap(find.textContaining('Matematika'));
     await tester.pumpAndSettle();
     await tester.tap(find.textContaining('Fyzika'));
@@ -178,11 +193,15 @@ void main() {
       ),
     );
 
+    await tester.tap(find.byKey(const Key('plan:multi_toggle')));
+    await tester.pumpAndSettle();
     await tester.tap(dayCell(monday));
     await tester.pumpAndSettle();
     await tester.tap(dayCell(tuesday));
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byKey(const Key('plan:multi_confirm')));
+    await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, Strings.get('confirm')));
     await tester.pumpAndSettle();
 
@@ -203,6 +222,8 @@ void main() {
     );
 
     await tester.tap(dayCell(tuesday));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('plan:choose_lessons')));
     await tester.pumpAndSettle();
 
     // Period 4 is cancelled: pickable is false so CheckboxListTile is disabled
@@ -240,6 +261,8 @@ void main() {
 
     await tester.tap(dayCell(thursday));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('plan:choose_lessons')));
+    await tester.pumpAndSettle();
 
     expect(find.text(Strings.get('pick_from_stable')), findsWidgets);
     expect(find.textContaining('Chemie'), findsWidgets);
@@ -266,6 +289,7 @@ void main() {
       ),
     );
 
+    // Partly planned day opens PlanDayDialog already expanded (M1).
     await tester.tap(dayCell(monday));
     await tester.pumpAndSettle();
 
@@ -287,10 +311,108 @@ void main() {
     expect(newEntries[1]['end_period'], isNull);
   });
 
+  testWidgets('alreadyPlannedLessonsSplitInMultiMode', (tester) async {
+    setViewport(tester);
+    final controller = createPickerPlannerController(
+      planned: [
+        {
+          'start_date': '2026-11-09',
+          'end_date': '2026-11-09',
+          'start_period': 3,
+          'end_period': 3,
+          'template': 'x',
+        },
+      ],
+    );
+
+    await tester.pumpWidget(
+      buildPickerHost(
+        controller: controller,
+        lessonsFor: (d) => mockLessonsFor(
+          d,
+          plannedPeriods: d.day == 9 ? {3} : const {},
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('plan:multi_toggle')));
+    await tester.pumpAndSettle();
+    await tester.tap(dayCell(monday));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('plan:multi_confirm')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, Strings.get('confirm')));
+    await tester.pumpAndSettle();
+
+    final newEntries = controller.plannedSkips.sublist(1);
+    expect(newEntries, hasLength(2));
+    expect(newEntries[0]['start_period'], isNull);
+    expect(newEntries[0]['end_period'], 2);
+    expect(newEntries[1]['start_period'], 4);
+    expect(newEntries[1]['end_period'], isNull);
+  });
+
+  testWidgets('showPlannedDialog lists multiple partial entries and removes only chosen one',
+      (tester) async {
+    setViewport(tester);
+    final controller = createPickerPlannerController(
+      planned: [
+        {
+          'start_date': '2026-11-09',
+          'end_date': '2026-11-09',
+          'start_period': 1,
+          'end_period': 2,
+          'template': 'První část',
+        },
+        {
+          'start_date': '2026-11-09',
+          'end_date': '2026-11-09',
+          'start_period': 3,
+          'end_period': 5,
+          'template': 'Druhá část',
+        },
+      ],
+    );
+
+    await tester.pumpWidget(
+      buildPickerHost(
+        controller: controller,
+        lessonsFor: (d) => mockLessonsFor(
+          d,
+          plannedPeriods: d.day == 9 ? {1, 2, 3, 4, 5} : const {},
+        ),
+      ),
+    );
+
+    await tester.tap(dayCell(monday));
+    await tester.pumpAndSettle();
+
+    expect(find.text('První část'), findsOneWidget);
+    expect(find.text('Druhá část'), findsOneWidget);
+    final unplanBtns = find.widgetWithText(TextButton, Strings.get('unplan'));
+    expect(unplanBtns, findsNWidgets(2));
+
+    await tester.tap(unplanBtns.first);
+    await tester.pumpAndSettle();
+
+    expect(controller.plannedSkips, hasLength(1));
+    expect(controller.plannedSkips.first['template'], 'Druhá část');
+    expect(find.text('První část'), findsNothing);
+    expect(find.text('Druhá část'), findsOneWidget);
+  });
+
   testWidgets('fullyPlannedDaysAndHolidaysCannotBeTapped', (tester) async {
     setViewport(tester);
     final holiday = DateTime(2026, 11, 17);
-    final controller = createPickerPlannerController();
+    final controller = createPickerPlannerController(
+      planned: [
+        {
+          'start_date': '2026-11-09',
+          'end_date': '2026-11-09',
+          'template': 'Lékař',
+        },
+      ],
+    );
     await tester.pumpWidget(
       buildPickerHost(
         controller: controller,
@@ -302,11 +424,19 @@ void main() {
       ),
     );
 
-    final mondayInkWell = tester.widget<InkWell>(dayCell(monday));
-    expect(mondayInkWell.onTap, isNull);
+    // Single mode: holiday has onTap == null; fully planned day opens showPlannedDialog.
+    expect(tester.widget<InkWell>(dayCell(holiday)).onTap, isNull);
+    await tester.tap(dayCell(monday));
+    await tester.pumpAndSettle();
+    expect(find.text('Lékař'), findsOneWidget);
+    await tester.tap(find.text(Strings.get('cancel')));
+    await tester.pumpAndSettle();
 
-    final holidayInkWell = tester.widget<InkWell>(dayCell(holiday));
-    expect(holidayInkWell.onTap, isNull);
+    // Multi mode: both fully planned day and holiday have onTap == null.
+    await tester.tap(find.byKey(const Key('plan:multi_toggle')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<InkWell>(dayCell(monday)).onTap, isNull);
+    expect(tester.widget<InkWell>(dayCell(holiday)).onTap, isNull);
   });
 
   testWidgets('startedLessonsTodayCannotBePicked', (tester) async {
@@ -323,6 +453,8 @@ void main() {
     );
 
     await tester.tap(dayCell(monday));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('plan:choose_lessons')));
     await tester.pumpAndSettle();
 
     // Past lesson 1 (Matematika) cannot be picked
@@ -370,16 +502,19 @@ void main() {
       buildPickerHost(
         controller: controller,
         lessonsFor: (d) => mockLessonsFor(d),
-        preselect: monday,
       ),
     );
+
+    await tester.tap(dayCell(monday));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('plan:choose_lessons')));
+    await tester.pumpAndSettle();
 
     final confirmBtn = find.widgetWithText(FilledButton, Strings.get('confirm'));
     expect(tester.widget<FilledButton>(confirmBtn).onPressed, isNotNull);
 
     // Tapping whole day checkbox unticks all lessons
-    final wholeCheckbox = find.byType(Checkbox).first;
-    await tester.tap(wholeCheckbox);
+    await tester.tap(find.byKey(const Key('plan:whole_day_check')));
     await tester.pumpAndSettle();
 
     expect(tester.widget<FilledButton>(confirmBtn).onPressed, isNull);
@@ -413,19 +548,19 @@ void main() {
 
     // Previous month button disabled because at firstMonth (November)
     final prevBtn = tester.widget<IconButton>(
-      find.widgetWithIcon(IconButton, Icons.chevron_left),
+      find.byKey(const Key('cal:prev_month')),
     );
     expect(prevBtn.onPressed, isNull);
 
     // Next month button is enabled
-    final nextFinder = find.widgetWithIcon(IconButton, Icons.chevron_right);
+    final nextFinder = find.byKey(const Key('cal:next_month'));
     final nextBtn = tester.widget<IconButton>(nextFinder);
     expect(nextBtn.onPressed, isNotNull);
 
     await tester.tap(nextFinder);
     await tester.pumpAndSettle();
 
-    expect(find.text('12/2026'), findsOneWidget);
+    expect(find.text('Prosinec 2026'), findsOneWidget);
     expect(dayCell(DateTime(2026, 12, 1)), findsOneWidget);
   });
 }

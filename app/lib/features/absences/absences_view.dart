@@ -1,64 +1,46 @@
-import '../../l10n/strings.dart';
 import 'package:flutter/material.dart';
 
+import '../../l10n/strings.dart';
 import '../../tutorial/tutorial_ui.dart';
 import '../../widgets/app_widgets.dart' as w;
 import '../common/app_tokens.dart';
-import '../planner/plan_reserve.dart' show daysText, hoursText;
-import '../planner/planner_controller.dart';
-import '../planner/planner_view.dart';
+import '../planner/plan_reserve.dart' show hoursText;
+import '../planner/planner_view.dart'
+    show BudgetRowData, TermPlanData, YearPlanData, plannerBudgetBar;
 import 'absences_controller.dart';
 
-/// Unified Absences & Planner (Absence) screen.
+/// Short, focused Absences (Absence) screen (O3).
 ///
-/// Combines per-subject absence percentages, limits editing, semester calendar
-/// overview, recommended days off, unified subject + hour-budget cards, and
-/// planned-entry management in a single scrollable view.
+/// Shows the header with *Limity* and *Plánovač* buttons, optional no-limits
+/// banner, 3 KPI cards, optional 1-line next-recommended-day shortcut, and the
+/// unified subject + stacked hour-budget list for the active term.
 class AbsencesView extends StatelessWidget {
   final AbsencesController controller;
   final AppTokens tokens;
   final bool narrow;
-  final PlannerController? planner;
   final YearPlanData? plan;
+  final TermPlanData? term;
   final bool hasTimetable;
-  final String calendarSummary;
-  final bool stravaOn;
-  final List<ImpactTerm> Function(Map<String, dynamic> entry)? impactOf;
-  final List<ImpactTerm> Function(List<Map<String, dynamic>> entries)?
-  impactOfEntries;
-  final List<PickerSlot> Function(DateTime day)? lessonsFor;
-  final Set<DateTime> Function()? freeDays;
-  final VoidCallback? onOpenCalendar;
   final VoidCallback? onOpenLimits;
-  final void Function(String template)? tutorialEvent;
+  final VoidCallback? onOpenPlanner;
 
   const AbsencesView({
     super.key,
     required this.controller,
     required this.tokens,
     this.narrow = false,
-    this.planner,
     this.plan,
+    this.term,
     this.hasTimetable = true,
-    this.calendarSummary = '',
-    this.stravaOn = false,
-    this.impactOf,
-    this.impactOfEntries,
-    this.lessonsFor,
-    this.freeDays,
-    this.onOpenCalendar,
     this.onOpenLimits,
-    this.tutorialEvent,
+    this.onOpenPlanner,
   });
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: controller,
-      builder: (context, _) => PlannerListener(
-        controller: planner,
-        builder: (context) => _body(context),
-      ),
+      builder: (context, _) => _body(context),
     );
   }
 
@@ -95,37 +77,10 @@ class AbsencesView extends StatelessWidget {
     );
   }
 
-  static String _termTitle(TermPlanData t) =>
-      t.key == 'sem1' ? Strings.get('term_sem1') : Strings.get('term_sem2');
-
   Widget _body(BuildContext context) {
     final c = controller;
     final t = tokens;
-    final hasPlan = planner != null && plan != null;
-    final hasData = c.subjects.isNotEmpty;
-    final term = hasPlan && hasData
-        ? (plan!.term(planner!.plannerTerm) ?? plan!.defaultTerm)
-        : null;
-
-    final plannerSections = hasPlan && hasData
-        ? PlannerSections(
-            controller: planner!,
-            plan: plan,
-            hasTimetable: hasTimetable,
-            hasData: hasData,
-            calendarSummary: calendarSummary,
-            stravaOn: stravaOn,
-            narrow: narrow,
-            impactOf: impactOf,
-            impactOfEntries: impactOfEntries,
-            lessonsFor: lessonsFor,
-            freeDays: freeDays,
-            onOpenCalendar: onOpenCalendar,
-            tutorialEvent: tutorialEvent,
-            subjectsSection: term != null ? _subjectsSection(term) : null,
-            embedded: true,
-          )
-        : null;
+    final activeTerm = term ?? plan?.defaultTerm;
 
     final compactStyle = narrow
         ? const ButtonStyle(
@@ -153,19 +108,17 @@ class AbsencesView extends StatelessWidget {
             maxLines: narrow ? 2 : null,
           ),
         ),
-      if (plannerSections != null)
-        Tooltip(
-          message: Strings.get('plan_custom_hint'),
-          child: ElevatedButton.icon(
-            style: compactStyle,
-            onPressed: () => plannerSections.showCustomPlanDialog(context),
-            icon: Icon(Icons.edit_calendar_outlined, size: narrow ? 16 : 18),
-            label: Text(
-              Strings.get('plan_custom'),
-              style: compactTextStyle,
-              textAlign: narrow ? TextAlign.center : null,
-              maxLines: narrow ? 2 : null,
-            ),
+      if (onOpenPlanner != null)
+        FilledButton.icon(
+          key: const Key('abs:planner_btn'),
+          style: compactStyle,
+          onPressed: onOpenPlanner,
+          icon: Icon(Icons.event_available_outlined, size: narrow ? 16 : 18),
+          label: Text(
+            Strings.get('abs_planner_btn'),
+            style: compactTextStyle,
+            textAlign: narrow ? TextAlign.center : null,
+            maxLines: narrow ? 2 : null,
           ),
         ),
     ];
@@ -182,19 +135,16 @@ class AbsencesView extends StatelessWidget {
     final blocks = <Widget>[header];
     if (narrow && actions.isNotEmpty) {
       blocks.add(
-        actions.length == 1
-            ? Align(alignment: Alignment.centerLeft, child: actions.first)
-            : Row(
-                spacing: 8,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [for (final a in actions) Expanded(child: a)],
-              ),
+        Row(
+          spacing: t.gap / 2,
+          children: [for (final a in actions) Expanded(child: a)],
+        ),
       );
     }
     if (noLimits != null) blocks.add(noLimits);
 
-    // Case 1: no subjects (no timetable or no absence data).
-    if (!hasData) {
+    // Case 1: no subjects.
+    if (c.subjects.isEmpty) {
       blocks.add(w.EmptyState(text: Strings.get('no_data'), tok: t));
       if (!hasTimetable) {
         blocks.add(
@@ -215,73 +165,58 @@ class AbsencesView extends StatelessWidget {
       return _scroll(blocks, gap);
     }
 
-    // Case 2: subjects present, no active term (closed year or standalone view).
-    if (term == null) {
-      blocks.add(_threeCardStats());
-      blocks.add(_subjectCardsList(null));
-      if (plannerSections != null) {
-        blocks.add(plannerSections);
-      } else if (!hasTimetable) {
-        blocks.add(
-          Text(
-            Strings.get('planner_need_refresh'),
-            style: TextStyle(color: t.faint, fontSize: t.fsSmall),
+    // Case 2 & 3: subjects present.
+    blocks.add(_threeCardStats());
+    if (activeTerm != null &&
+        activeTerm.recommended.isNotEmpty &&
+        onOpenPlanner != null) {
+      final next = activeTerm.recommended.first.day;
+      blocks.add(
+        Card(
+          key: const Key('abs:next_plan_row'),
+          color: t.card,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(t.radiusMd),
+            side: BorderSide(color: t.border),
           ),
-        );
-      }
-      return _scroll(blocks, gap);
-    }
-
-    // Case 3: active term — full merged screen.
-    if (plan!.terms.length >= 2) {
-      final termButtons = [
-        for (final other in plan!.terms)
-          () {
-            final label =
-                '${_termTitle(other)} · ${Strings.format('term_until', {'d': w.czDay(other.close)})}';
-            void pick() => planner!.selectPlannerTerm(other.key);
-            final child = Text(
-              label,
-              style: compactTextStyle,
-              textAlign: narrow ? TextAlign.center : null,
-              maxLines: narrow ? 2 : null,
-            );
-            return other.key == term.key
-                ? ElevatedButton(
-                    style: compactStyle,
-                    onPressed: pick,
-                    child: child,
-                  )
-                : OutlinedButton(
-                    style: compactStyle,
-                    onPressed: pick,
-                    child: child,
-                  );
-          }(),
-      ];
-      blocks.add(
-        narrow
-            ? Row(
-                spacing: t.gap / 2,
-                children: [for (final b in termButtons) Expanded(child: b)],
-              )
-            : Wrap(
-                spacing: t.gap / 2,
-                runSpacing: t.gap / 2,
-                children: termButtons,
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onOpenPlanner,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: t.pad, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(Icons.beach_access_outlined, color: t.green, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      Strings.format('planner_next', {
+                        'day': '${w.dayName(next, true)} ${w.czDay(next)}',
+                      }),
+                      style: TextStyle(
+                        color: t.text,
+                        fontSize: t.fsSmall,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Icon(Icons.chevron_right, color: t.muted, size: 20),
+                ],
               ),
-      );
-    }
-    if (!term.hasData) {
-      blocks.add(
-        Text(
-          Strings.get('term_fresh'),
-          style: TextStyle(color: t.accent, fontSize: t.fsSmall),
+            ),
+          ),
         ),
       );
     }
-    blocks.add(_fourCardStats(term));
-    blocks.add(plannerSections!);
+    blocks.add(_subjectsSection(activeTerm));
+    if (activeTerm == null && !hasTimetable) {
+      blocks.add(
+        Text(
+          Strings.get('planner_need_refresh'),
+          style: TextStyle(color: t.faint, fontSize: t.fsSmall),
+        ),
+      );
+    }
     return _scroll(blocks, gap);
   }
 
@@ -331,94 +266,9 @@ class AbsencesView extends StatelessWidget {
     );
   }
 
-  Widget _fourCardStats(TermPlanData term) {
-    final c = controller;
+  Widget _subjectsSection(TermPlanData? term) {
     final t = tokens;
-    final remaining = term.remainingDays.toSet();
-    final plannedDays = term.plannedDates.intersection(remaining).length;
-    final plannedHours = term.planned.fold(0, (sum, r) => sum + r.costHours);
-    final warnCritKind = c.critCount > 0
-        ? 'critical'
-        : (c.warnCount > 0 ? 'warning' : 'ok');
-
-    final cards = <Widget>[
-      w.StatCard(
-        label: Strings.get('avg_absence'),
-        value: '${c.average.toStringAsFixed(1)} %',
-        tok: t,
-      ),
-      w.StatCard(
-        label: Strings.get('stat_warn_crit'),
-        value: '${c.warnCount} / ${c.critCount}',
-        tok: t,
-        kind: warnCritKind,
-      ),
-      w.StatCard(
-        label: Strings.get('stat_can_afford'),
-        value: daysText(term.capacity),
-        tok: t,
-        kind: term.capacity > 0 ? 'ok' : 'warning',
-      ),
-      w.StatCard(
-        label: Strings.get('stat_planned'),
-        value: '${daysText(plannedDays)} · $plannedHours h',
-        tok: t,
-        kind: plannedDays > 0 ? 'sent' : 'info',
-      ),
-    ];
-
-    final Widget grid;
-    if (!narrow) {
-      grid = IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          spacing: t.gap,
-          children: cards,
-        ),
-      );
-    } else {
-      final half = t.gap / 2;
-      grid = Column(
-        spacing: half,
-        children: [
-          for (var i = 0; i < cards.length; i += 2)
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                spacing: half,
-                children: cards.sublist(i, i + 2),
-              ),
-            ),
-        ],
-      );
-    }
-
-    final tight = term.tightest;
-    final summary = [
-      '${Strings.get('planner_horizon')}: ${term.remainingDays.length}',
-      if (tight != null)
-        '${Strings.get('stat_tightest')}: ${tight.name} (${Strings.format('hours_free', {'n': hoursText(tight.free)})})',
-    ].join(' · ');
-
-    return TutorialAnchor(
-      anchorKey: 'abs_stats',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        spacing: narrow ? 4 : 6,
-        children: [
-          grid,
-          Text(
-            summary,
-            style: TextStyle(color: t.muted, fontSize: t.fsSmall),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _subjectsSection(TermPlanData term) {
-    final t = tokens;
-    final hasBudgets = term.budgets.isNotEmpty;
+    final hasBudgets = term != null && term.budgets.isNotEmpty;
     Widget legend(Color color, String label) => Row(
       mainAxisSize: MainAxisSize.min,
       spacing: 4,
@@ -613,8 +463,6 @@ class AbsencesView extends StatelessWidget {
       children: [
         w.Meter(valuePct: subject.currentPct, tok: t, kind: subject.status),
         const SizedBox(width: 8),
-        // Fixed slot for the badge, so a shorter label doesn't shift
-        // the meter sideways.
         SizedBox(
           width: t.fsTiny * 8,
           child: Align(
@@ -629,7 +477,6 @@ class AbsencesView extends StatelessWidget {
       ],
     );
     final body = narrow
-        // Phone: the meter goes under the name, which needs the width.
         ? Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [info, const SizedBox(height: 8), gauge],
@@ -642,7 +489,6 @@ class AbsencesView extends StatelessWidget {
     final t = tokens;
     return Card(
       color: t.card,
-      // `components.card`: a 1 px outline in the border colour.
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(t.radiusMd),
         side: BorderSide(color: t.border),

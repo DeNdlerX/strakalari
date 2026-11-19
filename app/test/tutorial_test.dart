@@ -10,6 +10,7 @@ import 'package:app/controllers/app_state.dart';
 import 'package:app/features/absences/absences_live.dart';
 import 'package:app/features/common/app_tokens.dart';
 import 'package:app/features/marks/marks_live.dart';
+import 'package:app/features/planner/planner_live.dart';
 import 'package:app/features/today/today_controller.dart';
 import 'package:app/features/today/today_view.dart';
 import 'package:app/l10n/strings.dart';
@@ -347,6 +348,7 @@ void main() {
       'today',
       'timetable',
       'absences',
+      'absences/plan',
       'marks',
       'lunches',
       'activity',
@@ -557,19 +559,26 @@ void main() {
     expect(Strings.get('tut_settings_intro_body_narrow'), contains('School'));
   });
 
-  group('F1b merged absences tour', () {
-    test('planner tour is removed and absences tour has 4 merged steps', () {
+  group('F1c split absences and planner tours', () {
+    test('planner tour is removed and absences/absences_plan tours are split', () {
       expect(tours.containsKey('planner'), isFalse);
       expect(
         tours['absences']!.steps.map((s) => s.key).toList(),
-        ['abs_stats', 'plan_strip', 'plan_pick', 'abs_subject'],
+        ['abs_stats', 'abs_subject'],
       );
+      expect(tours['absences']!.route, 'absences');
+      expect(
+        tours['absences_plan']!.steps.map((s) => s.key).toList(),
+        ['plan_strip', 'plan_pick'],
+      );
+      expect(tours['absences_plan']!.route, 'absences/plan');
     });
 
     test('skips plan_strip and plan_pick without timetable', () {
       final st = freshState();
       finishIntro(st);
-      expect(st.tutorialVisibleStepIndices(tours['absences']!), [0, 3]);
+      expect(st.tutorialVisibleStepIndices(tours['absences_plan']!), isEmpty);
+      expect(st.tutorialVisibleStepIndices(tours['absences']!), [0, 1]);
     });
 
     Map<String, List<Map<String, Object?>>> fullWeekTimetable() => {
@@ -595,15 +604,35 @@ void main() {
         final term = st.yearPlan().defaultTerm;
         expect(term, isNotNull);
         expect(term!.recommended, isEmpty);
-        expect(st.tutorialVisibleStepIndices(tours['absences']!), [0, 1, 3]);
+        expect(st.tutorialVisibleStepIndices(tours['absences_plan']!), [0]);
       });
     });
 
-    testWidgets('LiveAbsencesView offers tour only when recommended days exist',
+    testWidgets(
+        'LiveAbsencesView offers absences tour on subjects and LivePlannerPage offers absences_plan only when recommended days exist',
         (tester) async {
       final blockedNow = DateTime(2027, 1, 20, 10, 0);
       await withClock(Clock.fixed(blockedNow), () async {
-        // Without recommended days (over limit): tour is NOT offered.
+        // Empty subjects: LiveAbsencesView does NOT offer absences tour.
+        final empty = freshState();
+        finishIntro(empty);
+        empty.data = {'absence': <String, Object?>{}, 'timetable': <String, Object?>{}};
+        empty.demoMode = false;
+        await tester.pumpWidget(ProviderScope(
+          key: const ValueKey('empty_abs'),
+          overrides: [
+            appStateProvider.overrideWith(() => FixedAppStateController(empty)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LiveAbsencesView(tokens: AppTokens.dark(), now: blockedNow),
+            ),
+          ),
+        ));
+        await tester.pump();
+        expect(empty.tutorialCurrent(), isNull);
+
+        // Without recommended days (over limit): LivePlannerPage does NOT offer absences_plan.
         final blocked = freshState({
           'absence_critical_pct': 5.0,
           'sem1_close': '25.01.2027',
@@ -615,12 +644,13 @@ void main() {
         };
         blocked.demoMode = false;
         await tester.pumpWidget(ProviderScope(
+          key: const ValueKey('blocked_plan'),
           overrides: [
             appStateProvider.overrideWith(() => FixedAppStateController(blocked)),
           ],
           child: MaterialApp(
             home: Scaffold(
-              body: LiveAbsencesView(tokens: AppTokens.dark(), now: blockedNow),
+              body: LivePlannerPage(tokens: AppTokens.dark(), now: blockedNow),
             ),
           ),
         ));
@@ -630,10 +660,10 @@ void main() {
 
       final readyNow = DateTime(2026, 9, 10, 10, 0);
       await withClock(Clock.fixed(readyNow), () async {
-        // With recommended days: tour IS offered with all 4 steps visible.
-        final ready = freshState();
-        finishIntro(ready);
-        ready.data = {
+        // LiveAbsencesView with subjects offers absences tour with [0, 1].
+        final readyAbs = freshState();
+        finishIntro(readyAbs);
+        readyAbs.data = {
           'absence': {'Matematika': 2.0},
           'timetable': {
             '11.09.2026': [
@@ -641,11 +671,11 @@ void main() {
             ],
           },
         };
-        ready.demoMode = false;
+        readyAbs.demoMode = false;
         await tester.pumpWidget(ProviderScope(
-          key: const ValueKey('ready'),
+          key: const ValueKey('ready_abs'),
           overrides: [
-            appStateProvider.overrideWith(() => FixedAppStateController(ready)),
+            appStateProvider.overrideWith(() => FixedAppStateController(readyAbs)),
           ],
           child: MaterialApp(
             home: Scaffold(
@@ -654,9 +684,36 @@ void main() {
           ),
         ));
         await tester.pump();
-        expect(ready.tutorial, ('absences', 0));
-        expect(ready.tutorialVisibleStepIndices(tours['absences']!),
-            [0, 1, 2, 3]);
+        expect(readyAbs.tutorial, ('absences', 0));
+        expect(readyAbs.tutorialVisibleStepIndices(tours['absences']!), [0, 1]);
+
+        // LivePlannerPage with recommended days offers absences_plan even when legacy 'planner' is in tutorials_done.
+        final readyPlan = freshState({
+          'tutorials_done': ['intro', 'planner'],
+        });
+        readyPlan.data = {
+          'absence': {'Matematika': 2.0},
+          'timetable': {
+            '11.09.2026': [
+              {'subject': 'Matematika', 'time': '1. 8:00 - 8:45'},
+            ],
+          },
+        };
+        readyPlan.demoMode = false;
+        await tester.pumpWidget(ProviderScope(
+          key: const ValueKey('ready_plan'),
+          overrides: [
+            appStateProvider.overrideWith(() => FixedAppStateController(readyPlan)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LivePlannerPage(tokens: AppTokens.dark(), now: readyNow),
+            ),
+          ),
+        ));
+        await tester.pump();
+        expect(readyPlan.tutorial, ('absences_plan', 0));
+        expect(readyPlan.tutorialVisibleStepIndices(tours['absences_plan']!), [0, 1]);
       });
     });
 

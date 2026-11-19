@@ -237,6 +237,8 @@ class AppState {
   // -- caches --------------------------------------------------------------------
   Object? yearPlanCacheKey;
   Object? yearPlanCache;
+  Object? monthSlotsCacheKey;
+  Map<DateTime, List<PickerSlot>>? monthSlotsCache;
   (int, Map<String, Object?>)? baselineCacheKey;
   Map<(int, int), Object>? baselineCache;
 

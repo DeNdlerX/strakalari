@@ -56,7 +56,9 @@ String? backTarget({
   required bool wizardShown,
 }) {
   if (route == 'today' || wizardShown) return null;
-  if (route == 'absences/limits') return 'absences';
+  if (route == 'absences/plan' || route == 'absences/limits') {
+    return 'absences';
+  }
   return (moreRoutes.contains(route) && narrow) ? 'more' : 'today';
 }
 
@@ -220,6 +222,7 @@ class AppScaffold extends ConsumerWidget {
       if (shellRoutes.contains(pendingPath) ||
           pendingPath == 'more' ||
           pendingPath == 'wizard' ||
+          pendingPath == 'absences/plan' ||
           pendingPath == 'absences/limits') {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (context.mounted) context.go(routeLocation(pending));

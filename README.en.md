@@ -48,7 +48,7 @@ Want test versions before everyone else? Switch the update channel to **Beta** i
 
 - **Today** — pending excuses, sent with one click: late arrivals, early leaves, single lessons and whole days (pictured above).
 - **Timetable** — the week as in Bakaláři, with absences, substitutions, cancelled lessons and rooms.
-- **Absences** — the percentage for every subject, warnings before you go over the limit, and planning how many days you can still afford to miss evenly up to the closure.
+- **Absences** — the percentage for every subject, warnings before you go over the limit, quick *Limits* editing, and a *Planner* showing how many days you can still afford to miss evenly up to the closure.
 - **Marks** — weighted averages, a report-card estimate, "what do I need on the next test" and "what if" predictions.
 - **Lunches** — the weekly menu, ordering everything at once, an ingredient blacklist and optional AI recommendations.
 

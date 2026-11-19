@@ -77,7 +77,7 @@ MENUS = [
      "Buchtičky se šodó"),
 ]
 
-TOURS_DONE = ["intro", "excuse", "timetable", "lunches", "marks",
+TOURS_DONE = ["intro", "excuse", "timetable", "absences_plan", "lunches", "marks",
               "settings", "activity"]
 
 

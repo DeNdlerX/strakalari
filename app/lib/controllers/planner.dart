@@ -542,6 +542,55 @@ extension PlannerLogic on AppState {
     return slots;
   }
 
+  /// Cached month-level slot map for [month] (Mon–Fri) so [PlannerMonthCalendar]
+  /// does not recompute every cell on each rebuild (R3c S7).
+  ///
+  /// Today is NEVER served from the cache (R3c S11): within a day, lessons
+  /// become `past` as the clock advances past their start time, so today is
+  /// recomputed live via [pickerSlotsFor] on every call while all other days
+  /// of the month are cached.
+  Map<DateTime, List<PickerSlot>> pickerSlotsForMonth(
+    DateTime month, [
+    DateTime? now,
+  ]) {
+    final current = now ?? clock.now();
+    final today = DateTime(current.year, current.month, current.day);
+    final hol = calendarData().dates.toList()..sort();
+    final holidaysHash = Object.hashAll(hol);
+    final key = (
+      month.year,
+      month.month,
+      dataRev,
+      plannedSkips.toString(),
+      today,
+      semClose('sem1'),
+      semClose('sem2'),
+      holidaysHash,
+    );
+    if (monthSlotsCacheKey != key || monthSlotsCache == null) {
+      final cached = <DateTime, List<PickerSlot>>{};
+      var d = DateTime(month.year, month.month, 1);
+      final end = month.month == 12
+          ? DateTime(month.year + 1, 1, 1)
+          : DateTime(month.year, month.month + 1, 1);
+      while (d.isBefore(end)) {
+        if (d.weekday <= DateTime.friday && d != today) {
+          cached[d] = pickerSlotsFor(d, current);
+        }
+        d = addDays(d, 1);
+      }
+      monthSlotsCacheKey = key;
+      monthSlotsCache = cached;
+    }
+    final out = Map<DateTime, List<PickerSlot>>.of(monthSlotsCache!);
+    if (today.year == month.year &&
+        today.month == month.month &&
+        today.weekday <= DateTime.friday) {
+      out[today] = pickerSlotsFor(today, current);
+    }
+    return out;
+  }
+
   /// `[(term, impact rows)]` for a prospective range (what-if preview).
   List<(Object?, List<Object?>)> planImpact(String startIso, String endIso,
       [int? startPeriod, int? endPeriod, DateTime? now]) {

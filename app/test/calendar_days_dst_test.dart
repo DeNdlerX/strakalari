@@ -143,7 +143,7 @@ void main() {
       await withClock(Clock.fixed(DateTime(2026, 11, 12, 10)), () async {
         await t.pumpWidget(MaterialApp(
           home: Scaffold(
-            body: PlannerSections(
+            body: PlannerPage(
               controller: PlannerController({
                 'long_absence_excuses': ['Omluvte absenci.'],
               }),
@@ -162,7 +162,7 @@ void main() {
     final friday = DateTime(2026, 11, 13);
 
     testWidgets(
-        'wide: today sits in the Thursday row, 13 Nov in the Friday row',
+        'wide: today sits in the Thursday column, 13 Nov in the Friday column',
         (t) async {
       await pump(t, narrow: false);
       expect(cell(today), findsOneWidget);
@@ -171,11 +171,14 @@ void main() {
       expect(cell(DateTime(2026, 11, 8)), findsNothing);
       expect(outlinedToday(t, today), isTrue);
       expect(outlinedToday(t, friday), isFalse);
-      // Rows are weekdays: the same row before and after the clock change.
-      expect(t.getTopLeft(cell(today)).dy, t.getTopLeft(cell(thuBefore)).dy);
-      expect(t.getTopLeft(cell(friday)).dy, t.getTopLeft(cell(friBefore)).dy);
-      expect(t.getTopLeft(cell(friday)).dy,
-          greaterThan(t.getTopLeft(cell(today)).dy));
+      final thuX = t.getTopLeft(cell(today)).dx;
+      final friX = t.getTopLeft(cell(friday)).dx;
+      expect(friX, greaterThan(thuX));
+      // Navigate back to October (across 25 Oct DST): same weekday columns.
+      await t.tap(find.byKey(const Key('cal:prev_month')));
+      await t.pumpAndSettle();
+      expect(t.getTopLeft(cell(thuBefore)).dx, thuX);
+      expect(t.getTopLeft(cell(friBefore)).dx, friX);
     });
 
     testWidgets(
@@ -186,11 +189,13 @@ void main() {
       expect(cell(friday), findsOneWidget);
       expect(cell(DateTime(2026, 11, 8)), findsNothing);
       expect(outlinedToday(t, today), isTrue);
-      // Columns are weekdays: the same column before and after the change.
-      expect(t.getTopLeft(cell(today)).dx, t.getTopLeft(cell(thuBefore)).dx);
-      expect(t.getTopLeft(cell(friday)).dx, t.getTopLeft(cell(friBefore)).dx);
-      expect(t.getTopLeft(cell(friday)).dx,
-          greaterThan(t.getTopLeft(cell(today)).dx));
+      final thuX = t.getTopLeft(cell(today)).dx;
+      final friX = t.getTopLeft(cell(friday)).dx;
+      expect(friX, greaterThan(thuX));
+      await t.tap(find.byKey(const Key('cal:prev_month')));
+      await t.pumpAndSettle();
+      expect(t.getTopLeft(cell(thuBefore)).dx, thuX);
+      expect(t.getTopLeft(cell(friBefore)).dx, friX);
     });
   });
 
@@ -204,7 +209,7 @@ void main() {
     await withClock(Clock.fixed(DateTime(2026, 10, 1, 10)), () async {
       await t.pumpWidget(MaterialApp(
         home: Scaffold(
-          body: CustomPlanDialog(
+          body: PlannerMonthCalendar(
             controller: PlannerController({
               'long_absence_excuses': ['Omluvte absenci.'],
             }),

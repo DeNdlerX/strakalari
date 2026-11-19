@@ -5,7 +5,6 @@ import 'package:app/features/absences/absences_controller.dart';
 import 'package:app/features/absences/absences_view.dart';
 import 'package:app/features/absences/limits_page.dart';
 import 'package:app/features/common/app_tokens.dart';
-import 'package:app/features/planner/planner_controller.dart';
 import 'package:app/features/planner/planner_view.dart';
 import 'package:app/l10n/strings.dart';
 import 'package:app/shell/router.dart';
@@ -269,7 +268,6 @@ void main() {
         body: AbsencesView(
           controller: abs,
           tokens: tok,
-          planner: PlannerController({}),
           plan: plan,
           hasTimetable: true,
         ),
@@ -277,8 +275,8 @@ void main() {
     ));
     await t.pump();
 
-    // 4 KPI cards in active term.
-    expect(find.byType(StatCard), findsNWidgets(4));
+    // 3 KPI cards in short Absence screen (O3).
+    expect(find.byType(StatCard), findsNWidgets(3));
 
     // Each subject appears exactly once (no duplicate budget/absence lists).
     expect(find.text('Matematika'), findsOneWidget);
@@ -287,7 +285,13 @@ void main() {
 
     // Budget rows render projected % + budget lines + badge precedence.
     expect(find.text('27.5 %'), findsOneWidget);
-    expect(find.text(Strings.get('state_critical')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('abs:subjects')),
+        matching: find.text(Strings.get('state_critical')),
+      ),
+      findsOneWidget,
+    );
     expect(find.text(Strings.get('budget_tight')), findsOneWidget);
     expect(
       find.text(Strings.format('budget_final', {'p': '24.0', 'limit': 25.0})),
@@ -344,7 +348,6 @@ void main() {
         body: AbsencesView(
           controller: abs,
           tokens: tok,
-          planner: PlannerController({}),
           plan: YearPlanData(
             today: DateTime(2026, 9, 26),
             firstDay: DateTime(2026, 9, 28),
@@ -367,6 +370,68 @@ void main() {
       expect(size.height, 8);
       expect(size.width, greaterThan(0));
     }
+  });
+
+  testWidgets(
+      'O3 short Absence screen opens Planner from header and next-day shortcut, omits calendar/recommended/planned, and lays narrow actions on one row',
+      (t) async {
+    t.view.physicalSize = const Size(390, 844);
+    t.view.devicePixelRatio = 1.0;
+    addTearDown(t.view.reset);
+    Strings.lang = 'cs';
+
+    var plannerOpens = 0;
+    var limitsOpens = 0;
+    final tok = AppTokens.dark();
+    final abs = build()..hasSubjectLimits = false;
+    final term = TermPlanData(
+      key: 'sem1',
+      start: DateTime(2026, 9, 1),
+      close: DateTime(2027, 1, 25),
+      capacity: 4,
+      hasData: true,
+      active: true,
+      recommended: [
+        DayOptionData(day: DateTime(2026, 10, 5), lessonsCount: 5),
+      ],
+    );
+
+    await t.pumpWidget(MaterialApp(
+      theme: tok.toThemeData(),
+      home: Scaffold(
+        body: AbsencesView(
+          controller: abs,
+          tokens: tok,
+          narrow: true,
+          term: term,
+          onOpenLimits: () => limitsOpens++,
+          onOpenPlanner: () => plannerOpens++,
+        ),
+      ),
+    ));
+    await t.pump();
+
+    expect(find.byKey(const Key('abs:no_limits_banner')), findsOneWidget);
+    final limRect = t.getRect(find.byKey(const Key('abs:limits_btn')));
+    final planRect = t.getRect(find.byKey(const Key('abs:planner_btn')));
+    expect((limRect.center.dy - planRect.center.dy).abs(), lessThan(4));
+
+    // Planner-only sections are NOT rendered on AbsencesView.
+    expect(find.text(Strings.get('section_overview').toUpperCase()), findsNothing);
+    expect(find.textContaining(Strings.get('section_plan').toUpperCase()), findsNothing);
+    expect(find.textContaining(Strings.get('planned_title').toUpperCase()), findsNothing);
+
+    await t.tap(find.byKey(const Key('abs:planner_btn')));
+    await t.pump();
+    expect(plannerOpens, 1);
+
+    await t.tap(find.byKey(const Key('abs:next_plan_row')));
+    await t.pump();
+    expect(plannerOpens, 2);
+
+    await t.tap(find.byKey(const Key('abs:limits_btn')));
+    await t.pump();
+    expect(limitsOpens, 1);
   });
 }
 

@@ -90,19 +90,6 @@ void main() {
         ),
       );
       await tester.pump();
-      await tester.scrollUntilVisible(
-        find.textContaining(Strings.get('section_plan').toUpperCase()),
-        300,
-      );
-      expect(
-        find.textContaining(Strings.get('section_plan').toUpperCase()),
-        findsOneWidget,
-      );
-      expect(find.text(Strings.get('plan_skip')), findsWidgets);
-      await tester.scrollUntilVisible(
-        find.text(Strings.get('abs_subjects_section').toUpperCase()),
-        300,
-      );
       expect(
         find.text(Strings.get('abs_subjects_section').toUpperCase()),
         findsOneWidget,
@@ -121,6 +108,31 @@ void main() {
         ),
         findsOneWidget,
       );
+
+      // Recommendations live on LivePlannerPage.
+      await tester.pumpWidget(
+        ProviderScope(
+          key: const ValueKey('planner_half'),
+          overrides: [
+            appStateProvider.overrideWith(() => FixedAppStateController(s)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LivePlannerPage(now: DateTime(2026, 9, 10, 10, 0)),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.scrollUntilVisible(
+        find.textContaining(Strings.get('section_plan').toUpperCase()),
+        300,
+      );
+      expect(
+        find.textContaining(Strings.get('section_plan').toUpperCase()),
+        findsOneWidget,
+      );
+      expect(find.text(Strings.get('plan_skip')), findsWidgets);
     });
   });
 

@@ -160,13 +160,15 @@ void main() {
     });
 
     // test_mobile.py::test_every_screen_builds: phone page 390x844, no
-    // `report_error` for any of the 8 live routes; `/planner` redirects to `/absences`.
+    // `report_error` for any of the live routes; `/planner` redirects to `/absences/plan`.
     testWidgets('everyScreenBuilds', (tester) async {
       setViewport(tester, 390, 844);
       for (final route in [
         '/today',
         '/timetable',
         '/absences',
+        '/absences/plan',
+        '/absences/limits',
         '/marks',
         '/lunches',
         '/activity',
@@ -185,8 +187,8 @@ void main() {
         expect(state.lastError, isNull, reason: route);
         container.dispose();
       }
-      // Compatibility redirect: `/planner` lands on `/absences`.
-      expect(routeForLocation('/planner'), 'absences');
+      // Compatibility redirect: `/planner` lands on `/absences/plan`.
+      expect(routeForLocation('/planner'), 'absences/plan');
       final container = ProviderContainer();
       final state = container.read(appStateProvider);
       state.wizardDismissed = true;
@@ -197,7 +199,7 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(state.lastError, isNull);
       final router = GoRouter.of(tester.element(find.byType(NavigationBar)));
-      expect(router.routerDelegate.currentConfiguration.uri.path, '/absences');
+      expect(router.routerDelegate.currentConfiguration.uri.path, '/absences/plan');
       container.dispose();
     });
 

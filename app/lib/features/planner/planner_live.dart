@@ -1,8 +1,11 @@
-// Bridges [AppState] (Riverpod) to [PlannerController] / [PlannerSections].
+// Bridges [AppState] (Riverpod) to [PlannerController] / [PlannerPage].
+import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../controllers/app_state.dart' hide PlannerController;
 import '../../l10n/strings.dart';
+import '../common/app_tokens.dart';
 import 'planner_controller.dart';
 import 'planner_view.dart';
 
@@ -202,5 +205,72 @@ String calendarSummaryFor(AppState s) {
         ' · ${Strings.format('cal_closes', {'a': sem1.isEmpty ? Strings.get('cal_auto') : sem1, 'b': sem2.isEmpty ? Strings.get('cal_auto') : sem2})}';
   } catch (_) {
     return '';
+  }
+}
+
+/// Live Plánovač sub-route (`/absences/plan`) wired to [appStateProvider].
+class LivePlannerPage extends ConsumerWidget {
+  final AppTokens? tokens;
+  final bool narrow;
+  final DateTime? now;
+  final VoidCallback? onBack;
+
+  const LivePlannerPage({
+    super.key,
+    this.tokens,
+    this.narrow = false,
+    this.now,
+    this.onBack,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStateProvider);
+    final tok = tokens ?? s.appTokens;
+    final planner = plannerControllerFor(s);
+    final hasTimetable = s.timetable().isNotEmpty;
+    final (states, _) = s.subjectStates();
+    final hasData = hasTimetable && states.isNotEmpty;
+    final planData = hasData ? yearPlanDataFor(s, now) : null;
+    if (planData != null) {
+      final term = planData.term(planner.plannerTerm) ?? planData.defaultTerm;
+      if (term != null && term.hasData && term.recommended.isNotEmpty) {
+        s.tutorialOffer('absences_plan');
+      }
+    }
+    return PlannerPage(
+      controller: planner,
+      tokens: tok,
+      plan: planData,
+      hasTimetable: hasTimetable,
+      hasData: hasData,
+      demoMode: s.demoMode,
+      calendarSummary: calendarSummaryFor(s),
+      stravaOn: s.stravaEnabled(),
+      narrow: narrow,
+      impactOf: (entry) => convertPlannerImpacts(
+        s.planImpact(
+          '${entry['start_date'] ?? ''}',
+          '${entry['end_date'] ?? ''}',
+          entry['start_period'] as int?,
+          entry['end_period'] as int?,
+          now,
+        ),
+      ),
+      impactOfEntries: (entries) => convertPlannerImpacts(
+        s.planImpactEntries([
+          for (final e in entries) Map<String, Object?>.of(e),
+        ], now),
+      ),
+      lessonsFor: (day) => s.pickerSlotsFor(day, now),
+      monthSlotsFor: (month) => s.pickerSlotsForMonth(month, now),
+      freeDays: () => s.calendarData().dates,
+      onOpenCalendar: () {
+        s.setSettingsSection('calendar');
+        s.go('settings');
+      },
+      onBack: onBack,
+      tutorialEvent: s.tutorialEvent,
+    );
   }
 }

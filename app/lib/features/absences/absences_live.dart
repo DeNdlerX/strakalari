@@ -1,4 +1,4 @@
-// Live wiring of the unified Absences & Planner screen to the shared AppState.
+// Live wiring of the short Absences screen to the shared AppState.
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +11,9 @@ import 'absences_controller.dart';
 import 'absences_view.dart';
 
 /// Builds a snapshot [AbsencesController] from the shared [AppState].
+///
+/// Always reads `yp.defaultTerm` (never `s.plannerTerm`, R3c S1) so picking
+/// another term in Plánovač never silently switches Absence's budget rows.
 AbsencesController absencesControllerFor(AppState s, [DateTime? now]) {
   final c = AbsencesController();
   c.demoMode = s.demoMode;
@@ -35,7 +38,7 @@ AbsencesController absencesControllerFor(AppState s, [DateTime? now]) {
   ];
   try {
     final yp = s.yearPlan(now);
-    final term = yp.term(s.plannerTerm) ?? yp.defaultTerm;
+    final term = yp.defaultTerm;
     if (term != null && term.hasData) {
       c.budgets = {
         for (final e in term.budgetByCanon.entries)
@@ -52,7 +55,7 @@ AbsencesController absencesControllerFor(AppState s, [DateTime? now]) {
   return c;
 }
 
-/// The unified Absences route: rebuilds whenever the shared state emits.
+/// The short Absences route: rebuilds whenever the shared state emits.
 class LiveAbsencesView extends ConsumerWidget {
   final AppTokens? tokens;
   final bool narrow;
@@ -70,47 +73,20 @@ class LiveAbsencesView extends ConsumerWidget {
     final s = ref.watch(appStateProvider);
     final tok = tokens ?? s.appTokens;
     final absController = absencesControllerFor(s, now);
-    final planner = plannerControllerFor(s);
     final hasTimetable = s.timetable().isNotEmpty;
     final planData =
         hasTimetable && absController.subjects.isNotEmpty
             ? yearPlanDataFor(s, now)
             : null;
-    if (planData != null) {
-      final term = planData.term(planner.plannerTerm) ?? planData.defaultTerm;
-      if (term != null && term.hasData && term.recommended.isNotEmpty) {
-        s.tutorialOffer('absences');
-      }
+    if (absController.subjects.isNotEmpty) {
+      s.tutorialOffer('absences');
     }
     return AbsencesView(
       controller: absController,
       tokens: tok,
       narrow: narrow,
-      planner: planner,
-      plan: planData,
+      term: planData?.defaultTerm,
       hasTimetable: hasTimetable,
-      calendarSummary: calendarSummaryFor(s),
-      stravaOn: s.stravaEnabled(),
-      impactOf: (entry) => convertPlannerImpacts(
-        s.planImpact(
-          '${entry['start_date'] ?? ''}',
-          '${entry['end_date'] ?? ''}',
-          entry['start_period'] as int?,
-          entry['end_period'] as int?,
-          now,
-        ),
-      ),
-      impactOfEntries: (entries) => convertPlannerImpacts(
-        s.planImpactEntries([
-          for (final e in entries) Map<String, Object?>.of(e),
-        ], now),
-      ),
-      lessonsFor: (day) => s.pickerSlotsFor(day, now),
-      freeDays: () => s.calendarData().dates,
-      onOpenCalendar: () {
-        s.setSettingsSection('calendar');
-        s.go('settings');
-      },
       onOpenLimits: () {
         final router = GoRouter.maybeOf(context);
         if (router != null) {
@@ -119,7 +95,14 @@ class LiveAbsencesView extends ConsumerWidget {
           s.go('absences/limits');
         }
       },
-      tutorialEvent: s.tutorialEvent,
+      onOpenPlanner: () {
+        final router = GoRouter.maybeOf(context);
+        if (router != null) {
+          router.go('/absences/plan');
+        } else {
+          s.go('absences/plan');
+        }
+      },
     );
   }
 }
