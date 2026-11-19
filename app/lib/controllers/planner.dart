@@ -391,6 +391,157 @@ extension PlannerLogic on AppState {
     return plan;
   }
 
+  /// Read-only lesson slots of [rawDay] for the custom planner calendar,
+  /// using the same timetable source priority as [yearPlan] (concrete week,
+  /// then stable template, then inferred weekly union). Port of `_pick_day`.
+  ///
+  /// Returns an empty list on weekends, free days, days after the school
+  /// year's closure, or when no timetable is cached.
+  List<PickerSlot> pickerSlotsFor(DateTime rawDay, [DateTime? now]) {
+    final day = DateTime(rawDay.year, rawDay.month, rawDay.day);
+    if (day.weekday >= DateTime.saturday) return const [];
+    final tt = timetable();
+    if (tt.isEmpty) return const [];
+
+    final current = now ?? clock.now();
+    final today = DateTime(current.year, current.month, current.day);
+    final terms = schoolYearTerms(
+      today,
+      sem1Close: semClose('sem1'),
+      sem2Close: semClose('sem2'),
+      schoolYearEnd: get('school_year_end', ''),
+    );
+    if (terms.isNotEmpty && day.isAfter(terms.last.$3)) return const [];
+
+    final plan = yearPlan(current);
+    if (plan.holidays.contains(day)) return const [];
+
+    Map<dynamic, dynamic> baseline;
+    try {
+      baseline = stableBaseline().cast<dynamic, dynamic>();
+    } catch (_) {
+      baseline = const {};
+    }
+    final complete = stableComplete();
+
+    final key = fmtDay(day);
+    List<Map<String, Object?>> rows;
+    String source;
+    if (tt.containsKey(key)) {
+      rows = tt[key]!;
+      source = 'week';
+    } else if (baseline.isNotEmpty) {
+      try {
+        rows = stableTemplateWeek(baseline, day)[day] ?? const [];
+      } catch (_) {
+        rows = const [];
+      }
+      source = 'stable';
+    } else {
+      final guessed = plan.source?.lessons(day) ?? const <Lesson>[];
+      rows = [
+        for (final l in guessed)
+          {
+            'subject': l.subject,
+            'period': l.period,
+            'time': l.time,
+            'teacher': l.teacher,
+            'room': l.room,
+          },
+      ];
+      source = rows.isNotEmpty ? 'guess' : '';
+    }
+    if (rows.isEmpty) return const [];
+
+    Set<Object>? ahead;
+    if (day == today) {
+      ahead = Set<Object>.identity()
+        ..addAll(futureLessons(rows, current, key));
+    }
+
+    final groups = <int?, List<(Map<String, Object?>, Lesson)>>{};
+    for (final raw in rows) {
+      final lesson = Lesson.fromLegacy(raw, key);
+      groups.putIfAbsent(lesson.period, () => []).add((raw, lesson));
+    }
+    final periods = groups.keys.toList()
+      ..sort((a, b) {
+        if (a == null && b == null) return 0;
+        if (a == null) return 1;
+        if (b == null) return -1;
+        return a.compareTo(b);
+      });
+
+    final slots = <PickerSlot>[];
+    for (final period in periods) {
+      final members = groups[period]!;
+      final taught = [
+        for (final pair in members)
+          if (!isClassEvent(pair.$1) &&
+              pair.$2.status != 'cancelled' &&
+              pair.$2.subject.trim().isNotEmpty &&
+              pair.$2.subject.trim() != '?')
+            pair,
+      ];
+      final shown = taught.isNotEmpty ? taught : members;
+      final lesson = shown.first.$2;
+      final subjects = <String>[];
+      for (final pair in shown) {
+        final name = pair.$2.subject;
+        if (name.isNotEmpty && !subjects.contains(name)) subjects.add(name);
+      }
+      var clockStr = shortTime(lesson.time);
+      if (!clockStr.contains(':')) clockStr = '';
+      final surname = teacherSurname(lesson.teacher);
+      final detail = [
+        if (clockStr.isNotEmpty) clockStr,
+        if (surname.isNotEmpty) surname,
+        if (lesson.room.isNotEmpty) lesson.room,
+      ].join(' · ');
+
+      var changed = false;
+      if (source == 'week') {
+        if (taught.isEmpty) {
+          changed = true;
+        } else {
+          for (final pair in taught) {
+            try {
+              final diff = classifyLesson(pair.$1, day, baseline, complete);
+              if (diff.isChange) {
+                changed = true;
+                break;
+              }
+            } catch (_) {
+              continue;
+            }
+          }
+        }
+      }
+
+      var past = false;
+      var planned = false;
+      if (taught.isNotEmpty) {
+        if (day.isBefore(today)) {
+          past = true;
+        } else if (ahead != null) {
+          past = !taught.any((pair) => ahead!.contains(pair.$1));
+        }
+        planned = plannedSkips.any((e) => entryCovers(e, day, period));
+      }
+
+      slots.add(PickerSlot(
+        period: period,
+        subject: subjects.isEmpty ? '?' : subjects.join(' / '),
+        detail: detail,
+        taught: taught.isNotEmpty,
+        past: past,
+        planned: planned,
+        changed: changed,
+      ));
+    }
+    return slots;
+  }
+
   /// `[(term, impact rows)]` for a prospective range (what-if preview).
   List<(Object?, List<Object?>)> planImpact(String startIso, String endIso,
       [int? startPeriod, int? endPeriod, DateTime? now]) {

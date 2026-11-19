@@ -338,6 +338,197 @@ void main() {
       });
     });
   });
+
+  testWidgets('F1b custom calendar receives real lessons and plans a day (R3b code M2)',
+      (tester) async {
+    tester.view.physicalSize = const Size(1280, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final activeNow = DateTime(2026, 9, 10, 10, 0);
+    await withClock(Clock.fixed(activeNow), () async {
+      final week = <String, List<Map<String, Object?>>>{};
+      for (final day in [7, 8, 9, 10, 11]) {
+        final key = '${day.toString().padLeft(2, '0')}.09.2026';
+        week[key] = [
+          {
+            'subject': 'Matematika',
+            'time': '1 (8:00 - 8:45)',
+            'teacher': 'Jan Novák',
+            'room': '101',
+            'absenceType': 'NoAbsent',
+            'absencetext': '',
+          },
+          {
+            'subject': 'Fyzika',
+            'time': '2 (8:55 - 9:40)',
+            'teacher': 'Eva Malá',
+            'room': '102',
+            'absenceType': 'NoAbsent',
+            'absencetext': '',
+          },
+        ];
+      }
+      final s = AppState(
+        configData: {
+          'tutorials_enabled': false,
+          'school_preset_id': 'custom',
+          'sem1_close': '25.01.2027',
+          'sem2_close': '26.04.2027',
+          'user_free_days': ['15.09.2026'],
+        },
+        data: {
+          'absence': {'Matematika': 8.0, 'Fyzika': 5.0},
+          'timetable': week,
+        },
+      );
+      s.demoMode = false;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _FixedAbsState(s)),
+          ],
+          child: MaterialApp(
+            theme: AppTokens.dark().toThemeData(),
+            home: Scaffold(
+              body: LiveAbsencesView(
+                tokens: AppTokens.dark(),
+                narrow: false,
+                now: activeNow,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.text(Strings.get('plan_custom')));
+      await tester.pumpAndSettle();
+
+      // Past day (Sep 8) and free day (Sep 15) cannot be tapped.
+      final pastCell = tester.widget<InkWell>(
+        find.byKey(const ValueKey('day_2026_9_8')),
+      );
+      expect(pastCell.onTap, isNull);
+      final freeCell = tester.widget<InkWell>(
+        find.byKey(const ValueKey('day_2026_9_15')),
+      );
+      expect(freeCell.onTap, isNull);
+
+      final confirmFinder = find.widgetWithText(
+        FilledButton,
+        Strings.get('confirm'),
+      );
+      expect(tester.widget<FilledButton>(confirmFinder).onPressed, isNull);
+
+      // Tapping a future school day (Mon Sep 14) enables Confirm.
+      await tester.tap(find.byKey(const ValueKey('day_2026_9_14')));
+      await tester.pump();
+      expect(tester.widget<FilledButton>(confirmFinder).onPressed, isNotNull);
+
+      await tester.tap(confirmFinder);
+      await tester.pumpAndSettle();
+
+      expect(s.plannedSkips, hasLength(1));
+      expect(s.plannedSkips.first['start_date'], '2026-09-14');
+      expect(s.plannedSkips.first['end_date'], '2026-09-14');
+    });
+  });
+
+  test('F1b pickerSlotsFor flags cancelled, event, substitution, past, planned, and off-days (R3b code M2)',
+      () {
+    final now = DateTime(2026, 9, 10, 9, 0); // Thu 9:00
+    final s = AppState(
+      configData: {
+        'school_preset_id': 'custom',
+        'sem1_close': '25.01.2027',
+        'sem2_close': '26.04.2027',
+        'user_free_days': ['15.09.2026'],
+      },
+      data: {
+        'absence': {'Matematika': 5.0, 'Fyzika': 5.0, 'Chemie': 5.0},
+        'timetable': {
+          // Today (Thu 10.09): p1 already started (8:00), p2 ahead (9:55),
+          // p3 cancelled, p4 class event, p5 substitution.
+          '10.09.2026': [
+            {
+              'subject': 'Matematika',
+              'time': '1 (8:00 - 8:45)',
+              'teacher': 'Jan Novák',
+              'room': '101',
+            },
+            {
+              'subject': 'Fyzika',
+              'time': '2 (9:55 - 10:40)',
+              'teacher': 'Eva Malá',
+              'room': '102',
+            },
+            {
+              'subject': 'Chemie',
+              'time': '3 (10:50 - 11:35)',
+              'notice': 'Odpadá',
+            },
+            {
+              'subject': 'Exkurze',
+              'time': '4 (11:45 - 12:30)',
+              'type': 'event',
+            },
+            {
+              'subject': 'Matematika',
+              'time': '5 (12:40 - 13:25)',
+              'notice': 'Suplování',
+              'changeBadgeChar': 'S',
+            },
+          ],
+          // Tomorrow (Fri 11.09): p1 planned, p2 open.
+          '11.09.2026': [
+            {
+              'subject': 'Matematika',
+              'time': '1 (8:00 - 8:45)',
+            },
+            {
+              'subject': 'Fyzika',
+              'time': '2 (8:55 - 9:40)',
+            },
+          ],
+        },
+      },
+    )..demoMode = false;
+
+    expect(
+      s.planCustomSkip('2026-09-11', '2026-09-11', 1, 1, 'Lékař'),
+      isTrue,
+    );
+
+    final todaySlots = s.pickerSlotsFor(DateTime(2026, 9, 10), now);
+    expect(todaySlots, hasLength(5));
+    expect(todaySlots[0].past, isTrue);
+    expect(todaySlots[0].pickable, isFalse);
+    expect(todaySlots[1].past, isFalse);
+    expect(todaySlots[1].pickable, isTrue);
+    expect(todaySlots[2].taught, isFalse);
+    expect(todaySlots[2].changed, isTrue);
+    expect(todaySlots[2].pickable, isFalse);
+    expect(todaySlots[3].taught, isFalse);
+    expect(todaySlots[3].changed, isTrue);
+    expect(todaySlots[3].pickable, isFalse);
+    expect(todaySlots[4].taught, isTrue);
+    expect(todaySlots[4].changed, isTrue);
+    expect(todaySlots[4].pickable, isTrue);
+
+    final tomorrowSlots = s.pickerSlotsFor(DateTime(2026, 9, 11), now);
+    expect(tomorrowSlots, hasLength(2));
+    expect(tomorrowSlots[0].planned, isTrue);
+    expect(tomorrowSlots[0].pickable, isFalse);
+    expect(tomorrowSlots[1].planned, isFalse);
+    expect(tomorrowSlots[1].pickable, isTrue);
+
+    // Weekend, free day, and after closure return empty.
+    expect(s.pickerSlotsFor(DateTime(2026, 9, 12), now), isEmpty);
+    expect(s.pickerSlotsFor(DateTime(2026, 9, 15), now), isEmpty);
+    expect(s.pickerSlotsFor(DateTime(2027, 4, 27), now), isEmpty);
+  });
 }
 
 class _FixedAbsState extends AppStateController {

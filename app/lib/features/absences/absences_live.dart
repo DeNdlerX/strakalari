@@ -107,6 +107,7 @@ class LiveAbsencesView extends ConsumerWidget {
           for (final e in entries) Map<String, Object?>.of(e),
         ], now),
       ),
+      lessonsFor: (day) => s.pickerSlotsFor(day, now),
       freeDays: () => s.calendarData().dates,
       onOpenCalendar: () {
         s.setSettingsSection('calendar');

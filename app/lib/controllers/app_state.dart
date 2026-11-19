@@ -22,6 +22,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:strakalari_core/strakalari_core.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
+import '../features/planner/planner_view.dart' show PickerSlot;
 import '../l10n/strings.dart';
 import '../shell/theme.dart';
 import '../tutorial/tours.dart';
