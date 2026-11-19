@@ -55,6 +55,15 @@ const List<String> moreRoutes = [
 /// Location for [route] (`today` → `/today`).
 String routeLocation(String route) => '/$route';
 
+/// Accepts only known shell routes or `'more'` as a `?from=` back-navigation
+/// origin; `null` or any unknown value returns `null` (falling back to
+/// `'absences'`).
+String? sanitizeBackOrigin(String? raw) {
+  if (raw == null || raw.isEmpty) return null;
+  if (shellRoutes.contains(raw) || raw == 'more') return raw;
+  return null;
+}
+
 /// Route name for a location (`/lunches` → `lunches`, `/` → `today`).
 String routeForLocation(String location) {
   final seg = location.split('?').first.split('#').first;
@@ -188,42 +197,54 @@ GoRouter buildRouter({String initialLocation = '/today'}) => GoRouter(
             GoRoute(
               path: '/absences/plan',
               name: 'absences/plan',
-              builder: (context, state) => ShellBackScope(
-                route: 'absences/plan',
-                child: Consumer(
-                  builder: (context, ref, _) {
-                    final appState = ref.watch(appStateProvider);
-                    final size = MediaQuery.sizeOf(context);
-                    final narrow = (size.width > 0 && size.width < 720) ||
-                        (size.height > 0 && size.height < 520);
-                    return LivePlannerPage(
-                      tokens: appState.appTokens,
-                      narrow: narrow,
-                      onBack: () => context.go('/absences'),
-                    );
-                  },
-                ),
-              ),
+              builder: (context, state) {
+                final from =
+                    sanitizeBackOrigin(state.uri.queryParameters['from']);
+                return ShellBackScope(
+                  route: 'absences/plan',
+                  from: from,
+                  child: Consumer(
+                    builder: (context, ref, _) {
+                      final appState = ref.watch(appStateProvider);
+                      final size = MediaQuery.sizeOf(context);
+                      final narrow = (size.width > 0 && size.width < 720) ||
+                          (size.height > 0 && size.height < 520);
+                      return LivePlannerPage(
+                        tokens: appState.appTokens,
+                        narrow: narrow,
+                        onBack: () =>
+                            context.go(routeLocation(from ?? 'absences')),
+                      );
+                    },
+                  ),
+                );
+              },
             ),
             GoRoute(
               path: '/absences/limits',
               name: 'absences/limits',
-              builder: (context, state) => ShellBackScope(
-                route: 'absences/limits',
-                child: Consumer(
-                  builder: (context, ref, _) {
-                    final appState = ref.watch(appStateProvider);
-                    final size = MediaQuery.sizeOf(context);
-                    final narrow = (size.width > 0 && size.width < 720) ||
-                        (size.height > 0 && size.height < 520);
-                    return LiveLimitsPage(
-                      tokens: appState.appTokens,
-                      narrow: narrow,
-                      onBack: () => context.go('/absences'),
-                    );
-                  },
-                ),
-              ),
+              builder: (context, state) {
+                final from =
+                    sanitizeBackOrigin(state.uri.queryParameters['from']);
+                return ShellBackScope(
+                  route: 'absences/limits',
+                  from: from,
+                  child: Consumer(
+                    builder: (context, ref, _) {
+                      final appState = ref.watch(appStateProvider);
+                      final size = MediaQuery.sizeOf(context);
+                      final narrow = (size.width > 0 && size.width < 720) ||
+                          (size.height > 0 && size.height < 520);
+                      return LiveLimitsPage(
+                        tokens: appState.appTokens,
+                        narrow: narrow,
+                        onBack: () =>
+                            context.go(routeLocation(from ?? 'absences')),
+                      );
+                    },
+                  ),
+                );
+              },
             ),
             _route('more'),
           ],

@@ -49,15 +49,18 @@ ShellLayout layoutForSize(double width, double height) {
 
 /// Where the phone's Back button leads: a More screen -> More,
 /// anything else -> Today; null on Today or while the wizard is shown
-/// (Back leaves the app). Port of `back_target()`.
+/// (Back leaves the app). Sub-routes under Absences (`absences/plan` and
+/// `absences/limits`) return to their sanitized [from] origin, or `absences`.
+/// Port of `back_target()`.
 String? backTarget({
   required String route,
   required bool narrow,
   required bool wizardShown,
+  String? from,
 }) {
   if (route == 'today' || wizardShown) return null;
   if (route == 'absences/plan' || route == 'absences/limits') {
-    return 'absences';
+    return sanitizeBackOrigin(from) ?? 'absences';
   }
   return (moreRoutes.contains(route) && narrow) ? 'more' : 'today';
 }
@@ -107,8 +110,14 @@ void closeSubpage({
 /// overruled and Android closed the app.
 class ShellBackScope extends ConsumerWidget {
   final String route;
+  final String? from;
   final Widget child;
-  const ShellBackScope({super.key, required this.route, required this.child});
+  const ShellBackScope({
+    super.key,
+    required this.route,
+    this.from,
+    required this.child,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -121,6 +130,7 @@ class ShellBackScope extends ConsumerWidget {
       route: route,
       narrow: narrow,
       wizardShown: appState.wizardShown,
+      from: from,
     );
     return PopScope(
       canPop: subpage.isEmpty && target == null,
@@ -132,6 +142,7 @@ class ShellBackScope extends ConsumerWidget {
           narrow: narrow,
           state: appState,
           target: target,
+          from: from,
         );
       },
       child: child,
@@ -145,6 +156,7 @@ void _stepBackOnPhone(
   required bool narrow,
   required AppState state,
   String? target,
+  String? from,
 }) {
   if (subpageOpen(route: route, narrow: narrow, state: state).isNotEmpty) {
     closeSubpage(route: route, narrow: narrow, state: state);
@@ -152,7 +164,12 @@ void _stepBackOnPhone(
   }
   final dest =
       target ??
-      backTarget(route: route, narrow: narrow, wizardShown: state.wizardShown);
+      backTarget(
+        route: route,
+        narrow: narrow,
+        wizardShown: state.wizardShown,
+        from: from,
+      );
   if (dest != null) {
     context.go(routeLocation(dest));
   }
