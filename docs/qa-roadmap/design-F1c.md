@@ -151,9 +151,13 @@ Lives in `app/lib/features/planner/planner_view.dart` (widget `PlannerPage`) and
 
 ### 3.1 Widget & route (`app/lib/features/absences/limits_page.dart`)
 
-- **`LimitsPage`** (stateful widget) + **`LiveLimitsPage`** (`ConsumerWidget`, wired to `settingsControllerFor(s)` and `onBack: () => context.go('/absences')`, unfocusing active fields before navigating back so any typed value commits).
-- **Header**: `IconButton(key: Key('lim:back_btn'), icon: Icon(Icons.arrow_back), onPressed: onBack)` + `Expanded(Text(Strings.get('sec_limits'), ...))`.
-- **Top card — Global defaults** (full width; 3 `AutosaveField`s in a `Row` on `wide`, stacked on `narrow`):
+- **`LimitsPage`** (stateful widget) + **`LiveLimitsPage`** (`ConsumerWidget`, wired to `settingsControllerFor(s)`, `onBack`, and `onLeave: () => s.save(const {})`).
+- **Save-on-leave guarantee (every way out):**
+  - `AutosaveField` gains an opt-in `bool saveOnDispose = false` (default `false` so unrelated Settings sections don't change). The three global `AutosaveField`s on `LimitsPage` pass `saveOnDispose: true`: in `_AutosaveFieldState.dispose()`, when `saveOnDispose` is true and `focus.hasFocus`, it runs the parse + `c.saveQuiet({configKey: newVal})` synchronously without touching `context` (no `appSnack` or `setState`).
+  - `_LimitsPageState` tracks `_notifiedLeave = false`. Leaving via the page's back arrow (`lim:back_btn`) unfocuses first (`FocusManager.instance.primaryFocus?.unfocus()`, committing while still mounted so invalid values can show `save_failed`), sets `_notifiedLeave = true`, invokes `onLeave?.call()` (one normal `s.save(const {})`), and calls `onBack()`.
+  - Leaving by **any other route change** — Android system Back (`ShellBackScope` → `context.go`), wide `NavigationRail`, narrow `NavigationBar`, or programmatic redirect — triggers `dispose()` on `_LimitsPageState` and its child `AutosaveField`s: the focused global field commits in `AutosaveField.dispose()`, any dirty expanded subject field commits in `_LimitsPageState.dispose()`, and if `!_notifiedLeave`, `_LimitsPageState.dispose()` schedules `WidgetsBinding.instance.addPostFrameCallback((_) => onLeave?.call())` (safe outside widget-tree finalization) so the single normal `s.save(const {})` still runs once and other screens plus Android's ongoing status notification pick up the new limits.
+- **Header**: `IconButton(key: Key('lim:back_btn'), icon: Icon(Icons.arrow_back), onPressed: _handleBack)` + `Expanded(Text(Strings.get('sec_limits'), ...))`.
+- **Top card — Global defaults** (full width; 3 `AutosaveField`s with `saveOnDispose: true` in a `Row` on `wide`, stacked on `narrow`):
   1. `default_limit` → `absence_critical_pct` (fallback `25.0`, `draftKey: 'lim:default'`)
   2. `warn_limit` → `absence_warn_pct` (fallback `15.0`, `draftKey: 'lim:warn'`)
   3. `reserve_limit` → `absence_plan_reserve_pct` (fallback `10.0`, clamped `0.0..99.9`, `draftKey: 'lim:reserve'`)
@@ -354,6 +358,7 @@ Baseline after R3b fixes: core **809 passed / 2 skipped**, app **739 passed / 1 
    - Tapping a subject expands inline editor showing *Výchozí* chip + distinct already-used custom chips from `subject_limits`.
    - Tapping an already-used chip saves that value to `subject_limits[subject]` without typing; tapping *Výchozí* chip or clearing the field removes `subject` from `subject_limits`.
    - Back arrow unfocuses and invokes `onBack`.
+   - S4 leave-flush tests (`android_back_test.dart` & `limits_page_test.dart`): type a new value in *Výchozí limit* (`lim:default`) and leave via Android Back (`handlePopRoute`), and type a new value in a subject row (`lim:subj:Matematika`) and leave via Android Back (and via rail click) — both values are persisted to `config.json` and exactly one normal `s.save(const {})` runs on leave.
 5. **O5 Wizard `WakeupCard` (`app/test/wizard_live_test.dart`):**
    - `WakeupCard` shows permission prompts when `WakeupPhone` reports permissions off, shows next alarm preview when timetable is cached (`wakeup_none` when empty), and preserves B9 when leaving the alarm off and tapping *Pokračovat*.
 6. **O6 Early setup refresh (`app/test/wizard_live_test.dart`, `app/test/app_state_excuses_and_planner_test.dart`):**
