@@ -248,7 +248,10 @@ Lives in `app/lib/features/planner/planner_view.dart` (widget `PlannerPage`) and
     - Every run (success or failure) is recorded in `runs` / `audit.dart` just like any normal refresh.
 - **Failure & *Dokončit* behavior:**
   - A failed early refresh never blocks wizard navigation; it records the failed run and queues the standard error dialog/snack (already drained by `popPendingMessages` on `/wizard`, `router.dart:166`).
-  - *Dokončit* (`stepDone`) still calls `onFinishRefresh: () => s.startRefresh()` (scope `'all'`, `pauseAutomation: false`), running with the student's real settings (including Strava if enabled). If the early Bakaláři refresh is still in flight at *Dokončit*, `startRefresh()` returns `false` and the existing B7 `already_running` snackbar fires.
+  - *Dokončit* (`stepDone`) wires `onFinishRefresh: () => s.finishWizardRefresh()`:
+    - Normally starts `s.startRefresh('all')` (`pauseAutomation: false`) immediately and returns `true`, showing `wiz_finishing_refresh`.
+    - If the early Bakaláři setup refresh is **still in flight** (`s.earlyRefreshInFlight == true`, an in-memory flag set when `startRefresh('bakalari', pauseAutomation: true)` starts and cleared in `finishRun`), `finishWizardRefresh()` sets an in-memory-only `s.pendingFullRefresh = true` (never saved to `config.json`) and returns `true` so *Dokončit* shows `wiz_finishing_refresh` (not `already_running`). When the early run exits `finishRun` (after releasing the `refresh_running` flight latch), `finishRun` clears `pendingFullRefresh = false` and starts exactly one normal `startRefresh('all')` (`pauseAutomation: false`, through the single `startRefresh` → `withSessionLockAsync` → `runRefresh` pipeline) so Strava and automatic modes run immediately without waiting for `check_interval_minutes`.
+    - If a non-early refresh is already running, `finishWizardRefresh()` returns `false` and the existing B7 `already_running` snackbar fires as before.
 
 ---
 
@@ -364,6 +367,7 @@ Baseline after R3b fixes: core **809 passed / 2 skipped**, app **739 passed / 1 
 6. **O6 Early setup refresh (`app/test/wizard_live_test.dart`, `app/test/app_state_excuses_and_planner_test.dart`):**
    - Unit test on `AppState.startRefresh('bakalari', pauseAutomation: true)` verifying scope `'bakalari'`, in-memory `automation_paused: true`, untouched `config.json` on disk, and zero excuses/orders.
    - Wizard tests: verified Bakaláři login triggers early refresh; failed login does NOT; failed early refresh does not block wizard navigation.
+   - S5 queued-finish tests (`app_state_excuses_and_planner_test.dart`, `wizard_live_test.dart`): early `'bakalari'` refresh still in flight at *Dokončit* → *Dokončit* shows `wiz_finishing_refresh` and when the early run finishes, exactly one `'all'` run starts automatically with `pauseAutomation: false`; when no early run is in flight, `'all'` runs once immediately; when a non-early refresh is busy, B7 `already_running` still fires.
 
 ---
 
@@ -381,7 +385,7 @@ Implement only **after** this design note passes review, in 4 green commits (one
 - One month calendar shows past days greyed and non-tappable (past planned days keep *passed* look), supports single-day tap (whole day or partial lessons via M2 `pickerSlotsFor`), and *Vybrat více dní* multi-day selection with impact preview and single-save atomic `planEntries` confirmation; separate `CustomPlanDialog` is gone.
 - `/absences/limits` is a full-width page with global defaults at top, clear default/custom subject rows, tappable already-used value chips + *Výchozí* clear chip, and *Nastavení → Limity* opens it.
 - Wizard *Telefon* step embeds `WakeupCard` (switch, minutes, notification + exact-alarm permissions, next wake-up preview) while preserving B9 and *Přeskočit*.
-- Verified Bakaláři login in the wizard starts a `'bakalari'` refresh via `startRefresh` with in-memory `automation_paused: true` (never saved to `config.json`); *Dokončit* still runs a normal `'all'` refresh (with B7 `already_running` if busy).
+- Verified Bakaláři login in the wizard starts a `'bakalari'` refresh via `startRefresh` with in-memory `automation_paused: true` (never saved to `config.json`); *Dokončit* starts a normal `'all'` refresh (or queues one to run right after an in-flight early refresh finishes, showing `wiz_finishing_refresh`; non-early busy still shows B7 `already_running`).
 - Zero config keys changed; all safety rules intact; cs/en ARBs + `strings.dart` in sync; tutorials split (`absences` + `absences_plan`).
 - Visual evidence in `build/qa-evidence/F1c/` at 390 px and 1280 px (cs/en, light/dark) for `/absences`, `/absences/plan` (single & multi-select), `/absences/limits`, and wizard *Telefon*.
 - Core (`dart analyze && dart test`) and app (`flutter analyze && flutter test`, count >= 739) are completely green.
