@@ -52,6 +52,9 @@ class WizardController extends ChangeNotifier {
   final void Function()? onFinished;
   final void Function(String service, String fp)? onVerified;
 
+  /// Called once Bakaláři credentials are verified and saved (O6 early refresh).
+  final void Function(String fingerprint)? onBakalariSaved;
+
   WizardController({
     Map<String, Object?>? config,
     bool Function(Map<String, Object?> updates)? onSave,
@@ -67,6 +70,7 @@ class WizardController extends ChangeNotifier {
     this.onStepChanged,
     this.onFinished,
     this.onVerified,
+    this.onBakalariSaved,
   })  : config = config ?? {},
         onSave = onSave ?? ((_) => false),
         onSaveQuiet = onSaveQuiet ?? onSave ?? ((_) => false),
@@ -465,8 +469,12 @@ class WizardController extends ChangeNotifier {
   String? continueTestStep(
       String service, int atStep, bool readyOk, String needKey) {
     if (!readyOk) return Strings.get(needKey);
-    if (verified[service] == fingerprintFor(service)) {
+    final fp = fingerprintFor(service);
+    if (verified[service] == fp) {
       if (!_saveFor(service)) return Strings.get('save_failed');
+      if (service == 'bakalari') {
+        onBakalariSaved?.call(fp);
+      }
       goTo(stepAfter(atStep));
       return null;
     }
@@ -507,6 +515,9 @@ class WizardController extends ChangeNotifier {
     if (!_saveFor(service)) return Strings.get('save_failed');
     verified[service] = fp;
     onVerified?.call(service, fp);
+    if (service == 'bakalari') {
+      onBakalariSaved?.call(fp);
+    }
     // Auto-advance only when still on the same step with unchanged fields.
     if (fingerprintFor(service) == fp) {
       // The caller re-reads the current step; the view passes it in.

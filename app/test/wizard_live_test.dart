@@ -1789,6 +1789,116 @@ void main() {
     expect(tester.widget<CheckboxListTile>(boxFinder).value, isTrue);
     expect(tester.widget<FilledButton>(nextFinder).onPressed, isNotNull);
   });
+
+  group('F1c O6 early setup refresh in wizard', () {
+    test(
+        'verified Bakalari login starts early refresh once per fingerprint, skips on unchanged Back+Continue, re-triggers on changed credentials, ignores failed login',
+        () {
+      final s = AppState(configData: {
+        'language': 'cs',
+        'school_preset_id': 'gekom_2026_2027',
+      });
+      var spawnCount = 0;
+      s.spawn = (fn, name) {
+        spawnCount++;
+        // Release the refresh flight immediately so a second call would start
+        // if not deduplicated by wizardEarlyRefreshedFp.
+        s.releaseFlight('refresh_running');
+        s.refreshRunning = false;
+        s.earlyRefreshInFlight = false;
+      };
+
+      final c1 = wizardControllerFor(s);
+      c1.step = WizardController.stepBakalari;
+      c1.setDraftSilent('wiz:bakalari_username', 'demo');
+      c1.setDraftSilent('wiz:bakalari_password', 'secret');
+
+      // Failed login test does NOT trigger early refresh.
+      c1.testing = 'bakalari';
+      c1.recordTestResult('bakalari', false, 'bad login');
+      expect(spawnCount, 0);
+      expect(s.wizardEarlyRefreshedFp, isNull);
+
+      // Successful login test triggers early refresh once.
+      c1.testing = 'bakalari';
+      c1.recordTestResult('bakalari', true, 'ok');
+      c1.consumeAutoAdvance(c1.step, 'bakalari');
+      expect(spawnCount, 1);
+      expect(s.wizardEarlyRefreshedFp, isNotNull);
+      expect(c1.step, WizardController.stepStrava);
+
+      // Going Back and pressing Continue with unchanged credentials does NOT re-run.
+      c1.pressBack();
+      expect(c1.step, WizardController.stepBakalari);
+      final c2 = wizardControllerFor(s);
+      c2.step = WizardController.stepBakalari;
+      c2.pressNext();
+      expect(spawnCount, 1);
+      expect(c2.step, WizardController.stepStrava);
+
+      // Changing credentials and re-verifying triggers a new early refresh once.
+      final c3 = wizardControllerFor(s);
+      c3.step = WizardController.stepBakalari;
+      c3.setDraftSilent('wiz:bakalari_username', 'demo2');
+      c3.testing = 'bakalari';
+      c3.recordTestResult('bakalari', true, 'ok');
+      expect(spawnCount, 2);
+    });
+
+    test('failed early refresh does not block wizard navigation', () {
+      final s = AppState(configData: {
+        'language': 'cs',
+        'school_preset_id': 'gekom_2026_2027',
+      });
+      s.spawn = (fn, name) {
+        // Simulate an immediate refresh failure.
+        s.reportError('refresh (bakalari)', Exception('network down'));
+        s.finishRun(DateTime(2026, 11, 19, 10, 0), 'bakalari', false, 'network down');
+      };
+
+      final c = wizardControllerFor(s);
+      c.step = WizardController.stepBakalari;
+      c.setDraftSilent('wiz:bakalari_username', 'demo');
+      c.setDraftSilent('wiz:bakalari_password', 'secret');
+      c.testing = 'bakalari';
+      c.recordTestResult('bakalari', true, 'ok');
+      expect(c.consumeAutoAdvance(c.step, 'bakalari'), isTrue);
+      expect(c.step, WizardController.stepStrava);
+
+      // Wizard still advances freely through the rest of the steps.
+      c.pressSkip();
+      expect(c.step, WizardController.stepExcuses);
+    });
+
+    test(
+        'Dokoncit while early refresh is in flight returns wiz_finishing_refresh and queues full run; non-early busy still returns already_running',
+        () {
+      Strings.lang = 'cs';
+      final s = AppState(configData: {'language': 'cs'});
+      s.spawn = (fn, name) {};
+
+      // Early refresh in flight.
+      expect(s.startRefresh('bakalari', true), isTrue);
+      expect(s.earlyRefreshInFlight, isTrue);
+
+      final c = wizardControllerFor(s);
+      c.step = WizardController.stepDone;
+      final res = c.pressNext();
+      expect(res.finishedMessage, Strings.get('wiz_finishing_refresh'));
+      expect(s.pendingFullRefresh, isTrue);
+
+      // Non-early refresh in flight -> B7 already_running.
+      final s2 = AppState(configData: {'language': 'cs'});
+      s2.spawn = (fn, name) {};
+      expect(s2.startRefresh('all'), isTrue);
+      expect(s2.earlyRefreshInFlight, isFalse);
+
+      final c2 = wizardControllerFor(s2);
+      c2.step = WizardController.stepDone;
+      final res2 = c2.pressNext();
+      expect(res2.finishedMessage, Strings.get('already_running'));
+    });
+  });
 }
 
 class _SeededAppStateController extends AppStateController {

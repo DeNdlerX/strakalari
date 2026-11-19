@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -55,6 +56,33 @@ class _NewsRefreshApp extends Strakalari {
 
   @override
   void close() {}
+}
+
+class _PauseProofApp extends _NewsRefreshApp {
+  int excusePendingCalls = 0;
+  Completer<void>? fetchGate;
+
+  _PauseProofApp({super.configData, this.fetchGate});
+
+  @override
+  Future<void> fetchBakalariData() async {
+    final gate = fetchGate;
+    if (gate != null && !gate.isCompleted) {
+      await gate.future;
+    }
+  }
+
+  @override
+  Future<int> syncWebExcusesToHistory({int? limit}) async {
+    lastOutboxSyncOk = true;
+    return 0;
+  }
+
+  @override
+  Future<int> excusePending() async {
+    excusePendingCalls++;
+    return 0;
+  }
 }
 
 void main() {
@@ -680,6 +708,125 @@ void main() {
       expect(state.updateChannel, 'stable');
       state.setUpdateChannel('beta');
       expect(state.updateChannel, 'beta');
+    });
+  });
+
+  group('F1c O6 early setup refresh', () {
+    test(
+        'pauseAutomation blocks auto excusePending without saving automation_paused (S6)',
+        () async {
+      final cfg = <String, Object?>{
+        'bakalari_url': 'http://127.0.0.1:18080',
+        'bakalari_username': 'student',
+        'excuse_mode': 'auto',
+      };
+      final state = AppState(data: {'absence': {'M': 0.0}});
+      state.save(cfg);
+      state.demoMode = false;
+
+      final app = _PauseProofApp(configData: Map<String, Object?>.of(cfg));
+      state.createApp = ({onLog, configData}) => app;
+      final jobs = <Future<void>>[];
+      state.spawn = (fn, name) {
+        jobs.add(fn());
+      };
+
+      expect(state.startRefresh('bakalari', true), isTrue);
+      await Future.wait(jobs);
+      jobs.clear();
+
+      expect(app.excusePendingCalls, 0);
+      expect(
+        state.logLines
+            .any((l) => l.contains(Strings.get('automation_paused_log'))),
+        isTrue,
+      );
+      final savedOnDisk = jsonDecode(
+        File('${tmp.path}/config.json').readAsStringSync(),
+      ) as Map<String, dynamic>;
+      expect(savedOnDisk['automation_paused'], isNot(isTrue));
+      expect(app.configData['automation_paused'], isNot(isTrue));
+
+      // Control run on the same fake app without pauseAutomation must call excusePending.
+      expect(state.startRefresh('bakalari', false), isTrue);
+      await Future.wait(jobs);
+      expect(app.excusePendingCalls, greaterThanOrEqualTo(1));
+    });
+
+    test(
+        'finishWizardRefresh queues one full all run after early run releases session lock (S5 + M3)',
+        () async {
+      final cfg = <String, Object?>{
+        'bakalari_url': 'http://127.0.0.1:18080',
+        'bakalari_username': 'student',
+        'excuse_mode': 'auto',
+      };
+      final state = AppState(data: {'absence': {'M': 0.0}});
+      state.save(cfg);
+      state.demoMode = false;
+
+      final gate = Completer<void>();
+      final apps = <_PauseProofApp>[];
+      state.createApp = ({onLog, configData}) {
+        final app = _PauseProofApp(
+          configData: Map<String, Object?>.of(cfg),
+          fetchGate: apps.isEmpty ? gate : null,
+        );
+        apps.add(app);
+        return app;
+      };
+
+      final jobs = <Future<void>>[];
+      state.spawn = (fn, name) {
+        jobs.add(fn());
+      };
+
+      expect(state.startRefresh('bakalari', true), isTrue);
+      expect(state.earlyRefreshInFlight, isTrue);
+
+      // Finish tapped while early Bakaláři refresh is waiting on the Completer.
+      expect(state.finishWizardRefresh(), isTrue);
+      expect(state.pendingFullRefresh, isTrue);
+
+      gate.complete();
+      // Await both the initial early run and the queued follow-up run.
+      while (jobs.isNotEmpty) {
+        final batch = List<Future<void>>.of(jobs);
+        jobs.clear();
+        await Future.wait(batch);
+      }
+
+      expect(state.earlyRefreshInFlight, isFalse);
+      expect(state.pendingFullRefresh, isFalse);
+      expect(state.runs.length, 2);
+      expect(state.runs[0]['scope'], 'bakalari');
+      expect(state.runs[0]['ok'], isTrue);
+      expect(state.runs[1]['scope'], 'all');
+      expect(state.runs[1]['ok'], isTrue);
+      expect(
+        state.logLines.any((l) => l.contains(Strings.get('session_busy'))),
+        isFalse,
+      );
+      expect(apps.length, 2);
+      expect(apps[0].excusePendingCalls, 0);
+      expect(apps[1].excusePendingCalls, greaterThanOrEqualTo(1));
+    });
+
+    test('finishWizardRefresh runs immediately when idle and returns false when non-early busy',
+        () {
+      final state = AppState();
+      final spawned = <String>[];
+      state.spawn = (fn, name) => spawned.add(name);
+
+      // Idle -> starts 'all' immediately.
+      expect(state.finishWizardRefresh(), isTrue);
+      expect(spawned.length, 1);
+      expect(state.earlyRefreshInFlight, isFalse);
+
+      // Non-early refresh in flight -> returns false (B7 already_running).
+      expect(state.finishWizardRefresh(), isFalse);
+      expect(spawned.length, 1);
+      expect(state.pendingFullRefresh, isFalse);
     });
   });
 }

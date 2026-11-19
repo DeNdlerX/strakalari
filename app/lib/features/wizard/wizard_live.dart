@@ -76,7 +76,7 @@ WizardController wizardControllerFor(AppState s) {
         },
       );
     },
-    onFinishRefresh: () => s.startRefresh(),
+    onFinishRefresh: () => s.finishWizardRefresh(),
     onRequestNotificationPermission: () async {
       s.notificationPermissionAsked = true;
       await const AndroidChannel().requestNotificationPermission();
@@ -88,6 +88,12 @@ WizardController wizardControllerFor(AppState s) {
     onFinished: () => s.wizardFinished(),
     onVerified: (service, fp) {
       s.wizardVerified[service] = fp;
+    },
+    onBakalariSaved: (fp) {
+      if (s.wizardEarlyRefreshedFp == fp) return;
+      if (s.startRefresh('bakalari', true)) {
+        s.wizardEarlyRefreshedFp = fp;
+      }
     },
   );
   c.step = s.wizardStep;

@@ -212,6 +212,9 @@ class AppState {
   bool wizardShown = false;
   bool notificationPermissionAsked = false;
   final Map<String, String> wizardVerified = {};
+  String? wizardEarlyRefreshedFp;
+  bool earlyRefreshInFlight = false;
+  bool pendingFullRefresh = false;
 
   // -- marks UI memory (predictions are what-ifs, never saved) --------------
   Map<String, Map<String, Object?>> marksPredictions = {};
@@ -880,6 +883,7 @@ class AppState {
     wizardStep = 0;
     drafts.removeWhere((k, _) => k.startsWith('wiz:'));
     wizardVerified.clear();
+    wizardEarlyRefreshedFp = null;
     tutorialOffer(firstTourId);
     _saveWizardStep(-1);
     _emit();
