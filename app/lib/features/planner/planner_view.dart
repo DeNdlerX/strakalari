@@ -1850,9 +1850,9 @@ class _PlannerMonthCalendarState extends State<PlannerMonthCalendar> {
     );
     if (isSelected) {
       content = Stack(
-        alignment: Alignment.center,
+        fit: StackFit.expand,
         children: [
-          content,
+          Center(child: content),
           Positioned(
             top: 3,
             right: 4,
@@ -1862,22 +1862,28 @@ class _PlannerMonthCalendarState extends State<PlannerMonthCalendar> {
       );
     } else if (isPartlyPlanned && !isPast && !outOfRange) {
       content = Stack(
-        alignment: Alignment.center,
+        fit: StackFit.expand,
         children: [
-          content,
+          Center(child: content),
           Positioned(
             bottom: 4,
-            child: Container(
-              width: 4,
-              height: 4,
-              decoration: BoxDecoration(
-                color: tok.accentText,
-                shape: BoxShape.circle,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                width: 4,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: tok.accentText,
+                  shape: BoxShape.circle,
+                ),
               ),
             ),
           ),
         ],
       );
+    } else {
+      content = Center(child: content);
     }
 
     return Tooltip(
@@ -1888,7 +1894,6 @@ class _PlannerMonthCalendarState extends State<PlannerMonthCalendar> {
         onTap: onTap,
         child: Container(
           height: 44,
-          alignment: Alignment.center,
           decoration: BoxDecoration(
             color: fill,
             borderRadius: BorderRadius.circular(6),
