@@ -55,7 +55,7 @@ Four follow-up improvements from the owner's phone test of F1b:
 2. **No-limits banner** (unchanged): shown when `!c.hasSubjectLimits && onOpenLimits != null`; tapping *Limity* (`Key('abs:no_limits_btn')`) opens `/absences/limits`.
 3. **Case 1 — no subjects (`c.subjects.isEmpty`)**: `EmptyState(no_data)`, plus `planner_need_refresh` when `!hasTimetable`, plus `need_credentials` when `c.demoMode`.
 4. **Case 2 & 3 — subjects present**:
-   - **3-card KPI row** (`TutorialAnchor(anchorKey: 'abs_stats')`, equalized with `IntrinsicHeight`): *Průměrná absence*, *Varovné předměty*, *Kritické předměty*. (Fits on a single compact row even at 390 px, so subject cards begin immediately on the first screen; *Můžete vynechat* and *Naplánováno* move into Plánovač's summary line.)
+   - **3-card KPI row** (`TutorialAnchor(anchorKey: 'abs_stats')`, equalized with `IntrinsicHeight`): reuses `_threeCardStats()` (`absences_view.dart:329`) as-is with its existing keys `avg_absence` (*Průměrná absence* / *Average absence*), `warn_subjects` (*S varováním* / *Warning*), and `crit_subjects` (*Kritické* / *Critical*). `_fourCardStats` and `stat_warn_crit` are removed. (Fits on a single compact row even at 390 px, so subject cards begin immediately on the first screen; *Můžete vynechat* and *Naplánováno* move into Plánovač's summary line.)
    - **Always uses the current term (`yp.defaultTerm`):** both `absencesControllerFor` (`absences_live.dart:40`) and `LiveAbsencesView` (`absences_live.dart:82`) read `yp.defaultTerm` / `planData.defaultTerm`, **never** `s.plannerTerm`. Picking *2. pololetí* in Plánovač only affects `/absences/plan`, so returning to `/absences` never silently switches Absence's budget rows or `planner_next` shortcut to another term.
    - **Optional 1-line planner shortcut** (`Key('abs:next_plan_row')`): shown when `term != null && term.recommended.isNotEmpty && onOpenPlanner != null` (using `plan.defaultTerm`). A compact clickable `Card` / `InkWell` row reading `Strings.format('planner_next', {'day': '${w.dayName(next, true)} ${w.czDay(next)}'})` + trailing `Icons.chevron_right` that opens `/absences/plan`.
    - **Subjects & hour budgets list** (`Key('abs:subjects')`, first card wrapped in `TutorialAnchor(anchorKey: 'abs_first')`):
@@ -279,19 +279,23 @@ Lives in `app/lib/features/planner/planner_view.dart` (widget `PlannerPage`) and
   | `plan_multi_btn` | `Naplánovat` | `Plan selected` | Confirm CTA in multi-day selection bar |
   | `plan_multi_clear` | `Vymazat` | `Clear` | Clear selection button in multi-day bar |
   | `limit_default_tag` | `výchozí` | `default` | Muted tag on subject rows using default limit |
-  | `limit_use_default` | `Výchozí ({pct:g} %)` | `Default ({pct:g}%)` | Quick-pick chip in Limits editor to clear override |
+  | `limit_use_default` | `Výchozí ({pct:g} %)` | `Default ({pct:g} %)` | Quick-pick chip in Limits editor to clear override |
   | `open_limits` | `Otevřít limity` | `Open limits` | *Nastavení → Limity* button linking to `/absences/limits` |
 
 - **Removed keys (4, verified unused via grep after F1c):**
   - `plan_custom` (separate custom dialog removed)
   - `plan_custom_hint` (separate custom dialog removed)
-  - `stat_warn_crit` (4-card Absence KPI replaced by 3-card Absence KPI + Plánovač summary line)
+  - `stat_warn_crit` (4-card Absence KPI replaced by `_threeCardStats` + Plánovač summary line)
   - `open_absences` (replaced by `open_limits` on *Nastavení → Limity*; verify via grep no other caller exists)
-- **Updated keys (`cs` & `en`):**
-  - `overview_hint`: mentions tapping a day to plan (whole or some lessons) or switching on *Vybrat více dní* / *Select multiple days*.
-  - `tut_abs_stats_body`: describes the Absence KPIs + *Limity* and *Plánovač* buttons.
-  - `tut_plan_strip_body`: describes the month calendar (past days shown unselectable, tap a day for whole/partial plan, *Vybrat více dní* for multiple days, evenly spread picks).
-- **Reused existing keys:** `planner_title`, `planner_next`, `section_overview`, `pick_months`, `pick_prev_month`, `pick_next_month`, `pick_choose_lessons`, `pick_empty`, `pick_started`, `pick_event`, `pick_change`, `status_lesson_cancelled`, `cal_tip_*`, `plan_skip`, `plan_all`, `plan_all_title`, `plan_all_body`, `plan_all_done`, `plan_cancel_lunch`, `plan_show_all`, `plan_show_less`, `planned_title`, `stat_can_afford`, `stat_planned`, `planner_horizon`, `stat_tightest`, `hours_free`, `sec_limits`, `default_limit`, `warn_limit`, `reserve_limit`, `reserve_hint`, `limit_subject_hint`, `abs_limits_btn`, `abs_no_limits`, `abs_subjects_section`, `wakeup_*`.
+- **Updated keys (`cs` & `en`, exact wording):**
+
+  | Key | `cs` | `en` |
+  |---|---|---|
+  | `overview_hint` | `Klepněte na školní den a naplánujte celý den nebo jen některé hodiny — pro více dní zapněte Vybrat více dní.` | `Tap a school day to plan the whole day or just some lessons — turn on Select multiple days for a multi-day range.` |
+  | `tut_abs_stats_body` | `Každý předmět má vlastní limit absence. Tady vidíte průměr a kolik předmětů je ve varování či kritických. Nahoře otevřete Limity a Plánovač.` | `Every subject has its own absence limit. Here are your average and warning or critical counts. Use Limits and Planner above to adjust them or plan days off.` |
+  | `tut_plan_strip_body` | `Měsíční kalendář ukazuje minulé i budoucí školní dny. Zelené dny plánovač doporučuje na volno — jsou rozložené rovnoměrně až do uzávěrky. Klepnutím na den naplánujete celý den nebo vybrané hodiny; pro více dní zapněte Vybrat více dní.` | `The monthly calendar shows past and upcoming school days. Green days are the planner's picks for a day off — they are spread evenly up to the closure. Tap a day to plan all or selected lessons, or turn on Select multiple days for several days.` |
+
+- **Reused existing keys:** `avg_absence`, `warn_subjects`, `crit_subjects`, `planner_title`, `planner_next`, `section_overview`, `pick_months`, `pick_prev_month`, `pick_next_month`, `pick_choose_lessons`, `pick_empty`, `pick_started`, `pick_event`, `pick_change`, `status_lesson_cancelled`, `cal_tip_*`, `plan_skip`, `plan_all`, `plan_all_title`, `plan_all_body`, `plan_all_done`, `plan_cancel_lunch`, `plan_show_all`, `plan_show_less`, `planned_title`, `stat_can_afford`, `stat_planned`, `planner_horizon`, `stat_tightest`, `hours_free`, `sec_limits`, `default_limit`, `warn_limit`, `reserve_limit`, `reserve_hint`, `limit_subject_hint`, `abs_limits_btn`, `abs_no_limits`, `abs_subjects_section`, `wakeup_*`, `wiz_finishing_refresh`, `automation_paused_log`.
 - **Key count:** 796 − 4 + 8 = **800** (above `>= 790` check in `strings_table_parity_test.dart:90`).
 
 ### Docs & tooling (`README.md`, `README.en.md`, `tools/parity/capture_screens.dart`, `tools/demo_data.py`)
