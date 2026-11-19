@@ -1,7 +1,7 @@
 # QA & roadmap status
 
 Branch: qa-roadmap · Base: main @ f8d5582 · Current phase: 3b (F1b code review FAIL, fixes next)
-Next step: Fix every finding in `reviews/phase-3b.md` (blockers first), one commit per finding, then stop for re-review.
+Next step: Fix every finding in `reviews/phase-3b.md` (blockers first: M1, M2, then S1–S3), one commit per finding. Then write `design-F1c.md` for the owner's phone-test changes O3–O6 as `reviews/phase-3b.md` (*Owner's phone test*) describes, and stop for re-review. No O3–O6 code before the note passes.
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -54,6 +54,19 @@ Next step: Fix every finding in `reviews/phase-3b.md` (blockers first), one comm
 - **F6 low-data refresh (2026-11-17, after the R3 re-review 2):** "Ok, but could you create a plan for saving the bandwith? I would like it to be as small as possible, possibly getting to the every 5 minute refresh frequency." → `proposal-F6-low-data.md` (a plan only; no "go" yet).
 - **F6 marks within 5 minutes (2026-11-17):** "I want new marks to be visible in the 5 minutes, thats kinda the point. If you want real bakalari instance, I can log into your browser and you can go through it and find the most optimal ways, along with perhaps some new stuff that we could use. But maybe write me a continuation prompt for this for a new agent that will do it." → D6 marks answered; research prompt `PROMPT-F6-research.md`.
 - **Reviewer may improve designs (2026-11-18, at the R3b re-review 2):** "Btw if you had better ideas for anything like the plan or in general, you can change it. We want to make the app as good as possible, so feel free to improve the agents designs if you feel like they could be better." → reviewer change in `design-F1b.md` §3 item 8.
+- **Phone test of F1b (2026-11-19, at the R3b code review, on the `.test` build `0.9.99-test` from `7a75eb8`):** "I understand is ticked from the start and cant be unticked
+
+  The first refresh could be done even before the setup is completed so that there is data already. You need to test the login and get the subjects anyway
+
+  The wakeup alarm wizard step doesn't really ask for the permissions or allow you to configure the alarm, its pretty pointless. You should be able to set the alarm and see the next wakeup already
+
+  The calendar is broken/cant select anything
+
+  The semester overview is too long, you dont need to see the whole semester, just the future.
+
+  The absences view is very long, we should solve that. I would add a planner button on top of the absences page and place the calendar there along with the options to plan it and everything. Also, I kinda think the calendar and semester view are duplicates, so maybe just the calendar view will be enough and you can plan the days directly there or if you want to select multiple days, you just tick some button to select ranges. Think this through and make it work good, I dont really know how to make this perfect.
+
+  Also the limits page is pretty ugly and I am not a big fan of how it populates just a part of the screen, so work on that a little. Because many subjects have the same absence, maybe it offers you to pick a already used value to just tap when you start editing it so that you dont have to write it that many times?" → findings M2 and S3 and owner changes O3–O6 in `reviews/phase-3b.md` (*Owner's phone test*).
 - **New features from the F6 research (2026-11-17):** "we could do calendar and homeworks and the notification, but our school adds new stuff to the nástěnka instead. And we have no homeworks in our school on bakalari" → ideas only, not in PLAN: school calendar, Komens new-message notification and Nástěnka new posts; homework dropped for GEKOM (`research-F6-bakalari-web.md` §10).
 
 ## Questions for the owner / reviewer
@@ -89,6 +102,7 @@ Next step: Fix every finding in `reviews/phase-3b.md` (blockers first), one comm
 
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
 ### Phase 3b (`F1b` complete, checkpoint ⛔ R3b code review)
+- **2026-11-19 owner's phone test (added to the R3b code review)**: the custom calendar (*Naplánovat vlastní termín*) can't select any day in the real app because it never gets the day's lessons, since the Flutter move (M2, must-fix, tested by the reviewer); *Rozumím* can't be unticked once accepted (S3). The owner's layout wishes become O3 (short Absence + a Plánovač page with one future-only calendar and a range option), O4 (limits as a full page with values to tap), O5 (a real Budík step) and O6 (first refresh during setup, with nothing automatic) for a design note `design-F1c.md` before any code. See [`reviews/phase-3b.md`](reviews/phase-3b.md#owners-phone-test-2026-11-19).
 - **2026-11-19 R3b code review: FAIL**: the merge works (one Absence screen, `/planner` redirect, each subject once, closed year keeps the planned days, 3-day list, merged tour; every commit green, no test lost), but the hour-budget bar on every subject card is empty, so the Absence screen lost its gauge (M1, must-fix, one line, tested by the reviewer). Plus S1 (planner test helper no longer clears `SnackLog`) and S2 (`tools/demo_data.py --tutorials` still means the Plánovač tour). Baseline: core 809 passed / 2 skipped, app 735 passed / 1 skipped. See [`reviews/phase-3b.md`](reviews/phase-3b.md).
 - **What was done (2026-11-18):**
   - `5a59960`: Removed `'planner'` from `shellRoutes` (7 items), `moreRoutes` (3 items), `MorePage.entries` (fixing Android `visibleEntries()` to `entries.take(entries.length - 1)` so *Budík* sits before *Nastavení* with no duplicate), `scaffold.dart`, `router.dart`, and `today_controller.dart` doc comment; added `/planner` → `/absences` redirect (`buildRouter` and `routeForLocation`) and pointed *Dnes* planner tip to `/absences`; updated `widget_test.dart`, `more_page_test.dart`, `mobile_narrow_shell_test.dart`, `android_back_test.dart`, and added redirect + *Dnes* tip tests in `absences_live_test.dart`.

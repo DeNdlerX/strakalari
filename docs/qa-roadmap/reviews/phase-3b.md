@@ -34,6 +34,13 @@ Two smaller findings: a planner test helper stopped resetting the
 message log between tests (S1), and the demo-data tool still talks about
 the removed Plánovač tour (S2).
 
+**Update the same day, after the owner's phone test** (section
+[*Owner's phone test*](#owners-phone-test-2026-11-19) at the end): a
+second must-fix (M2, *Naplánovat vlastní termín* can't select any day,
+since the Flutter move), a should-fix (S3, *Rozumím* can't be unticked
+once accepted) and four owner changes (O3–O6) that need a design note
+(`design-F1c.md`) before any code.
+
 ---
 
 ## Must-fix
@@ -351,3 +358,191 @@ the code does by construction. None checks that the bar paints (M1).
     are the known Flutter line-ending churn.
 12. **Not checked:** macOS and iOS builds (not possible here), the phone
     (not needed this round).
+
+---
+
+## Owner's phone test (2026-11-19)
+
+At the owner's request the reviewer installed the F1b build on the Pixel
+over the `.test` app, keeping its data: built from `7a75eb8` (F1b code
+= `7b674bb`) with `build_android.dart apk --flavor phonetest --version
+0.9.99`, because the `.test` app held the owner's measure build
+(versionCode 101999) and a lower code can't install over it with its
+data. Package checked as `io.github.dendlerx.strakalari.test`,
+`adb install -r`, *Success*; `firstInstallTime` unchanged (data kept);
+the Play app still has `lastUpdateTime=2026-11-13 04:07:35`. The owner
+opened the app themselves. The owner's notes are in STATUS word for word
+(*Phone test of F1b*). The reviewer checked each one against the code.
+
+| Owner's point | What the reviewer found | Becomes |
+|---|---|---|
+| *Rozumím* ticked from the start and can't be unticked | Ticked because this `.test` app had already accepted it (a new install starts unticked: `config.dart:126` defaults to `false`). Can't be unticked: a real bug, older than this phase | S3 |
+| The first refresh could run before setup is done | A change to when the first refresh runs; safe if nothing automatic runs during it | O6 |
+| The alarm step doesn't ask for permissions or set the alarm | True: the step is one switch (`wizard_view.dart:877–893`) | O5 |
+| The calendar is broken, nothing can be selected | True for *Naplánovat vlastní termín*: no day can be picked in the real app, since the Flutter move | M2 |
+| The semester overview is too long; the Absence screen is too long; a Plánovač button with one calendar and a range option | A design change to F1b | O3 |
+| The limits page is ugly, uses part of the screen; offer values already used | A design change | O4 |
+
+### Must-fix
+
+#### M2 (older than F1b, `e40c3a0`): *Naplánovat vlastní termín* can't select any day
+
+- **Where:** `app/lib/features/planner/planner_view.dart:1241`
+  (`lessonsFor: lessonsFor ?? ((_) => const [])`) and `:1748` (a day with
+  no pickable lesson gets `onTap: null`). `LiveAbsencesView`
+  (`absences_live.dart:87–116`) never passes `lessonsFor`; neither did
+  the old `LivePlannerView`. No code in `app/lib` builds a `PickerSlot`.
+- **What is wrong:** in the real app every day of the custom calendar has
+  no lessons, so every day is disabled and *Potvrdit* stays grey. Planning
+  a range or single lessons has been impossible since the Flutter move
+  (2026-11-08). The only test (`custom picker taps a day whole and
+  confirms`) passes its own `lessonsFor`, so it never noticed.
+  - **Reviewer's test** (throwaway, deleted): `LiveAbsencesView` with a
+    real `AppState` (a week of lessons, clock 10 Sep 2026), tap
+    *Naplánovat vlastní termín*, tap 14–18 Sep: `tapped=5
+    confirmEnabled=false` (`Expected: not null, Actual: <null>`).
+  - The Python app had this: `_Slot`, `_PickDay`, `_pick_context`,
+    `_pick_rows`, `_pick_day` in `strakalari/flet_ui/views/planner.py`
+    (`git show 963cfa2^:strakalari/flet_ui/views/planner.py`, l.385–560).
+- **What correct looks like:** one commit, `F1b: give the custom
+  calendar the day's lessons (R3b code M2)`.
+  - A read-only `AppState` method in `app/lib/controllers/planner.dart`
+    (no save, no network) that returns the `PickerSlot`s of a day from
+    the same timetable source `yearPlan()` uses, ported from `_pick_day`:
+    one slot per lesson with its period and subject; `taught: false` for
+    a cancelled lesson or a class event; `past: true` for today's lesson
+    that has already started; `planned: true` if a planned entry already
+    covers it; `changed` for a substitution. Weekends, free days and days
+    after the closure have none.
+  - `LiveAbsencesView` passes it as `lessonsFor`.
+  - Test in `app/test/absences_live_test.dart`, the reviewer's case
+    above: tapping a school day enables *Potvrdit*; confirming adds one
+    planned entry with that day; a day off and a past day can't be
+    tapped. It must fail on `9cfd15f`.
+  - F1c (O3) reuses this method for its calendar.
+
+### Should-fix
+
+#### S3 (older than F1b, `74edf74`): *Rozumím* can't be unticked once accepted
+
+- **Where:** `app/lib/features/wizard/wizard_controller.dart:187–198`
+  (`disclaimerOk`, `setDisclaimer`), shown at `wizard_view.dart:549–556`.
+- **What is wrong:** `disclaimerOk` is true when the draft is set **or**
+  `disclaimer_accepted` is saved. Unticking writes an empty draft, which
+  the saved `true` overrides, so the box ignores the tap. Anyone who runs
+  the wizard again, or resumes it after Vítejte, sees a box that doesn't
+  react.
+- **What correct looks like:** one commit. Unticking stores `'0'`;
+  `disclaimerOk` is `true` for draft `'1'`, `false` for draft `'0'`, and
+  the saved value only when there is no draft. While unticked,
+  *Pokračovat* is disabled (as for a new user). `disclaimer_accepted` is
+  never written `false` (acceptance isn't withdrawn). Test in
+  `app/test/wizard_live_test.dart`: with `disclaimer_accepted: true`
+  saved, the box starts ticked, a tap unticks it and disables
+  *Pokračovat*, a second tap ticks it again; it must fail on `9cfd15f`.
+
+### Owner changes (need `design-F1c.md` first, no code before it passes)
+
+The owner wrote "Think this through and make it work good, I dont really
+know how to make this perfect." Below is the reviewer's direction for the
+note. The agent writes `docs/qa-roadmap/design-F1c.md` from it (exact
+layout, keys, strings, tests and *Done when*, like `design-F1b.md`) and
+stops for review. Where the agent sees a better way, the note says why.
+
+#### O3: Absence gets short again; one calendar in its own Plánovač page
+
+- **Absence** (`/absences`) keeps what it is about: the header with
+  *Limity* and a new **Plánovač** button, the KPI row, the no-limits line,
+  and the subject cards (with the budget bar from M1). Optionally one
+  line under the KPIs with the next recommended day (`planner_next`)
+  that opens Plánovač. The semester overview, the recommended list, the
+  planned list and the calendar footer move out.
+- **Plánovač** is a page opened from that button (a sub-route such as
+  `/absences/plan`, with a back arrow to Absence on phones; not a new
+  rail or *Více* entry). The *Dnes* tip and the old `/planner` link open
+  it. It holds: the term buttons, one summary line (*Můžete vynechat*,
+  *Naplánováno*, *Školních dní zbývá*), **one calendar**, the
+  recommended days (3 + *Zobrazit všechny*, *Naplánovat vše*, the target
+  dropdown), the planned days with *Zrušit plán*, and the calendar
+  footer.
+- **One calendar instead of two.** The semester strip and the custom
+  calendar are the same thing twice. Keep one month-style grid:
+  - **only the future**: from the current week to the selected term's
+    closure (past weeks are not shown);
+  - the colours stay (recommended, planned, doesn't fit, day off, today);
+  - **tap a day** = today's day dialog (plan the whole day with the
+    template and the lunch-cancel choice, with the cost preview), plus
+    a way to pick only some lessons of that day (from the M2 slots);
+  - a **Vybrat více dní** switch above the grid: taps then add or remove
+    whole days, a bar shows *N dní · stojí X h* with the same impact
+    preview, and *Naplánovat* opens one confirmation (template, lunch
+    cancel) and plans them in one save (`planEntries`, which saves all at
+    once and rolls back on failure);
+  - the separate *Naplánovat vlastní termín* dialog goes away, since the
+    calendar does both.
+- **Must stay true:** planning and unplanning go only through the
+  existing `PlannerController` hooks / `planCustomSkip` / `planEntries` /
+  `unplanEntry`; every plan still asks for confirmation; the lunch-cancel
+  staging is unchanged; no config key changes; at 390 px the calendar
+  starts on the first screen of Plánovač.
+- **Tours:** the note decides how the Absence and Plánovač steps split.
+  A new tour id is needed if a Plánovač tour comes back, because old
+  installs have `planner` in `tutorials_done` (N9).
+
+#### O4: the limits editor as a full page, with values to tap
+
+- **Where:** today `AbsencesView._openLimitsDialog` puts
+  `LimitsEditorContent` into an `AlertDialog` 480 px wide
+  (`absences_view.dart:64–91`), with three fields and then one text field
+  per subject (`settings_view.dart:1971`).
+- **Direction:** open it as its own page (sub-route such as
+  `/absences/limits`, full width on the phone, a back arrow), with the
+  default, warning and reserve values at the top and then one row per
+  subject: the name, the limit in use (own or default), and a clear
+  "default" state. When a subject's value is being edited, show the
+  values already in use (the default plus each distinct value in
+  `subject_limits`) as chips to tap, so the same number isn't typed ten
+  times. *Nastavení → Limity* links to the same page.
+- **Must stay true:** the same keys (`absence_critical_pct`,
+  `absence_warn_pct`, `absence_plan_reserve_pct`, `subject_limits`) saved
+  the same way; clearing a
+  subject still removes it from `subject_limits`; no new config key.
+
+#### O5: the wizard's Budík step really sets the alarm
+
+- Embed the Settings `WakeupCard` (`app/lib/features/settings/wakeup_card.dart`)
+  in the Telefon step instead of the lone switch: on/off, the minutes
+  before the first lesson, the exact-alarm permission (asked on purpose
+  there, like the notification permission), and the next wake-up.
+- The next wake-up needs the timetable; with O6 it is usually there by
+  then. Without it the card shows its own "no timetable yet" hint.
+- The note says which keys the step now writes (`wakeup_enabled`,
+  `wakeup_minutes_before`) and when (F1 wrote only the switch).
+
+#### O6: the first refresh starts during setup
+
+- The wizard already tests the Bakaláři login (`wizard_live.dart:67`).
+  Once that test passes and the login is saved, start the first refresh
+  in the background, so the timetable, absences and subjects are there
+  when the wizard ends.
+- **Must stay true** (CONTRIBUTING §5):
+  - it is a normal refresh: `startRefresh` → `runRefresh`, under the
+    session lock, recorded like any run;
+  - **nothing automatic happens during it**: the run gets a config copy
+    with `automation_paused: true` (in memory, never saved). Every auto
+    phase already honours it (`refresh.dart:736`), so no excuse is sent
+    and no lunch is ordered before the student has finished setup (the
+    signature and the templates come later in the wizard);
+  - *Dokončit* still starts the normal first refresh with the student's
+    own settings (`wizard_live.dart:79`); if the early one is still
+    running, the existing B7 rule applies;
+  - a failed early refresh doesn't block the wizard; the student sees it
+    like any failed refresh.
+- The note names the exact place the run starts and its scope (Bakaláři
+  only, since Strava comes later).
+
+### Order of work
+
+1. M1, M2, S1, S2, S3: one commit each, with their tests.
+2. `design-F1c.md` for O3–O6, then stop for review.
+3. F1c code only after the note passes.
