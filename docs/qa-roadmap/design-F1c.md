@@ -1,0 +1,343 @@
+# F1c design note: short Absence + one-calendar Plánovač (O3), full-page Limits (O4), real Budík step (O5), early setup refresh (O6)
+
+Status: **design note only, awaiting R3c design review — no O3–O6 code yet.**
+Written 2026-11-19 after fixing R3b code review findings M1, M2, S1–S3 (`7329221` … `64b5ccf`).
+
+Sources: owner's 2026-11-19 phone test of F1b (`STATUS.md` *Owner decisions*) and
+the reviewer's direction in [`reviews/phase-3b.md`](reviews/phase-3b.md#owner-changes-need-design-f1cmd-first-no-code-before-it-passes).
+
+---
+
+## 1. What changes, in one paragraph
+
+Four follow-up improvements from the owner's phone test of F1b:
+- **O3:** **Absence** (`/absences`) becomes short and focused again (header with *Limity* and **Plánovač** buttons, 3 KPI cards, optional 1-line next-recommended-day shortcut, and the unified subject + M1 stacked budget-bar list). Planning moves into a sub-route **`/absences/plan`** (no new rail or *More* tab) holding the term selector, a compact summary line, **one month-at-a-time calendar** (showing past days dimmed and non-tappable, replacing both the long multi-month semester overview and the separate *Naplánovat vlastní termín* dialog, supporting both single-day whole/partial-lesson planning via M2's `pickerSlotsFor` and a *Vybrat více dní* multi-day mode), the 3-day recommended list, planned days, and the calendar footer.
+- **O4:** Limits editing moves out of its narrow 480 px `AlertDialog` into a full-width sub-route **`/absences/limits`** with default/warning/reserve settings at the top and tappable subject rows whose inline editor offers chips for the default and every value already used in `subject_limits`. *Nastavení → Limity* links straight to `/absences/limits`.
+- **O5:** The Android wizard's *Telefon* step embeds the real Settings `WakeupCard` (enable switch, minutes before first lesson, notification + exact-alarm permissions, and next wake-up preview) instead of a lone switch.
+- **O6:** Once the Bakaláři login test passes and saves in the wizard, the app immediately starts a background Bakaláři-only refresh with an **in-memory** `automation_paused: true` config copy, so timetable, absences, subjects, and the *Telefon* step's next wake-up are already populated while zero excuses or lunch orders can fire before setup finishes.
+
+---
+
+## 2. O3 — Short Absence screen + Plánovač sub-route (`/absences/plan`) with one calendar
+
+### 2.1 Navigation, routes, and back behavior (`router.dart`, `scaffold.dart`, `today_view.dart`)
+
+- **`shellRoutes`** stays 7 items (`today, timetable, absences, marks, lunches, activity, settings`); **`moreRoutes`** stays 3 items (`absences, activity, settings`; Android *More* stays 4 with *Budík*). No new rail or *More* entry.
+- **New sub-routes inside `ShellRoute`** (`app/lib/shell/router.dart`):
+  - `'/absences/plan'` (route key `'absences/plan'`) → `ShellBackScope(route: 'absences/plan', child: LivePlannerPage(tokens: tokens, narrow: narrow))`
+  - `'/absences/limits'` (route key `'absences/limits'`) → `ShellBackScope(route: 'absences/limits', child: LiveLimitsPage(tokens: tokens, narrow: narrow))` (O4)
+- **Compatibility redirect:**
+  - `GoRoute(path: '/planner', redirect: (_, _) => '/absences/plan')`
+  - `routeForLocation(location)`:
+    - `'planner'` → `'absences/plan'`
+    - `'absences/plan'` → `'absences/plan'`
+    - `'absences/limits'` → `'absences/limits'`
+    - `routeLocation(route)` already returns `'/$route'`, so `'absences/plan'` → `'/absences/plan'` and `'absences/limits'` → `'/absences/limits'`.
+  - Add `'absences/plan'` and `'absences/limits'` to `PlaceholderScreen` `titles` fallback (`planner_title`, `sec_limits`) and to `AppScaffold`'s `pendingRoute` allow-list (`scaffold.dart:216`).
+- **Rail / bottom bar selection (`scaffold.dart`):**
+  - `final navRoute = route.startsWith('absences/') ? 'absences' : route;`
+  - Wide `NavigationRail` selects `shellRoutes.indexOf(navRoute)` (*Absence* stays highlighted on both sub-routes).
+  - Narrow `NavigationBar` / side `NavigationRail` keeps *Více* selected (since `'absences'` is in `moreRoutes`).
+- **Back navigation (`scaffold.dart`):**
+  - `backTarget`: when `!wizardShown && (route == 'absences/plan' || route == 'absences/limits')`, return `'absences'`. Android system Back (`ShellBackScope`) therefore steps from `/absences/plan` or `/absences/limits` back to `/absences` (and from `/absences` to `/more` on phone, unchanged).
+  - `_buildTopBar`: suppress `topbar_back_btn` on `'absences/plan'` and `'absences/limits'` (same single-arrow rule as an open Settings section, `d7e3a78`), because both sub-pages render their own `IconButton(Icons.arrow_back)` in their page header on **both** narrow and wide viewports (giving desktop users a back button too without ever doubling arrows on phones).
+- **`TodayView`** (`app/lib/features/today/today_view.dart:128`): the planner tip button opens `'absences/plan'` with label `Strings.get('abs_planner_btn')` (*Plánovač* / *Planner*).
+
+### 2.2 Short `/absences` screen (`AbsencesView` + `LiveAbsencesView`)
+
+`AbsencesView` (`app/lib/features/absences/absences_view.dart`) becomes short and focused:
+
+1. **Header (`HeaderRow`)**
+   - Title: `Strings.get('absence_title')`, plus `updatedLabel`.
+   - Two actions (inline in `HeaderRow` on `wide`; single equal-width `Row` right under `HeaderRow` on `narrow`):
+     - *Limity* (`Key('abs:limits_btn')`, `OutlinedButton.icon(Icons.tune)`) — shown when `onOpenLimits != null`; opens `/absences/limits`.
+     - *Plánovač* (`Key('abs:planner_btn')`, `FilledButton.icon(Icons.event_available_outlined)`, label `abs_planner_btn`) — shown when `onOpenPlanner != null`; opens `/absences/plan`.
+2. **No-limits banner** (unchanged): shown when `!c.hasSubjectLimits && onOpenLimits != null`; tapping *Limity* (`Key('abs:no_limits_btn')`) opens `/absences/limits`.
+3. **Case 1 — no subjects (`c.subjects.isEmpty`)**: `EmptyState(no_data)`, plus `planner_need_refresh` when `!hasTimetable`, plus `need_credentials` when `c.demoMode`.
+4. **Case 2 & 3 — subjects present**:
+   - **3-card KPI row** (`TutorialAnchor(anchorKey: 'abs_stats')`, equalized with `IntrinsicHeight`): *Průměrná absence*, *Varovné předměty*, *Kritické předměty*. (Fits on a single compact row even at 390 px, so subject cards begin immediately on the first screen; *Můžete vynechat* and *Naplánováno* move into Plánovač's summary line.)
+   - **Optional 1-line planner shortcut** (`Key('abs:next_plan_row')`): shown when `term != null && term.recommended.isNotEmpty && onOpenPlanner != null`. A compact clickable `Card` / `InkWell` row reading `Strings.format('planner_next', {'day': '${w.dayName(next, true)} ${w.czDay(next)}'})` + trailing `Icons.chevron_right` that opens `/absences/plan`.
+   - **Subjects & hour budgets list** (`Key('abs:subjects')`, first card wrapped in `TutorialAnchor(anchorKey: 'abs_first')`):
+     - Section header `abs_subjects_section` + 4-color legend when `term != null && term.budgets.isNotEmpty`.
+     - Each subject appears once with its current %, single badge (same tier precedence as F1b), and the M1-fixed `plannerBudgetBar` + `budget_final` / `budget_line` when a matching budget row exists for the active/selected term, else `w.Meter` + `c.detail(subject)`.
+   - Moved out of `/absences` to `/absences/plan`: term selector, warnings card, calendar overview, recommended list, planned list, calendar footer, and `showCustomPlanDialog`.
+
+### 2.3 Dedicated Plánovač sub-route (`/absences/plan`, `PlannerPage` + `LivePlannerPage`)
+
+Lives in `app/lib/features/planner/planner_view.dart` (widget `PlannerPage`) and `app/lib/features/planner/planner_live.dart` (widget `LivePlannerPage`, with optional `DateTime? now` for tests). Top-to-bottom in a single `ListView`:
+
+1. **Sub-page header**:
+   - `Row` with `IconButton(key: Key('plan:back_btn'), icon: Icon(Icons.arrow_back), tooltip: MaterialLocalizations.of(context).backButtonTooltip, onPressed: onBack)` + `Expanded(Text(Strings.get('planner_title'), ...))`.
+2. **Empty / closed-year cases**:
+   - `plan == null || !hasData`: `EmptyState(no_data)` + `planner_need_refresh` (if `!hasTimetable`) + `need_credentials` (if `demoMode`).
+   - `term == null` (closed school year): `term_nothing` card, then **Planned days** (`planned_title`, with unplan so upcoming planned days that can cancel lunches remain visible and removable), then **Calendar footer**.
+3. **Term selector** (when `plan.terms.length >= 2`):
+   - Same compact single row on `narrow` (`Expanded` side-by-side) / `Wrap` on `wide`: *1. pololetí · do ...* / *2. pololetí · do ...*, plus `term_fresh` accent text below if `!term.hasData`.
+4. **Compact 1-line summary** (`Key('plan:summary')`, inside a compact `Card` or padded row):
+   - `${Strings.get('stat_can_afford')}: ${daysText(term.capacity)} · ${Strings.get('stat_planned')}: ${daysText(plannedDays)} ($plannedHours h) · ${Strings.get('planner_horizon')}: ${term.remainingDays.length}`
+   - Optional second tiny muted line only when `term.tightest != null`: `${Strings.get('stat_tightest')}: ${tight.name} (${Strings.format('hours_free', {'n': hoursText(tight.free)})})`.
+5. **Warnings card** (unchanged: shown only when `over`, `reserve`, or `fastPace` is non-empty).
+6. **One Month Calendar (`PlannerMonthCalendar`, `TutorialAnchor(anchorKey: 'plan_strip')`)** — replaces BOTH the old multi-month semester strip AND the separate `CustomPlanDialog`:
+   - **Bounds & month navigation:**
+     - `firstMonth`: September of the active school year (`DateTime(schoolYear, 9, 1)` where `schoolYear = term.start.month >= 8 ? term.start.year : term.start.year - 1`, matching `schoolYearTerms`).
+     - `lastMonth`: `DateTime(term.close.year, term.close.month, 1)`.
+     - Initial month: `clamp(todayMonth, termStartMonth, lastMonth)` — opens on the current month when inside the active term, or on the selected term's opening month (e.g. February when switching to *2. pololetí* during November) while still allowing `‹` back to September so past months remain viewable. Switching terms re-clamps the month to `[termStartMonth, lastMonth]` and clears any pending multi-day selection.
+     - Month header row: `IconButton(key: Key('cal:prev_month'), icon: chevron_left, tooltip: pick_prev_month)` | **`<Localized Month> <Year>`** (from existing `pick_months`) | `IconButton(key: Key('cal:next_month'), icon: chevron_right, tooltip: pick_next_month)`.
+   - **Multi-select toggle above the grid:**
+     - Compact row with `Switch` / `FilterChip` (`Key('plan:multi_toggle')`, label `plan_select_multi` = *Vybrat více dní* / *Select multiple days*). Off by default; turning it off clears `selectedDays`.
+   - **5-column weekday grid (Mon–Fri, DST-proof via `core.addDays`):**
+     - Weekday headers `Po Út St Čt Pá` (localized via `w.dayName(..., true)`).
+     - Each in-month weekday cell has `ValueKey('day_${day.year}_${day.month}_${day.day}')`, height `44 px` (compact enough that at `390 × 844`, the entire header + summary + month calendar header + grid starts well inside the first screen — `calHeader` / month header well above `708 px`).
+     - **Visual states & interactivity:**
+       - Outside current month: empty `SizedBox(height: 44)`.
+       - After `term.close` or before `firstMonth`: muted faint text, `onTap: null`.
+       - **Free day / holiday** (`p.holidays.contains(day)`): `tok.border` outline, faint number, `onTap: null`.
+       - **Past day** (`day.isBefore(_d(p.firstDay))`, OR `day == _d(p.today)` with zero pickable M2 slots when `lessonsFor` is provided):
+         - If planned (`isPlanned`): dimmed `tintColor(over ? tok.red : tok.accent, 0.45)` — keeps its *passed* look, `onTap: null`.
+         - Otherwise: dimmed `tintColor(tok.overlay, 0.55)` with `tok.faint` number, `onTap: null`.
+       - **Planned future day** (`isPlanned && !past`): solid `over ? tok.red : tok.accent`.
+         - Single-day mode: tap opens `showPlannedDialog` (view/unplan).
+         - Multi-day mode: `onTap: null` (already planned).
+       - **Selectable future school day** (not free, not past, not planned, within `[term.start, term.close]` and either has pickable M2 slots or `lessonsFor == null` with `option != null`):
+         - Colors kept: `tok.green` (recommended), `tintColor(tok.red, 0.35)` (blocked / doesn't fit), `tok.overlay` (normal school day).
+         - Today keeps its 2 px `tok.text` border.
+         - In **multi-day mode**, a selected day renders with an accent fill/border (`tok.accent` with `tok.accentText` number and small check indicator) so selection is unmistakable.
+   - **Single-day tap (multi-select OFF):**
+     - Opens upgraded **`PlanDayDialog`** for `day` (passing `lessonsFor: lessonsFor` and `impactOfEntries: impactOfEntries`):
+       - Default state: whole day selected (identical to today — 1 tap *Potvrdit* plans the whole day via `controller.planSkip(...)`).
+       - When `lessonsFor != null` and the day has slots, shows a collapsible toggle **`Vybrat jen některé hodiny`** (`Key('plan:choose_lessons')`, existing string `pick_choose_lessons`).
+       - Expanding it lists every `PickerSlot` (from M2's `AppState.pickerSlotsFor(day, now)`):
+         - `CheckboxListTile` with title `'${slot.period}. ${slot.subject}'`, subtitle combining status tag (`pick_started` / `status_lesson_cancelled` / `pick_event` / `cal_tip_planned` / `pick_change`) + `slot.detail`, disabled when `!slot.pickable`.
+         - Includes a quick whole-day toggle checkbox (`all pickable` ↔ `none`).
+         - Unticking any lesson switches the previewed entries to `core.entriesForSelection(picked: {day: sel}, lessons: {day: taughtPeriods}, template: tpl, cancelLunch: cancelLunch)` — splitting non-contiguous periods cleanly, recalculating impact via `impactOfEntries`, and saving all resulting entries in one atomic `controller.planEntries(entries)` call on *Potvrdit*!
+         - If zero lessons remain checked, *Potvrdit* is disabled (`onPressed: null`).
+   - **Multi-day mode (multi-select ON):**
+     - Tapping a selectable future school day toggles it in `selectedDays` (`Set<DateTime>`).
+     - Below the grid (inside the calendar card), a **selection bar** (`Key('plan:multi_bar')`) renders:
+       - Empty: `pick_empty`.
+       - Non-empty:
+         - Summary: `Strings.format('plan_multi_summary', {'days': daysText(n), 'h': totalHours})` (*{days} · stojí {h} h* / *{days} · costs {h} h*), where `totalHours` sums the pickable lessons (or `option.budgetHours` / `lessonsOn(d)`) of the selected days.
+         - Live impact preview (`_PlanDayDialogStaticImpact`) computed from `impactOfEntries(prospectiveEntries)`.
+         - Actions: *Vymazat* (`Key('plan:multi_clear')`, `TextButton`) + **Naplánovat** (`Key('plan:multi_confirm')`, `FilledButton`).
+       - Tapping *Naplánovat* opens **`PlanMultiDialog`** (one confirmation dialog listing the chosen days, template dropdown + preview, lunch-cancel checkbox when `stravaOn`, and impact preview). Confirming builds entries with `core.entriesForSelection(...)` (merging consecutive school days into one range entry just like `CustomPlanDialog` did!) and saves them in one atomic `controller.planEntries(entries)` call (rolls back on failure), shows the snackbar (`skip_planned` / `skip_planned_keep_lunch` / `skip_not_planned`), clears `selectedDays`, and exits multi-select mode.
+   - **Legend + hint** below the grid/bar (same 6 swatches; hint updated to mention tapping a day or toggling *Vybrat více dní*).
+   - **Removed:** `CustomPlanDialog` and `showCustomPlanDialog` (and `plan_custom` / `plan_custom_hint` strings) go away because `PlannerMonthCalendar` + upgraded `PlanDayDialog` cover both single-day partial lessons and multi-day ranges.
+7. **Recommended days off**: unchanged from F1b (heading with total count, target dropdown, *Naplánovat vše (N)*, next 3 picks + *Zobrazit všechny (N)* / *Zobrazit méně* in-memory toggle, `TutorialAnchor(anchorKey: 'plan_first')` on first card; tapping *Naplánovat dovolenou* opens the same upgraded `PlanDayDialog`).
+8. **Planned days** (`planned_title`, with *Zrušit plán* / *Proběhlo*).
+9. **Calendar footer** (*Upravit kalendář* → Settings → Škola).
+
+### 2.4 Tutorials split (`app/lib/tutorial/tours.dart`, `app/lib/controllers/tutorial.dart`)
+
+- **`'absences'`** (route `'absences'`, 2 steps — offered by `LiveAbsencesView` whenever `c.subjects.isNotEmpty`):
+  1. `abs_stats` (`anchor: 'abs_stats'`) — overview KPIs + *Limity* and *Plánovač* buttons.
+  2. `abs_subject` (`anchor: 'abs_first'`) — per-subject progress bar, reserve note, and *Limity*.
+- **`'absences_plan'`** (NEW tour id — NOT `'planner'`, so existing installs with `'planner'` in `tutorials_done` get this new tour; route `'absences/plan'`, offered by `LivePlannerPage` when active term has `hasData` and `recommended.isNotEmpty`):
+  1. `plan_strip` (`anchor: 'plan_strip'`) — month calendar (tap a day to plan whole or partial lessons, toggle *Vybrat více dní* for multiple days, evenly spread picks).
+  2. `plan_pick` (`anchor: 'plan_first'`, `until: 'day_planned'`) — recommended days off.
+- `tutorialStepSkipped` in `app/lib/controllers/tutorial.dart` keeps its `plan_strip` and `plan_pick` guards unchanged.
+- `tools/demo_data.py`: `TOURS_DONE` adds `"absences_plan"` (leaving `"absences"` out) so `--tutorials` continues to leave only the Absence tour on.
+
+---
+
+## 3. O4 — Full-page Limits editor (`/absences/limits`) with tappable value chips
+
+### 3.1 Widget & route (`app/lib/features/absences/limits_page.dart`)
+
+- **`LimitsPage`** (stateful widget) + **`LiveLimitsPage`** (`ConsumerWidget`, wired to `settingsControllerFor(s)` and `onBack: () => context.go('/absences')`, unfocusing active fields before navigating back so any typed value commits).
+- **Header**: `IconButton(key: Key('lim:back_btn'), icon: Icon(Icons.arrow_back), onPressed: onBack)` + `Expanded(Text(Strings.get('sec_limits'), ...))`.
+- **Top card — Global defaults** (full width; 3 `AutosaveField`s in a `Row` on `wide`, stacked on `narrow`):
+  1. `default_limit` → `absence_critical_pct` (fallback `25.0`, `draftKey: 'lim:default'`)
+  2. `warn_limit` → `absence_warn_pct` (fallback `15.0`, `draftKey: 'lim:warn'`)
+  3. `reserve_limit` → `absence_plan_reserve_pct` (fallback `10.0`, clamped `0.0..99.9`, `draftKey: 'lim:reserve'`)
+  - Followed by `reserve_hint`.
+  - Saving `absence_critical_pct` calls `setState(() {})` so the default `%` shown on every subject row and on the *Výchozí* chip updates immediately.
+- **Per-subject list** (full width, sorted alphabetically from `c.get('absence', {})` — same filtered `limitSubjects() ?? abs.keys` set `settingsControllerFor` builds today):
+  - Helper `_usedValues(Map limits, double defaultPct)`: collects every distinct numeric value in `limits.values` (sorted ascending, deduplicated against `defaultPct` within `1e-9`).
+  - **Display row (`Key('lim:row:$subject')`)**: `Card` with tappable `InkWell` / `ListTile`:
+    - Subject name (bold).
+    - Current limit indicator:
+      - If no own entry in `subject_limits`: muted `'${fmtPct(defaultPct)} %'` + muted chip/label `limit_default_tag` (*výchozí* / *default*).
+      - If own entry `v` in `subject_limits`: accent bold `'${fmtPct(v)} %'` badge.
+    - Trailing `Icons.edit_outlined` (or `Icons.expand_less` when expanded).
+  - **Inline editor (expanded when row is tapped; only one subject expanded at a time):**
+    - Row with numeric `TextField` (`Key('lim:subj:$subject')`, prefilled with own value or empty with placeholder `'${fmtPct(defaultPct)} %'`, `keyboardType: numberWithOptions(decimal: true)`) + `IconButton(key: Key('lim:done:$subject'), icon: Icon(Icons.check))` to commit & close.
+    - **Quick-pick chips (`Wrap(spacing: 8, runSpacing: 6)`):**
+      - First chip (`Key('lim:chip:default')`): `ChoiceChip` / `ActionChip` labelled `Strings.format('limit_use_default', {'pct': defaultPct})` (*Výchozí ({pct:g} %)* / *Default ({pct:g} %)*). Tapping removes `subject` from `subject_limits`, saves via `c.saveQuiet({'subject_limits': current})`, clears the text field, and collapses the row.
+      - One chip per distinct custom value `v` in `_usedValues` (`Key('lim:chip:${fmtPct(v)}')`): labelled `'${fmtPct(v)} %'`. Tapping sets `current[subject] = v`, saves via `c.saveQuiet({'subject_limits': current})`, updates the text field, and collapses the row.
+    - **Commit & clear rules (unchanged from `LimitsEditorContent`):**
+      - Blank input commits by removing `subject` from `subject_limits` via `c.saveQuiet({'subject_limits': current})`.
+      - Valid number commits `current[subject] = parsed` via `c.saveQuiet({'subject_limits': current})`.
+      - Commits on submit, blur, switching to another row, tapping Done, and `dispose` (when navigating back).
+  - **Footer hint:** `limit_subject_hint` (*Prázdné = platí výchozí limit výše.*). When `subjects` is empty, shows `no_data` muted hint under the global defaults card.
+- **`SettingsView._limits`** (`app/lib/features/settings/settings_view.dart:1034`):
+  - `settings:go_absences_limits` navigates to `'/absences/limits'` (instead of `'/absences'`) with label `Strings.get('open_limits')` (*Otevřít limity* / *Open limits*).
+- **Removed:** `_openLimitsDialog` in `AbsencesView` and `LimitsEditorContent` in `settings_view.dart` (replaced by `LimitsPage`).
+- **Config keys:** exact same keys (`absence_critical_pct`, `absence_warn_pct`, `absence_plan_reserve_pct`, `subject_limits`), zero new keys.
+
+---
+
+## 4. O5 — Wizard *Telefon* step embeds real `WakeupCard`
+
+- **Where:** `app/lib/features/wizard/wizard_view.dart` (`_phoneContent`), `app/lib/features/wizard/wizard_live.dart` (`_LiveWizardViewState`, `wizardControllerFor`), and `app/lib/features/wizard/wizard_controller.dart` (`savePhone`, `shouldAskNotificationPermission`).
+- **Live permissions & `WakeupCard` wiring in `_LiveWizardViewState`:**
+  - Mix in `WidgetsBindingObserver` so returning from Android's *Exact alarms* or *App notifications* settings immediately re-queries `AndroidChannel().notificationsEnabled()` and `AndroidChannel().exactAlarmsAllowed()`.
+  - Build a `SettingsController` via `settingsControllerFor(s, wakeupPhone: ...)` when `Platform.isAndroid` (using the same `_channelPhone` helper exported from `settings_live.dart` as `channelWakeupPhone`, with `requestNotificationPermission` marking `s.notificationPermissionAsked = true`, awaiting `channel.requestNotificationPermission()`, and refreshing `_notifOn`).
+  - Pass `SettingsController? wakeupController` to `WizardView`.
+- **What `_phoneContent` renders:**
+  - Keeps the short intro (`wiz_phone_p`), followed by `WakeupCard(controller: wakeupController!)` (when `wakeupController != null`; falls back to the simple switch only in headless/non-wired unit tests that don't pass `wakeupController`).
+  - Inside `WakeupCard`, the student sees and controls:
+    1. *Budík před první hodinou* (`wakeup_enabled` switch) — toggling ON immediately saves `wakeup_enabled: true` and asks for notification permission.
+    2. *Kolik minut před první hodinou budit* (`wakeup_minutes_before` `AutosaveField`) — saves on blur/submit (clamped 1..720).
+    3. Notification & exact-alarm warnings + direct permission buttons (*Povolit oznámení*, *Povolit přesné budíky*) when not yet granted.
+    4. Live *Příští budík* preview (`wakeup_next` / `wakeup_next_eve`) when O6's early refresh has populated the timetable, or `wakeup_none` while the timetable isn't cached yet (rebuilding automatically the instant O6 finishes and emits!).
+- **Exact config keys written by `stepPhone` and when:**
+  - `wakeup_enabled`: written immediately when the user toggles the switch inside `WakeupCard` (via `SettingsController.save` → `AppState.save`).
+  - `wakeup_minutes_before`: written on blur/submit of the minutes `AutosaveField` (and unfocused in `WizardView` before `pressNext()` runs so a half-typed number saves before advancing).
+  - `wakeup_skip_dates`: written only if the user taps *Tento den nebudit* / restore inside `WakeupCard`.
+  - **On *Pokračovat* (`pressNext` at `stepPhone`):**
+    - `WizardView` calls `FocusManager.instance.primaryFocus?.unfocus()` before `c.pressNext()`.
+    - When `WakeupCard` is embedded (`useExternalWakeupCard = true` on `WizardController`), `savePhone()` does NOT overwrite `wakeup_enabled` with an unset `wiz:wakeup_enabled` draft; it leaves `WakeupCard`'s saved values untouched.
+    - `shouldAskNotificationPermission` checks `(config['run_in_background'] ?? true) == true || (config['wakeup_enabled'] ?? false) == true || alarmEnabled`.
+    - If `shouldAskNotificationPermission` AND `!notificationPermissionAlreadyAsked` (tracked from `s.notificationPermissionAsked`), `pressNext()` still awaits `onRequestNotificationPermission()` before advancing to `stepDone` — preserving B9 so a user who leaves the alarm OFF still gets the notification permission prompt on `stepPhone` (never over the post-wizard tutorial!). If the user already granted notifications inside `WakeupCard`, `pressNext()` advances directly to `stepDone` without a duplicate prompt.
+  - **On *Přeskočit* (`pressSkip` at `stepPhone`):** advances to `stepDone` without asking permission and without writing any new keys.
+
+---
+
+## 5. O6 — Early first refresh during setup
+
+- **Exact place it starts:**
+  - `WizardController` gains `final void Function()? onBakalariSaved;`.
+  - In `wizard_live.dart` (`wizardControllerFor`), wire:
+    ```dart
+    onBakalariSaved: () => s.startRefresh('bakalari', pauseAutomation: true),
+    ```
+  - Called in `WizardController` right after `saveBakalari()` succeeds on a verified login:
+    1. In `recordTestResult('bakalari', true, msg)` immediately after `_saveFor('bakalari')` succeeds (the normal first-time path when *Otestovat a pokračovat* passes).
+    2. In `continueTestStep('bakalari', ...)` immediately after `_saveFor('bakalari')` succeeds when continuing on an already-verified fingerprint (idempotent: `claimFlight('refresh_running')` ensures at most one refresh runs).
+  - **Scope:** `'bakalari'` only (Strava comes on the next step).
+- **Exact `automation_paused` guarantee (`app/lib/controllers/activity.dart`):**
+  - Update `startRefresh([String scope = 'all', {bool pauseAutomation = false}])` → `_refreshWork(scope, pauseAutomation: pauseAutomation)` → `_refreshLocked(scope, started, pauseAutomation: pauseAutomation)`.
+  - Inside `_refreshLocked`:
+    ```dart
+    final runConfig = pauseAutomation
+        ? <String, Object?>{...app.configData, 'automation_paused': true}
+        : app.configData;
+    result = await runRefresh(
+      app,
+      runConfig,
+      scope: scope,
+      ...
+    );
+    ```
+  - **Safety proof (CONTRIBUTING §5):**
+    - Uses the single `startRefresh` → `withSessionLockAsync` → `runRefresh` → `reloadCache` → `finishRun` pipeline.
+    - `automation_paused: true` is placed ONLY on the shallow in-memory `runConfig` copy; `config.json` and `app.configData` are never written or mutated with `automation_paused: true`.
+    - `runRefresh` (`packages/strakalari_core/lib/src/automation/refresh.dart:736`) already gates every auto phase on `automation_paused`, so zero excuses are sent and zero lunches are ordered before setup completes.
+    - Every run (success or failure) is recorded in `runs` / `audit.dart` just like any normal refresh.
+- **Failure & *Dokončit* behavior:**
+  - A failed early refresh never blocks wizard navigation; it records the failed run and queues the standard error dialog/snack (already drained by `popPendingMessages` on `/wizard`, `router.dart:166`).
+  - *Dokončit* (`stepDone`) still calls `onFinishRefresh: () => s.startRefresh()` (scope `'all'`, `pauseAutomation: false`), running with the student's real settings (including Strava if enabled). If the early Bakaláři refresh is still in flight at *Dokončit*, `startRefresh()` returns `false` and the existing B7 `already_running` snackbar fires.
+
+---
+
+## 6. Config keys, safety rules, strings, and docs
+
+- **Config keys:** **zero** added, removed, or renamed. `config.example.json`, `config.dart`, and all frozen parity fixtures stay completely untouched.
+- **Safety rules (`CONTRIBUTING.md` §5):** `runRefresh`, `withSessionLock`, `Strakalari.sendExcuse`, `HistoryLock`, `audit.dart`, `planCustomSkip` / `planEntries` / `unplanEntry` / lunch-cancel staging stay completely intact; O6's early refresh adds an in-memory-only `automation_paused: true` guard and never mutates saved config.
+
+### Strings (`app/lib/l10n/app_cs.arb`, `app_en.arb`, `strings.dart`)
+
+- **New keys (8):**
+
+  | Key | `cs` | `en` | Where used |
+  |---|---|---|---|
+  | `abs_planner_btn` | `Plánovač` | `Planner` | Header button on `/absences` and *Dnes* tip button |
+  | `plan_select_multi` | `Vybrat více dní` | `Select multiple days` | Multi-select toggle above month calendar |
+  | `plan_multi_summary` | `{days} · stojí {h} h` | `{days} · costs {h} h` | Selection summary bar in multi-day mode |
+  | `plan_multi_btn` | `Naplánovat` | `Plan selected` | Confirm CTA in multi-day selection bar |
+  | `plan_multi_clear` | `Vymazat` | `Clear` | Clear selection button in multi-day bar |
+  | `limit_default_tag` | `výchozí` | `default` | Muted tag on subject rows using default limit |
+  | `limit_use_default` | `Výchozí ({pct:g} %)` | `Default ({pct:g}%)` | Quick-pick chip in Limits editor to clear override |
+  | `open_limits` | `Otevřít limity` | `Open limits` | *Nastavení → Limity* button linking to `/absences/limits` |
+
+- **Removed keys (4, verified unused via grep after F1c):**
+  - `plan_custom` (separate custom dialog removed)
+  - `plan_custom_hint` (separate custom dialog removed)
+  - `stat_warn_crit` (4-card Absence KPI replaced by 3-card Absence KPI + Plánovač summary line)
+  - `open_absences` (replaced by `open_limits` on *Nastavení → Limity*; verify via grep no other caller exists)
+- **Updated keys (`cs` & `en`):**
+  - `overview_hint`: mentions tapping a day to plan (whole or some lessons) or switching on *Vybrat více dní* / *Select multiple days*.
+  - `tut_abs_stats_body`: describes the Absence KPIs + *Limity* and *Plánovač* buttons.
+  - `tut_plan_strip_body`: describes the month calendar (past days shown unselectable, tap a day for whole/partial plan, *Vybrat více dní* for multiple days, evenly spread picks).
+- **Reused existing keys:** `planner_title`, `planner_next`, `section_overview`, `pick_months`, `pick_prev_month`, `pick_next_month`, `pick_choose_lessons`, `pick_empty`, `pick_started`, `pick_event`, `pick_change`, `status_lesson_cancelled`, `cal_tip_*`, `plan_skip`, `plan_all`, `plan_all_title`, `plan_all_body`, `plan_all_done`, `plan_cancel_lunch`, `plan_show_all`, `plan_show_less`, `planned_title`, `stat_can_afford`, `stat_planned`, `planner_horizon`, `stat_tightest`, `hours_free`, `sec_limits`, `default_limit`, `warn_limit`, `reserve_limit`, `reserve_hint`, `limit_subject_hint`, `abs_limits_btn`, `abs_no_limits`, `abs_subjects_section`, `wakeup_*`.
+- **Key count:** 796 − 4 + 8 = **800** (above `>= 790` check in `strings_table_parity_test.dart:90`).
+
+### Docs & tooling (`README.md`, `README.en.md`, `tools/parity/capture_screens.dart`, `tools/demo_data.py`)
+
+- Update `tools/demo_data.py` `TOURS_DONE` to include `"absences_plan"` so `--tutorials` leaves only `"absences"`.
+- Recapture `docs/images/absences-{cs,en}.png` via `tools/parity/capture_screens.dart` (which now shows the shorter Absence screen with subject budget bars clearly visible at 1280 × 800!).
+- Brief 1-line README update if needed so `README.md` / `README.en.md` accurately describe opening *Plánovač* and *Limity* from *Absence*.
+
+---
+
+## 7. Exact tests to update and add
+
+Baseline after R3b fixes: core **809 passed / 2 skipped**, app **739 passed / 1 skipped** (count may only go up; zero tests deleted or weakened).
+
+1. **Navigation & Back (`app/test/mobile_narrow_shell_test.dart`, `app/test/android_back_test.dart`, `app/test/absences_live_test.dart`):**
+   - `/planner` redirects to `/absences/plan` (updates existing `/planner redirects to /absences` test in `absences_live_test.dart`).
+   - *Dnes* planner tip navigates to `'absences/plan'` (updates `Today planner suggestion opens absences`).
+   - `backTarget` returns `'absences'` for `'absences/plan'` and `'absences/limits'` on narrow screens; Android Back on `/absences/plan` and `/absences/limits` lands on `/absences` (`android_back_test.dart`).
+   - `AppScaffold` keeps *Absence* selected in the wide rail on `/absences/plan` and `/absences/limits`, and hides `topbar_back_btn` on both sub-routes (single back arrow check in `mobile_narrow_shell_test.dart`).
+2. **Short Absence screen (`app/test/absences_view_test.dart`, `app/test/absences_live_test.dart`):**
+   - Keeps all existing tests (`every row shows its percentage`, `updated line`, `stat values`, `P9a`, `each subject renders once with badge precedence and Meter fallback`, `M1 budget bar segments are drawn`).
+   - Updates `F1 Absence tab shows no-limits hint and opens shared limits editor` to verify tapping *Limity* invokes `onOpenLimits` (and a live route test verifies `/absences` → `/absences/limits` → back to `/absences`).
+   - Adds tests for the *Plánovač* button (`abs:planner_btn`) and optional `planner_next` shortcut row (`abs:next_plan_row`) opening `/absences/plan`, and verifies the semester overview/recommended/planned sections are NOT rendered on `/absences`.
+3. **Plánovač sub-route & single calendar (`app/test/planner_view_test.dart`, `app/test/plan_picker_test.dart`, `app/test/planner_dialog_test.dart`, `app/test/calendar_days_dst_test.dart`, `app/test/planner_live_test.dart`, `app/test/absences_live_test.dart`):**
+   - `planner_view_test.dart`: all 15 tests updated to pump `PlannerPage` (asserting `planner_title` and `plan:summary`), preserving: empty states, stats/calendar/planned, target dropdown ×2, plan dialog confirm/cancel, plan-all dialog, unplan, passed badge, 3-day picks + *Zobrazit všechny*, rollback on persist failure, and `P9b` proving the month calendar starts well inside the first screen (`< 708 px`) at `390 × 844`.
+   - `plan_picker_test.dart`: all 12 tests migrated from `CustomPlanDialog` to `PlannerMonthCalendar` + upgraded `PlanDayDialog` (keeping every single test name & assertion: `tappingADayTakesItOffWhole`, `tappingAPickedDayAgainUnpicksIt` [in multi-select mode], `untickedLessonsStayAttended` [via `pick_choose_lessons` in `PlanDayDialog`], `daysInARowBecomeOneRange` [in multi-select mode], `weekChangesAreShownAndCancelledLessonsLocked`, `unfetchedWeekUsesTheStableTimetable`, `alreadyPlannedLessonsAreLockedAndSplitThePick`, `fullyPlannedDaysAndHolidaysCannotBeTapped`, `startedLessonsTodayCannotBePicked`, `pastDaysAreNotTappable`, `wholeDaySwitchClearsAndRefillsTheDay`, `monthNavigationStaysInsideTheSchoolYear`).
+   - `planner_dialog_test.dart`: updates `customDialogTemplateSelectAndCancel` to test `PlanMultiDialog` (template selection + cancel leaves `plannedSkips` empty); keeps all 5 `PlanDayDialog` tests unchanged.
+   - `calendar_days_dst_test.dart`: updates the 3 grid/calendar tests to pump `PlannerPage` / `PlannerMonthCalendar` (November 2026 + navigating to October 2026 before DST across wide and phone, verifying weekday column alignment, today border, no weekends, and Friday 30 Oct).
+   - `absences_live_test.dart`: updates M2 live test to open `LivePlannerPage` (verifying real M2 `pickerSlotsFor` lets you tap a future day, pick partial lessons or multi-day, and disables past + free days) and keeps cases 1–3 (`case 2` closed school year on `LivePlannerPage` keeps *Naplánované* with unplan and footer; `case 3` active term on `LiveAbsencesView` shows 3 KPIs + budget bars + `planner_next`).
+   - `ui_views_test.dart` and `scroll_keeps_offset_test.dart`: keep `LiveAbsencesView` and add `LivePlannerPage` scroll/build coverage.
+4. **O4 Full-page Limits (`app/test/limits_page_test.dart`, `app/test/settings_sections_test.dart`):**
+   - New `limits_page_test.dart`:
+     - Global fields (`absence_critical_pct`, `absence_warn_pct`, `absence_plan_reserve_pct`) load and persist via `SettingsController`; changing default updates displayed defaults on subject rows.
+     - Subject rows show muted `limit_default_tag` when unset and custom `%` when set.
+     - Tapping a subject expands inline editor showing *Výchozí* chip + distinct already-used custom chips from `subject_limits`.
+     - Tapping an already-used chip saves that value to `subject_limits[subject]` without typing.
+     - Tapping *Výchozí* chip or clearing the text field removes `subject` from `subject_limits`.
+     - Back arrow unfocuses and invokes `onBack`.
+   - `settings_sections_test.dart`: updates `settings:go_absences_limits` test to assert label `open_limits` and navigation to `/absences/limits`.
+5. **O5 Wizard `WakeupCard` (`app/test/wizard_live_test.dart`):**
+   - Updates `F1 Telefon step` tests:
+     - Renders `WakeupCard` (enable switch, minutes field, permission prompts when off, next alarm preview when timetable exists or `wakeup_none` when empty).
+     - Toggling switch writes `wakeup_enabled` immediately; editing minutes + pressing *Pokračovat* writes `wakeup_minutes_before`.
+     - Leaving alarm off and pressing *Pokračovat* still asks notification permission before advancing (B9 preserved).
+     - Pressing *Přeskočit* writes nothing and asks no permission.
+6. **O6 Early setup refresh (`app/test/wizard_live_test.dart`, `app/test/app_state_excuses_and_planner_test.dart`):**
+   - Unit test on `AppState.startRefresh('bakalari', pauseAutomation: true)`: verifies `runRefresh` receives `scope == 'bakalari'` and `configData['automation_paused'] == true`, `config.json` on disk does NOT have `automation_paused: true`, and zero excuses/orders fire.
+   - Wizard test: passing Bakaláři login test triggers `onBakalariSaved` (`startRefresh('bakalari', pauseAutomation: true)`); a failed login test does NOT trigger it; a failed early refresh does not block wizard navigation; pressing *Dokončit* starts a normal `'all'` refresh with `pauseAutomation: false` (or shows `already_running` if the early refresh is still in flight).
+7. **Tours (`app/test/tutorial_test.dart`):**
+   - Updates `routes` to include `'absences/plan'` for `'absences_plan'`; tests `'absences'` (2 steps: `abs_stats`, `abs_subject`) and `'absences_plan'` (2 steps: `plan_strip`, `plan_pick`, skipped without timetable/picks, offered separately from old `'planner'` id).
+
+---
+
+## 8. Done when (and commit plan)
+
+Implement only **after** this design note passes review, in 4 green commits (one per O-item, each with its own tests, never breaking the tree):
+1. `F1c (O6): start paused Bakaláři refresh after wizard login test`
+2. `F1c (O5): embed WakeupCard in wizard Telefon step`
+3. `F1c (O4): full-page Limits editor with quick-pick value chips`
+4. `F1c (O3): short Absence screen and single-calendar Plánovač sub-route` (+ tours, strings, `demo_data.py`, README & `docs/images/absences-*.png`)
+
+**Done when:**
+- `/absences` is short (header with *Limity* + *Plánovač*, 3 KPIs, optional `planner_next` shortcut, subject cards with M1 stacked budget bars); no new rail or *More* tab.
+- `/absences/plan` has a single back arrow on phone and desktop (no duplicate top-bar arrow), Android Back returns to `/absences`, `/planner` and *Dnes* tip open `/absences/plan`, and at `390 × 844` the month calendar starts on the first screen.
+- One month calendar shows past days greyed and non-tappable (past planned days keep *passed* look), supports single-day tap (whole day or partial lessons via M2 `pickerSlotsFor`), and *Vybrat více dní* multi-day selection with impact preview and single-save atomic `planEntries` confirmation; separate `CustomPlanDialog` is gone.
+- `/absences/limits` is a full-width page with global defaults at top, clear default/custom subject rows, tappable already-used value chips + *Výchozí* clear chip, and *Nastavení → Limity* opens it.
+- Wizard *Telefon* step embeds `WakeupCard` (switch, minutes, notification + exact-alarm permissions, next wake-up preview) while preserving B9 and *Přeskočit*.
+- Verified Bakaláři login in the wizard starts a `'bakalari'` refresh via `startRefresh` with in-memory `automation_paused: true` (never saved to `config.json`); *Dokončit* still runs a normal `'all'` refresh (with B7 `already_running` if busy).
+- Zero config keys changed; all safety rules intact; cs/en ARBs + `strings.dart` in sync; tutorials split (`absences` + `absences_plan`).
+- Visual evidence in `build/qa-evidence/F1c/` at 390 px and 1280 px (cs/en, light/dark) for `/absences`, `/absences/plan` (single & multi-select), `/absences/limits`, and wizard *Telefon*.
+- Core (`dart analyze && dart test`) and app (`flutter analyze && flutter test`, count >= 739) are completely green.
