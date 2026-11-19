@@ -10,7 +10,9 @@ import 'package:strakalari_core/strakalari_core.dart';
 
 import 'package:app/controllers/app_state.dart';
 import 'package:app/features/common/app_tokens.dart';
+import 'package:app/features/settings/settings_controller.dart';
 import 'package:app/features/settings/settings_live.dart';
+import 'package:app/features/settings/wakeup_card.dart';
 import 'package:app/features/today/today_controller.dart';
 import 'package:app/features/wizard/wizard_controller.dart';
 import 'package:app/features/wizard/wizard_live.dart';
@@ -1484,20 +1486,18 @@ void main() {
 
   group('F1 Telefon step', () {
     testWidgets(
-        'shows only wakeup switch (no background switch), asks permission on Continue and advances after answer',
+        'embeds WakeupCard (no background switch), saves wakeup_enabled immediately and wakeup_minutes_before on Continue without duplicate permission prompt',
         (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
       Strings.lang = 'cs';
 
-      final permissionCompleter = Completer<void>();
       var permissionCalls = 0;
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(AndroidChannel.channel, (call) async {
         if (call.method == 'requestNotificationPermission') {
           permissionCalls++;
-          await permissionCompleter.future;
         }
         return null;
       });
@@ -1523,27 +1523,145 @@ void main() {
       );
       await tester.pump();
 
+      expect(find.byType(WakeupCard), findsOneWidget);
       expect(find.byType(SwitchListTile), findsOneWidget);
       expect(find.text(Strings.get('wakeup_enable')), findsOneWidget);
+      expect(find.text(Strings.get('wakeup_minutes')), findsOneWidget);
       expect(find.text(Strings.get('run_in_background')), findsNothing);
-      expect(find.text(Strings.get('wakeup_minutes')), findsNothing);
 
-      // Toggle alarm on and press Continue -> saves wakeup_enabled, does not write
-      // wakeup_minutes_before, asks permission and waits before advancing.
+      // Toggle alarm on inside WakeupCard -> saves immediately and asks permission once.
       await tester.tap(find.byType(SwitchListTile));
+      await tester.pumpAndSettle();
+
+      expect(s.get('wakeup_enabled'), isTrue);
+      expect(s.notificationPermissionAsked, isTrue);
+      expect(permissionCalls, 1);
+      expect(find.text(Strings.get('wakeup_none')), findsOneWidget);
+
+      // Type new minutes and press Continue while field is still focused ->
+      // unfocus saves wakeup_minutes_before and advances without asking permission again.
+      await tester.enterText(find.byType(TextField), '30');
+      await tester.tap(
+          find.widgetWithText(FilledButton, Strings.get('wiz_next')));
+      await tester.pumpAndSettle();
+
+      expect(s.get('wakeup_minutes_before'), 30);
+      expect(permissionCalls, 1);
+      expect(s.wizardStep, WizardController.stepDone);
+    });
+
+    testWidgets(
+        'O5 WakeupCard shows permission prompts and next alarm preview, and preserves B9 when leaving alarm off',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      Strings.lang = 'cs';
+
+      final permissionCompleter = Completer<void>();
+      var permissionCalls = 0;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(AndroidChannel.channel, (call) async {
+        if (call.method == 'requestNotificationPermission') {
+          permissionCalls++;
+          await permissionCompleter.future;
+        }
+        return null;
+      });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(AndroidChannel.channel, null);
+      });
+
+      final now = DateTime(2026, 10, 12, 12, 0);
+      final s = AppState(
+        configData: {
+          'language': 'cs',
+          'wakeup_enabled': true,
+          'wakeup_minutes_before': 60,
+          'school_preset_id': 'custom',
+          'user_free_days': <Object?>[],
+          'holidays': <Object?>[],
+        },
+        data: {
+          'timetable': {
+            '13.10.2026': [
+              {'time': '1 (8:00 - 8:45)', 'subject': 'Matematika'},
+            ],
+          },
+        },
+      );
+      s.demoMode = false;
+      s.wakeupAvailableOverride = true;
+      s.wizardStep = WizardController.stepPhone;
+
+      final fakePhone = WakeupPhone(
+        notificationsEnabled: false,
+        exactAlarmsAllowed: false,
+        nextAlarm: () => s.nextWakeupAlarm(now),
+        skippedDays: () => const [],
+        openSystemAlarm: (h, m, message, {int? weekday}) async => true,
+        requestNotificationPermission: () {},
+        openNotificationSettings: () {},
+        openExactAlarmSettings: () {},
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _SeededAppStateController(s)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LiveWizardView(
+                tokens: AppTokens.dark(),
+                narrow: true,
+                wakeupPhone: fakePhone,
+              ),
+            ),
+          ),
+        ),
+      );
       await tester.pump();
+
+      expect(find.text(Strings.get('wakeup_notif_off')), findsOneWidget);
+      expect(find.text(Strings.get('notif_allow')), findsOneWidget);
+      expect(find.text(Strings.get('wakeup_exact_off')), findsOneWidget);
+      expect(find.text(Strings.get('wakeup_exact_allow')), findsOneWidget);
+      expect(find.textContaining('07:00'), findsOneWidget);
+      expect(find.textContaining('Matematika'), findsOneWidget);
+
+      // Separate B9 check: leaving alarm OFF and pressing Continue still asks
+      // notification permission and waits until answered before advancing.
+      final sOff = AppState(configData: {'language': 'cs'});
+      sOff.wizardStep = WizardController.stepPhone;
+      await tester.pumpWidget(
+        ProviderScope(
+          key: const ValueKey('b9_scope'),
+          overrides: [
+            appStateProvider
+                .overrideWith(() => _SeededAppStateController(sOff)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: LiveWizardView(tokens: AppTokens.dark(), narrow: true),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
       await tester.tap(
           find.widgetWithText(FilledButton, Strings.get('wiz_next')));
       await tester.pump();
 
       expect(permissionCalls, 1);
-      expect(s.get('wakeup_enabled'), isTrue);
-      expect(s.notificationPermissionAsked, isTrue);
-      expect(s.wizardStep, WizardController.stepPhone);
+      expect(sOff.notificationPermissionAsked, isTrue);
+      expect(sOff.wizardStep, WizardController.stepPhone);
 
       permissionCompleter.complete();
       await tester.pumpAndSettle();
-      expect(s.wizardStep, WizardController.stepDone);
+      expect(sOff.wizardStep, WizardController.stepDone);
     });
 
     testWidgets('Skip on Telefon saves nothing and asks no permission',
@@ -1581,8 +1699,6 @@ void main() {
       );
       await tester.pump();
 
-      await tester.tap(find.byType(SwitchListTile));
-      await tester.pump();
       await tester.tap(find.text(Strings.get('wiz_skip')));
       await tester.pumpAndSettle();
 

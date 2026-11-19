@@ -103,6 +103,14 @@ class WizardController extends ChangeNotifier {
   /// True while awaiting Android's notification permission prompt on Telefon.
   bool requestingPermission = false;
 
+  /// True when the Telefon step embeds Settings' live [WakeupCard], which
+  /// persists `wakeup_enabled` and `wakeup_minutes_before` itself.
+  bool useExternalWakeupCard = false;
+
+  /// True once the notification permission prompt has already been shown
+  /// during this session (for instance from inside [WakeupCard]).
+  bool notificationPermissionAlreadyAsked = false;
+
   /// Last test result: `{service, ok, at, message}`.
   Map<String, Object?> lastTest = {};
 
@@ -375,9 +383,12 @@ class WizardController extends ChangeNotifier {
   // -- phone + signature --------------------------------------------------------------------------
 
   bool get shouldAskNotificationPermission =>
-      (config['run_in_background'] ?? true) == true || alarmEnabled;
+      (config['run_in_background'] ?? true) == true ||
+      (config['wakeup_enabled'] ?? false) == true ||
+      alarmEnabled;
 
   bool savePhone() {
+    if (useExternalWakeupCard) return true;
     if (!_save({'wakeup_enabled': alarmEnabled})) return false;
     if (alarmEnabled) onAlarmPermission();
     return true;
@@ -616,7 +627,9 @@ class WizardController extends ChangeNotifier {
           );
         }
         final ask = onRequestNotificationPermission;
-        if (shouldAskNotificationPermission && ask != null) {
+        if (shouldAskNotificationPermission &&
+            !notificationPermissionAlreadyAsked &&
+            ask != null) {
           if (!requestingPermission) {
             requestingPermission = true;
             notifyListeners();

@@ -4,7 +4,9 @@ import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../widgets/app_widgets.dart' as w;
 import '../common/app_tokens.dart';
+import '../settings/settings_controller.dart' show SettingsController;
 import '../settings/settings_view.dart' show TemplateGroupsList;
+import '../settings/wakeup_card.dart' show WakeupCard;
 import 'wizard_controller.dart';
 
 /// Placeholder welcome logo (app icon in an accent badge) so a dedicated logo
@@ -55,12 +57,14 @@ class WizardView extends StatefulWidget {
   final WizardController controller;
   final AppTokens tokens;
   final bool narrow;
+  final SettingsController? wakeupController;
 
   const WizardView({
     super.key,
     required this.controller,
     required this.tokens,
     this.narrow = false,
+    this.wakeupController,
   });
 
   @override
@@ -439,6 +443,7 @@ class _WizardViewState extends State<WizardView>
   }
 
   void _next(BuildContext context) {
+    FocusManager.instance.primaryFocus?.unfocus();
     final c = controller;
     final result = c.pressNext();
     final msg = result.finishedMessage ?? result.snack;
@@ -876,6 +881,14 @@ if (c.testing == service) {
 
   List<Widget> _phoneContent({bool includeHeading = true}) {
     final c = controller;
+    final wc = widget.wakeupController ??
+        SettingsController(
+          c.config,
+          persist: (u) => c.onSave(Map<String, Object?>.of(u)),
+          persistQuiet: (u) => c.onSaveQuiet(Map<String, Object?>.of(u)),
+          onDraftChanged: c.onDraftChanged,
+          onClearDrafts: c.onClearDrafts,
+        );
     return [
       if (includeHeading) ...[
         _h(Strings.get('wiz_phone_h'), 19),
@@ -883,12 +896,7 @@ if (c.testing == service) {
       ],
       _p(Strings.get('wiz_phone_p')),
       const SizedBox(height: 16),
-      SwitchListTile(
-        value: c.alarmEnabled,
-        contentPadding: EdgeInsets.zero,
-        title: Text(Strings.get('wakeup_enable')),
-        onChanged: c.setAlarmEnabled,
-      ),
+      WakeupCard(controller: wc),
     ];
   }
 

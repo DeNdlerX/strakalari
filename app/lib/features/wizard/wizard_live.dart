@@ -10,6 +10,9 @@ import '../../l10n/strings.dart';
 import '../../platform/android/android_channel.dart';
 
 import '../common/app_tokens.dart';
+import '../settings/settings_controller.dart' show WakeupPhone;
+import '../settings/settings_live.dart'
+    show channelWakeupPhone, settingsControllerFor;
 import 'wizard_controller.dart';
 import 'wizard_view.dart';
 
@@ -99,6 +102,8 @@ WizardController wizardControllerFor(AppState s) {
   c.step = s.wizardStep;
   c.dismissed = s.wizardDismissed;
   c.isAndroid = Platform.isAndroid;
+  c.useExternalWakeupCard = true;
+  c.notificationPermissionAlreadyAsked = s.notificationPermissionAsked;
   c.testing = s.testing.isEmpty ? null : s.testing;
   c.lastTest = Map<String, Object?>.of(s.lastTest);
   c.verified.addAll(s.wizardVerified);
@@ -113,26 +118,75 @@ WizardController wizardControllerFor(AppState s) {
 class LiveWizardView extends ConsumerStatefulWidget {
   final AppTokens? tokens;
   final bool narrow;
+  final WakeupPhone? wakeupPhone;
 
   const LiveWizardView({
     super.key,
     this.tokens,
     this.narrow = false,
+    this.wakeupPhone,
   });
 
   @override
   ConsumerState<LiveWizardView> createState() => _LiveWizardViewState();
 }
 
-class _LiveWizardViewState extends ConsumerState<LiveWizardView> {
+class _LiveWizardViewState extends ConsumerState<LiveWizardView>
+    with WidgetsBindingObserver {
+  bool _notifOn = true;
+  bool _exactOn = true;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       ref.read(appStateProvider).wizardOpened();
     });
+    _loadPermissions();
   }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadPermissions();
+    }
+  }
+
+  Future<void> _loadPermissions() async {
+    if (widget.wakeupPhone != null) return;
+    final s = ref.read(appStateProvider);
+    if (!Platform.isAndroid && !s.wakeupAvailable) return;
+    const channel = AndroidChannel();
+    final notif = await channel.notificationsEnabled();
+    final exact = await channel.exactAlarmsAllowed();
+    if (!mounted) return;
+    setState(() {
+      _notifOn = notif;
+      _exactOn = exact;
+    });
+  }
+
+  WakeupPhone _wrapInjectedPhone(AppState s, WakeupPhone p) => WakeupPhone(
+        notificationsEnabled: p.notificationsEnabled,
+        exactAlarmsAllowed: p.exactAlarmsAllowed,
+        nextAlarm: p.nextAlarm,
+        skippedDays: p.skippedDays,
+        openSystemAlarm: p.openSystemAlarm,
+        requestNotificationPermission: () {
+          s.notificationPermissionAsked = true;
+          p.requestNotificationPermission();
+        },
+        openNotificationSettings: p.openNotificationSettings,
+        openExactAlarmSettings: p.openExactAlarmSettings,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -148,10 +202,20 @@ class _LiveWizardViewState extends ConsumerState<LiveWizardView> {
       );
     }
     final controller = wizardControllerFor(s);
+    final phone = widget.wakeupPhone != null
+        ? _wrapInjectedPhone(s, widget.wakeupPhone!)
+        : channelWakeupPhone(
+            s,
+            notif: _notifOn,
+            exact: _exactOn,
+            onPermissionChecked: _loadPermissions,
+          );
+    final wakeupController = settingsControllerFor(s, wakeupPhone: phone);
     return WizardView(
       controller: controller,
       tokens: tok,
       narrow: widget.narrow,
+      wakeupController: wakeupController,
     );
   }
 }
