@@ -431,3 +431,261 @@ them and undid each part of the fix alone on `66dae7a` / `05e28ce`:
 11. **Not checked:** the real Strava site (forbidden; the fake transport
     stands in) and macOS/iOS builds (not possible here). F3 has no phone
     item.
+
+---
+
+## Re-review 2026-11-20
+
+Reviewed at `qa-roadmap` @ `6d5a4c7` (base `main` @ `656e118`; `main` has
+no commits the branch lacks). Commits since the review (`77cae1c`):
+
+- `7de48b3` STATUS: the owner's Q1 answer (a), word for word;
+- `1879316` M1, `3859f2e` S1 (test only), `db16b60` S2, `a2f6f3d` S3,
+  `2da7338` S4 (test only), one commit each;
+- `6d5a4c7` STATUS.
+
+### Verdict: PASS WITH FIXES
+
+All five findings are fixed in the code, not just marked fixed. A day
+planned off only for some lessons now keeps its lunch, in confirm and in
+auto mode; only days planned off whole are cancelled automatically, and
+the planner still prepares the cancel of a ticked partial day for the
+manual *Odeslat* (M1). The test for free days in May and June uses the
+real config keys and fails when the calendar is cut at the semester close
+(S1). The Obědy tour says that lunches on free days and planned days off
+are cancelled by themselves, and where to turn it off (S2). With the
+switch off, automatic ordering, the filter and the AI picks use free days
+again, as before F3, and the *Bez školy* tag stays (S3). The two parts
+without a test now have one (S4). Every new test fails on the code before
+its fix with an assertion, 13 of 15 parts of the fixes undone alone break
+a test, both suites are green, no test was removed or weakened, and the
+owner's Q1 (a) needs no code. In the *Done when* table above, the two ✘
+rows (partial absence, tutorial) are now ✔.
+
+One should-fix is left, **S5**. In auto mode, M1's new filter drops more
+than R5 asked: also the "no lunch" pick the blacklist filter makes for a
+day where every meal is on the blacklist. That is the better behaviour
+(before this round, F3 reported such a day as "lunch cancelled
+automatically", which wasn't true), so the code stays. But it is an
+unlisted change in the order path with no test, and the code comment
+doesn't say it.
+
+### Should-fix
+
+#### S5 (F3 / M1, `1879316`): the new filter also drops the "no lunch" pick on ordinary days, untested and unlisted
+
+- **Where:** `packages/strakalari_core/lib/src/automation/refresh.dart:798–805`
+  (`_autoLunch`, the `orders.removeWhere` after `planAutoOrdersHook`):
+  `if (!cancelTargets.contains(canon)) return true;` (`:803`) drops every
+  `&-1&` pick that isn't a cancel target, not only the partial planned
+  days M1 was about.
+- **What it changes:** in auto mode, `filterPicks`
+  (`lunch_auto.dart:200–204`, `:269` `chosen ??= deorderId`) gives a day
+  with nothing ordered whose every meal is on the blacklist the day's
+  `&-1&` control. Gemini never sees those ids (`gemini.dart:84`), so this
+  fallback is the only other source of such picks. On Strava the pick
+  changes nothing: `_cancelDay` (`strava/ordering.dart:181`, `:187`)
+  returns true with nothing staged when nothing is ordered.
+  - **Before this round** (`66dae7a`) the pick was sent, and F3 reported it
+    as an automatic cancel with reason `planned` (the `?? 'planned'`
+    fallback): the *lunch cancelled* notification, an Activity row,
+    `lunchesCancelled` 1, the day on `auto_lunch_cancel_handled`. A false
+    report that R5 missed.
+  - **Now** the pick is dropped: no false report. The side effect: the day
+    is no longer put on `auto_lunch_handled` (it was since before F3), so
+    auto mode looks at it again on each refresh and orders it if the menu
+    later offers a meal that isn't blacklisted, the same as a day whose
+    menu has no cancel control today.
+- **What is wrong:** R5 M1 asked to drop the `&-1&` picks "for a planned
+  day that isn't whole". The wider drop is a change in the order path
+  that STATUS doesn't list (*Deviations: None added in this R5 fix
+  round*). No test covers it: with `:803` narrowed to what R5 wrote
+  (`if (allCancelled.contains(canon) && !cancelTargets.contains(canon))
+  return true;`) all 38 `refresh_test.dart` tests pass, and the false
+  report comes back. The comment at `:798–799` ("days disabled, partial,
+  or already handled") doesn't mention it.
+- **Reviewer's check** (throwaway test, not committed): auto mode, switch
+  on, no free or planned days, blacklist `['Guláš']`; menu `05.10.2099`
+  `{'t1&1&0': 'Guláš', 't1&-1&0': 'x'}` and `06.10.2099`
+  `{'t2&1&0': 'Řízek', 't2&-1&0': 'x'}`; nothing ordered; clock
+  `01.10.2099 09:00`; scope `strava`.
+  - At `66dae7a`, and with `:803` narrowed: order call
+    `{05.10.2099: t1&-1&0, 06.10.2099: t2&1&0}`, `lunchesCancelled` 1,
+    `autoCancelledDays` `{05.10.2099}` with reason `planned`,
+    `auto_lunch_cancel_handled` `[05.10.2099]`.
+  - At `6d5a4c7`: order call `{06.10.2099: t2&1&0}`, `lunchesCancelled` 0,
+    nothing reported; `auto_lunch_handled` `[06.10.2099]`.
+  - With `05.10.2099` already ordered, all three versions behave the same
+    (the filter never looks at an ordered day).
+- **What correct looks like:** keep the code; the reviewer accepts the
+  behaviour. One commit,
+  `F3: test that an all-blacklisted day is not reported as cancelled (R5 S5)`:
+  - **Comment** at `:798–799`: every `&-1&` pick that isn't a cancel target
+    is dropped: partial planned days (M1), days where cancelling is off or
+    already handled, and the filter's "everything blacklisted" fallback on
+    a day with nothing ordered, which changes nothing on Strava and would
+    otherwise be reported as an automatic cancel.
+  - **Test** in `refresh_test.dart`, group `f3AutoCancelLunches`, e.g.
+    `allBlacklistedDayIsNotReportedAsCancelled (R5 S5)`: a `FakeApp`
+    subclass whose `stravaBlacklist` returns `['Guláš']` (`FakeApp`'s
+    getter, `:198`, returns `const []`); the scenario above; expect exactly
+    one order call holding only `{'06.10.2099': 't2&1&0'}`,
+    `lunchesCancelled == 0`, `autoCancelledDays` empty, `lunchesOrdered ==
+    1`, and no `cancelHandledKey` in the data cache. It must fail at
+    `7de48b3` (the code before M1) and with `:803` narrowed as above.
+  - **STATUS**, *Deviations from the plan*: one line saying that in auto
+    mode M1's filter drops every `&-1&` pick that isn't a cancel target,
+    the all-blacklisted fallback included; such a day is no longer reported
+    as cancelled and no longer put on the handled list, so later refreshes
+    check it again.
+
+### R5 findings, checked
+
+- **M1 fixed** (`1879316`).
+  - `wholePlannedLunchDays` (`planned_skips.dart:277`): a day counts only
+    when an entry with `cancel_lunch != false` covers it and it is neither
+    the entry's first day with `start_period` set nor its last day with
+    `end_period` set; a day whole in one entry and partial in another
+    counts. `plannedLunchDays` is unchanged (frozen parity case).
+  - `_autoLunch` (`refresh.dart:755–805`): cancel targets are the planned
+    days that are whole, plus the free days (`:766`); `planAutoCancelsHook`
+    gets only those (`:777`); `allCancelled` still keeps a new meal off
+    every planned day (`:790`); the reasons come from the whole days; the
+    filter after `planAutoOrdersHook` drops the rest (see S5).
+  - The planner's whole-day entries carry no period
+    (`entriesForSelection`, `planned_skips.dart:227`, `:233–234`), so whole planned
+    days are still cancelled. `stageLunchCancel` is unchanged, so a ticked
+    partial day still waits for the manual *Odeslat*.
+  - Tests as R5 asked: `baseF3Config`'s partial entry is
+    `start_period: 1, end_period: 2` with no `cancel_lunch` key, plus a
+    separate whole day with `cancel_lunch: false`; the test runs in confirm
+    **and** auto mode (`refresh_test.dart:1145`); the three-day entry
+    cancels only `06.10.2099` (`:1185`); the unit test (`:1228`). On
+    `7de48b3`, with the unit test left out (it needs the new helper), both
+    refresh tests fail: `Expected: <2>`, `Actual: <3>` and `Expected: <1>`,
+    `Actual: <3>`. The comment at `lunch_auto_test.dart:330` is fixed.
+  - The one edited assertion, `cache.containsKey(handledKey)` is false, is
+    now checked in confirm mode only, because auto mode writes that list by
+    design. For confirm mode it is unchanged.
+- **S1 fixed** (`3859f2e`, test only). `sem1_close` / `sem2_close` with
+  `DD.MM.YYYY` dates (`lunch_auto_test.dart:291–292`). With `clip: true` in
+  `freeLunchDays` the test now fails (`Expected: contains '25.12.2026'`,
+  `Actual: Set:[]`).
+- **S2 fixed** (`db16b60`). The sentence R5 suggested, the same in both
+  ARB files and `strings.dart`. The test (`tutorial_test.dart:737`) fails on
+  `3859f2e` (`Expected: contains 'Obědy ve volné dny'`). The reviewer's
+  throwaway widget test put the *Odešlete objednávky* bubble on a 390 px
+  screen in cs and en, light and dark: 360 × 324 px (cs) and 360 × 326 px
+  (en), no overflow, about the size of the existing longest step
+  (`tut_plan_strip_body`).
+- **S3 fixed** (`a2f6f3d`). `autoCancelFreeLunchDays` (`lunch_auto.dart:71`)
+  is empty when the switch is off, and it is used in `planAutoOrders`
+  (`:533`), `_autoLunch` (`refresh.dart:764`), the AppState AI picks
+  (`lunches.dart:415`) and filter (`:510`), and `LunchController`
+  (`lunches_controller.dart:194`). The *Bez školy* tag doesn't look at the
+  switch (`lunches_live.dart:38`). On `db16b60` the tests fail:
+  `Expected: 'b&1&0'`, `Actual: <null>` (`planAutoOrders`); `Expected: <1>`,
+  `Actual: <0>` (refresh, auto mode orders the free day `07.10.2099`);
+  `Expected: 'a&1&0'`, `Actual: <null>` (the app's filter).
+- **S4 fixed** (`2da7338`, test only). The app test stages the cancel
+  through `stageLunchCancel`, as the planner does
+  (`app_state_lunches_test.dart:511–516`), and the new `LunchController`
+  test (`lunches_view_test.dart:211`) covers the switch on and off; both
+  fail with the code they guard undone (table below). The commit also fixes
+  the same wrong keys as S1 in `F3 lunchControllerFor populates unclipped
+  freeDayLabels` (`lunches_live_test.dart:187–188`); that test now fails
+  with `clip: true` in `lunches_live.dart:38` (N12).
+- **Q1 (a):** the answer is in STATUS word for word ("Yes, on for
+  everyone"); no code change, as R5 said.
+
+### Each part of the fixes undone alone (at `6d5a4c7`)
+
+| Part undone | Caught by |
+|---|---|
+| M1: `planAutoCancelsHook` gets every planned day (`allCancelled`) | `confirmMode…`, `multiDayPartialEdges…` |
+| M1: the filter after `planAutoOrdersHook` as at `66dae7a` | same two, in auto mode |
+| M1: the first day's `start_period` ignored | `multiDayPartialEdges…`, `wholePlannedLunchDays…` |
+| M1: the last day's `end_period` ignored | same two |
+| M1: reasons built from every planned day | — (no effect, N9) |
+| M1: the filter narrowed to partial planned days | — (S5) |
+| S1: `freeLunchDays` clipped at the semester close | `freeLunchDaysUsesUnclipped…` |
+| S3: `planAutoOrders` ignores the switch | `planAutoOrdersSkipsFreeDays…` |
+| S3: `_autoLunch` ignores the switch | `disabledSettingCancelsNothing…` |
+| S3: AppState AI picks ignore the switch | `filterAndAiRecommendSkipFreeDays` (AI half) |
+| S3: AppState filter ignores the switch | same (filter half) |
+| S3: `LunchController` ignores the switch | `applyFoodFilter skips free days … (R5 S4)` |
+| S4: `LunchController` skips no free days | same |
+| S4: the staged cancel not cleared (`activity.dart:458`) | `refreshAutoCancelsFreeDays…` (`Expected: false`, `Actual: <true>`) |
+| S4: Obědy's free-day labels clipped (`lunches_live.dart:38`) | `F3 lunchControllerFor populates unclipped freeDayLabels` |
+
+13 of 15 are caught. R5's misses #9, #21 and #28 are now caught.
+
+### Notes (no action needed)
+
+- **N8 (M1, odd periods):** `wholePlannedLunchDays` also counts a period
+  that `normalizePlannedEntry` throws away (text, a negative number,
+  `true`) as partial (`_hasSetPeriod`, `planned_skips.dart:268`). Only a
+  hand-edited config has those; the planner then treats the day as whole
+  while the cancelling leaves the lunch alone. Safe side, untested, fine.
+- **N9 (M1, reasons):** building `cancelReasons` from every planned day
+  instead of the whole ones changes nothing, because only cancel targets
+  are ever cancelled.
+- **N10 (screens):** `tools/parity/capture_screens.dart` can't show a
+  tutorial, so the reviewer checked the S2 bubble with a throwaway widget
+  test (above). The F3 captures from before this round still hold: S3 and
+  S4 change which meals the filter picks, not the layout.
+- **N11:** `flutter test` rewrote the generated plugin files again (line
+  endings only, as in R4); the reviewer restored them.
+- **N12 (S4 scope):** fixing the wrong keys in `lunches_live_test.dart` is
+  the S1 bug in the app's copy of the test; STATUS lists it under S4.
+  Fine.
+
+### What the reviewer verified, and how
+
+1. **Suites** at `6d5a4c7` (Flutter 3.44.8 / Dart 3.12.2):
+   `dart pub get --enforce-lockfile` OK; core `dart analyze` no issues,
+   `dart test` **854 passed, 2 skipped** (852 at R5, +2); app
+   `flutter analyze` no issues, `flutter test` **789 passed, 1 skipped**
+   (787, +2). These match STATUS.
+2. **Tests on the parent:** a throwaway worktree in the reviewer's scratch
+   space (removed afterwards). M1's `refresh_test.dart` (without the unit
+   test that needs the new helper) and `lunch_auto_test.dart` on `7de48b3`;
+   S3's three test files on `db16b60`; S2's `tutorial_test.dart` on
+   `3859f2e`. All fail with assertions, as listed above. S1 and S4 are test
+   only, so the reviewer undid the code they guard instead (table).
+3. **Probes** (throwaway, not committed): the all-blacklisted day at
+   `66dae7a`, at `6d5a4c7` and with `:803` narrowed (S5); the tutorial
+   bubble at 390 px in cs and en, light and dark (S2).
+4. **Code:** `git diff 77cae1c..HEAD` read in full: `planned_skips.dart`,
+   `refresh.dart`, `lunch_auto.dart`, `lunches.dart`,
+   `lunches_controller.dart`, both ARB files, `strings.dart`, six test
+   files, STATUS. Also read, unchanged: `normalizePlannedEntry`,
+   `entriesForSelection`, `entryCovers`, `filterPicks`,
+   `mergeGeminiWithFilter`, `planAutoOrders`, `_plannedDeorders`,
+   `planAutoCancels`, `updateHandledDays`, `OrderingMixin.order` /
+   `_cancelDay`, Gemini's menu block, and `_autoLunch` before F3
+   (`656e118`).
+5. **Test integrity:** `test(` / `testWidgets(` calls 1586 → 1590. The only
+   removed test lines: the confirm test's body, rewritten as a loop over
+   confirm and auto with the same assertions (plus `reason:`), its
+   `handledKey` check kept for confirm; the S4 test's setup, now staged
+   through `stageLunchCancel` as R5 asked; the wrong keys (S1, S4); two
+   comments. No `skip:`, no `try`/`catch`, no `anything` or `isNotNull`
+   added. Hosts: only `refreshConfig`'s `https://bakalari.test` and fakes.
+6. **Scope, keys, strings:** each commit touches only its finding's files
+   (N12). No change to `config.dart`, `config.example.json` or
+   `test/parity/`. One string changed (`tut_lunch_send_body`), the same in
+   both ARB files and `strings.dart`; the string table tests are green.
+7. **Safety rules:** `runRefresh`'s session lock, `_autoPhases`
+   (`automation_paused`, dry run), the one order path
+   (`stravaOrderSelected` → audit) and the excuse send path (`sendExcuse`,
+   `HistoryLock`) are unchanged. The fixes only cancel less (M1, S5) or
+   give back the ordering from before F3 when the switch is off (S3). No
+   new `catch`. `strava_order_mode` and `excuse_mode` still default to
+   `confirm`.
+8. **Hygiene:** all commits by the configured user, plain messages, no
+   `Co-Authored-By`, `Claude-Session` or "Generated with" lines; no
+   personal file or screenshot committed; `qa-roadmap` has no upstream;
+   `main` (`656e118`) has no commits the branch lacks.
+9. **Not checked:** the real Strava site (forbidden; the fakes stand in)
+   and macOS/iOS builds (not possible here). F3 has no phone item.
