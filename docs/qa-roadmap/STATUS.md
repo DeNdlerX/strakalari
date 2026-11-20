@@ -1,7 +1,7 @@
 # QA & roadmap status
 
-Branch: qa-roadmap · Base: main @ be701d9 · Current phase: 6 (F4 design note ready, ⛔ R6a review)
-Next step: Stop for ⛔ R6a review of `docs/qa-roadmap/design-F4.md`; do not write any F4 code until R6a passes.
+Branch: qa-roadmap · Base: main @ be701d9 · Current phase: 6 (F4 design note), ⛔ R6a review: FAIL, fixing
+Next step: Fix every finding in `reviews/phase-6-design.md` (blockers first), one commit per finding, then stop for re-review. The fixes go into `design-F4.md` only: no F4 code until the note passes.
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -142,6 +142,7 @@ Next step: Stop for ⛔ R6a review of `docs/qa-roadmap/design-F4.md`; do not wri
 
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
 ### Phase 6 design note (`F4`, checkpoint ⛔ R6a)
+- **2026-11-20 R6a review: FAIL**: the note covers every point PLAN §6 lists, splits all 73 config keys correctly (19 shared, 54 per account) plus `background_refresh`, never deletes the originals, keeps one global `session.lock` and runs every background refresh through `runRefresh` one account at a time. Seven must-fix: a lost or damaged `accounts.json` lets the move run again over newer data or fall back to the old files (M1); the move doesn't hold `session.lock` and degraded mode has no rules (M2); every file function silently falls back to the old top-level files when the account folder is missing, and several app places already resolve files that way, e.g. the Obědy blacklist (M3); the classic → Store and macOS bundle moves would leave the accounts behind (M4); "adding an account" is guessed from "setup not finished", so *Zrušit* could delete a real account (M5); another child's background refresh gets a smaller copy of the result handling, with no new-mark or lunch-cancel notifications and a 5-minute retry loop on an empty Strava balance (M6); the delete dialog promises the logins are gone while the pre-update copy stays (M7). Thirteen should-fix (S1–S13), ten notes. No owner decision needed. Baseline unchanged: core 855 passed / 2 skipped, app 789 passed / 1 skipped. See [`reviews/phase-6-design.md`](reviews/phase-6-design.md).
 - **What was done (2026-11-20):** Recorded the owner's D4 answers word for word above (no `git merge main` needed: `main @ be701d9` has no commits `qa-roadmap` lacks) and wrote [`design-F4.md`](design-F4.md) covering all PLAN §6 Phase 6 requirements and D4 #1–3:
   - Folder layout under `<rootDir>` (`accounts.json`, `global.json`, `session.lock`, `migrate.lock`, shared root files, untouched pre-F4 backup files, and isolated `accounts/<id>/` directories);
   - Complete classification of all 73 existing canonical config keys (19 shared in `global.json`, 54 per-account in `accounts/<id>/config.json`) plus 1 new per-account boolean key `background_refresh` (default `true`, PLAN rule 4);
