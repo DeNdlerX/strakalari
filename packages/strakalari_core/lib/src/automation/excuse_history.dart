@@ -96,6 +96,35 @@ DateTime excuseWindowStart(DateTime today, [DateTime? outboxFrom]) {
   return DateTime(start.year, start.month, start.day);
 }
 
+/// First day of the running semester: 1 September (sem1) or 1 February (sem2).
+/// Matches `schoolYearTerms` in `planning/planner.dart`.
+DateTime currentSemesterStart(DateTime today) {
+  final d = DateTime(today.year, today.month, today.day);
+  if (d.month >= 8) return DateTime(d.year, 9, 1);
+  if (d.month == 1) return DateTime(d.year - 1, 9, 1);
+  return DateTime(d.year, 2, 1);
+}
+
+/// First day an absence may still be excused across the running semester.
+///
+/// When [outboxFrom] is unknown (or in the future), stays on the rolling
+/// [excuseWindowDays] window so auto mode never widens past what Komens ->
+/// Odeslané is proven to have listed. When [outboxFrom] is known, reaches
+/// back to the earlier of [currentSemesterStart] and the rolling
+/// [excuseWindowDays] window (so the semester change never drops recent
+/// absences), clamped to never precede [outboxFrom].
+DateTime semesterExcuseWindowStart(DateTime today, [DateTime? outboxFrom]) {
+  final t = DateTime(today.year, today.month, today.day);
+  final rolling = addDays(t, -excuseWindowDays);
+  if (outboxFrom == null) return rolling;
+  final from = DateTime(outboxFrom.year, outboxFrom.month, outboxFrom.day);
+  if (t.isBefore(from)) return rolling;
+  final sem = currentSemesterStart(t);
+  var start = sem.isBefore(rolling) ? sem : rolling;
+  if (start.isBefore(from)) start = from;
+  return DateTime(start.year, start.month, start.day);
+}
+
 /// History rows recording one sent excuse.
 ///
 /// An hour-based excuse is stored in all three shapes, locally exactly

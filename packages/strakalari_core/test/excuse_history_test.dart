@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:test/test.dart';
 
 import 'package:strakalari_core/src/automation/excuse_history.dart';
+import 'package:strakalari_core/src/planning/planner.dart' show schoolYearTerms;
 import 'package:strakalari_core/src/storage/config.dart';
 
 Map<String, Object?> dayEntry(String d, int first, int last,
@@ -384,6 +385,60 @@ void main() {
           'ending_day': '10.09.2026',
         }
       ]);
+    });
+  });
+
+  group('semesterExcuseWindowStart', () {
+    test('currentSemesterStartMatchesSchoolYearTermsAcrossAllMonths', () {
+      for (var m = 1; m <= 12; m++) {
+        final d = DateTime(2026, m, 15);
+        final terms = schoolYearTerms(d);
+        final expected = (m >= 2 && m <= 7) ? terms[1].$2 : terms[0].$2;
+        expect(currentSemesterStart(d), expected, reason: 'month $m');
+      }
+      expect(currentSemesterStart(DateTime(2027, 1, 15)), DateTime(2026, 9, 1));
+      expect(currentSemesterStart(DateTime(2027, 2, 1)), DateTime(2027, 2, 1));
+    });
+
+    test('coversFullCurrentSemesterAndTransitionsCleanly', () {
+      // Mid-1st semester with school-year outbox.
+      expect(
+        semesterExcuseWindowStart(DateTime(2026, 11, 20), DateTime(2026, 8, 20)),
+        DateTime(2026, 9, 1),
+      );
+      // Mid-2nd semester with school-year outbox.
+      expect(
+        semesterExcuseWindowStart(DateTime(2027, 3, 15), DateTime(2026, 8, 20)),
+        DateTime(2027, 2, 1),
+      );
+      // Semester transition: 30-day rolling window beats Feb 1.
+      expect(
+        semesterExcuseWindowStart(DateTime(2027, 2, 5), DateTime(2026, 8, 20)),
+        DateTime(2027, 1, 6),
+      );
+      // Narrower outboxFrom clamps to outboxFrom.
+      expect(
+        semesterExcuseWindowStart(DateTime(2026, 11, 20), DateTime(2026, 10, 21)),
+        DateTime(2026, 10, 21),
+      );
+      // Unknown or future outboxFrom stays on rolling 30-day window.
+      expect(
+        semesterExcuseWindowStart(DateTime(2026, 11, 20), null),
+        DateTime(2026, 10, 21),
+      );
+      expect(
+        semesterExcuseWindowStart(DateTime(2026, 11, 20), DateTime(2026, 11, 25)),
+        DateTime(2026, 10, 21),
+      );
+      // DST dates stay at local midnight.
+      final spring =
+          semesterExcuseWindowStart(DateTime(2026, 3, 30), DateTime(2026, 1, 1));
+      expect(spring, DateTime(2026, 2, 1));
+      expect((spring.hour, spring.minute), (0, 0));
+      final autumn =
+          semesterExcuseWindowStart(DateTime(2026, 10, 26), DateTime(2026, 8, 20));
+      expect(autumn, DateTime(2026, 9, 1));
+      expect((autumn.hour, autumn.minute), (0, 0));
     });
   });
 }

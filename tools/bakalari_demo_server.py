@@ -284,7 +284,51 @@ def subject_rows() -> list:
 
 RECIPIENT_CODE = "UDEMO1"
 RECIPIENT_NAME = "Mgr. Jana Nováková"
-MAX_OUTBOX = 200
+MAX_OUTBOX = 2000
+
+
+def _parse_dmy_compact(value: str):
+    try:
+        return datetime.strptime(value.strip(), "%d%m%Y").date()
+    except ValueError:
+        return None
+
+
+def outbox_period(query: dict, today: date) -> tuple[date, date]:
+    """Period bounds `(from, to)` matching Komens -> Odeslané's `?s=...` query."""
+    year = today.year if today.month >= 8 else today.year - 1
+    s = ((query.get("s") or ["mesic"])[0] or "mesic").strip().lower()
+    if s == "den":
+        return today, today
+    if s == "tyden":
+        return today - timedelta(days=7), today
+    if s == "1polo":
+        return date(year, 8, 20), date(year + 1, 1, 31)
+    if s == "2polo":
+        return date(year + 1, 1, 20), date(year + 1, 8, 31)
+    if s == "rok":
+        return date(year, 8, 20), date(year + 1, 8, 31)
+    if s == "starsi":
+        return date(2000, 1, 1), date(year, 8, 20)
+    if s == "custom":
+        d_from = _parse_dmy_compact((query.get("from") or [""])[0])
+        d_to = _parse_dmy_compact((query.get("to") or [""])[0])
+        if d_from is not None and d_to is not None and d_to >= d_from:
+            return d_from, d_to
+    return today - timedelta(days=30), today
+
+
+def _viewstate_period(viewstate: str):
+    if not viewstate.startswith("demo:"):
+        return None
+    parts = viewstate.split(":")
+    if len(parts) != 3:
+        return None
+    d_from = _iso_date(parts[1])
+    d_to = _iso_date(parts[2])
+    if d_from is None or d_to is None or d_to < d_from:
+        return None
+    return d_from, d_to
 
 
 class Outbox:
@@ -294,32 +338,66 @@ class Outbox:
         self._lock = threading.Lock()
         self._next = 4_100_001
         self.messages: list = []
-        # A couple of old excuses, so the folder is not empty.
+        # Seeded excuses across the current semester so `?s=rok&l=o` sees older
+        # items that the 30-day default (`?l=o`) omits.
+        self.add(today - timedelta(days=45), today - timedelta(days=45), None, None,
+                 "Omluvte prosím absenci.", sent=today - timedelta(days=44))
         self.add(today - timedelta(days=21), today - timedelta(days=21), None, None,
                  "Omluvte prosím absenci.", sent=today - timedelta(days=20))
         self.add(today - timedelta(days=9), today - timedelta(days=9), (3, "M"), (4, "F"),
                  "Omluvte prosím absenci.", sent=today - timedelta(days=8))
 
-    def add(self, day_from, day_to, hour_from, hour_to, text, sent=None) -> str:
+    def add(self, day_from, day_to, hour_from, hour_to, text, sent=None, kind: str = "OMLUVENKA") -> str:
         """``hour_from`` / ``hour_to``: ``(period, subject key)`` or None (whole days)."""
         with self._lock:
             msg_id = str(self._next)
             self._next += 1
-            self.messages.append({"id": msg_id, "from": day_from, "to": day_to, "hour_from": hour_from,
-                                  "hour_to": hour_to, "text": text,
+            self.messages.append({"id": msg_id, "kind": kind, "from": day_from, "to": day_to,
+                                  "hour_from": hour_from, "hour_to": hour_to, "text": text,
                                   "sent": datetime.combine(sent or date.today(), datetime.min.time())
                                   if sent else datetime.now()})
             del self.messages[:-MAX_OUTBOX]
             return msg_id
 
-    def list_html(self) -> str:
+    def list_html(
+        self,
+        period_start: date | None = None,
+        period_end: date | None = None,
+        *,
+        page_number: int = 1,
+        page_size: int = 21,
+        reload_messages: bool = True,
+    ) -> str:
+        size = max(1, page_size)
+        page = max(1, page_number)
         with self._lock:
-            rows = sorted(self.messages, key=lambda m: m["sent"], reverse=True)
+            rows = [
+                m for m in self.messages
+                if period_start is None or period_end is None
+                or period_start <= m["sent"].date() <= period_end
+            ]
+            rows.sort(key=lambda m: (m["sent"], int(m["id"])), reverse=True)
+        if reload_messages:
+            shown = rows[:size]
+            loaded_count = len(shown)
+            all_loaded = "all" if len(rows) < size else ""
+        else:
+            shown = rows[:page * size]
+            prev_end = (page - 1) * size
+            loaded_count = max(0, len(shown) - prev_end)
+            all_loaded = "all" if loaded_count == 0 else ""
         tables = "".join(
             f'<table data-idmsg="{m["id"]}" data-sortdate="0:{m["sent"]:%Y-%m-%dT%H:%M:%S}" '
-            f'data-msgtype="OMLUVENKA" data-read="true"><tr><td>Omluvenka {cz_date(m["from"])}</td></tr></table>'
-            for m in rows)
-        return f'<div class="komens-messages-wrapper">{tables}</div>'
+            f'data-msgtype="{html.escape(m.get("kind", "OMLUVENKA"), quote=True)}" data-read="true">'
+            f'<tr><td>{("Omluvenka " + cz_date(m["from"])) if m.get("kind", "OMLUVENKA") == "OMLUVENKA" else "Zpráva"}'
+            f'</td></tr></table>'
+            for m in shown)
+        return (
+            f'<div class="komens-messages-wrapper">'
+            f'<input type="hidden" id="hfLoadedMessagesCount" value="{loaded_count}">'
+            f'<input type="hidden" id="hfAllMessagesLoaded" value="{all_loaded}">'
+            f'{tables}</div>'
+        )
 
     def detail(self, msg_id: str):
         with self._lock:
@@ -338,18 +416,23 @@ class Outbox:
                     "Start": begin, "Duration": end - begin, "HourIndex": period + 2}
 
         hour_from, hour_to = hour(found["hour_from"]), hour(found["hour_to"])
-        return {"Id": found["id"], "Kind": "OMLUVENKA", "Title": "Omluvenka", "MessageText": found["text"],
+        return {"Id": found["id"], "Kind": found.get("kind", "OMLUVENKA"), "Title": "Omluvenka",
+                "MessageText": found["text"],
                 "Cas": found["sent"].strftime("%d.%m.%Y %H:%M"), "DateFrom": cz_date(found["from"]),
                 "DateTo": cz_date(found["to"]), "HourFrom": hour_from, "HourTo": hour_to,
                 "TimeFrom": hour_from["BeginTime"] if hour_from else "",
                 "TimeTo": hour_to["EndTime"] if hour_to else ""}
 
 
-def outbox_page() -> str:
-    return shell("Komens - odeslané", f"""<form id="formbaka" method="post" action="komens.aspx?l=o">
-<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="demo">
+def outbox_page(period_start: date | None = None, period_end: date | None = None, query_string: str = "l=o") -> str:
+    today = date.today()
+    if period_start is None or period_end is None:
+        period_start, period_end = today - timedelta(days=30), today
+    action = f"komens.aspx?{query_string}" if query_string else "komens.aspx?l=o"
+    return shell("Komens - odeslané", f"""<form id="formbaka" method="post" action="{html.escape(action, quote=True)}">
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="demo:{period_start.isoformat()}:{period_end.isoformat()}">
 <input type="hidden" name="ctl00$cphmain$hfListType" id="hfListType" value="odeslane">
-<span id="cphmain_obdobiLabel">{cz_date(date.today() - timedelta(days=30))} - {cz_date(date.today())}</span>
+<span id="cphmain_obdobiLabel">{cz_date(period_start)} - {cz_date(period_end)}</span>
 </form>""")
 
 
@@ -475,7 +558,8 @@ class Handler(BaseHTTPRequestHandler):
         if lower == "/absence/continuous/getabsencebysubjects":
             return self.json_reply(absence_rows())
         if lower == "/next/komens.aspx":
-            return self.html(outbox_page())
+            period_start, period_end = outbox_period(query, today)
+            return self.html(outbox_page(period_start, period_end, url.query or "l=o"))
         if lower == "/next/komens_zprava.aspx":
             return self.html(excuse_form_page())
         if lower == "/komens/excusehours":
@@ -506,8 +590,28 @@ class Handler(BaseHTTPRequestHandler):
             end = _utc_to_local_date((fields.get("dateTo") or [""])[0]) or today + timedelta(days=14)
             return self.json_reply(substitution_weeks(start, end, today))
         if lower == "/next/komens.aspx":
-            self.body()
-            result = self.server.outbox.list_html()
+            fields = self.form()
+            viewstate = (fields.get("__VIEWSTATE") or [""])[0]
+            period = _viewstate_period(viewstate) or outbox_period(parse_qs(url.query), today)
+            raw_param = (fields.get("__CALLBACKPARAM") or [""])[0]
+            if raw_param.startswith("c0:"):
+                raw_param = raw_param[3:]
+            try:
+                cb = json.loads(raw_param) if raw_param else {}
+            except ValueError:
+                cb = {}
+            if not isinstance(cb, dict):
+                cb = {}
+            page_number = _int_opt(cb.get("pageNumber"), 1)
+            page_size = _int_opt(cb.get("pageSize"), 21)
+            reload_messages = bool(cb.get("reloadMessages", True))
+            result = self.server.outbox.list_html(
+                period[0],
+                period[1],
+                page_number=page_number,
+                page_size=page_size,
+                reload_messages=reload_messages,
+            )
             return self._send(200, "0|/*DX*/({'id':0,'result':" + json.dumps(result) + "})",
                               "text/plain; charset=utf-8")
         if lower == "/komens/getmessagedataasync":
@@ -553,6 +657,17 @@ class Handler(BaseHTTPRequestHandler):
         text = re.sub(r"<[^>]+>", " ", html.unescape(html.unescape(fields.get("ctl00$cphmain$MessageEditor", ""))))
         self.server.outbox.add(day_from, day_to, hour_from, hour_to, " ".join(text.split())[:500] or "Omluvenka")
         self.redirect("/next/komens.aspx?l=o")
+
+
+def _int_opt(value, default: int) -> int:
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return value
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _json_body(raw: bytes) -> dict:

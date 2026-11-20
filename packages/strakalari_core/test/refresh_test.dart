@@ -18,6 +18,8 @@ import '../bin/refresh_dryrun.dart' as refresh_dryrun;
 import 'package:strakalari_core/src/automation/automation.dart';
 import 'package:strakalari_core/src/automation/cancel.dart';
 import 'package:strakalari_core/src/automation/refresh.dart';
+import 'package:strakalari_core/src/bakalari/client.dart';
+import 'package:strakalari_core/src/bakalari/http_session.dart';
 import 'package:strakalari_core/src/lunches/gemini.dart';
 import 'package:strakalari_core/src/lunches/lunch_auto.dart';
 import 'package:strakalari_core/src/models.dart';
@@ -27,6 +29,7 @@ import 'package:strakalari_core/src/storage/config.dart';
 import 'package:strakalari_core/src/storage/helpers.dart';
 import 'package:strakalari_core/src/storage/secret_store.dart';
 
+import 'fake_bakalari.dart';
 import 'parity_cases.dart';
 
 const futureDay = '05.10.2099';
@@ -874,6 +877,213 @@ void main() {
       );
     });
   });
+
+  group('f2SemesterReconciliationAndOutboxCache', () {
+    test('reconcilesCurrentSemesterOncePerDayAndKeepsOlderSemesterFrozen',
+        () async {
+      final cfg = {
+        ...refreshConfig(),
+        'use_strava': false,
+        'go_back_weeks': 4,
+        'go_forward_weeks': 1,
+      };
+      String iso(DateTime d) =>
+          '${d.year.toString().padLeft(4, '0')}-'
+          '${d.month.toString().padLeft(2, '0')}-'
+          '${d.day.toString().padLeft(2, '0')}';
+
+      // Day 1 Run 1 (2026-11-20): backfills older semester weeks and sets semester_reconciled.
+      final app1 = _ReconciliationApp([], config: cfg);
+      await withClock(Clock.fixed(DateTime(2026, 11, 20, 9, 0)),
+          () => runRefresh(app1, cfg, scope: 'bakalari'));
+      expect(app1.recordedHistoryRequests.single, isNotEmpty);
+      var hist = loadDataCache()[timetableHistoryKey] as Map;
+      expect(hist['semester_reconciled'], '2026-11-20');
+
+      // Day 1 Run 2 (same day): historyWeeks is empty.
+      final app2 = _ReconciliationApp([], config: cfg);
+      await withClock(Clock.fixed(DateTime(2026, 11, 20, 15, 0)),
+          () => runRefresh(app2, cfg, scope: 'bakalari'));
+      expect(app2.recordedHistoryRequests.single, isEmpty);
+
+      // Day 2 Run 1 (2026-11-21): reconciles current-semester weeks outside regular once.
+      final app3 = _ReconciliationApp([], config: cfg);
+      await withClock(Clock.fixed(DateTime(2026, 11, 21, 9, 0)),
+          () => runRefresh(app3, cfg, scope: 'bakalari'));
+      expect(
+          app3.recordedHistoryRequests.single.map(iso).toList()..sort(),
+          [
+            '2026-08-31',
+            '2026-09-07',
+            '2026-09-14',
+            '2026-09-21',
+            '2026-09-28',
+            '2026-10-05',
+            '2026-10-12',
+            '2026-10-19',
+          ]);
+      hist = loadDataCache()[timetableHistoryKey] as Map;
+      expect(hist['semester_reconciled'], '2026-11-21');
+
+      // Day 2 Run 2 (2026-11-21): skipped again.
+      final app4 = _ReconciliationApp([], config: cfg);
+      await withClock(Clock.fixed(DateTime(2026, 11, 21, 14, 0)),
+          () => runRefresh(app4, cfg, scope: 'bakalari'));
+      expect(app4.recordedHistoryRequests.single, isEmpty);
+
+      // 2nd semester (2027-03-15): seed all prior weeks including sem1; only sem2 reconciles.
+      final seededWeeks = <String>[];
+      var cur = DateTime(2026, 8, 31);
+      while (cur.isBefore(DateTime(2027, 3, 15))) {
+        seededWeeks.add(iso(cur));
+        cur = addDays(cur, 7);
+      }
+      saveDataCache({
+        timetableHistoryKey: {
+          'school_year_start': '2026-09-01',
+          'weeks': seededWeeks,
+          'semester_reconciled': '2027-03-14',
+        },
+      });
+      final appSem2 = _ReconciliationApp([], config: cfg);
+      await withClock(Clock.fixed(DateTime(2027, 3, 15, 9, 0)),
+          () => runRefresh(appSem2, cfg, scope: 'bakalari'));
+      final askedSem2 = appSem2.recordedHistoryRequests.single.map(iso).toList()
+        ..sort();
+      // 1st semester weeks (< 2027-02-01) stay frozen; regular has 2027-02-22..03-15.
+      expect(askedSem2, ['2027-02-01', '2027-02-08', '2027-02-15']);
+    });
+
+    test('incompleteSemesterBackfillDoesNotMarkReconciled', () async {
+      final cfg = {
+        ...refreshConfig(),
+        'use_strava': false,
+        'go_back_weeks': 4,
+        'go_forward_weeks': 1,
+      };
+      final skipped = DateTime(2026, 9, 14);
+      final app1 = _ReconciliationApp([],
+          config: cfg, skipHistoryWeeks: {skipped});
+      await withClock(Clock.fixed(DateTime(2026, 11, 20, 9, 0)),
+          () => runRefresh(app1, cfg, scope: 'bakalari'));
+      final hist = loadDataCache()[timetableHistoryKey] as Map;
+      expect(hist.containsKey('semester_reconciled'), isFalse);
+
+      // Next run the same day still retries the unmark-reconciled day.
+      final app2 = _ReconciliationApp([], config: cfg);
+      await withClock(Clock.fixed(DateTime(2026, 11, 20, 10, 0)),
+          () => runRefresh(app2, cfg, scope: 'bakalari'));
+      expect(app2.recordedHistoryRequests.single, contains(skipped));
+      expect((loadDataCache()[timetableHistoryKey] as Map)['semester_reconciled'],
+          '2026-11-20');
+    });
+
+    test('failedOutboxSyncPreservesPreviousSentExcusesFromAndCache', () async {
+      setEnvironmentOverride({
+        'STRAKALARI_DATA_DIR': tmp.path,
+        'STRAKALARI_NO_KEYRING': '1',
+      });
+      saveDataCache({
+        sentExcusesFromKey: '2026-08-20',
+        outboxDetailsKey: {
+          '501': [
+            {
+              'type': 'pure days',
+              'starting_day': '01.09.2026',
+              'ending_day': '01.09.2026',
+            }
+          ]
+        },
+      });
+      final server = FakeBakalari({
+        'GET /next/komens.aspx': HttpResponseData(
+            statusCode: 500, url: Uri.parse(fakeRoot)),
+        'POST /Timetable/GetContentData': (_) => weekContent([
+              {
+                'day': '20.11.2026',
+                'teacher': 'T',
+                'subjecttext': 'M',
+                'time': '1 (8:00 - 8:45)',
+              }
+            ]),
+        'GET /Absence/Continuous':
+            '<script>DatesInformations = ko.mapping.fromJS({"DefaultDateFrom":{"DefaultValue":"2026-09-01T00:00:00+02:00"},"DefaultDateTo":{"DefaultValue":"2026-11-20T00:00:00+01:00"}});</script>',
+        'GET /Absence/Continuous/GetAbsenceBySubjects': [
+          {'Name': 'M', 'LessonCount': 10, 'Count': 0, 'Percent': 0},
+        ],
+        'POST /Teaching/Subjects': {'data': <Object?>[]},
+        'POST /Timetable/substitutions/dates': {'success': true, 'data': <Object?>[]},
+      });
+      final app = Strakalari(
+        configFile: '${tmp.path}/config.json',
+        configData: {
+          ...fakeConfig,
+          'bakalari_url': 'https://bakalari.test/login',
+          'already_excused_file': '${tmp.path}/history.json',
+          'use_strava': false,
+          'go_back_weeks': 1,
+          'go_forward_weeks': 0,
+        },
+      );
+      app.bakalariClient =
+          BakalariClient(app.configManager.data, transport: server);
+
+      final result = await withClock(
+          Clock.fixed(DateTime(2026, 11, 20, 10, 0)),
+          () => runRefresh(app, app.configData, scope: 'bakalari'));
+
+      expect(result.bakalariFetched, isTrue);
+      expect(server.calls('GET', '/next/komens.aspx'), hasLength(1));
+      expect(app.lastOutboxSyncOk, isFalse);
+      expect(result.saved.containsKey(sentExcusesFromKey), isFalse);
+      expect(result.saved.containsKey(outboxDetailsKey), isFalse);
+      final cache = loadDataCache();
+      expect(cache[sentExcusesFromKey], '2026-08-20');
+      expect((cache[outboxDetailsKey] as Map).containsKey('501'), isTrue);
+    });
+  });
+}
+
+class _ReconciliationApp extends FakeApp {
+  _ReconciliationApp(
+    super.calls, {
+    this.skipHistoryWeeks = const {},
+    this.config = const {},
+  });
+
+  final Set<DateTime> skipHistoryWeeks;
+  final Map<String, Object?> config;
+  List<DateTime> requestedHistory = [];
+  List<List<DateTime>> recordedHistoryRequests = [];
+  Set<DateTime> _loaded = {};
+
+  @override
+  Map<String, Object?> get configData => config;
+
+  @override
+  Set<DateTime> get timetableLoadedWeeks => _loaded;
+
+  @override
+  set historyWeeks(List<DateTime> weeks) {
+    requestedHistory = List<DateTime>.of(weeks);
+    recordedHistoryRequests.add(List<DateTime>.of(weeks));
+  }
+
+  @override
+  Future<void> fetchBakalariData() async {
+    await super.fetchBakalariData();
+    final now = clock.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final thisMonday = addDays(today, -(today.weekday - 1));
+    final regular = {
+      for (final off in weekOffsets(goBackWeeks, goForwardWeeks))
+        addDays(thisMonday, off * 7),
+    };
+    _loaded = {
+      for (final m in {...regular, ...requestedHistory})
+        if (!skipHistoryWeeks.contains(m)) DateTime(m.year, m.month, m.day),
+    };
+  }
 }
 
 /// App whose auto-excuse phase partially fails.

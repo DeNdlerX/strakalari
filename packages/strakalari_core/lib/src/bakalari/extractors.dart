@@ -505,6 +505,40 @@ List<String> outboxExcuseIds(Object? listHtml) {
   return ids;
 }
 
+/// Message ids of all rows (every message type) of the Komens list, in order.
+///
+/// Used by cumulative outbox paging to count total returned rows against
+/// `pageNumber * pageSize` (non-excuse messages still occupy list slots).
+List<String> outboxMessageIds(Object? listHtml) {
+  final ids = <String>[];
+  final re = RegExp('<table\\b[^>]*?\\bdata-idmsg="(\\d+)"');
+  for (final match in re.allMatches('${listHtml ?? ''}')) {
+    final id = match.group(1)!;
+    if (!ids.contains(id)) ids.add(id);
+  }
+  return ids;
+}
+
+/// Maps each `OMLUVENKA` message id in [listHtml] to its detail-cache key
+/// (`id|sortDate`, or `id` when `data-sortdate` is absent/empty).
+Map<String, String> outboxExcuseCacheKeys(Object? listHtml) {
+  final out = <String, String>{};
+  final tableRe = RegExp('<table\\b([^>]*)>');
+  final idRe = RegExp('\\bdata-idmsg="(\\d+)"');
+  final typeRe = RegExp('\\bdata-msgtype="([^"]*)"');
+  final sortRe = RegExp('\\bdata-sortdate="([^"]*)"');
+  for (final match in tableRe.allMatches('${listHtml ?? ''}')) {
+    final attrs = match.group(1)!;
+    final type = typeRe.firstMatch(attrs)?.group(1);
+    if (type != 'OMLUVENKA') continue;
+    final id = idRe.firstMatch(attrs)?.group(1);
+    if (id == null) continue;
+    final sortDate = (sortRe.firstMatch(attrs)?.group(1) ?? '').trim();
+    out.putIfAbsent(id, () => sortDate.isEmpty ? id : '$id|$sortDate');
+  }
+  return out;
+}
+
 int? _lessonCaption(Object? hour) {
   if (hour is! Map) return null;
   try {

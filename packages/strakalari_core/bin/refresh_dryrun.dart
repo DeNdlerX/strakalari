@@ -195,7 +195,7 @@ Future<void> main(List<String> args) async {
       'dry_run_pending_sent': pendingSent,
       'dry_run_single_filled': singleOutcome,
       'audit': recent(limit: 2000),
-      'outbox': await app.bakalariClient!.fetchSentExcuses(limit: 100),
+      'outbox': await app.bakalariClient!.fetchSentExcuses(),
       'history': history,
       'sidecar': loadUnconfirmed(historyFile),
       'cache_keys': (cache.keys.toList()..sort()),

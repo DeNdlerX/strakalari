@@ -273,8 +273,11 @@ the teacher gives it, and its note in the row's detail:
 ### Outbox list
 
 `GET /next/komens.aspx?l=o` — Komens → Odeslané (the menu's own link;
-`?l=odeslane` opens the same folder). Other folders: `/next/komens.aspx`
-(received), `?l=Concept` (drafts).
+`?l=odeslane` opens the same folder). Period buttons pass `?s=<interval>&l=o`
+(`mesic` = default last month, `1polo`, `2polo`, `rok` = whole school year,
+`starsi`, `custom` with `from`/`to` as `ddmmyyyy`); excuse history sync loads
+`?s=rok&l=o` and binds the callback to that loaded page. Other folders:
+`/next/komens.aspx` (received), `?l=Concept` (drafts).
 
 What the page holds:
 
@@ -288,8 +291,8 @@ folder would read as "nothing sent").
 
 The messages are loaded by a DevExpress callback (`message_list_content.
 PerformCallback(JSON.stringify(data))`). Replayed over HTTP:
-`POST /next/komens.aspx?l=o`, form-encoded, all fields of `formbaka` from
-the raw page plus:
+`POST /next/komens.aspx?l=o` (or `?s=rok&l=o` matching the loaded page),
+form-encoded, all fields of `formbaka` from the raw page plus:
 
 ```text
 __CALLBACKID    = ctl00$cphmain$message_list_content
@@ -299,7 +302,13 @@ __CALLBACKPARAM = c0:{"showRepressed":false,"pageNumber":1,"pageSize":21,
                       "onlyGeneralMessages":true,"onlyUnread":false}
 ```
 
-- The page uses `pageSize: 20 + 1`; 500 works too.
+- Page 1 uses `pageNumber: 1, reloadMessages: true`; subsequent pages send
+  `pageNumber: N, reloadMessages: false` (with `reloadMessages: true`, the
+  server ignores `pageNumber` and always returns page 1).
+- Each reply with `reloadMessages: false` returns the **cumulative** list up
+  to `pageNumber × pageSize`; a reply with fewer rows than `pageNumber × pageSize`
+  marks the end of the period. (`hfAllMessagesLoaded` only becomes `"all"`
+  after an empty overflow read or a short `reloadMessages: true` read.)
 - `sortOrder`: `0` when sorted by `+date`, else `1`.
 - With no filter active the page sets all four `only…` flags to `true`
   (= everything).

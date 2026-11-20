@@ -121,6 +121,23 @@ void main() {
             reason: 'wizard_step $bad');
       }
     });
+
+    test('sentExcusesLimitDefaultsToZeroAndValidates', () {
+      expect(canonicalDefaults['sent_excuses_limit'], 0);
+      expect(defaultConfig()['sent_excuses_limit'], 0);
+      for (final ok in [0, 1, 100]) {
+        final data = validationBase()..['sent_excuses_limit'] = ok;
+        expect(validateConfig(data), isEmpty,
+            reason: 'sent_excuses_limit $ok');
+      }
+      for (final bad in <Object>[-1, -5, 'ten', '1.5', <int>[1]]) {
+        final data = validationBase()..['sent_excuses_limit'] = bad;
+        expect(
+            validateConfig(data).any((p) => p.contains('sent_excuses_limit')),
+            isTrue,
+            reason: 'sent_excuses_limit $bad');
+      }
+    });
   });
 
   group('configManager', () {

@@ -105,7 +105,8 @@ const Map<String, Object> canonicalDefaults = {
   'go_back_weeks': 4,
   'go_forward_weeks': 1,
   'excuse_delay_days': 2,
-  'sent_excuses_limit': 100,
+  // 0 = no limit (read the whole outbox period).
+  'sent_excuses_limit': 0,
   'minimize_to_tray': true,
   // Phone app: keep refreshing and automating with the app closed
   // (Android foreground service; ignored on desktop and iOS).
@@ -443,6 +444,12 @@ List<String> validateConfig(Map<String, Object?> data) {
     problems.add("'excuse_delay_days' must be a whole number.");
   } else if (delay < 0) {
     problems.add("'excuse_delay_days' must be >= 0.");
+  }
+  final sentLimit = _toIntStrict(data['sent_excuses_limit'] ?? 0);
+  if (sentLimit == null) {
+    problems.add("'sent_excuses_limit' must be a whole number.");
+  } else if (sentLimit < 0) {
+    problems.add("'sent_excuses_limit' must be >= 0 (0 = no limit).");
   }
   for (final entry in [
     ('go_back_weeks', 0, 52),

@@ -41,6 +41,7 @@ import '../planning/planner.dart' show schoolYearTerms;
 import '../planning/schedule.dart' show baselineToDict;
 import 'automation.dart';
 import 'cancel.dart';
+import 'excuse_history.dart' show currentSemesterStart, excuseWindowDays;
 
 /// Emitted progress events: `emit(key, fmt)`.
 typedef RefreshEmit = void Function(String key, [Map<String, Object?> fmt]);
@@ -373,9 +374,28 @@ List<DateTime> _missingHistoryWeeks(RefreshApp app,
   return missing;
 }
 
+String _isoDate(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-'
+    '${d.month.toString().padLeft(2, '0')}-'
+    '${d.day.toString().padLeft(2, '0')}';
+
+DateTime _semesterFloorMonday(DateTime today, DateTime yearStart) {
+  final sem = currentSemesterStart(today);
+  final rolling = addDays(today, -excuseWindowDays);
+  var floor = sem.isBefore(rolling) ? sem : rolling;
+  if (floor.isBefore(yearStart)) floor = yearStart;
+  return addDays(floor, -(floor.weekday - 1));
+}
+
 /// Adds the past weeks this run loaded to the stored timetable history.
-void _recordHistoryWeeks(RefreshApp app, Map<String, Object?> fresh,
-    DateTime today, Set<DateTime> done) {
+void _recordHistoryWeeks(
+  RefreshApp app,
+  Map<String, Object?> fresh,
+  DateTime today,
+  Set<DateTime> done,
+  String reconciledOn,
+  DateTime floorMonday,
+) {
   final yearStart = _schoolYearStart(today);
   final firstMonday = addDays(yearStart, -(yearStart.weekday - 1));
   final thisMonday = addDays(today, -(today.weekday - 1));
@@ -384,18 +404,28 @@ void _recordHistoryWeeks(RefreshApp app, Map<String, Object?> fresh,
       if (!m.isBefore(firstMonday) && m.isBefore(thisMonday))
         DateTime(m.year, m.month, m.day)
   };
-  fresh[timetableHistoryKey] = {
-    'school_year_start':
-        '${yearStart.year.toString().padLeft(4, '0')}-'
-        '${yearStart.month.toString().padLeft(2, '0')}-'
-        '${yearStart.day.toString().padLeft(2, '0')}',
+  final todayIso = _isoDate(today);
+  var allSemesterLoaded = true;
+  var cursor = floorMonday.isBefore(firstMonday) ? firstMonday : floorMonday;
+  while (cursor.isBefore(thisMonday)) {
+    if (!loaded.contains(cursor)) {
+      allSemesterLoaded = false;
+      break;
+    }
+    cursor = addDays(cursor, 7);
+  }
+  final nextReconciled =
+      (reconciledOn == todayIso || allSemesterLoaded) ? todayIso : reconciledOn;
+  final entry = <String, Object?>{
+    'school_year_start': _isoDate(yearStart),
     'weeks': [
-      for (final m in {...done, ...loaded})
-        '${m.year.toString().padLeft(4, '0')}-'
-        '${m.month.toString().padLeft(2, '0')}-'
-        '${m.day.toString().padLeft(2, '0')}'
+      for (final m in {...done, ...loaded}) _isoDate(m)
     ]..sort(),
   };
+  if (nextReconciled.isNotEmpty) {
+    entry['semester_reconciled'] = nextReconciled;
+  }
+  fresh[timetableHistoryKey] = entry;
 }
 
 /// Good fresh Bakaláři values only; failed parts are left out.
@@ -468,9 +498,14 @@ Future<void> _fetchPhases(
       final now = clock.now();
       final today = DateTime(now.year, now.month, now.day);
       final yearStart = _schoolYearStart(today);
-      final done = _historyDoneWeeks(yearStart);
+      final (done, reconciledOn) = _historyState(yearStart);
+      final todayIso = _isoDate(today);
+      final floorMonday = _semesterFloorMonday(today, yearStart);
+      final effectiveDone = reconciledOn == todayIso
+          ? done
+          : {for (final m in done) if (m.isBefore(floorMonday)) m};
       final missing =
-          _missingHistoryWeeks(app, app.configData, today, done);
+          _missingHistoryWeeks(app, app.configData, today, effectiveDone);
       app.historyWeeks = missing;
       if (missing.isNotEmpty) {
         emit('timetable_history_log', {'n': missing.length});
@@ -491,7 +526,8 @@ Future<void> _fetchPhases(
         result.bakalariFetched = true;
         result.subjects =
             (payload['absence'] as Map?)?.length ?? 0;
-        _recordHistoryWeeks(app, fresh, today, done);
+        _recordHistoryWeeks(
+            app, fresh, today, done, reconciledOn, floorMonday);
         emit('bakalari_done_log', {'n': result.subjects});
       } else {
         emit('refresh_empty_warn');
@@ -503,12 +539,17 @@ Future<void> _fetchPhases(
       } on Object catch (exc) {
         emit('excuse_sync_failed', {'err': _firstLine(exc)});
       }
-      final outboxFrom = app.sentExcusesFrom;
-      if (outboxFrom != null) {
-        String two(int n) => n.toString().padLeft(2, '0');
-        fresh[sentExcusesFromKey] =
-            '${outboxFrom.year.toString().padLeft(4, '0')}-'
-            '${two(outboxFrom.month)}-${two(outboxFrom.day)}';
+      if (app.lastOutboxSyncOk) {
+        final outboxFrom = app.sentExcusesFrom;
+        if (outboxFrom != null) {
+          fresh[sentExcusesFromKey] = _isoDate(outboxFrom);
+        }
+        if (app is Strakalari) {
+          final detailsCache = app.outboxDetailsCache;
+          if (detailsCache != null) {
+            fresh[outboxDetailsKey] = detailsCache;
+          }
+        }
       }
     }
   }
@@ -548,8 +589,9 @@ Future<void> _fetchPhases(
   }
 }
 
-/// Mondays already in the timetable history of this school year.
-Set<DateTime> _historyDoneWeeks(DateTime yearStart) {
+/// Mondays already in the timetable history of this school year, plus the
+/// `YYYY-MM-DD` date of the last daily current-semester reconciliation.
+(Set<DateTime>, String) _historyState(DateTime yearStart) {
   Map<String, Object?> stored = const {};
   try {
     final loaded = loadDataCache()[timetableHistoryKey];
@@ -557,12 +599,8 @@ Set<DateTime> _historyDoneWeeks(DateTime yearStart) {
   } on Object {
     stored = const {};
   }
-  String iso(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
-      '${d.month.toString().padLeft(2, '0')}-'
-      '${d.day.toString().padLeft(2, '0')}';
-  if (stored['school_year_start'] != iso(yearStart)) {
-    return <DateTime>{}; // first run, or a new school year
+  if (stored['school_year_start'] != _isoDate(yearStart)) {
+    return (<DateTime>{}, ''); // first run, or a new school year
   }
   final done = <DateTime>{};
   final weeks = stored['weeks'];
@@ -574,7 +612,9 @@ Set<DateTime> _historyDoneWeeks(DateTime yearStart) {
       done.add(DateTime(day.year, day.month, day.day));
     }
   }
-  return done;
+  final reconciled = stored['semester_reconciled'];
+  final reconciledOn = reconciled is String ? reconciled : '';
+  return (done, reconciledOn);
 }
 
 Future<void> _autoPhases(
