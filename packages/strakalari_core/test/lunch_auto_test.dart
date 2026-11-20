@@ -288,8 +288,8 @@ void main() {
           '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
       final cfg = <String, Object?>{
         // Far past semester closure would clip if clip: true were used.
-        'semester_1_close': '2020-01-31',
-        'semester_2_close': '2020-06-30',
+        'sem1_close': '31.01.2020',
+        'sem2_close': '30.04.2020',
         'user_free_days': [iso(dFree), iso(dForced)],
         'forced_school_days': [iso(dForced)],
       };
