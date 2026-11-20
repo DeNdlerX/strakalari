@@ -24,6 +24,7 @@ import 'package:strakalari_core/src/bakalari/http_session.dart';
 import 'package:strakalari_core/src/lunches/gemini.dart';
 import 'package:strakalari_core/src/lunches/lunch_auto.dart';
 import 'package:strakalari_core/src/models.dart';
+import 'package:strakalari_core/src/planning/planned_skips.dart';
 import 'package:strakalari_core/src/platform/packaging.dart';
 import 'package:strakalari_core/src/storage/cache.dart';
 import 'package:strakalari_core/src/storage/config.dart';
@@ -1100,6 +1101,7 @@ void main() {
     const freeDay = '06.10.2099';
     const partialDay = '07.10.2099';
     const absenceDay = '08.10.2099';
+    const keptWholeDay = '09.10.2099';
 
     setUp(() {
       planAutoOrdersHook = defaultPlan;
@@ -1112,6 +1114,7 @@ void main() {
           freeDay: {'t2&1&0': 'Řízek', 't2&-1&0': 'x'},
           partialDay: {'t3&1&0': 'Polévka', 't3&-1&0': 'x'},
           absenceDay: {'t4&1&0': 'Rizoto', 't4&-1&0': 'x'},
+          keptWholeDay: {'t5&1&0': 'Svíčková', 't5&-1&0': 'x'},
         };
 
     Map<String, Object?> baseF3Config({String orderMode = 'confirm'}) => {
@@ -1128,7 +1131,12 @@ void main() {
             {
               'start_date': '2099-10-07',
               'end_date': '2099-10-07',
-              'lessons': [1, 2],
+              'start_period': 1,
+              'end_period': 2,
+            },
+            {
+              'start_date': '2099-10-09',
+              'end_date': '2099-10-09',
               'cancel_lunch': false,
             },
           ],
@@ -1136,29 +1144,126 @@ void main() {
 
     test('confirmModeCancelsFreeAndPlannedDaysOnlyNeverPartialOrAbsence',
         () async {
-      final calls = <Object?>[];
-      final app = FakeApp(calls, orderMode: 'confirm', menu: fourDayMenu())
-        ..orderedDict = {
-          plannedDay: 't1&1&0',
-          freeDay: 't2&1&0',
-          partialDay: 't3&1&0',
-          absenceDay: 't4&1&0',
+      for (final mode in ['confirm', 'auto']) {
+        saveDataCache(<String, Object?>{}, replace: true);
+        final calls = <Object?>[];
+        final app = FakeApp(calls, orderMode: mode, menu: fourDayMenu())
+          ..orderedDict = {
+            plannedDay: 't1&1&0',
+            freeDay: 't2&1&0',
+            partialDay: 't3&1&0',
+            absenceDay: 't4&1&0',
+            keptWholeDay: 't5&1&0',
+          };
+        final result = await withClock(
+          Clock.fixed(DateTime(2099, 10, 1, 9, 0)),
+          () => runRefresh(app, baseF3Config(orderMode: mode), scope: 'strava'),
+        );
+        expect(result.lunchesCancelled, 2, reason: mode);
+        expect(result.autoCancelledDays, {plannedDay, freeDay}, reason: mode);
+        expect(
+          result.autoCancelledReasons,
+          {
+            plannedDay: 'planned',
+            freeDay: 'free_day',
+          },
+          reason: mode,
+        );
+        expect(app.orderedDict[partialDay], 't3&1&0', reason: mode);
+        expect(app.orderedDict[absenceDay], 't4&1&0', reason: mode);
+        expect(app.orderedDict[keptWholeDay], 't5&1&0', reason: mode);
+        final cache = loadDataCache();
+        expect((cache[cancelHandledKey] as List).toSet(),
+            {plannedDay, freeDay},
+            reason: mode);
+        if (mode == 'confirm') {
+          expect(cache.containsKey(handledKey), isFalse);
+        }
+      }
+    });
+
+    test('multiDayPartialEdgesCancelsOnlyWholeMiddleDay (R5 M1)', () async {
+      for (final mode in ['confirm', 'auto']) {
+        saveDataCache(<String, Object?>{}, replace: true);
+        final calls = <Object?>[];
+        final app = FakeApp(
+          calls,
+          orderMode: mode,
+          menu: {
+            '05.10.2099': {'t1&1&0': 'Guláš', 't1&-1&0': 'x'},
+            '06.10.2099': {'t2&1&0': 'Řízek', 't2&-1&0': 'x'},
+            '07.10.2099': {'t3&1&0': 'Polévka', 't3&-1&0': 'x'},
+          },
+        )..orderedDict = {
+            '05.10.2099': 't1&1&0',
+            '06.10.2099': 't2&1&0',
+            '07.10.2099': 't3&1&0',
+          };
+        final cfg = <String, Object?>{
+          ...refreshConfig(),
+          'strava_order_mode': mode,
+          'strava_auto_cancel_lunches': true,
+          'user_free_days': <String>[],
+          'planned_skips': [
+            {
+              'start_date': '2099-10-05',
+              'end_date': '2099-10-07',
+              'start_period': 3,
+              'end_period': 2,
+            },
+          ],
         };
-      final result = await withClock(
-        Clock.fixed(DateTime(2099, 10, 1, 9, 0)),
-        () => runRefresh(app, baseF3Config(), scope: 'strava'),
+        final result = await withClock(
+          Clock.fixed(DateTime(2099, 10, 1, 9, 0)),
+          () => runRefresh(app, cfg, scope: 'strava'),
+        );
+        expect(result.lunchesCancelled, 1, reason: mode);
+        expect(result.autoCancelledDays, {'06.10.2099'}, reason: mode);
+        expect(app.orderedDict['05.10.2099'], 't1&1&0', reason: mode);
+        expect(app.orderedDict['06.10.2099'], 't2&-1&0', reason: mode);
+        expect(app.orderedDict['07.10.2099'], 't3&1&0', reason: mode);
+      }
+    });
+
+    test('wholePlannedLunchDaysCoversOnlyWholeDays (R5 M1)', () {
+      final cfg = <String, Object?>{
+        'planned_skips': [
+          {
+            'start_date': '2099-10-05',
+            'end_date': '2099-10-05',
+          },
+          {
+            'start_date': '2099-10-07',
+            'end_date': '2099-10-07',
+            'start_period': 1,
+            'end_period': 2,
+          },
+          {
+            'start_date': '2099-10-09',
+            'end_date': '2099-10-09',
+            'cancel_lunch': false,
+          },
+          {
+            'start_date': '2099-10-12',
+            'end_date': '2099-10-14',
+            'start_period': 3,
+            'end_period': 2,
+          },
+          {
+            'start_date': '2099-10-15',
+            'end_date': '2099-10-15',
+            'start_period': 2,
+          },
+          {
+            'start_date': '2099-10-15',
+            'end_date': '2099-10-15',
+          },
+        ],
+      };
+      expect(
+        wholePlannedLunchDays(cfg),
+        {'05.10.2099', '13.10.2099', '15.10.2099'},
       );
-      expect(result.lunchesCancelled, 2);
-      expect(result.autoCancelledDays, {plannedDay, freeDay});
-      expect(result.autoCancelledReasons, {
-        plannedDay: 'planned',
-        freeDay: 'free_day',
-      });
-      expect(app.orderedDict[partialDay], 't3&1&0');
-      expect(app.orderedDict[absenceDay], 't4&1&0');
-      final cache = loadDataCache();
-      expect((cache[cancelHandledKey] as List).toSet(), {plannedDay, freeDay});
-      expect(cache.containsKey(handledKey), isFalse);
     });
 
     test('disabledSettingCancelsNothingInConfirmOrAutoMode', () async {

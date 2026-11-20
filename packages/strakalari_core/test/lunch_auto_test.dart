@@ -327,7 +327,7 @@ void main() {
         czDay(d2): 'b&-1&0',
       });
 
-      // Partial school days not in cancelledDays/freeDays are never cancelled.
+      // Normal school days not in cancelledDays/freeDays are never cancelled.
       final noneWhenNormalDay = planAutoCancels(
         food,
         const <String, Object?>{},

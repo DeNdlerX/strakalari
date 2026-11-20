@@ -44,7 +44,8 @@ import '../lunches/lunch_auto.dart'
         updateHandledDays;
 import '../storage/helpers.dart';
 import '../news.dart' show findNews;
-import '../planning/planned_skips.dart' show plannedLunchDays;
+import '../planning/planned_skips.dart'
+    show plannedLunchDays, wholePlannedLunchDays;
 import '../planning/planner.dart' show schoolYearTerms;
 import '../planning/schedule.dart' show baselineToDict;
 import 'automation.dart';
@@ -755,21 +756,26 @@ Future<void> _autoLunch(
       for (final d in cancelledLunchDays ?? const <String>[])
         canonicalDayKey(d),
     };
+    final wholePlannedDays = {
+      for (final d in wholePlannedLunchDays(cfg)) canonicalDayKey(d),
+    };
+    final cancelPlannedDays = plannedDays.intersection(wholePlannedDays);
     final freeDays = {
       for (final d in freeLunchDaysHook(cfg)) canonicalDayKey(d),
     };
     final allCancelled = plannedDays.union(freeDays);
+    final cancelTargets = cancelPlannedDays.union(freeDays);
     // When both flags apply to the same day, 'planned' explains the explicit skip.
     final cancelReasons = <String, String>{
       for (final d in freeDays) d: 'free_day',
-      for (final d in plannedDays) d: 'planned',
+      for (final d in cancelPlannedDays) d: 'planned',
     };
     final food = Map<String, Map<String, String>>.of(app.foodDict);
     final deorders = autoCancel
         ? planAutoCancelsHook(
             food,
             cfg,
-            cancelledDays: allCancelled,
+            cancelledDays: cancelTargets,
             ordered: orderedBefore,
             cancelHandled: effectiveCancelHandled,
           )
@@ -791,12 +797,12 @@ Future<void> _autoLunch(
       usedGemini = geminiUsed;
       orders = Map<String, String>.of(plannedOrders);
       // planAutoOrdersHook keeps its legacy signature; filter out any
-      // cancellations it produced for days disabled or already handled.
+      // cancellations it produced for days disabled, partial, or already handled.
       orders.removeWhere((day, mealId) {
         if (!mealId.contains('&-1&')) return false;
         final canon = canonicalDayKey(day);
-        return allCancelled.contains(canon) &&
-            (!autoCancel || effectiveCancelHandled.contains(canon));
+        if (!cancelTargets.contains(canon)) return true;
+        return !autoCancel || effectiveCancelHandled.contains(canon);
       });
       orders.addAll(deorders);
     } else {
