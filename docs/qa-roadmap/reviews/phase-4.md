@@ -695,3 +695,93 @@ lines.
    commits the branch lacks.
 10. **Not checked:** macOS and iOS (not possible here); the real server's
     markup of the end markers (N9).
+
+---
+
+## Re-review 2 (2026-11-20)
+
+At the owner's word ("can you fix it? and then mark it as reviewed? I give
+you approval to do that", in STATUS), the reviewer fixed S5 itself, as in
+R2 and R3c. So this one fix was written and checked by the same person;
+what makes up for that is listed below: tests that fail without it, each
+part undone alone, and both suites. Reviewed at `qa-roadmap` @ `24c310b`;
+`main` has no commits the branch lacks. Commits since the re-review
+(`16d6d15`):
+
+- `24c310b` S5, code and tests in one commit.
+
+### Verdict: PASS
+
+S5 is fixed as the re-review described it. When the limit cuts the list,
+the app now also reads the sent day of the first message it leaves out,
+and starts the excuse window only on the day after it (or on the oldest
+read message's day, if that is later). A day where the cut falls is no
+longer treated as read: an excuse really sent that day stays blocked
+from a re-send, and that day's absences aren't offered for automatic
+sending. If the cut falls on today, or the first message left out has no
+date, the read fails as before and automatic excusing waits. Nothing
+else changed. F2 is done, and with it phase 4.
+
+### S5, checked
+
+- **Code** (`packages/strakalari_core/lib/src/bakalari/data.dart`, the limit
+  branch of `fetchSentExcuses`): `sentDay` reads a row's day from its
+  cache key (as before, one helper for both rows); `unreadDay` is the day
+  of `ids[capped]`, the newest message left out (`:212`); the start is the
+  later of the day after it, built as `DateTime(y, m, d + 1)`, and the
+  oldest read message's day (`:225`), then the later of that and the
+  period start (`:238`, as before). The read fails, with the same
+  `sentExcusesError`, when either row has no date or the start is after
+  today (`:227`); the two log lines say which. The doc comment says the
+  same. Only the limit branch changed; with `sent_excuses_limit` 0 (every
+  new install) nothing runs differently.
+- **Tests** (one commit with the fix):
+  - `limitCutInsideADayStartsTheWindowTheDayAfter (R4 S5)`
+    (`bakalari_data_test.dart:452`): the three messages from S5, limit 2 →
+    the start is 6.11., and only `603` and `602` are read.
+  - `limitCutFailsClosedWhenTheFirstUnreadDayIsTodayOrUnknown (R4 S5)`
+    (`:487`): limit 1, both messages sent today → null; the first message
+    left out without a date → null; no details read in either case.
+  - `limitCutInsideADayKeepsThatDaysUnconfirmedSubmitBlocked (R4 S5)`
+    (`automation_test.dart:1487`): the scenario from S5 through
+    `syncWebExcusesToHistory` → the start is 6.11., the unconfirmed 5.11.
+    submit is still in the sidecar, and of the absences on 5.11. and 9.11.
+    only 9.11. is pending (it isn't covered by any message, so the window
+    isn't simply empty).
+  - On `16d6d15` (the code before the fix) all three fail with
+    assertions: `Expected: DateTime:<2026-11-06 …>`, `Actual:
+    DateTime:<2026-11-05 …>` (twice) and `Expected: null`, `Actual: [...]`.
+  - Each part undone alone at `24c310b`: no "day after" → all three fail;
+    no "after today" check → the fail-closed test fails; an unknown day
+    accepted → the fail-closed test fails.
+  - Unchanged and green: both R4 Q1 tests (their first message left out was
+    sent 10.9., so their start stays 15.10.) and
+    `explicitPositiveLimitFailsClosedWhenExceeded`.
+- **STATUS:** the *F2 legacy `sent_excuses_limit`* question now says the
+  read no longer fails when the limit is exceeded.
+
+### What the reviewer verified, and how (re-review 2)
+
+1. **Suites** with the fix (Flutter 3.44.8 / Dart 3.12.2): core
+   `dart analyze` no issues, `dart test` **839 passed, 2 skipped** (836,
+   +3); app `flutter analyze` no issues, `flutter test` **777 passed,
+   1 skipped** (unchanged). The generated plugin files rewritten by
+   `flutter test` were restored (line endings only, N8).
+2. **Tests on the code before the fix:** a throwaway worktree at
+   `16d6d15` in the reviewer's scratch space with only the two changed
+   test files copied in, then each part of the fix undone alone (above);
+   removed afterwards.
+3. **Test integrity:** the two test files only gained lines (82 + 70);
+   `test(` calls 1560 → 1563. No `skip:`, no `try`/`catch` around
+   assertions, no `anything` or `isNotNull`; only `https://bakalari.test`
+   as a host.
+4. **Scope, keys, strings, safety:** one code file, the limit branch only;
+   no config key, parity fixture, string, UI or tutorial change; no new
+   `catch`. The send path, `HistoryLock`, the audit and
+   `automation_paused` are untouched; an unknown outbox still blocks
+   automatic excusing.
+5. **Hygiene:** committed as the configured user, plain messages, no
+   `Co-Authored-By`, `Claude-Session` or "Generated with" lines; no
+   personal file; `qa-roadmap` has no upstream; not merged into `main`.
+6. **Not checked:** macOS and iOS (not possible here); the real server's
+   markup of the end markers (N9). Neither blocks the pass.
