@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../controllers/app_state.dart';
 import '../features/common/app_tokens.dart';
 import '../l10n/strings.dart';
+import '../widgets/account_switcher.dart' show accountInitial;
 
 /// Phone menu: the screens that don't fit the bottom bar.
 /// Port of `strakalari/flet_ui/views/more.py`.
@@ -15,11 +16,19 @@ class MorePage extends StatelessWidget {
   final bool isAndroid;
   final AppTokens? tokens;
 
+  /// Multi-account header card (§10.1); omitted when single-account / degraded.
+  final String? activeAccountLabel;
+  final String? activeAccountSubtitle;
+  final VoidCallback? onSwitchAccount;
+
   const MorePage({
     super.key,
     required this.onOpen,
     this.isAndroid = false,
     this.tokens,
+    this.activeAccountLabel,
+    this.activeAccountSubtitle,
+    this.onSwitchAccount,
   });
 
   static const List<(String, IconData, String)> entries = [
@@ -61,6 +70,53 @@ class MorePage extends StatelessWidget {
             ),
           ),
         ),
+        if (onSwitchAccount != null &&
+            (activeAccountLabel ?? '').isNotEmpty) ...[
+          Material(
+            key: const Key('more:account_card'),
+            color: t.card,
+            borderRadius: BorderRadius.circular(t.radiusMd),
+            clipBehavior: Clip.antiAlias,
+            child: ListTile(
+              leading: CircleAvatar(
+                radius: 18,
+                backgroundColor: tintColor(t.accent, 0.18),
+                foregroundColor: t.accent,
+                child: Text(
+                  accountInitial(activeAccountLabel!),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              title: Text(
+                activeAccountLabel!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: t.text,
+                  fontSize: t.fsSection,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              subtitle: (activeAccountSubtitle ?? '').isNotEmpty
+                  ? Text(
+                      activeAccountSubtitle!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: t.muted,
+                        fontSize: t.fsSmall,
+                      ),
+                    )
+                  : null,
+              trailing: Icon(Icons.swap_horiz, color: t.accent),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(t.radiusMd),
+              ),
+              onTap: onSwitchAccount,
+            ),
+          ),
+          SizedBox(height: t.gap / 2 + 2),
+        ],
         for (var i = 0; i < items.length; i++) ...[
           if (i > 0) SizedBox(height: t.gap / 2 + 2),
           Material(

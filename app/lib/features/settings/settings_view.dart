@@ -8,6 +8,12 @@ import 'package:app/features/settings/wakeup_card.dart';
 import 'package:app/features/common/app_tokens.dart';
 import 'package:app/features/common/open_url.dart';
 import 'package:app/platform/scheduler_jobs.dart' show checkIntervalMinutes;
+import 'package:app/widgets/account_switcher.dart'
+    show
+        accountInitial,
+        formatAccountSubtitle,
+        showDeleteAccountDialog,
+        showRenameAccountDialog;
 import 'package:app/widgets/app_widgets.dart' as w;
 import 'package:app/widgets/marks_bands_card.dart';
 import 'package:app/widgets/overlays.dart';
@@ -50,6 +56,10 @@ class AutosaveField extends StatefulWidget {
   /// parseable text without touching focus or `BuildContext` (O4 / S10).
   final bool saveOnDispose;
 
+  /// Optional validator returning a localized error string when [value] must
+  /// be rejected (e.g. duplicate account login, F4 §10.2).
+  final String? Function(Object? value)? rejectMessage;
+
   const AutosaveField({
     super.key,
     required this.controller,
@@ -64,6 +74,7 @@ class AutosaveField extends StatefulWidget {
     this.onSaved,
     this.draftOnly = false,
     this.saveOnDispose = false,
+    this.rejectMessage,
   });
 
   @override
@@ -134,6 +145,10 @@ class _AutosaveFieldState extends State<AutosaveField> {
       c.clearDrafts(widget.draftKey);
       return;
     }
+    if (widget.rejectMessage?.call(newVal) != null) {
+      c.clearDrafts(widget.draftKey);
+      return;
+    }
     if (!c.saveQuiet({widget.configKey: newVal})) return;
     if (!widget.password) {
       c.clearDrafts(widget.draftKey);
@@ -168,6 +183,13 @@ class _AutosaveFieldState extends State<AutosaveField> {
       c.clearDrafts(widget.draftKey);
       _showValue(newVal);
       return; // focus moved without an edit: nothing to save
+    }
+    final rejection = widget.rejectMessage?.call(newVal);
+    if (rejection != null) {
+      appSnack(context, rejection);
+      c.clearDrafts(widget.draftKey);
+      _showValue(baseline);
+      return;
     }
     if (!c.saveQuiet({widget.configKey: newVal})) return;
     if (!widget.password) {
@@ -699,6 +721,18 @@ class _Hint extends StatelessWidget {
   }
 }
 
+/// Short muted scope caption shown only in multi-account mode (§10.2).
+class _ScopeCaption extends StatelessWidget {
+  final String text;
+  const _ScopeCaption(this.text, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final tok = tokensOf(context);
+    return Text(text, style: TextStyle(color: tok.muted, fontSize: tok.fsSmall));
+  }
+}
+
 /// A bold card caption (Python `txt(..., bold=True)`).
 class _CardTitle extends StatelessWidget {
   final String text;
@@ -951,6 +985,246 @@ class SettingsView extends StatelessWidget {
     );
   }
 
+  Widget? _accountScopeCaption() {
+    if (!controller.isMultiAccount) return null;
+    return _ScopeCaption(
+      Strings.format(
+          'settings_scope_account', {'name': controller.activeAccountLabel}),
+      key: const Key('settings:scope_account'),
+    );
+  }
+
+  Widget? _sharedScopeCaption() {
+    if (!controller.isMultiAccount) return null;
+    return _ScopeCaption(
+      Strings.get('settings_scope_shared'),
+      key: const Key('settings:scope_shared'),
+    );
+  }
+
+  String? Function(Object? value) _duplicateLoginValidator(
+      SettingsController c, String configKey) {
+    return (value) {
+      final dup = c.duplicateLoginLabelForEdit(configKey, '${value ?? ''}');
+      if (dup == null) return null;
+      return Strings.format('account_duplicate_login', {'name': dup});
+    };
+  }
+
+  Widget _accountsManagerCard(BuildContext context) {
+    final c = controller;
+    final tok = tokensOf(context);
+    final multi = c.accounts.length > 1;
+    return Card(
+      key: const Key('settings:accounts_card'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          spacing: 12,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _CardTitle(Strings.get('accounts_manage_title')),
+            for (final acc in c.accounts)
+              Material(
+                key: Key('acc:item:${acc.id}'),
+                color: acc.isActive
+                    ? tintColor(tok.accent, 0.10)
+                    : Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(tok.radiusSm),
+                  side: BorderSide(
+                    color: acc.isActive ? tok.accent : tok.border,
+                  ),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  spacing: 8,
+                  children: [
+                    InkWell(
+                      borderRadius: BorderRadius.circular(tok.radiusSm),
+                      onTap: acc.isActive
+                          ? null
+                          : () async {
+                              FocusManager.instance.primaryFocus?.unfocus();
+                              await c.onSwitchAccount?.call(acc.id);
+                              onChanged?.call();
+                            },
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 16,
+                            backgroundColor: tintColor(tok.accent, 0.18),
+                            foregroundColor: tok.accent,
+                            child: Text(
+                              accountInitial(acc.label),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 4,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    Text(
+                                      acc.label,
+                                      style: TextStyle(
+                                        color: tok.text,
+                                        fontSize: tok.fsBody,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    if (multi && acc.isActive)
+                                      _accountPillTag(
+                                        Strings.get('account_active_badge'),
+                                        tok.green,
+                                        tok,
+                                      ),
+                                    if (multi && acc.isPrimary)
+                                      _accountPillTag(
+                                        Strings.get('account_primary_badge'),
+                                        tok.accent,
+                                        tok,
+                                      ),
+                                  ],
+                                ),
+                                Builder(builder: (_) {
+                                  final sub = formatAccountSubtitle(
+                                      acc.username, acc.presetId);
+                                  if (sub.isEmpty) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return Text(
+                                    sub,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: tok.muted,
+                                      fontSize: tok.fsSmall,
+                                    ),
+                                  );
+                                }),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SwitchListTile(
+                      key: Key('acc:bg_refresh:${acc.id}'),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: Text(
+                        Strings.get('account_bg_refresh'),
+                        style: TextStyle(fontSize: tok.fsSmall),
+                      ),
+                      value: acc.backgroundRefresh,
+                      onChanged: (v) async {
+                        await c.onSetAccountBackgroundRefresh?.call(acc.id, v);
+                        onChanged?.call();
+                      },
+                    ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        OutlinedButton.icon(
+                          key: Key('acc:rename:${acc.id}'),
+                          icon: const Icon(Icons.edit_outlined, size: 16),
+                          label: Text(Strings.get('account_rename')),
+                          onPressed: () async {
+                            final next = await showRenameAccountDialog(
+                              context,
+                              currentLabel: acc.label,
+                            );
+                            if (next != null && next.isNotEmpty) {
+                              c.onRenameAccount?.call(acc.id, next);
+                              onChanged?.call();
+                            }
+                          },
+                        ),
+                        if (multi && !acc.isPrimary)
+                          OutlinedButton.icon(
+                            key: Key('acc:set_primary:${acc.id}'),
+                            icon: const Icon(Icons.star_outline, size: 16),
+                            label: Text(Strings.get('account_set_primary')),
+                            onPressed: () async {
+                              await c.onSetPrimaryAccount?.call(acc.id);
+                              onChanged?.call();
+                            },
+                          ),
+                        if (multi)
+                          OutlinedButton.icon(
+                            key: Key('acc:delete:${acc.id}'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: tok.red,
+                            ),
+                            icon: const Icon(Icons.delete_outline, size: 16),
+                            label: Text(Strings.get('account_delete')),
+                            onPressed: () async {
+                              FocusManager.instance.primaryFocus?.unfocus();
+                              final ok = await showDeleteAccountDialog(
+                                context,
+                                label: acc.label,
+                                showBackupNote: acc.showBackupNoteOnDelete,
+                              );
+                              if (ok) {
+                                FocusManager.instance.primaryFocus?.unfocus();
+                                await c.onDeleteAccount?.call(acc.id);
+                                onChanged?.call();
+                              }
+                            },
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+                ),
+              ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.tonalIcon(
+                key: const Key('acc:add_btn'),
+                icon: const Icon(Icons.person_add_outlined, size: 18),
+                label: Text(Strings.get('account_add')),
+                onPressed: () async {
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  await c.onBeginAddAccount?.call();
+                  onChanged?.call();
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _accountPillTag(String text, Color color, Tokens tok) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: tintColor(color, 0.16),
+          borderRadius: BorderRadius.circular(tok.radiusSm),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            color: color,
+            fontSize: tok.fsTiny,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+
   // -- accounts -------------------------------------------------------------------
   List<Widget> _accounts(BuildContext context) {
     final c = controller;
@@ -958,7 +1232,10 @@ class SettingsView extends StatelessWidget {
     final sPassSet = '${c.get('strava_password', '')}'.isNotEmpty;
     final bRes = _testResultCard('bakalari');
     final sRes = _testResultCard('strava');
+    final scope = _accountScopeCaption();
     return [
+      if (c.accountsEnabled && !c.migrationDegraded)
+        _accountsManagerCard(context),
       Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -966,13 +1243,18 @@ class SettingsView extends StatelessWidget {
               spacing: 20,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (c.isMultiAccount)
+                _CardTitle(Strings.format('account_credentials_for',
+                    {'name': c.activeAccountLabel})),
+              ?scope,
               _CardTitle(Strings.get('account_bakalari')),
               AutosaveField(
                   controller: c,
                   label: Strings.get('bakalari_url'),
                   draftKey: 'acc:bakalari_url',
                   configKey: 'bakalari_url',
-                  fallback: '${c.get('bakalari_url', '')}'),
+                  fallback: '${c.get('bakalari_url', '')}',
+                  rejectMessage: _duplicateLoginValidator(c, 'bakalari_url')),
               _Hint(Strings.get('bakalari_url_hint')),
               AutosaveField(
                   controller: c,
@@ -980,7 +1262,9 @@ class SettingsView extends StatelessWidget {
                       "${Strings.get('account_bakalari')} — ${Strings.get('username')}",
                   draftKey: 'acc:bakalari_username',
                   configKey: 'bakalari_username',
-                  fallback: '${c.get('bakalari_username', '')}'),
+                  fallback: '${c.get('bakalari_username', '')}',
+                  rejectMessage:
+                      _duplicateLoginValidator(c, 'bakalari_username')),
               AutosaveField(
                   controller: c,
                   label:
@@ -1005,7 +1289,9 @@ class SettingsView extends StatelessWidget {
                       "${Strings.get('account_strava')} — ${Strings.get('username')}",
                   draftKey: 'acc:strava_username',
                   configKey: 'strava_username',
-                  fallback: '${c.get('strava_username', '')}'),
+                  fallback: '${c.get('strava_username', '')}',
+                  rejectMessage:
+                      _duplicateLoginValidator(c, 'strava_username')),
               AutosaveField(
                   controller: c,
                   label:
@@ -1021,7 +1307,9 @@ class SettingsView extends StatelessWidget {
                   label: Strings.get('canteen_id'),
                   draftKey: 'acc:strava_canteen_id',
                   configKey: 'strava_canteen_id',
-                  fallback: '${c.get('strava_canteen_id', '')}'),
+                  fallback: '${c.get('strava_canteen_id', '')}',
+                  rejectMessage:
+                      _duplicateLoginValidator(c, 'strava_canteen_id')),
               _Hint(Strings.get('canteen_id_hint')),
               SwitchListTile(
                 controlAffinity: ListTileControlAffinity.leading,
@@ -1063,7 +1351,9 @@ class SettingsView extends StatelessWidget {
 
   // -- limits ----------------------------------------------------------------------
   List<Widget> _limits(BuildContext context) {
+    final scope = _accountScopeCaption();
     return [
+      ?scope,
       Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -1107,7 +1397,9 @@ class SettingsView extends StatelessWidget {
     final preset = core.getPreset(presetId);
     final presetTitle =
         preset != null ? core.presetTitle(preset, Strings.lang) : '';
+    final scope = _accountScopeCaption();
     return [
+      ?scope,
       Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -1326,8 +1618,45 @@ class SettingsView extends StatelessWidget {
   // -- alarm --------------------------------------------------------------------------
   List<Widget> _alarm() {
     final c = controller;
+    if (c.isMultiAccount &&
+        c.activeAccountId != null &&
+        c.activeAccountId != c.primaryAccountId) {
+      return [
+        Card(
+          key: const Key('alarm:non_primary_banner'),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              spacing: 16,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _CardTitle(Strings.get('wakeup_title')),
+                Text(Strings.format(
+                  'alarm_primary_account_note',
+                  {'name': c.primaryAccountLabel},
+                )),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FilledButton.icon(
+                    key: const Key('alarm:set_primary'),
+                    icon: const Icon(Icons.star_outline),
+                    label: Text(Strings.get('account_set_primary')),
+                    onPressed: () async {
+                      await c.onSetPrimaryAccount?.call(c.activeAccountId!);
+                      onChanged?.call();
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ];
+    }
+    final scope = _accountScopeCaption();
     if (!c.wakeupAvailable) {
       return [
+        ?scope,
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -1342,13 +1671,15 @@ class SettingsView extends StatelessWidget {
         ),
       ];
     }
-    return [WakeupCard(controller: c)];
+    return [?scope, WakeupCard(controller: c)];
   }
 
   // -- templates -----------------------------------------------------------------------
   List<Widget> _templates() {
     final c = controller;
+    final scope = _accountScopeCaption();
     return [
+      ?scope,
       TemplateGroupsList(
         readTemplates: (key) => c.get(key, const <Object?>[]),
         commitTemplates: (key, values) => c.commitTemplates(key, values),
@@ -1372,14 +1703,29 @@ class SettingsView extends StatelessWidget {
     final c = controller;
     const modes = ['auto', 'confirm', 'dry_run'];
     String modeLabel(String m) => Strings.get({'auto': 'mode_auto', 'confirm': 'mode_confirm', 'dry_run': 'mode_dry_run'}[m]!);
+    final scope = _accountScopeCaption();
     return [
+      ?scope,
       Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
               spacing: 20,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _Hint(Strings.get('automation_disclaimer')),
+              SwitchListTile(
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+                key: const Key('rule:background_refresh'),
+                title: Text(Strings.get('account_bg_refresh')),
+                value: c.get('background_refresh', true) != false,
+                onChanged: (v) {
+                  c.save({'background_refresh': v});
+                  onChanged?.call();
+                },
+              ),
+              _Hint(Strings.get('account_bg_refresh_hint')),
               SwitchListTile(
                 controlAffinity: ListTileControlAffinity.leading,
                 contentPadding: EdgeInsets.zero,
@@ -1457,6 +1803,8 @@ class SettingsView extends StatelessWidget {
                   }
                 },
               ),
+              if (c.isMultiAccount)
+                _Hint(Strings.get('settings_interval_shared_hint')),
               AutosaveField(
                 controller: c,
                 label: Strings.get('excuse_delay'),
@@ -1534,8 +1882,10 @@ class SettingsView extends StatelessWidget {
   // -- browser / background ----------------------------------------------------------------
   List<Widget> _browser(BuildContext context) {
     final c = controller;
+    final scope = _sharedScopeCaption();
     if (platform == 'android') {
       return [
+        ?scope,
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -1566,6 +1916,7 @@ class SettingsView extends StatelessWidget {
       // HKCU Run toggle has no effect inside the MSIX container. The tray
       // switch stays, like Python's form card (autostart, tray).
       return [
+        ?scope,
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -1596,6 +1947,7 @@ class SettingsView extends StatelessWidget {
       ];
     }
     return [
+      ?scope,
       Card(
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -1642,7 +1994,9 @@ class SettingsView extends StatelessWidget {
   // -- appearance ------------------------------------------------------------------------------
   List<Widget> _appearance(BuildContext context) {
     final c = controller;
+    final scope = _sharedScopeCaption();
     return [
+      ?scope,
       Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -1733,13 +2087,17 @@ class SettingsView extends StatelessWidget {
     final c = controller;
     final hasKey = '${c.get('gemini_api_key', '')}'.isNotEmpty;
     final aiRes = _testResultCard('ai');
+    final sharedScope = _sharedScopeCaption();
+    final accScope = _accountScopeCaption();
     return [
       Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
               spacing: 20,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              ?sharedScope,
               AutosaveField(
                   controller: c,
                   label: Strings.get('gemini_key'),
@@ -1767,7 +2125,9 @@ class SettingsView extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Column(
               spacing: 20,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              ?accScope,
               SwitchListTile(
                 controlAffinity: ListTileControlAffinity.leading,
                 contentPadding: EdgeInsets.zero,
@@ -1906,7 +2266,9 @@ class SettingsView extends StatelessWidget {
       if (raw is Map)
         for (final e in raw.entries) '${e.key}': e.value,
     };
+    final scope = _sharedScopeCaption();
     return [
+      ?scope,
       Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -1960,7 +2322,9 @@ class SettingsView extends StatelessWidget {
         }
       }
     }
+    final scope = _sharedScopeCaption();
     return [
+      ?scope,
       Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -1968,6 +2332,15 @@ class SettingsView extends StatelessWidget {
               spacing: 20,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (c.migrationDegraded)
+                Text(
+                  Strings.get('account_migration_failed'),
+                  key: const Key('diag:migration_failed'),
+                  style: TextStyle(
+                    color: tokensOf(context).muted,
+                    fontSize: tokensOf(context).fsSmall,
+                  ),
+                ),
               if (problems.isNotEmpty) ...[
                 _CardTitle(Strings.get('config_problems')),
                 for (final p in problems)

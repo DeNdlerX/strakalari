@@ -36,13 +36,27 @@ SettingsController settingsControllerFor(
     storeManaged = core.isStorePackage();
   } catch (_) {}
 
+  final accountIdAtBuild = s.activeAccountId;
+
   final c = SettingsController(
     cfg,
     confirmAutoMode: confirmAutoMode,
-    persist: (updates) => s.save(Map<String, Object?>.of(updates)),
-    persistQuiet: (updates) => s.saveQuiet(Map<String, Object?>.of(updates)),
-    onDraftChanged: (key, value) => s.setDraft(key, value),
-    onClearDrafts: (prefix) => s.clearDrafts(prefix),
+    persist: (updates) {
+      if (s.activeAccountId != accountIdAtBuild) return false;
+      return s.save(Map<String, Object?>.of(updates));
+    },
+    persistQuiet: (updates) {
+      if (s.activeAccountId != accountIdAtBuild) return false;
+      return s.saveQuiet(Map<String, Object?>.of(updates));
+    },
+    onDraftChanged: (key, value) {
+      if (s.activeAccountId != accountIdAtBuild) return;
+      s.setDraft(key, value);
+    },
+    onClearDrafts: (prefix) {
+      if (s.activeAccountId != accountIdAtBuild) return;
+      s.clearDrafts(prefix);
+    },
     onSetSection: (section) => s.setSettingsSection(section),
     onCloseSection: () => s.closeSettingsSection(),
     onTestConnection: (service, overrides) =>
@@ -77,6 +91,62 @@ SettingsController settingsControllerFor(
   c.testing = s.testing;
   c.lastTest = Map<String, dynamic>.of(s.lastTest);
   c.updateChannel = s.updateChannel;
+  c.accountsEnabled = s.accountsEnabled;
+  c.migrationDegraded = s.migrationDegraded;
+  c.activeAccountId = s.activeAccountId;
+  c.activeAccountLabel = s.activeAccountDisplayLabel;
+  c.primaryAccountId = s.primaryAccountId;
+  c.primaryAccountLabel = s.primaryAccount != null
+      ? s.accountDisplayLabel(s.primaryAccount!)
+      : '';
+  if (s.accountsEnabled && s.registry != null) {
+    final reg = s.registry!;
+    c.accounts = [
+      for (final acc in reg.accounts)
+        () {
+          final (user, presetId) = s.accountSummary(acc.id);
+          return SettingsAccountItem(
+            id: acc.id,
+            label: s.accountDisplayLabel(acc),
+            username: user,
+            presetId: presetId,
+            isActive: acc.id == reg.activeId,
+            isPrimary: acc.id == reg.primaryId,
+            backgroundRefresh: s.accountBackgroundRefresh(acc.id),
+            showBackupNoteOnDelete: s.accountDeleteShowsBackupNote(acc.id),
+          );
+        }(),
+    ];
+    c.onSwitchAccount = (id) => s.switchAccount(id);
+    c.onBeginAddAccount = () => s.beginAddAccount();
+    c.onRenameAccount = (id, name) => s.renameAccount(id, name);
+    c.onSetPrimaryAccount = (id) => s.setPrimaryAccount(id);
+    c.onDeleteAccount = (id) => s.deleteAccount(id);
+    c.onSetAccountBackgroundRefresh =
+        (id, enabled) => s.setAccountBackgroundRefresh(id, enabled);
+    c.checkDuplicateBakalari = (url, username) {
+      if (s.registry == null) return null;
+      final dup = core.findDuplicateBakalariLogin(
+        s.rootDir!,
+        s.registry!,
+        url: url,
+        username: username,
+        excludeAccountId: accountIdAtBuild ?? '',
+      );
+      return dup == null ? null : s.accountDisplayLabel(dup);
+    };
+    c.checkDuplicateStrava = (canteenId, username) {
+      if (s.registry == null) return null;
+      final dup = core.findDuplicateStravaLogin(
+        s.rootDir!,
+        s.registry!,
+        canteenId: canteenId,
+        username: username,
+        excludeAccountId: accountIdAtBuild ?? '',
+      );
+      return dup == null ? null : s.accountDisplayLabel(dup);
+    };
+  }
   return c;
 }
 
@@ -182,6 +252,7 @@ class _LiveSettingsViewState extends ConsumerState<LiveSettingsView> {
         ? 'android'
         : (Platform.isIOS ? 'ios' : '');
     return SettingsView(
+      key: ValueKey('settings:${s.activeAccountId ?? 'single'}'),
       controller: controller,
       narrow: widget.narrow,
       platform: platform,

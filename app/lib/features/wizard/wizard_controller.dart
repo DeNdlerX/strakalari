@@ -55,6 +55,14 @@ class WizardController extends ChangeNotifier {
   /// Called once Bakaláři credentials are verified and saved (O6 early refresh).
   final void Function(String fingerprint)? onBakalariSaved;
 
+  /// Called when cancelling an add-account wizard (`adding: true`, F4 §10.3).
+  final Future<bool> Function()? onCancelAdd;
+
+  /// Duplicate-login checks against other accounts in the registry (F4 §10.3).
+  final String? Function(String url, String username)? checkDuplicateBakalari;
+  final String? Function(String canteenId, String username)?
+      checkDuplicateStrava;
+
   WizardController({
     Map<String, Object?>? config,
     bool Function(Map<String, Object?> updates)? onSave,
@@ -71,6 +79,9 @@ class WizardController extends ChangeNotifier {
     this.onFinished,
     this.onVerified,
     this.onBakalariSaved,
+    this.onCancelAdd,
+    this.checkDuplicateBakalari,
+    this.checkDuplicateStrava,
   })  : config = config ?? {},
         onSave = onSave ?? ((_) => false),
         onSaveQuiet = onSaveQuiet ?? onSave ?? ((_) => false),
@@ -99,6 +110,13 @@ class WizardController extends ChangeNotifier {
 
   /// Active account data dir for `hasDryRun` checks in accounts mode.
   String? accountDataDir;
+
+  /// True ONLY when adding a new account (`activeAccount?.adding == true`, §10.3).
+  bool addingAccount = false;
+
+  /// Inline duplicate-login error message and its service (`bakalari | strava`).
+  String? duplicateError;
+  String? duplicateErrorService;
 
   /// Service currently being tested (`bakalari | strava`), if any.
   String? testing;
@@ -131,6 +149,8 @@ class WizardController extends ChangeNotifier {
 
   void setDraft(String key, String value) {
     drafts[key] = value;
+    duplicateError = null;
+    duplicateErrorService = null;
     onDraftChanged?.call(key, value);
     notifyListeners();
   }
@@ -138,6 +158,8 @@ class WizardController extends ChangeNotifier {
   /// Writes a draft without notifying (free typing in text fields).
   void setDraftSilent(String key, String value) {
     drafts[key] = value;
+    duplicateError = null;
+    duplicateErrorService = null;
     onDraftChanged?.call(key, value);
   }
 
@@ -150,10 +172,20 @@ class WizardController extends ChangeNotifier {
     onClearDrafts?.call(prefix);
   }
 
-  List<int> shownSteps() => [
-        for (var i = 0; i < stepsTotal; i++)
-          if (i != stepPhone || isAndroid) i
-      ];
+  List<int> shownSteps() {
+    final skipWelcome = addingAccount && config['disclaimer_accepted'] == true;
+    final skipPhone = addingAccount || !isAndroid;
+    return [
+      for (var i = 0; i < stepsTotal; i++)
+        if ((i != stepWelcome || !skipWelcome) &&
+            (i != stepPhone || !skipPhone))
+          i,
+    ];
+  }
+
+  int get firstShownStep => shownSteps().first;
+
+  bool get canGoBack => step > firstShownStep;
 
   int stepAfter(int from) {
     for (final s in shownSteps()) {
@@ -163,7 +195,7 @@ class WizardController extends ChangeNotifier {
   }
 
   int stepBefore(int from) {
-    var prev = 0;
+    var prev = firstShownStep;
     for (final s in shownSteps()) {
       if (s < from) prev = s;
     }
@@ -171,9 +203,16 @@ class WizardController extends ChangeNotifier {
   }
 
   void goTo(int target) {
+    duplicateError = null;
+    duplicateErrorService = null;
     step = target.clamp(0, stepDone);
     onStepChanged?.call(step);
     notifyListeners();
+  }
+
+  Future<bool> pressCancelAdd() async {
+    if (!addingAccount || onCancelAdd == null) return false;
+    return await onCancelAdd!();
   }
 
   void finishWizard() {
@@ -502,6 +541,37 @@ class WizardController extends ChangeNotifier {
   String? continueTestStep(
       String service, int atStep, bool readyOk, String needKey) {
     if (!readyOk) return Strings.get(needKey);
+    // Refuse duplicate logins against existing accounts (§10.3).
+    if (service == 'bakalari' && checkDuplicateBakalari != null) {
+      final ov = overridesFor('bakalari');
+      final dup = checkDuplicateBakalari!(
+        ov['bakalari_url'] ?? '',
+        ov['bakalari_username'] ?? '',
+      );
+      if (dup != null) {
+        final msg = Strings.format('account_duplicate_login', {'name': dup});
+        duplicateError = msg;
+        duplicateErrorService = service;
+        notifyListeners();
+        return msg;
+      }
+    }
+    if (service == 'strava' && stravaEnabled && checkDuplicateStrava != null) {
+      final ov = overridesFor('strava');
+      final dup = checkDuplicateStrava!(
+        ov['strava_canteen_id'] ?? '',
+        ov['strava_username'] ?? '',
+      );
+      if (dup != null) {
+        final msg = Strings.format('account_duplicate_login', {'name': dup});
+        duplicateError = msg;
+        duplicateErrorService = service;
+        notifyListeners();
+        return msg;
+      }
+    }
+    duplicateError = null;
+    duplicateErrorService = null;
     final fp = fingerprintFor(service);
     if (verified[service] == fp) {
       if (!_saveFor(service)) return Strings.get('save_failed');
@@ -701,8 +771,10 @@ class WizardController extends ChangeNotifier {
   }
 
   /// Whether Skip is offered on this step (welcome includes the required
-  /// disclaimer and cannot be skipped).
+  /// disclaimer and cannot be skipped; add-account mode has only Finish and
+  /// Cancel so no empty account is left behind, §10.3).
   bool get canSkip =>
+      !addingAccount &&
       step != stepWelcome &&
       step < stepDone;
 

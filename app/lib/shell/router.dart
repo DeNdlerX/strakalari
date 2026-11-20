@@ -23,6 +23,7 @@ import '../features/today/today_live.dart';
 import '../features/wizard/wizard_live.dart';
 import '../l10n/strings.dart';
 import '../shell/scaffold.dart';
+import '../widgets/account_switcher.dart';
 
 /// The seven rail routes, in rail order.
 const List<String> shellRoutes = [
@@ -135,9 +136,29 @@ GoRoute _route(String name) => GoRoute(
             case 'settings':
               return LiveSettingsView(narrow: narrow);
             case 'more':
+              final multi = appState.isMultiAccount;
+              final activeId = appState.activeAccountId;
+              final summary = (multi && activeId != null)
+                  ? appState.accountSummary(activeId)
+                  : ('', '');
               return MorePage(
                 tokens: tokens,
                 isAndroid: mobilePlatform() == 'android',
+                activeAccountLabel:
+                    multi ? appState.activeAccountDisplayLabel : null,
+                activeAccountSubtitle: multi
+                    ? formatAccountSubtitle(summary.$1, summary.$2)
+                    : null,
+                onSwitchAccount: multi
+                    ? () => showAccountSwitcher(
+                          context,
+                          appState: appState,
+                          tok: appState.tok,
+                          narrow: narrow,
+                          onManageAccounts: () =>
+                              context.go(routeLocation('settings')),
+                        )
+                    : null,
                 onOpen: (r) => openMoreRoute(
                   appState,
                   r,
