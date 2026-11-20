@@ -35,6 +35,10 @@ LunchController lunchControllerFor(AppState s) {
   c.orders = Map<String, String>.of(s.orders);
   c.pendingOrders = Set<String>.of(s.pendingOrders);
   c.cancelledLunches = Set<String>.of(s.cancelledLunches);
+  final cal = core.effectiveCalendar(s.config.data, clip: false);
+  c.freeDayLabels = {
+    for (final d in cal.dates) fmtDay(d): (cal.labels[d] ?? '').trim(),
+  };
   c.lunchHidden = Set<String>.of(s.lunchHidden);
   c.lunchReasons = Map<String, String>.of(s.lunchReasons);
   c.lunchPrefs = s.lunchPrefs;

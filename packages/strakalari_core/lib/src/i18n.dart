@@ -144,6 +144,10 @@ const Map<String, Map<String, String>> messages = {
     'cs': '{n} z {total} objednávek obědů neprošlo (podrobnosti v protokolu)',
     'en': '{n} of {total} lunch order(s) did not go through (details in the log)',
   },
+  'auto_cancels_failed': {
+    'cs': '{n} z {total} odhlášení obědů neprošlo (podrobnosti v protokolu)',
+    'en': '{n} of {total} lunch cancellation(s) did not go through (details in the log)',
+  },
   'strava_low_balance': {
     'cs':
         'Na účtu ve Stravě není dost peněz — {n} obědů se neobjednalo. Dobijte kredit, objednávky se zkusí znovu při další aktualizaci.',

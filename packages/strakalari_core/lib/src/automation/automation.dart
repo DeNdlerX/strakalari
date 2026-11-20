@@ -348,6 +348,10 @@ class Strakalari implements RefreshApp {
   /// Days not attempted because the account ran out of money.
   @override
   List<String> lastUnfundedDays = <String>[];
+  /// Optional per-day reasons (`'free_day'` / `'planned'`) attached by the
+  /// caller for the next [stravaOrderSelected] call so the audit log records
+  /// why each automatic cancellation ran. Consumed and cleared on call.
+  Map<String, String> nextCancelReasons = const {};
   Map<String, List<Object?>> _orderReport = {
     'skipped': [],
     'succeeded': [],
@@ -675,6 +679,8 @@ class Strakalari implements RefreshApp {
   @override
   Future<bool> stravaOrderSelected(Map<String, String> orders,
       {String source = 'manual'}) async {
+    final cancelReasons = Map<String, String>.of(nextCancelReasons);
+    nextCancelReasons = const {};
     lastOrderedDays = <String>{};
     lastOrderLowBalance = false;
     lastUnfundedDays = <String>[];
@@ -688,12 +694,13 @@ class Strakalari implements RefreshApp {
     try {
       ok = await _orderSelected(orders);
     } finally {
-      _auditOrders(orders, ok, source);
+      _auditOrders(orders, ok, source, cancelReasons: cancelReasons);
     }
     return ok;
   }
 
-  void _auditOrders(Map<String, String> orders, bool ok, String source) {
+  void _auditOrders(Map<String, String> orders, bool ok, String source,
+      {Map<String, String> cancelReasons = const {}}) {
     if (orders.isEmpty) return;
     try {
       final dry = stravaOrderMode == 'dry_run';
@@ -703,6 +710,7 @@ class Strakalari implements RefreshApp {
       final unfunded =
           _orderReport['unfunded']!.map((d) => '$d').toSet();
       for (final entry in orders.entries) {
+        final deorder = entry.value.contains('&-1&');
         final detail = <String, Object?>{
           'day': entry.key,
           'meal': entry.value,
@@ -721,7 +729,12 @@ class Strakalari implements RefreshApp {
         } else {
           outcome = 'failed';
         }
-        final deorder = entry.value.contains('&-1&');
+        if (deorder && !detail.containsKey('reason')) {
+          final reason = cancelReasons[entry.key];
+          if (reason != null && reason.isNotEmpty) {
+            detail['reason'] = reason;
+          }
+        }
         audit.record('lunch', outcome, source,
             '${entry.key}: ${deorder ? 'cancel lunch' : 'order'}',
             detail: detail);

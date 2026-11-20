@@ -339,12 +339,18 @@ extension LunchLogic on AppState {
     final canonPlaced = {
       for (final e in placed.entries) canonicalDayKey(e.key): e.value,
     };
+    final manualRealDays = <String>[
+      for (final e in canonPlaced.entries)
+        if (e.value.isNotEmpty && !e.value.contains('&-1&')) e.key,
+    ];
     for (final e in canonPlaced.entries) {
       webOrders[e.key] = e.value;
     }
+    cancelledLunches.removeAll(manualRealDays);
     pendingOrders.removeAll(canonPlaced.keys);
     try {
-      final cached = loadDataCache()['strava_ordered'];
+      final currentCache = loadDataCache();
+      final cached = currentCache['strava_ordered'];
       final merged = <String, Object?>{};
       if (cached is Map) {
         for (final e in cached.entries) {
@@ -354,7 +360,16 @@ extension LunchLogic on AppState {
         }
       }
       merged.addAll(canonPlaced);
-      saveDataCache({'strava_ordered': merged});
+      final updates = <String, Object?>{'strava_ordered': merged};
+      if (manualRealDays.isNotEmpty) {
+        final existing = currentCache[cancelHandledKey];
+        final prev = existing is List
+            ? [for (final d in existing) '$d']
+            : const <String>[];
+        updates[cancelHandledKey] =
+            updateCancelHandledDays(prev, manualRealDays);
+      }
+      saveDataCache(updates);
     } catch (exc) {
       // ignore: avoid_print
       print('Warning: could not cache placed orders: $exc');
@@ -396,14 +411,15 @@ extension LunchLogic on AppState {
       var staged = 0;
       var skipped = 0;
       var closed = 0;
+      final blockedDays = cancelledLunches.union(freeLunchDays(config.data));
       for (final e in recOrders.entries) {
         final day = e.key;
         final mid = e.value;
         // Only a meal from that same day's menu is orderable.
         if (!(menu[day]?.containsKey(mid) ?? false)) continue;
-        if (cancelledLunches.contains(day)) {
-          // A planned skip owns this day: recommending onto it would
-          // stage (and Send) a lunch on a vacation day.
+        if (blockedDays.contains(canonicalDayKey(day))) {
+          // A planned skip or free day owns this day: recommending onto it
+          // would stage (and Send) a lunch on a non-school day.
           skipped++;
           continue;
         }
@@ -489,7 +505,7 @@ extension LunchLogic on AppState {
       picks = filterPicks(
         menu.map((k, v) => MapEntry(k, v)),
         blacklist: combined,
-        cancelledDays: cancelledLunches,
+        cancelledDays: cancelledLunches.union(freeLunchDays(config.data)),
         isOpen: (day) {
           try {
             return isLunchOrderOpen(fmtDay(day));

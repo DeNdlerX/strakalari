@@ -39,6 +39,33 @@ const int geminiIntervalMax = 30;
 /// Data-cache key: days an earlier auto run already dealt with.
 const String handledKey = 'auto_lunch_handled';
 
+/// Data-cache key: days whose automatic lunch cancellation already ran
+/// or was overridden by a manual meal pick.
+const String cancelHandledKey = 'auto_lunch_cancel_handled';
+
+/// True when automatic lunch cancellation is enabled (default `true`).
+bool stravaAutoCancelEnabled(Map<String, Object?>? configData) {
+  final cfg = configData ?? const <String, Object?>{};
+  if (!cfg.containsKey('strava_auto_cancel_lunches')) return true;
+  final value = cfg['strava_auto_cancel_lunches'];
+  if (value == null) return true;
+  if (value is bool) return value;
+  if (value is num) return value != 0;
+  return !['false', '0', 'no'].contains('$value'.trim().toLowerCase());
+}
+
+/// Canonical `DD.MM.YYYY` school free days from preset + user overrides.
+Set<String> freeLunchDays(Map<String, Object?>? configData) {
+  try {
+    final dates = effectiveCalendar(configData, clip: false).dates;
+    return {for (final d in dates) canonicalDayKey(d)};
+  } on Object catch (e) {
+    // ignore: avoid_print
+    print('Warning: could not resolve free lunch days: $e');
+    return <String>{};
+  }
+}
+
 /// Progress events from [planAutoOrders] (`emit(key, {field: value})`).
 typedef LunchAutoEmit = void Function(String key,
     [Map<String, Object?> fields]);
@@ -412,6 +439,38 @@ Map<String, String> _plannedDeorders(
   return out;
 }
 
+/// Builds Strava cancel picks (`&-1&` meal ids) for ordered lunches on
+/// school free days or planned skip days (`cancelledDays`), skipping any
+/// days already dealt with or manually re-ordered (`cancelHandled`).
+///
+/// Returns `{}` when [stravaAutoCancelEnabled] is false or the order/cancel
+/// deadline predicate cannot be resolved (fail-closed).
+Map<String, String> planAutoCancels(
+  Map<String, Map<String, String>>? foodData,
+  Map<String, Object?>? configData, {
+  Iterable<String>? cancelledDays,
+  Map<String, String>? ordered,
+  Iterable<String>? cancelHandled,
+  bool Function(DateTime)? isOpen,
+}) {
+  final food = Map<String, Map<String, String>>.from(foodData ?? {});
+  if (food.isEmpty) return <String, String>{};
+  final cfg = configData ?? const <String, Object?>{};
+  if (!stravaAutoCancelEnabled(cfg)) return <String, String>{};
+  final open = isOpen ?? orderWindowPredicate(cfg);
+  if (open == null) return <String, String>{};
+  final handledSet = <String>{
+    for (final d in cancelHandled ?? const <String>[]) _canonDay(d),
+  };
+  final targets = <String>{
+    for (final d in cancelledDays ?? const <String>[]) _canonDay(d),
+    ...freeLunchDays(cfg),
+  }..removeAll(handledSet);
+  if (targets.isEmpty) return <String, String>{};
+  return _plannedDeorders(
+      food, ordered ?? const <String, String>{}, targets, open);
+}
+
 /// Auto-mode lunch picks: Gemini when due, else the blacklist filter.
 ///
 /// Returns `(orders, usedGemini)`; `usedGemini` is true only when a real
@@ -426,8 +485,9 @@ Map<String, String> _plannedDeorders(
 /// * days in [handled] (dealt with by an earlier auto run, see
 ///   [updateHandledDays]) are left alone, so a lunch the user cancelled
 ///   on the web is not ordered again;
-/// * [cancelledDays] (planned days off) get no meal — and when a meal is
-///   still ordered there, its cancellation instead.
+/// * [cancelledDays] (planned days off and calendar free days) get no meal —
+///   and when a meal is still ordered there (unless in [cancelHandled] or
+///   auto-cancel is disabled), its cancellation instead.
 ///
 /// Never raises.
 Future<(Map<String, String>, bool)> planAutoOrders(
@@ -440,6 +500,7 @@ Future<(Map<String, String>, bool)> planAutoOrders(
   String promptFallback = '',
   Map<String, String>? ordered,
   Iterable<String>? handled,
+  Iterable<String>? cancelHandled,
   bool Function(DateTime)? isOpen,
   GeminiTransport? geminiTransport,
   Future<void> Function(Duration)? geminiSleep,
@@ -454,13 +515,26 @@ Future<(Map<String, String>, bool)> planAutoOrders(
   final food = Map<String, Map<String, String>>.from(foodData ?? {});
   if (food.isEmpty) return (<String, String>{}, false);
   final cfg = configData ?? <String, Object?>{};
-  final cancelled = {for (final d in cancelledDays ?? <String>[]) _canonDay(d)};
+  final cancelled = <String>{
+    for (final d in cancelledDays ?? <String>[]) _canonDay(d),
+    ...freeLunchDays(cfg),
+  };
   final open = isOpen ?? orderWindowPredicate(cfg);
   if (open == null) {
     // No verifiable deadline means no verifiably orderable day.
     return (<String, String>{}, false);
   }
-  final deorders = _plannedDeorders(food, ordered ?? {}, cancelled, open);
+  final cancelDone = <String>{
+    for (final d in cancelHandled ?? const <String>[]) _canonDay(d),
+  };
+  final deorders = stravaAutoCancelEnabled(cfg)
+      ? _plannedDeorders(
+          food,
+          ordered ?? {},
+          cancelled.difference(cancelDone),
+          open,
+        )
+      : <String, String>{};
   if (blacklistBroken) {
     sendEmit('blacklist_broken_log');
     return (deorders, false);
@@ -545,6 +619,42 @@ List<String> updateHandledDays(
     for (final e in (ordered ?? {}).entries)
       if (e.value.isNotEmpty && !e.value.contains('&-1&')) _canonDay(e.key),
     for (final d in placed ?? <String>[]) _canonDay(d),
+  };
+  final kept = <String>[];
+  for (final day in days) {
+    final parsed = parseCzDate(day);
+    if (parsed == null ||
+        daysBetween(DateTime(parsed.year, parsed.month, parsed.day), refDay) <=
+            7) {
+      kept.add(day);
+    }
+  }
+  kept.sort((a, b) {
+    final pa = parseCzDate(a);
+    final pb = parseCzDate(b);
+    if (pa == null && pb == null) return a.compareTo(b);
+    if (pa == null) return -1;
+    if (pb == null) return 1;
+    final c = pa.compareTo(pb);
+    return c != 0 ? c : a.compareTo(b);
+  });
+  return kept;
+}
+
+/// Days whose automatic lunch cancellation was already applied or overridden
+/// by a manual meal pick, pruned to the last week.
+List<String> updateCancelHandledDays(
+  Iterable<String>? previous,
+  Iterable<String>? added, [
+  DateTime? today,
+]) {
+  final ref = today ?? clock.now();
+  final refDay = DateTime(ref.year, ref.month, ref.day);
+  final days = <String>{
+    for (final d in previous ?? const <String>[])
+      if (d.trim().isNotEmpty) _canonDay(d),
+    for (final d in added ?? const <String>[])
+      if (d.trim().isNotEmpty) _canonDay(d),
   };
   final kept = <String>[];
   for (final day in days) {

@@ -417,11 +417,16 @@ extension ActivityLogic on AppState {
         final runConfig = pauseAutomation
             ? <String, Object?>{...app.configData, 'automation_paused': true}
             : app.configData;
+        final keptLunchDays = <String>{
+          for (final day in pendingOrders)
+            if (LunchLogic.realMeal(orders[day]).isNotEmpty) day,
+        };
         result = await runRefresh(
           app,
           runConfig,
           scope: scope,
           cancelledLunchDays: Set<String>.of(cancelledLunches),
+          keptLunchDays: keptLunchDays,
           isCancelled: () => cancelRequested,
           emit: (key, [fmt = const {}]) =>
               workerLog(Strings.format(key, fmt)),
@@ -449,9 +454,18 @@ extension ActivityLogic on AppState {
         // reloadCache emits so no frame shows a stale "to send".
         pendingOrders.removeAll(result.autoOrderedDays);
       }
+      if (result.autoCancelledDays.isNotEmpty) {
+        pendingOrders.removeAll(result.autoCancelledDays);
+      }
       reloadCache();
       for (final news in result.news) {
         notifyEvent(news.$1, news.$2);
+      }
+      if (result.lunchesCancelled > 0) {
+        final cancelNotice = _formatAutoCancelNotice(result);
+        if (cancelNotice.isNotEmpty) {
+          notifyEvent('lunch_skipped', cancelNotice);
+        }
       }
       final extras = <String>[];
       if (result.excusesSent > 0) {
@@ -459,6 +473,10 @@ extension ActivityLogic on AppState {
       }
       if (result.lunchesOrdered > 0) {
         extras.add(Strings.format('auto_lunch_sent', {'n': result.lunchesOrdered}));
+      }
+      if (result.lunchesCancelled > 0) {
+        extras.add(Strings.format(
+            'auto_lunch_cancelled', {'n': result.lunchesCancelled}));
       }
       detail = [
         Strings.format('subjects_count', {'n': absence().length}),
@@ -719,6 +737,49 @@ extension ActivityLogic on AppState {
         print('Warning: test on_done failed: $exc');
       }
     }
+  }
+
+  String _formatAutoCancelNotice(RefreshResult result) {
+    final days = List<String>.of(result.autoCancelledDays)
+      ..sort((a, b) {
+        final pa = parseCzDate(a);
+        final pb = parseCzDate(b);
+        if (pa == null && pb == null) return a.compareTo(b);
+        if (pa == null) return -1;
+        if (pb == null) return 1;
+        final c = pa.compareTo(pb);
+        return c != 0 ? c : a.compareTo(b);
+      });
+    if (days.isEmpty) return '';
+    String formatDay(String raw) {
+      final d = parseCzDate(raw);
+      return d == null ? raw : '${d.day}. ${d.month}. ${d.year}';
+    }
+
+    if (days.length == 1) {
+      final raw = days.first;
+      final dayText = formatDay(raw);
+      final reasonCode = result.autoCancelledReasons[raw] ??
+          result.autoCancelledReasons[canonicalDayKey(raw)];
+      final reason = switch (reasonCode) {
+        'free_day' => Strings.get('lunch_cancel_reason_free_day'),
+        'planned' => Strings.get('lunch_cancel_reason_planned'),
+        _ => '',
+      };
+      if (reason.isNotEmpty) {
+        return Strings.format('auto_lunch_cancel_notif_one', {
+          'day': dayText,
+          'reason': reason,
+        });
+      }
+      return Strings.format(
+          'auto_lunch_cancel_notif_one_plain', {'day': dayText});
+    }
+    final formatted = [for (final d in days) formatDay(d)].join(', ');
+    return Strings.format('auto_lunch_cancel_notif_many', {
+      'n': days.length,
+      'days': formatted,
+    });
   }
 
   static bool _truthy(Object? v) =>

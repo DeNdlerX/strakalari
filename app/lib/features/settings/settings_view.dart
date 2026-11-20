@@ -1428,6 +1428,18 @@ class SettingsView extends StatelessWidget {
                 ),
               ),
               _Hint(Strings.get('automation_modes_hint')),
+              SwitchListTile(
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+                key: const Key('rule:auto_cancel_lunches'),
+                title: Text(Strings.get('auto_cancel_lunches_label')),
+                value: c.get('strava_auto_cancel_lunches', true) != false,
+                onChanged: (v) {
+                  c.save({'strava_auto_cancel_lunches': v});
+                  onChanged?.call();
+                },
+              ),
+              _Hint(Strings.get('auto_cancel_lunches_hint')),
               AutosaveField(
                 key: const Key('rule:interval'),
                 controller: c,

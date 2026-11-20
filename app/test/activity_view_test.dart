@@ -332,5 +332,43 @@ void main() {
       expect(btnRect.left, closeTo(expectedLeft, 2.0));
       expect(btnRect.width, closeTo(expectedInnerWidth, 2.0));
     });
+
+    test('auditRowSubs translates free_day and planned cancel reasons', () {
+      final savedLang = Strings.lang;
+      addTearDown(() => Strings.lang = savedLang);
+
+      for (final lang in ['cs', 'en']) {
+        Strings.lang = lang;
+        final freeSubs = auditRowSubs([
+          {
+            'ts': '2026-10-01T09:00:00',
+            'kind': 'lunch',
+            'outcome': 'sent',
+            'source': 'auto',
+            'detail': {
+              'day': '06.10.2026',
+              'meal': 'a&-1&0',
+              'reason': 'free_day',
+            },
+          },
+        ], {});
+        expect(freeSubs, contains(Strings.get('audit_reason_free_day')));
+
+        final plannedSubs = auditRowSubs([
+          {
+            'ts': '2026-10-01T09:00:00',
+            'kind': 'lunch',
+            'outcome': 'sent',
+            'source': 'auto',
+            'detail': {
+              'day': '07.10.2026',
+              'meal': 'b&-1&0',
+              'reason': 'planned',
+            },
+          },
+        ], {});
+        expect(plannedSubs, contains(Strings.get('audit_reason_planned')));
+      }
+    });
   });
 }

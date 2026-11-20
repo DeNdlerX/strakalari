@@ -352,7 +352,7 @@ class LunchesView extends StatelessWidget {
     if (c.cancelledLunches.contains(day)) return Strings.get('no_lunch');
     if (ordered == null || ordered.isEmpty) return null;
     if (!c.lunchIsChange(day)) {
-      if ((c.webOrders[day] ?? '').isNotEmpty) {
+      if (LunchController.realMeal(c.webOrders[day]).isNotEmpty) {
         return Strings.get('web_ordered');
       }
       return null;
@@ -375,6 +375,8 @@ class LunchesView extends StatelessWidget {
     final orderOpen = _isOpen(day);
     final ordered = c.orders[day] ?? c.webOrders[day];
     final isCancelled = c.cancelledLunches.contains(day);
+    final isFreeDay = c.freeDayLabels.containsKey(day);
+    final freeLabel = (c.freeDayLabels[day] ?? '').trim();
     final status = dayStatus(day);
     final soup = sharedSoup(meals);
     String? deorderId;
@@ -383,6 +385,16 @@ class LunchesView extends StatelessWidget {
     }
     var hidden = 0;
     final rows = <Widget>[];
+    if (isFreeDay) {
+      rows.add(
+        Text(
+          freeLabel.isNotEmpty
+              ? Strings.format('lunch_no_school_named', {'label': freeLabel})
+              : Strings.get('lunch_no_school_note'),
+          style: TextStyle(color: tok.muted, fontSize: tok.fsSmall),
+        ),
+      );
+    }
     if (!orderOpen) {
       final deadline = c.orderDeadline?.call(day);
       final detail = deadline == null
@@ -464,19 +476,25 @@ class LunchesView extends StatelessWidget {
     final expKey = 'lunch:$day';
     final expanded = c.isDayExpanded(expKey, defaultValue: !isPast);
 
-    final title = Row(
+    final title = Wrap(
       spacing: 8,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Flexible(
-          child: Text(
-            '${w.dayName(day)} ${w.czDayYear(day)}',
-            style: TextStyle(
-              color: tok.text,
-              fontSize: tok.fsBody,
-              fontWeight: FontWeight.w700,
-            ),
+        Text(
+          '${w.dayName(day)} ${w.czDayYear(day)}',
+          style: TextStyle(
+            color: tok.text,
+            fontSize: tok.fsBody,
+            fontWeight: FontWeight.w700,
           ),
         ),
+        if (isFreeDay)
+          w.Badge(
+            text: Strings.get('lunch_no_school_badge'),
+            tok: tok,
+            kind: 'warning',
+          ),
         if (status != null)
           w.Badge(
             text: status,
