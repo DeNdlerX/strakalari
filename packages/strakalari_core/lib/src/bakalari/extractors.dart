@@ -539,6 +539,22 @@ Map<String, String> outboxExcuseCacheKeys(Object? listHtml) {
   return out;
 }
 
+/// Calendar day of a Komens row's `data-sortdate` attribute (e.g.
+/// `"0:2026-10-01T07:12:45"`), or null when missing or unparseable.
+DateTime? parseOutboxSortDate(Object? value) {
+  final text = '${value ?? ''}'.trim();
+  if (text.isEmpty) return null;
+  final m = RegExp(r'(?:^|\D)(\d{4})-(\d{2})-(\d{2})(?:$|\D)')
+      .firstMatch(text);
+  if (m == null) return null;
+  final y = int.parse(m.group(1)!);
+  final mo = int.parse(m.group(2)!);
+  final d = int.parse(m.group(3)!);
+  final day = DateTime(y, mo, d);
+  if (day.year != y || day.month != mo || day.day != d) return null;
+  return day;
+}
+
 int? _lessonCaption(Object? hour) {
   if (hour is! Map) return null;
   try {

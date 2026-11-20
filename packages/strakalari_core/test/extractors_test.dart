@@ -444,6 +444,15 @@ void main() {
       expect(outboxExcuseCacheKeys(''), isEmpty);
       expect(outboxExcuseCacheKeys(null), isEmpty);
     });
+
+    test('parseOutboxSortDateReadsCalendarDayAndRejectsInvalid (R4 Q1)', () {
+      expect(parseOutboxSortDate('0:2026-10-15T08:00:00'), DateTime(2026, 10, 15));
+      expect(parseOutboxSortDate('2026-10-15'), DateTime(2026, 10, 15));
+      expect(parseOutboxSortDate('0:2026-02-30T08:00:00'), isNull);
+      expect(parseOutboxSortDate(''), isNull);
+      expect(parseOutboxSortDate(null), isNull);
+      expect(parseOutboxSortDate('garbage'), isNull);
+    });
   });
 
   group('storeRows', () {

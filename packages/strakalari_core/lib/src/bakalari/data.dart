@@ -165,8 +165,10 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
   /// of its DevExpress list callback, then reads each newly seen excuse's
   /// detail (reusing [knownOutboxDetails] for already cached keys) and stores
   /// the history-shaped entries on [sentExcuses]. Any page or detail failure
-  /// aborts the read (never partial success). [limit] > 0 acts as a safety
-  /// cap (also failing closed if exceeded); 0 = unlimited.
+  /// aborts the read (never partial success). When [limit] > 0 is exceeded,
+  /// reads only the newest [limit] excuses and narrows [sentExcusesFrom] to
+  /// the sent date of the oldest among them (failing closed if that row has
+  /// no `data-sortdate`); 0 = unlimited.
   ///
   /// Tri-state: a list (possibly empty) = the outbox was actually read
   /// (empty genuinely means "nothing sent"); null = the sync failed or
@@ -192,22 +194,44 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
         sentExcusesError = '';
         return [];
       }
+      var effectiveFrom = periodStart;
+      var idsToRead = ids;
       if (capped > 0 && ids.length > capped) {
-        sentExcuses = null;
-        sentExcusesError =
-            'outbox has ${ids.length} excuses (limit $capped)';
-        log('Warning: Komens → Odeslané has ${ids.length} excuses, '
-            'exceeding sent_excuses_limit ($capped) — treating read as '
-            'incomplete (set sent_excuses_limit to 0 for no limit).');
-        return null;
+        idsToRead = ids.sublist(0, capped);
+        final oldestId = idsToRead.last;
+        final oldestKey = cacheKeys[oldestId] ?? oldestId;
+        final sep = oldestKey.indexOf('|');
+        final oldestDay = sep >= 0
+            ? parseOutboxSortDate(oldestKey.substring(sep + 1))
+            : null;
+        if (oldestDay == null) {
+          sentExcuses = null;
+          sentExcusesError =
+              'outbox has ${ids.length} excuses (limit $capped)';
+          log('Warning: Komens → Odeslané has ${ids.length} excuses, '
+              'exceeding sent_excuses_limit ($capped), and the $capped-th '
+              'excuse has no sent date — treating read as incomplete '
+              '(set sent_excuses_limit to 0 for no limit).');
+          return null;
+        }
+        if (effectiveFrom == null || oldestDay.isAfter(effectiveFrom)) {
+          effectiveFrom = oldestDay;
+        }
+        String two(int n) => n.toString().padLeft(2, '0');
+        final boundStr =
+            '${two(effectiveFrom.day)}.${two(effectiveFrom.month)}.${effectiveFrom.year}';
+        log('Komens → Odeslané has ${ids.length} excuse(s), reading the '
+            'newest $capped (excuse window starts $boundStr; set '
+            'sent_excuses_limit to 0 for no limit).');
+      } else {
+        log('Komens → Odeslané: ${ids.length} excuse(s) on the web.');
       }
-      log('Komens → Odeslané: ${ids.length} excuse(s) on the web.');
 
       final parsed = <Map<String, Object?>>[];
       final nextCache = <String, List<Map<String, Object?>>>{};
       var reused = 0;
       var fetched = 0;
-      for (final msgId in ids) {
+      for (final msgId in idsToRead) {
         raiseIfCancelledNow();
         final key = cacheKeys[msgId] ?? msgId;
         final cached = knownOutboxDetails[key];
@@ -232,21 +256,21 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
         }
       }
 
-      sentExcusesFrom = periodStart;
+      sentExcusesFrom = effectiveFrom;
       knownOutboxDetails = nextCache;
       outboxDetailsUpdated = true;
       sentExcuses = parsed;
       sentExcusesError = '';
       final cacheNote = reused > 0 ? ', $reused cached' : '';
-      if (parsed.length != ids.length) {
+      if (parsed.length != idsToRead.length) {
         // One hour-based web message expands to three history
         // entries (income + soon + days and hours) for dedupe —
         // report the web message count so the log never claims more
         // sent messages than the outbox actually holds.
-        log('Sent excuses synced from the web: ${ids.length} message(s) '
+        log('Sent excuses synced from the web: ${idsToRead.length} message(s) '
             '(${parsed.length} history entries; $fetched read$cacheNote).');
       } else {
-        log('Sent excuses synced from the web: ${ids.length} message(s) '
+        log('Sent excuses synced from the web: ${idsToRead.length} message(s) '
             '($fetched read$cacheNote).');
       }
       return parsed;

@@ -387,6 +387,67 @@ void main() {
       expect(bak.sentExcusesError, contains('limit 5'));
     });
 
+    test('positiveLimitReadsNewestAndNarrowsSentExcusesFrom (R4 Q1)', () async {
+      final rows = [
+        ('606', '0:2026-11-10T08:00:00', '09.11.2026'),
+        ('605', '0:2026-11-05T08:00:00', '04.11.2026'),
+        ('604', '0:2026-10-28T08:00:00', '27.10.2026'),
+        ('603', '0:2026-10-20T08:00:00', '19.10.2026'),
+        ('602', '0:2026-10-15T08:00:00', '14.10.2026'),
+        ('601', '0:2026-09-10T08:00:00', '09.09.2026'),
+      ];
+      final details = {for (final r in rows) r.$1: excuseDetail(r.$3)};
+      final html = [
+        for (final r in rows)
+          '<table class="message" data-idmsg="${r.$1}" data-sortdate="${r.$2}" data-msgtype="OMLUVENKA"></table>',
+      ].join();
+
+      final logs = <String>[];
+      final server = FakeBakalari({
+        'GET /next/komens.aspx': outboxPage.replaceAll(
+            '26.8.2026 - 25.9.2026', '20.8.2026 - 31.8.2027'),
+        'POST /next/komens.aspx':
+            dxReply('<div class="komens-messages-wrapper">$html</div>'),
+        'POST /Komens/GetMessageDataAsync': (FakeRequest req) {
+          final id = '${(jsonDecode(utf8.decode(req.body)) as Map)['idmsg']}';
+          return {'success': true, 'error': null, 'data': details[id]!};
+        },
+      });
+      final bak = BakalariClient(Map.of(fakeConfig),
+          logger: logs.add, transport: server);
+      final parsed = await bak.fetchSentExcuses(limit: 5);
+      expect(parsed, isNotNull);
+      expect(parsed, hasLength(5));
+      final detailCalls = server.calls('POST', '/Komens/GetMessageDataAsync');
+      expect(detailCalls, hasLength(5));
+      final requestedIds = [
+        for (final c in detailCalls)
+          '${(jsonDecode(utf8.decode(c.body)) as Map)['idmsg']}'
+      ];
+      expect(requestedIds, isNot(contains('601')));
+      expect(bak.sentExcusesFrom, DateTime(2026, 10, 15));
+      expect(bak.sentExcusesError, '');
+      expect(
+          logs.any((l) => l.contains('15.10.2026') && l.contains('5')), isTrue);
+
+      // When periodStart is already later than the 5th newest sent date,
+      // sentExcusesFrom stays clamped to periodStart (never widens earlier).
+      final serverLaterPeriod = FakeBakalari({
+        'GET /next/komens.aspx': outboxPage.replaceAll(
+            '26.8.2026 - 25.9.2026', '20.10.2026 - 31.8.2027'),
+        'POST /next/komens.aspx':
+            dxReply('<div class="komens-messages-wrapper">$html</div>'),
+        'POST /Komens/GetMessageDataAsync': (FakeRequest req) {
+          final id = '${(jsonDecode(utf8.decode(req.body)) as Map)['idmsg']}';
+          return {'success': true, 'error': null, 'data': details[id]!};
+        },
+      });
+      final bakLater =
+          BakalariClient(Map.of(fakeConfig), transport: serverLaterPeriod);
+      expect(await bakLater.fetchSentExcuses(limit: 5), hasLength(5));
+      expect(bakLater.sentExcusesFrom, DateTime(2026, 10, 20));
+    });
+
     test('detailCacheSkipsKnownMessagesAndFetchesNewOnesOnly', () async {
       var includeThird = false;
       final server = FakeBakalari({
