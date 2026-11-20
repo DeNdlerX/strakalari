@@ -100,6 +100,7 @@ Next step: Fix every finding in `reviews/phase-6-design.md` (blockers first), on
   - "2. I think thats a good idea."
   - "3. I dont know, you decide what makes more sense."
   - "One question. Does creating a new account open the wizard again? (with the applicable steps)"
+- **Reviewer fixes the F4 note (2026-11-20, after the R6a review):** "Can you fix the plan?" → the reviewer fixed M1–M7 and S1–S13 in `design-F4.md` itself; see [`reviews/phase-6-design.md`](reviews/phase-6-design.md#re-review-2026-11-20).
 
 ## Questions for the owner / reviewer
 - **F4 / R6a design choices (2026-11-20, answered — see *Owner decisions* & `design-F4.md` §10.3, §12):** Q1 (`notifications` shared in `global.json`) confirmed; Q2 (`gemini_api_key` + `gemini_model` shared in `global.json`, per-child AI prefs per-account) confirmed; Q3 decided (desktop tray Pause toggles active account and shows its label when >1 account, never silently unpausing another child's account). Add-account wizard skips both Welcome/Disclaimer (already accepted) and Android's Phone/Alarm step (belongs to primary account), showing only the 5 applicable steps (School → Bakaláři → Strava → Excuses → Done) with Cancel cleanup.
