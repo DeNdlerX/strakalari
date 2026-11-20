@@ -507,10 +507,15 @@ void main() {
         });
         final state = AppState(configData: cfg);
         // Keep 07.10.2099 locally as a newly picked meal in pendingOrders;
-        // 06.10.2099 is not manually overridden and should auto-cancel cleanly.
+        // 06.10.2099 has a planner-staged cancel that auto-cancel completes and clears.
+        state.stageLunchCancel({
+          'start_date': '2099-10-06',
+          'end_date': '2099-10-06',
+        });
+        expect(state.cancelledLunches, contains('06.10.2099'));
+        expect(state.pendingOrders, contains('06.10.2099'));
         state.orders['07.10.2099'] = 'b&2&0';
-        state.pendingOrders.addAll(['06.10.2099', '07.10.2099']);
-        state.orders['06.10.2099'] = 'a&-1&0';
+        state.pendingOrders.add('07.10.2099');
 
         Future<void>? job;
         state.spawn = (fn, name) {

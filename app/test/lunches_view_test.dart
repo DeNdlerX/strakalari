@@ -206,5 +206,28 @@ void main() {
       expect(btn.onPressed, isNull);
       expect(find.text(Strings.get('strava_not_configured')), findsOneWidget);
     });
+
+    test(
+        'applyFoodFilter skips free days while auto-cancel is on and picks them when off (R5 S4)',
+        () {
+      final free = _day(7);
+      final normal = _day(8);
+      final c = _controller()
+        ..food = {
+          free: {'f&1&0': 'Kuřecí (1)', 'f&-1&0': 'x'},
+          normal: {'n&1&0': 'Ryba (4)', 'n&-1&0': 'x'},
+        }
+        ..freeDayLabels = {free: 'Ředitelské volno'};
+      c.applyFoodFilter('');
+      expect(c.orders.containsKey(free), isFalse);
+      expect(c.orders[normal], 'n&1&0');
+
+      c.config['strava_auto_cancel_lunches'] = false;
+      c.orders.clear();
+      c.pendingOrders.clear();
+      c.applyFoodFilter('');
+      expect(c.orders[free], 'f&1&0');
+      expect(c.orders[normal], 'n&1&0');
+    });
   });
 }

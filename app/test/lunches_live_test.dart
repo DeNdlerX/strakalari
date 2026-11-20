@@ -184,8 +184,8 @@ void main() {
     final s = AppState(
       configData: {
         'use_strava': true,
-        'semester_1_close': '2020-01-31',
-        'semester_2_close': '2020-06-30',
+        'sem1_close': '31.01.2020',
+        'sem2_close': '30.04.2020',
         'user_free_days': ['2099-10-06'],
       },
       data: <String, Object?>{},
