@@ -555,6 +555,10 @@ int? _lessonCaption(Object? hour) {
 /// against every locally generated shape); no lessons and no clock times
 /// -> a whole-day entry; clock times without lessons -> the covered
 /// lessons are unknown, so nothing is learned. Never raises.
+///
+/// Results are cached in `data_cache.json` under [outboxDetailsKey]
+/// (`storage/cache.dart`); any change to what this function returns must
+/// bump `outboxDetailsKey` so already-cached messages are re-read.
 List<Map<String, Object?>> sentExcuseEntries(Object? detail) {
   if (detail is! Map) return [];
   try {

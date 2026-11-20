@@ -1342,6 +1342,68 @@ void main() {
       expect(server.calls('GET', '/next/komens_zprava.aspx'), isEmpty);
       expect(server.calls('POST', '/next/komens_zprava.aspx'), isEmpty);
     });
+
+    test('outboxDetailCacheIgnoresOtherVersionsAndReadsAgain (R4 S4)', () async {
+      final stale = {
+        '501': [
+          {
+            'type': 'pure days',
+            'starting_day': '01.09.2026',
+            'ending_day': '01.09.2026',
+          }
+        ],
+      };
+      saveDataCache({
+        'komens_outbox_details': stale,
+        'komens_outbox_details_v0': stale,
+      });
+      final histFile = '${tmp.path}/history.json';
+      File(histFile).writeAsStringSync('[]');
+      final server = FakeBakalari({
+        'GET /next/komens.aspx': '<html><body><form id="formbaka">'
+            '<input type="hidden" name="ctl00\$cphmain\$hfListType" id="hfListType" value="odeslane">'
+            '<span id="cphmain_obdobiLabel">20.8.2026 - 31.8.2027</span>'
+            '</form></body></html>',
+        'POST /next/komens.aspx': dxReply(
+            '<div class="komens-messages-wrapper">'
+            '<table data-idmsg="501" data-msgtype="OMLUVENKA"></table>'
+            '</div>'),
+        'POST /Komens/GetMessageDataAsync': (_) => {
+              'success': true,
+              'error': null,
+              'data': {
+                'Kind': 'OMLUVENKA',
+                'DateFrom': '03.09.2026',
+                'DateTo': '03.09.2026',
+                'TimeFrom': '',
+                'TimeTo': '',
+              },
+            },
+      });
+      final app = Strakalari(
+        configFile: '${tmp.path}/config.json',
+        configData: {
+          ...fakeConfig,
+          'bakalari_url': 'https://bakalari.test/login',
+          'already_excused_file': histFile,
+          'use_strava': false,
+        },
+      );
+      app.bakalariClient = BakalariClient(app.configManager.data,
+          logger: app.writeLog, transport: server);
+
+      await app.syncWebExcusesToHistory();
+      expect(app.lastOutboxSyncOk, isTrue);
+      expect(server.calls('POST', '/Komens/GetMessageDataAsync'), hasLength(1));
+      expect(app.loadHistory().$1, [
+        {
+          'type': 'pure days',
+          'starting_day': '03.09.2026',
+          'ending_day': '03.09.2026',
+        }
+      ]);
+      expect(outboxDetailsKey, 'komens_outbox_details_v1');
+    });
   });
 
   // -- strava_order_selected -----------------------------------------------------
