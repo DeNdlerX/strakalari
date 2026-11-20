@@ -1,6 +1,6 @@
 # F4 design note: Multiple accounts
 
-Status: **design note only, no F4 code written yet.** Written 2026-11-20 against `qa-roadmap` / `main` @ `be701d9` (after R5 passed and merged). R6a review FAIL the same day; the reviewer fixed M1–M7 and S1–S13 in this note at the owner's word ("Can you fix the plan?", 2026-11-20), see [`reviews/phase-6-design.md`](reviews/phase-6-design.md).
+Status: **design note only, no F4 code written yet.** Written 2026-11-20 against `qa-roadmap` / `main` @ `be701d9` (after R5 passed and merged). R6a review FAIL the same day; the reviewer fixed M1–M7 and S1–S13 in this note at the owner's word ("Can you fix the plan?", 2026-11-20), and the R6a re-review passed it (2026-11-20), see [`reviews/phase-6-design.md`](reviews/phase-6-design.md). The F4 code follows this note only.
 
 Sources: [`PLAN.md`](PLAN.md) §6 (Phase 6 — F4), §8 (D4), owner's D4 answers recorded word for word in [`STATUS.md`](STATUS.md), `CONTRIBUTING.md` §5–6, and report §3.2 (background — note that report §3.2 assumes `flutter_secure_storage`, whereas the real codebase uses Fernet encryption backed by `secret_store.dart` + `DesktopKeyStore` / Android Keystore `strakalari-secret-key`; this note follows the real codebase).
 

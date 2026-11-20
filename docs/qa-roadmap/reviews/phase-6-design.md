@@ -651,3 +651,135 @@ decision is needed for these; the owner's D4 and Q1–Q3 answers are enough.
    `TOURS_DONE`, and the uninstaller (`installer.iss:180–239`).
 5. No throwaway worktree was needed (no code to test against a parent),
    so the shared pub cache wasn't touched.
+
+---
+
+## Re-review 2026-11-20
+
+At the owner's word ("Can you fix the plan?", recorded in STATUS
+*Owner decisions*), the reviewer fixed the note itself, like the F1c note
+at R3c: `f8e8a8a` (M1–M7, S1–S13, N1–N4, N6) and `67bb97e` (three
+corrections the reviewer found in its own fixes on re-reading, below).
+Both commits change only `design-F4.md` (and `f8e8a8a` the STATUS owner
+line). No code.
+
+### Verdict: PASS
+
+Every finding is fixed in the note, checked below. Because the same
+reviewer wrote the fixes and checked them, this check is less independent
+than usual: at R6 the code review must look hardest at the parts written
+here (§2.1 rebuild, §3.4 accounts mode, §4.2, §7.2 steps 3–4, §10.1
+switch, §10.3 `adding`).
+
+### Findings, checked
+
+- **M1:** §4.2 runs the move only with no `accounts.json` **and** no
+  account folder with a `config.json`; §2.1 rebuilds a lost or unreadable
+  registry from the folders under `migrate.lock` + `accounts.json.lock`,
+  never reads the root files again and never falls back to them (error
+  screen if even the rebuild fails). The copy goes into
+  `accounts/.migrating/` (not a valid id), from scratch every attempt,
+  `global.json` is rewritten every attempt, then rename, then
+  `accounts.json` last. Tests §11.2 items 3–5.
+- **M2:** the move holds `session.lock` (up to 2 minutes) then
+  `migrate.lock` from re-check to commit; §6 lock order updated. Degraded
+  mode has rules (no account UI, never writes `accounts.json` /
+  `global.json` / `accounts/`, checks for a finished move under
+  `session.lock` before each refresh/send/order, user hint
+  `account_migration_failed`). §4.1 gives the startup order on desktop
+  (after the single-instance guard), the Android UI and the headless
+  entry. Test item 6.
+- **M3:** §3.4 picks option (b): a one-way accounts mode in which every
+  per-account file function without a folder, `ConfigManager()` on the
+  root `config.json`, and (`67bb97e`) `encrypt` / `decrypt` without a
+  folder throw. A table lists every call site M3 named with what
+  each gets; the headless `run_in_background` gate reads `global.json`.
+  Test item 7 is the root-files-unchanged cycle.
+- **M4:** §4.1 extends `legacyDesktopDataDir`, `_needsBundleMigration`
+  and the copy list (`global.json`, `accounts/`, every account key via
+  `carryKey`, `accounts.json` last). Test item 8.
+- **M5:** `adding: true` in `accounts.json` is the only marker (§2.1,
+  §10.3); an account with a cleared login gets the normal wizard without
+  *Zrušit*; *Zrušit* only for `adding`, under `session.lock`; only Finish
+  and *Zrušit* leave add mode; `wizard_step` goes into the new account's
+  `config.json`. Test §10.3 item 4.
+- **M6:** §7.2 step 4: one `handleRefreshResult` for every account, with
+  the full list of what it does (news, `lunch_skipped`, low balance,
+  combined failure, `refresh_done`, run record). Test item 11.
+- **M7:** §9 adds `account_delete_backup_note` (exact cs/en text) for an
+  account with `migrated: true` or a file outside its folder; the root
+  files are never deleted. Test item 14.
+- **S1:** §4.2 steps 5–6 verify the carried key directly (store entry or
+  staged file equals the root key; on Android the same blob), decrypt
+  with that key alone, never call `getKey` on the not-yet-existing folder;
+  `log.txt.old` added.
+- **S2:** `ensureWarmed(accountDir)` before every use of an account's key
+  in both isolates (§5.3). Test item 12.
+- **S3:** due accounts (§7.2 step 3) and a pass budget under the 30/32
+  minute limits (step 4). `67bb97e`: a failed account stays due through
+  `scheduled_refresh_failed` in its cache, because `last_updated` is
+  saved before the auto phases run (`refresh.dart:314`, `:365`), so a
+  failing account (also a single one) is still retried in ~5 minutes as
+  today. Test item 10.
+- **S4:** §6 busy list extended (`aiRunning`, early refresh, background
+  refresh), account token for async results, reload after a background
+  refresh of the account on screen; §10.1 switch by allow-list
+  (`67bb97e` adds the wiring and `schedulerLastRun` to it) through one
+  `_loadAccount()` shared with the constructor. Test item 13.
+- **S5:** every per-account event carries `?account=`; a busy tap shows
+  `account_tap_busy` and switches later (§7.2 step 5, §8). Test item 13.
+- **S6:** `cancelledLunchDaysFor` and the status/widget/alarm derivations
+  are extracted and shared (§7.2, §8). Test item 13.
+- **S7:** §3.4 precedence (shared keys only from `global.json`), split
+  writes, half-failed save keeps its edits and raises. Test item 7.
+- **S8:** §9 switches away first, a deleted account's `ConfigManager` and
+  cache writes refuse to recreate the folder. Test in §9 and item 14.
+- **S9:** §5.3 `installer.iss` removes `accounts.json`, `global.json`,
+  `accounts\`; `forgetAllKeys` uses the folders on disk. Test item 12.
+- **S10:** §7.2 step 7 redacts every account's secrets. Test item 12.
+- **S11:** §8 Budík on a non-primary account: banner and *Nastavit jako
+  hlavní*, no editable card. Test item 15.
+- **S12:** §10.3 refuses a duplicate Bakaláři or Strava login (also in
+  Settings → Účty). Test §10.3 item 4.
+- **S13:** §11.2 lists 15 test cases; §11.3 the real `.test` upgrade
+  (`adb install -r` over today's build), a second demo server on port
+  18081 for the second account, and the Play upgrade marked unverified.
+- **N1** (downgrade, §4.1), **N2** (captions, §10.2), **N3** (§12),
+  **N4** (unique labels, §2.1), **N6** (two-account demo data, §11.3) are
+  in the note. N5 stays a note.
+
+### Corrections the reviewer made to its own fixes (`67bb97e`)
+
+- The first version of the "due" rule used `last_updated` alone, which
+  would have stopped the 5-minute retry after an auto-phase failure, also
+  for a single account. Fixed as described under S3.
+- The first switch allow-list forgot the wiring (`onChanged`,
+  `configListeners`, `spawn`): after a switch the screen and the tray
+  would have stopped updating. Fixed.
+- `encrypt` / `decrypt` without a folder now also fail loudly in accounts
+  mode.
+
+### What the reviewer verified, and how (re-review)
+
+1. `git diff 0e86932..67bb97e --stat`: only `design-F4.md` and one STATUS
+   line.
+2. The key script again: 73 keys in `config.example.json` and
+   `canonicalDefaults`, the note's tables 19 + 55 (with
+   `background_refresh`), none missing or twice.
+3. A script over §10.5: 33 new string keys, all unique, none already in
+   `app_cs.arb` / `app_en.arb`, and every `account_*` key the note uses is
+   in the list.
+4. A search of the note for the wording the findings replaced ("fall back
+   to single-account mode", "skip if destination", "(if missing)",
+   `&& setupPending)`, "defaulting to `null` (`getUserDataDir()`)"): none
+   left.
+5. The code facts the fixes rely on, read again: `JobFailed` is reported
+   and retried in ~5 minutes without a second notification
+   (`scheduler.dart:30–40`, `:154–156`, `:179–184`, `activity.dart:293`);
+   `startupSeed` reads `last_updated` (`cache.dart:215`); the refresh
+   saves `last_updated` before the auto phases (`refresh.dart:314`,
+   `:365`); `carryKey` writes a file into the new folder when the store
+   refuses (`secret_store.dart:308–314`), which is why §4.2 step 5 doesn't
+   call it on the not-yet-existing folder.
+6. Suites not re-run: no code changed since the R6a run (core 855 passed /
+   2 skipped, app 789 passed / 1 skipped).
