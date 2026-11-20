@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:clock/clock.dart';
 import 'package:test/test.dart';
 
 import 'package:strakalari_core/src/bakalari/client.dart';
@@ -446,6 +447,75 @@ void main() {
           BakalariClient(Map.of(fakeConfig), transport: serverLaterPeriod);
       expect(await bakLater.fetchSentExcuses(limit: 5), hasLength(5));
       expect(bakLater.sentExcusesFrom, DateTime(2026, 10, 20));
+    });
+
+    test('limitCutInsideADayStartsTheWindowTheDayAfter (R4 S5)', () async {
+      // Newest first. Limit 2 reads 603 and 602; 601 was sent the same day
+      // as 602, earlier, and is not read, so 5.11. is not read completely.
+      final rows = [
+        ('603', '0:2026-11-10T10:00:00', '10.11.2026'),
+        ('602', '0:2026-11-05T12:00:00', '04.11.2026'),
+        ('601', '0:2026-11-05T09:00:00', '05.11.2026'),
+      ];
+      final details = {for (final r in rows) r.$1: excuseDetail(r.$3)};
+      final html = [
+        for (final r in rows)
+          '<table class="message" data-idmsg="${r.$1}" data-sortdate="${r.$2}" data-msgtype="OMLUVENKA"></table>',
+      ].join();
+      final server = FakeBakalari({
+        'GET /next/komens.aspx': outboxPage.replaceAll(
+            '26.8.2026 - 25.9.2026', '20.8.2026 - 31.8.2027'),
+        'POST /next/komens.aspx':
+            dxReply('<div class="komens-messages-wrapper">$html</div>'),
+        'POST /Komens/GetMessageDataAsync': (FakeRequest req) {
+          final id = '${(jsonDecode(utf8.decode(req.body)) as Map)['idmsg']}';
+          return {'success': true, 'error': null, 'data': details[id]!};
+        },
+      });
+      final bak = BakalariClient(Map.of(fakeConfig), transport: server);
+      await withClock(Clock.fixed(DateTime(2026, 11, 20, 10, 0)), () async {
+        expect(await bak.fetchSentExcuses(limit: 2), hasLength(2));
+      });
+      expect(bak.sentExcusesFrom, DateTime(2026, 11, 6));
+      final requestedIds = [
+        for (final c in server.calls('POST', '/Komens/GetMessageDataAsync'))
+          '${(jsonDecode(utf8.decode(c.body)) as Map)['idmsg']}'
+      ];
+      expect(requestedIds, ['603', '602']);
+    });
+
+    test('limitCutFailsClosedWhenTheFirstUnreadDayIsTodayOrUnknown (R4 S5)',
+        () async {
+      Future<void> read(String html) async {
+        final server = FakeBakalari({
+          'GET /next/komens.aspx': outboxPage.replaceAll(
+              '26.8.2026 - 25.9.2026', '20.8.2026 - 31.8.2027'),
+          'POST /next/komens.aspx':
+              dxReply('<div class="komens-messages-wrapper">$html</div>'),
+          'POST /Komens/GetMessageDataAsync': (_) => {
+                'success': true,
+                'error': null,
+                'data': excuseDetail('19.11.2026'),
+              },
+        });
+        final bak = BakalariClient(Map.of(fakeConfig), transport: server);
+        await withClock(Clock.fixed(DateTime(2026, 11, 20, 10, 0)), () async {
+          expect(await bak.fetchSentExcuses(limit: 1), isNull);
+        });
+        expect(bak.sentExcuses, isNull);
+        expect(bak.sentExcusesFrom, isNull);
+        expect(bak.sentExcusesError, contains('limit 1'));
+        expect(server.calls('POST', '/Komens/GetMessageDataAsync'), isEmpty);
+      }
+
+      // Both sent today: the day after the unread one is tomorrow.
+      await read(
+          '<table data-idmsg="702" data-sortdate="0:2026-11-20T09:00:00" data-msgtype="OMLUVENKA"></table>'
+          '<table data-idmsg="701" data-sortdate="0:2026-11-20T08:00:00" data-msgtype="OMLUVENKA"></table>');
+      // The first unread one has no sent date.
+      await read(
+          '<table data-idmsg="702" data-sortdate="0:2026-11-18T09:00:00" data-msgtype="OMLUVENKA"></table>'
+          '<table data-idmsg="701" data-msgtype="OMLUVENKA"></table>');
     });
 
     test('detailCacheSkipsKnownMessagesAndFetchesNewOnesOnly', () async {

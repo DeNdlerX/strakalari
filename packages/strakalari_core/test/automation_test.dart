@@ -1483,6 +1483,88 @@ void main() {
         );
       });
     });
+
+    test('limitCutInsideADayKeepsThatDaysUnconfirmedSubmitBlocked (R4 S5)',
+        () async {
+      // Newest first. Limit 2 reads 603 and 602; 601 (sent 5.11. 09:00,
+      // the app's own unconfirmed submit) is left out although 602 was
+      // sent the same day.
+      final rows = [
+        ('603', '0:2026-11-10T10:00:00', '10.11.2026'),
+        ('602', '0:2026-11-05T12:00:00', '04.11.2026'),
+        ('601', '0:2026-11-05T09:00:00', '05.11.2026'),
+      ];
+      final html = [
+        for (final r in rows)
+          '<table class="message" data-idmsg="${r.$1}" data-sortdate="${r.$2}" data-msgtype="OMLUVENKA"></table>',
+      ].join();
+      final details = {
+        for (final r in rows)
+          r.$1: {
+            'Kind': 'OMLUVENKA',
+            'DateFrom': r.$3,
+            'DateTo': r.$3,
+            'TimeFrom': '',
+            'TimeTo': '',
+          }
+      };
+      final histFile = '${tmp.path}/history.json';
+      File(histFile).writeAsStringSync('[]');
+      saveUnconfirmed(histFile, [
+        unconfirmedEntry({
+          'type': 'pure days',
+          'starting_day': '05.11.2026',
+          'ending_day': '05.11.2026',
+        }, DateTime(2026, 11, 5, 9, 0))
+      ], utf8);
+      final server = FakeBakalari({
+        'GET /next/komens.aspx': '<html><body><form id="formbaka">'
+            '<input type="hidden" name="ctl00\$cphmain\$hfListType" id="hfListType" value="odeslane">'
+            '<span id="cphmain_obdobiLabel">20.8.2026 - 31.8.2027</span>'
+            '</form></body></html>',
+        'POST /next/komens.aspx':
+            dxReply('<div class="komens-messages-wrapper">$html</div>'),
+        'POST /Komens/GetMessageDataAsync': (FakeRequest req) {
+          final id = '${(jsonDecode(utf8.decode(req.body)) as Map)['idmsg']}';
+          return {'success': true, 'error': null, 'data': details[id]!};
+        },
+      });
+      final app = Strakalari(
+        configFile: '${tmp.path}/config.json',
+        configData: {
+          ...fakeConfig,
+          'bakalari_url': 'https://bakalari.test/login',
+          'already_excused_file': histFile,
+          'sent_excuses_limit': 2,
+          'excuse_mode': 'auto',
+          'excuse_delay_days': 2,
+          'use_strava': false,
+        },
+      );
+      app.bakalariClient = BakalariClient(app.configManager.data,
+          logger: app.writeLog, transport: server)
+        ..timetableData = {
+          '05.11.2026': [absentLesson()],
+          '09.11.2026': [absentLesson()],
+        };
+
+      await withClock(Clock.fixed(DateTime(2026, 11, 20, 10, 0)), () async {
+        await app.syncWebExcusesToHistory();
+        expect(app.lastOutboxSyncOk, isTrue);
+        expect(app.sentExcusesFrom, DateTime(2026, 11, 6));
+        expect(loadUnconfirmed(histFile, utf8), [
+          unconfirmedEntry({
+            'type': 'pure days',
+            'starting_day': '05.11.2026',
+            'ending_day': '05.11.2026',
+          }, DateTime(2026, 11, 5, 9, 0))
+        ]);
+        expect(
+          [for (final e in app.pendingExcuses()) e['starting_day']],
+          ['09.11.2026'],
+        );
+      });
+    });
   });
 
   // -- strava_order_selected -----------------------------------------------------

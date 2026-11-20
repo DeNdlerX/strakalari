@@ -167,8 +167,10 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
   /// the history-shaped entries on [sentExcuses]. Any page or detail failure
   /// aborts the read (never partial success). When [limit] > 0 is exceeded,
   /// reads only the newest [limit] excuses and narrows [sentExcusesFrom] to
-  /// the sent date of the oldest among them (failing closed if that row has
-  /// no `data-sortdate`); 0 = unlimited.
+  /// the sent date of the oldest among them, or to the day after the newest
+  /// excuse left out if that is later (a cut inside a day leaves that day
+  /// partly unread). Fails closed when either row has no `data-sortdate` or
+  /// that start would be after today; 0 = unlimited.
   ///
   /// Tri-state: a list (possibly empty) = the outbox was actually read
   /// (empty genuinely means "nothing sent"); null = the sync failed or
@@ -198,24 +200,42 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
       var idsToRead = ids;
       if (capped > 0 && ids.length > capped) {
         idsToRead = ids.sublist(0, capped);
-        final oldestId = idsToRead.last;
-        final oldestKey = cacheKeys[oldestId] ?? oldestId;
-        final sep = oldestKey.indexOf('|');
-        final oldestDay = sep >= 0
-            ? parseOutboxSortDate(oldestKey.substring(sep + 1))
-            : null;
-        if (oldestDay == null) {
+        DateTime? sentDay(String id) {
+          final key = cacheKeys[id] ?? id;
+          final sep = key.indexOf('|');
+          return sep >= 0 ? parseOutboxSortDate(key.substring(sep + 1)) : null;
+        }
+
+        final oldestDay = sentDay(idsToRead.last);
+        // The newest excuse left out: its day may hold more unread
+        // excuses, so only the days after it are read completely.
+        final unreadDay = sentDay(ids[capped]);
+        if (oldestDay == null || unreadDay == null) {
           sentExcuses = null;
           sentExcusesError =
               'outbox has ${ids.length} excuses (limit $capped)';
           log('Warning: Komens → Odeslané has ${ids.length} excuses, '
               'exceeding sent_excuses_limit ($capped), and the $capped-th '
-              'excuse has no sent date — treating read as incomplete '
-              '(set sent_excuses_limit to 0 for no limit).');
+              'or ${capped + 1}-th excuse has no sent date — treating read '
+              'as incomplete (set sent_excuses_limit to 0 for no limit).');
           return null;
         }
-        if (effectiveFrom == null || oldestDay.isAfter(effectiveFrom)) {
-          effectiveFrom = oldestDay;
+        final afterUnread =
+            DateTime(unreadDay.year, unreadDay.month, unreadDay.day + 1);
+        final bound = afterUnread.isAfter(oldestDay) ? afterUnread : oldestDay;
+        final now = clock.now();
+        if (bound.isAfter(DateTime(now.year, now.month, now.day))) {
+          sentExcuses = null;
+          sentExcusesError =
+              'outbox has ${ids.length} excuses (limit $capped)';
+          log('Warning: Komens → Odeslané has ${ids.length} excuses, '
+              'exceeding sent_excuses_limit ($capped), and the cut falls on '
+              'today — treating read as incomplete (set sent_excuses_limit '
+              'to 0 for no limit).');
+          return null;
+        }
+        if (effectiveFrom == null || bound.isAfter(effectiveFrom)) {
+          effectiveFrom = bound;
         }
         String two(int n) => n.toString().padLeft(2, '0');
         final boundStr =
