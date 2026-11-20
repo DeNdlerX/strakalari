@@ -663,6 +663,7 @@ class _WizardViewState extends State<WizardView>
                   confirmAutoMode(
                     context,
                     'strava_order_mode',
+                    dataDir: c.accountDataDir,
                     onConfirm: () => c.setStravaOrderMode('auto'),
                     onDryRun: () => c.setStravaOrderMode('dry_run'),
                     onCancel: () {},

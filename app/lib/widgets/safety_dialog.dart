@@ -19,6 +19,7 @@ class AutoConfirmDialog extends StatelessWidget {
   final VoidCallback? onCancel;
   final bool unsigned;
   final bool? hasDryRunOverride;
+  final String? dataDir;
 
   const AutoConfirmDialog({
     super.key,
@@ -28,6 +29,7 @@ class AutoConfirmDialog extends StatelessWidget {
     this.onCancel,
     this.unsigned = false,
     this.hasDryRunOverride,
+    this.dataDir,
   });
 
   @override
@@ -38,7 +40,7 @@ class AutoConfirmDialog extends StatelessWidget {
       tried = hasDryRunOverride!;
     } else {
       try {
-        tried = core.hasDryRun(kind);
+        tried = core.hasDryRun(kind, dataDir: dataDir);
       } catch (exc) {
         // ignore: avoid_print
         print('Warning: could not read the automation history: $exc');
@@ -126,6 +128,7 @@ Future<void> confirmAutoMode(
   required VoidCallback onCancel,
   bool unsigned = false,
   bool? hasDryRunOverride,
+  String? dataDir,
 }) async {
   final result = await showDialog<String>(
     context: context,
@@ -134,6 +137,7 @@ Future<void> confirmAutoMode(
       modeKey: modeKey,
       unsigned: unsigned,
       hasDryRunOverride: hasDryRunOverride,
+      dataDir: dataDir,
     ),
   );
 

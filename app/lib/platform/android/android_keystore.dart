@@ -4,17 +4,18 @@
 // `strakalari-secret-key`, AES/GCM/NoPadding, 12-byte IV prefix — identical
 // to `core/android.py`). The catch is that core's `AndroidKeystoreBridge`
 // is synchronous (like pyjnius was) while a MethodChannel is async, so this
-// layer warms the key once per isolate start and serves core from memory:
+// layer warms keys via async MethodChannel calls and serves core from memory:
 //
-//   await warmAndroidKeystore(dataDir);   // UI startup + background entry
-//   androidKeystoreBridge = warmedBridge; // then Strakalari()/getKey()
+//   await warmAndroidKeystoreAll(rootDir, accountIds); // UI startup + headless
+//   await ensureWarmed(accountDir);                    // before any account use
 //
 // The warm-up replicates core's `_androidLoadOrCreate` step for step
 // (unwrap `secret.key.wrapped`, migrate a plain `secret.key`, create,
 // quarantine on a lost key with plain-file fallback), so core's following
 // synchronous pass sees settled files and returns the same key. The
-// in-memory bridge answers only for that warmed pair and refuses anything
-// else, so a key that changed underneath still fails safe (never guessed).
+// in-memory bridge holds a map of warmed `(key, blob)` pairs (one per folder)
+// and refuses anything not warmed, so an un-warmed or changed key still fails
+// safe (never guessed).
 import 'dart:convert';
 import 'dart:io';
 
@@ -31,6 +32,11 @@ bool _bytesEqual(Uint8List a, Uint8List b) {
     diff |= a[i] ^ b[i];
   }
   return diff == 0;
+}
+
+String _dirKey(String dir) {
+  final norm = resolvePath('.', dir);
+  return Platform.isWindows ? norm.toLowerCase() : norm;
 }
 
 Uint8List? _readTrimmed(String path) {
@@ -51,7 +57,8 @@ Uint8List? _readTrimmed(String path) {
   }
 }
 
-/// The warmed bridge: answers only for the warmed (key, blob) pair.
+/// The warmed bridge: holds warmed `(key, blob)` pairs per directory and
+/// refuses any key or blob not in the map (§5.3).
 ///
 /// [blob] is what the Keystore answered (the raw bytes, not the base64
 /// text of `secret.key.wrapped`): core decodes the file before it calls
@@ -59,32 +66,78 @@ Uint8List? _readTrimmed(String path) {
 /// Keystore was unavailable at warm-up: [wrap] refuses, so core keeps the
 /// plain `secret.key` exactly like Python does when the Keystore fails.
 class WarmedAndroidKeystore implements AndroidKeystoreBridge {
-  final Uint8List key;
-  final Uint8List? blob;
+  final Map<String, ({Uint8List key, Uint8List? blob})> _entries;
 
-  const WarmedAndroidKeystore(this.key, this.blob);
+  /// Single-pair constructor kept for existing callers and unit tests.
+  WarmedAndroidKeystore(Uint8List key, Uint8List? blob)
+      : _entries = {
+          '': (key: Uint8List.fromList(key), blob: blob == null ? null : Uint8List.fromList(blob)),
+        };
+
+  /// Multi-directory bridge used in production (root + every account folder).
+  WarmedAndroidKeystore.multi() : _entries = {};
+
+  /// Registers or replaces the warmed pair for [dir].
+  void addEntry(String dir, Uint8List key, Uint8List? blob) {
+    _entries[_dirKey(dir)] = (
+      key: Uint8List.fromList(key),
+      blob: blob == null ? null : Uint8List.fromList(blob),
+    );
+  }
+
+  /// True when [dir] already has a warmed entry in this bridge.
+  bool hasEntry(String dir) => _entries.containsKey(_dirKey(dir));
+
+  /// Drops [dir]'s warmed entry (called by `forgetKey` on account delete).
+  void removeEntry(String dir) {
+    _entries.remove(_dirKey(dir));
+  }
+
+  /// Number of warmed directory entries currently held.
+  int get entryCount => _entries.length;
 
   @override
   bool get available => true;
 
   @override
   Uint8List wrap(Uint8List key) {
-    final blob = this.blob;
-    if (blob == null) {
-      throw const KeyStoreUnavailable('The Android Keystore did not answer.');
+    for (final entry in _entries.values) {
+      if (_bytesEqual(key, entry.key)) {
+        final b = entry.blob;
+        if (b == null) {
+          throw const KeyStoreUnavailable(
+              'The Android Keystore did not answer.');
+        }
+        return Uint8List.fromList(b);
+      }
     }
-    if (_bytesEqual(key, this.key)) return Uint8List.fromList(blob);
-    // A different key after warm-up (restored backup, …): refuse, like a
-    // Keystore that does not answer. Core keeps the plain file then.
+    // A different or un-warmed key: refuse, like a Keystore that does not
+    // answer. Core keeps the plain file then.
     throw const KeyStoreUnavailable('Key changed after the Keystore warm-up.');
   }
 
   @override
   Uint8List unwrap(Uint8List blob) {
-    final own = this.blob;
-    if (own != null && _bytesEqual(blob, own)) return Uint8List.fromList(key);
+    for (final entry in _entries.values) {
+      final own = entry.blob;
+      if (own != null && _bytesEqual(blob, own)) {
+        return Uint8List.fromList(entry.key);
+      }
+    }
     throw const FormatException('the wrapped key does not read back');
   }
+}
+
+WarmedAndroidKeystore _installOrReuseBridge() {
+  final existing = androidKeystoreBridge;
+  if (existing is WarmedAndroidKeystore) {
+    onForgetKeyHook = existing.removeEntry;
+    return existing;
+  }
+  final bridge = WarmedAndroidKeystore.multi();
+  androidKeystoreBridge = bridge;
+  onForgetKeyHook = bridge.removeEntry;
+  return bridge;
 }
 
 Future<Uint8List> _channelWrap(AndroidChannel channel, Uint8List key) async {
@@ -103,7 +156,7 @@ Future<Uint8List> _channelWrap(AndroidChannel channel, Uint8List key) async {
 /// Adopts the wrapped key another isolate just created (it may still be
 /// writing it). Null when it cannot be read within a few seconds.
 Future<Uint8List?> _adoptWrapped(
-    AndroidChannel channel, String wrappedPath) async {
+    AndroidChannel channel, String dataDir, String wrappedPath) async {
   for (var i = 0; i < 30; i++) {
     final wrapped = _readTrimmed(wrappedPath);
     if (wrapped != null && wrapped.isNotEmpty) {
@@ -111,7 +164,7 @@ Future<Uint8List?> _adoptWrapped(
         final blob = Uint8List.fromList(base64.decode(ascii.decode(wrapped)));
         final key = await _channelUnwrap(channel, blob);
         if (Fernet.isValidKeyBytes(key)) {
-          androidKeystoreBridge = WarmedAndroidKeystore(key, blob);
+          _installOrReuseBridge().addEntry(dataDir, key, blob);
           return key;
         }
       } on FormatException {
@@ -140,9 +193,33 @@ Future<Uint8List> _channelUnwrap(
   }
 }
 
+/// Clean read-only unwrap of `<rootDir>/secret.key.wrapped` for the F4 one-time
+/// move (§4.2 step 5–6).
+///
+/// Never quarantines or creates a key; returns `true` only if the wrapped blob
+/// unwrapped cleanly to valid Fernet key bytes and registered in the bridge.
+Future<bool> warmAndroidRootKeyClean(
+  String rootDir, {
+  AndroidChannel channel = const AndroidChannel(),
+  @visibleForTesting bool? onAndroid,
+}) async {
+  if (!(onAndroid ?? Platform.isAndroid)) return true;
+  final wrappedPath = resolvePath(wrappedFile, rootDir);
+  final wrapped = _readTrimmed(wrappedPath);
+  if (wrapped == null) return true;
+  try {
+    final blob = Uint8List.fromList(base64.decode(ascii.decode(wrapped)));
+    final key = await _channelUnwrap(channel, blob);
+    if (!Fernet.isValidKeyBytes(key)) return false;
+    _installOrReuseBridge().addEntry(rootDir, key, blob);
+    return true;
+  } on Object {
+    return false;
+  }
+}
+
 /// Runs core's `_androidLoadOrCreate` lifecycle with async channel calls
-/// and registers the warmed sync bridge. Call once per isolate start,
-/// before the first `getKey`/`Strakalari`.
+/// and registers [dataDir]'s entry in the shared [WarmedAndroidKeystore].
 ///
 /// Returns the Fernet key. Throws [KeyStoreMissing] off Android (callers
 /// then skip the bridge: the plain file, like Python without pyjnius).
@@ -154,8 +231,8 @@ Future<Uint8List> warmAndroidKeystore(
   if (!(onAndroid ?? Platform.isAndroid)) {
     throw const KeyStoreMissing('No Android backend.');
   }
-  final plainPath = '$dataDir/$keyFile';
-  final wrappedPath = '$dataDir/$wrappedFile';
+  final plainPath = resolvePath(keyFile, dataDir);
+  final wrappedPath = resolvePath(wrappedFile, dataDir);
   Uint8List? fileKey = _readTrimmed(plainPath);
   if (fileKey != null && !Fernet.isValidKeyBytes(fileKey)) {
     quarantineCorruptFile(plainPath);
@@ -184,7 +261,7 @@ Future<Uint8List> warmAndroidKeystore(
         // from a backup). Never guess, keep using it.
         // ignore: avoid_print
         print('Warning: $keyFile differs from $wrappedFile; using the file.');
-        androidKeystoreBridge = WarmedAndroidKeystore(key, blob);
+        _installOrReuseBridge().addEntry(dataDir, key, blob);
         return fileKey;
       }
       if (fileKey != null) {
@@ -194,7 +271,7 @@ Future<Uint8List> warmAndroidKeystore(
           // Best effort.
         }
       }
-      androidKeystoreBridge = WarmedAndroidKeystore(key, blob);
+      _installOrReuseBridge().addEntry(dataDir, key, blob);
       return key;
     }
   }
@@ -214,7 +291,7 @@ Future<Uint8List> warmAndroidKeystore(
     try {
       target.createSync(exclusive: true);
     } on FileSystemException {
-      final winner = await _adoptWrapped(channel, wrappedPath);
+      final winner = await _adoptWrapped(channel, dataDir, wrappedPath);
       if (winner != null) return winner;
       rethrow; // unreadable: the plain-file fallback below
     }
@@ -225,8 +302,8 @@ Future<Uint8List> warmAndroidKeystore(
     if (fileKey == null) {
       File(plainPath).writeAsBytesSync(key);
     }
-    androidKeystoreBridge =
-        WarmedAndroidKeystore(key, null); // refuses: plain file stays
+    _installOrReuseBridge()
+        .addEntry(dataDir, key, null); // refuses: plain file stays
     return key;
   }
   if (fileKey != null) {
@@ -239,6 +316,74 @@ Future<Uint8List> warmAndroidKeystore(
   // ignore: avoid_print
   print('Info: password key '
       '${fileKey != null ? 'moved into' : 'created in'} the Android Keystore.');
-  androidKeystoreBridge = WarmedAndroidKeystore(key, blob);
+  _installOrReuseBridge().addEntry(dataDir, key, blob);
   return key;
+}
+
+/// Warms [rootDir] and every account directory in [accountIds] (§5.3).
+///
+/// Called at UI startup (`prepareStartup`) and headless wake (`_runHeadless`).
+Future<void> warmAndroidKeystoreAll(
+  String rootDir,
+  Iterable<String> accountIds, {
+  AndroidChannel channel = const AndroidChannel(),
+  @visibleForTesting bool? onAndroid,
+}) async {
+  if (!(onAndroid ?? Platform.isAndroid)) return;
+  try {
+    await warmAndroidKeystore(rootDir, channel: channel, onAndroid: onAndroid);
+  } on KeyStoreMissing {
+    return;
+  } on Object catch (e) {
+    // ignore: avoid_print
+    print('Warning: Keystore warm-up failed for root (${e.runtimeType}: $e).');
+  }
+  for (final id in accountIds) {
+    try {
+      final dir = accountDirFor(rootDir, id);
+      if (!Directory(dir).existsSync()) continue;
+      await ensureWarmed(dir, channel: channel, onAndroid: onAndroid);
+    } on KeyStoreMissing {
+      return;
+    } on Object catch (e) {
+      // ignore: avoid_print
+      print('Warning: Keystore warm-up failed for account $id '
+          '(${e.runtimeType}: $e).');
+    }
+  }
+}
+
+/// Optional test seam for verifying [ensureWarmed] calls off Android.
+@visibleForTesting
+Future<void> Function(String accountDir)? ensureWarmedOverride;
+
+/// Idempotent warm-up of [accountDir]'s Android Keystore entry (§5.3).
+///
+/// No-op off Android or once [accountDir] is already in [WarmedAndroidKeystore].
+/// Awaited before every `createApp`, `getKey`, `decrypt`, or `ConfigManager`
+/// for an account so an account added in another isolate is warmed before use.
+Future<void> ensureWarmed(
+  String accountDir, {
+  AndroidChannel channel = const AndroidChannel(),
+  @visibleForTesting bool? onAndroid,
+}) async {
+  final override = ensureWarmedOverride;
+  if (override != null) {
+    await override(accountDir);
+    return;
+  }
+  if (!(onAndroid ?? Platform.isAndroid)) return;
+  final existing = androidKeystoreBridge;
+  if (existing is WarmedAndroidKeystore && existing.hasEntry(accountDir)) {
+    return;
+  }
+  try {
+    await warmAndroidKeystore(accountDir,
+        channel: channel, onAndroid: onAndroid);
+  } on KeyStoreMissing {
+    // Plain file fallback off Keystore.
+  } on Object catch (e) {
+    // ignore: avoid_print
+    print('Warning: ensureWarmed failed for $accountDir (${e.runtimeType}: $e).');
+  }
 }

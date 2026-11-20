@@ -102,6 +102,7 @@ WizardController wizardControllerFor(AppState s) {
   c.step = s.wizardStep;
   c.dismissed = s.wizardDismissed;
   c.isAndroid = Platform.isAndroid;
+  c.accountDataDir = s.activeAccountDir;
   c.useExternalWakeupCard = true;
   c.notificationPermissionAlreadyAsked = s.notificationPermissionAsked;
   c.testing = s.testing.isEmpty ? null : s.testing;

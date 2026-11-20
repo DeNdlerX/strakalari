@@ -47,14 +47,72 @@ Future<void> main(List<String> args) async {
 
 Future<void> _main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Data dir, key store, single instance (may exit this process).
+  // Data dir, key store, single instance, F4 layout move (may exit this process).
   final ctx = await prepareStartup(args);
   if (notifierBackend == null) ensureNotifierBackend(); // tests, iOS
   installErrorWidgetBuilder();
-  final container = ProviderContainer();
+  if (ctx.layoutResult?.isRegistryFailed == true) {
+    // Registry unreadable AND rebuild failed: never fall back to root files
+    // and never start refreshes/sends/orders (§2.1).
+    runApp(_RegistryFailedApp(reason: ctx.layoutResult!.error ?? ''));
+    return;
+  }
+  final container = ProviderContainer(
+    overrides: [
+      startupLayoutProvider
+          .overrideWithValue((layout: ctx.layoutResult, rootDir: ctx.rootDir)),
+    ],
+  );
   runApp(UncontrolledProviderScope(container: container, child: const MyApp()));
   // Scheduler, tray, phone background (Python: `main(page)` after render).
   await startPlatformServices(container, ctx);
+}
+
+class _RegistryFailedApp extends StatelessWidget {
+  final String reason;
+  const _RegistryFailedApp({required this.reason});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: Strings.get('app_title'),
+      theme: darkTokens.toThemeData(),
+      home: Scaffold(
+        backgroundColor: darkTokens.bg,
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.error_outline, size: 48, color: darkTokens.red),
+                  const SizedBox(height: 16),
+                  Text(
+                    Strings.get('app_title'),
+                    style: TextStyle(
+                      color: darkTokens.text,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    reason.isNotEmpty
+                        ? reason
+                        : 'Account registry could not be loaded or rebuilt.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: darkTokens.muted),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Root widget. Kept under the template name so the phase-0 smoke test

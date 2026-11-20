@@ -22,9 +22,44 @@ double checkIntervalMinutes(Object? raw) {
 }
 
 /// `_startup_seed`: the last successful refresh from the loaded cache
-/// (null = unknown: refresh on start). Never throws.
+/// (null = unknown: refresh on start). In multi-account mode (§7.2 step 6),
+/// anchors to the oldest `last_updated` among configured accounts with
+/// `background_refresh == true` (returning null if any such account is
+/// stale/unknown or failed its last scheduled run). Never throws.
 DateTime? schedulerStartupSeed(AppState state) {
   try {
+    if (state.accountsEnabled && state.rootDir != null && state.registry != null) {
+      final rootDir = state.rootDir!;
+      DateTime? oldest;
+      var foundEligible = false;
+      for (final acc in state.registry!.accounts) {
+        if (acc.adding) continue;
+        final accDir = accountDirFor(rootDir, acc.id);
+        final accCfg = acc.id == state.activeAccountId
+            ? state.config
+            : ConfigManager.forAccount(rootDir, acc.id);
+        if (accCfg.get('background_refresh', true) == false) continue;
+        final wizStep = int.tryParse('${accCfg.get('wizard_step', -1)}') ?? -1;
+        final (hasBak, hasStrava) = hasValidCredentials(accCfg.data);
+        if (wizStep >= 0 || (!hasBak && !hasStrava)) continue;
+        foundEligible = true;
+        final cache = acc.id == state.activeAccountId
+            ? state.data
+            : loadDataCache(dataDir: accDir);
+        if ('${cache[scheduledRefreshFailedKey] ?? ''}'.trim().isNotEmpty) {
+          return null;
+        }
+        final seed = startupSeed(cache);
+        if (seed == null) return null;
+        if (oldest == null || seed.isBefore(oldest)) {
+          oldest = seed;
+        }
+      }
+      if (foundEligible) return oldest;
+    }
+    if ('${state.data[scheduledRefreshFailedKey] ?? ''}'.trim().isNotEmpty) {
+      return null;
+    }
     return startupSeed(state.data);
   } on Object {
     return null;

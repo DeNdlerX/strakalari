@@ -178,6 +178,9 @@ class StatusInputs {
   /// which reads the school presets from disk).
   final Set<DateTime>? freeDays;
 
+  /// Primary account display label prepended to `sub` when >1 account (§8).
+  final String? accountLabel;
+
   StatusInputs({
     Map<String, Object?>? timetable,
     Map<String, Object?>? food,
@@ -188,6 +191,7 @@ class StatusInputs {
     int? pendingExcuses,
     this.lastUpdated,
     this.freeDays,
+    this.accountLabel,
   }) : timetable = timetable ?? {},
        food = food ?? {},
        webOrders = webOrders ?? {},
@@ -682,7 +686,11 @@ StatusContent buildStatus(
       rows.every((row) => row.kind == 'excuses' && row.value == '0')) {
     rows.clear(); // "none to send" alone says nothing: the plain text instead
   }
-  final sub = picked.contains('updated') ? _updatedText(inputs, now, lang) : '';
+  final rawSub = picked.contains('updated') ? _updatedText(inputs, now, lang) : '';
+  final accLabel = (inputs.accountLabel ?? '').trim();
+  final sub = accLabel.isEmpty
+      ? rawSub
+      : (rawSub.isEmpty ? accLabel : '$accLabel · $rawSub');
   if (rows.isEmpty) {
     return StatusContent(fallback.$1, fallback.$2, sub);
   }

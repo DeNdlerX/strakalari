@@ -97,6 +97,9 @@ class WizardController extends ChangeNotifier {
   /// flow (Android only).
   bool isAndroid = false;
 
+  /// Active account data dir for `hasDryRun` checks in accounts mode.
+  String? accountDataDir;
+
   /// Service currently being tested (`bakalari | strava`), if any.
   String? testing;
 

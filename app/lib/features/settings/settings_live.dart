@@ -50,7 +50,7 @@ SettingsController settingsControllerFor(
     onSetUpdateChannel: (channel) => s.setUpdateChannel(channel),
     onClearCache: () {
       try {
-        final f = File(core.resolvePath(core.cacheFile));
+        final f = File(core.resolvePath(core.cacheFile, s.activeAccountDir));
         if (f.existsSync()) f.deleteSync();
       } catch (_) {
         return false;
@@ -169,6 +169,7 @@ class _LiveSettingsViewState extends ConsumerState<LiveSettingsView> {
           context,
           key,
           unsigned: unsigned,
+          dataDir: s.activeAccountDir,
           onConfirm: () => completer.complete('confirm'),
           onDryRun: () => completer.complete('dry_run'),
           onCancel: () => completer.complete('cancel'),

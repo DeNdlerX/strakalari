@@ -207,6 +207,8 @@ begin
         the files it installed (exe, example JSONs) on its own. }
       AppDir := ExpandConstant('{app}');
       DeleteFile(AppDir + '\config.json');
+      DeleteFile(AppDir + '\accounts.json');
+      DeleteFile(AppDir + '\global.json');
       DeleteFile(AppDir + '\secret.key');
       DeleteFile(AppDir + '\data_cache.json');
       DeleteFile(AppDir + '\log.txt');
@@ -226,6 +228,8 @@ begin
       DeleteFile(AppDir + '\*.bak');
       DeleteFile(AppDir + '\*.tmp');
       DeleteFile(AppDir + '\*.lock');
+      { Per-account data folders owned by the app. }
+      DelTree(AppDir + '\accounts', True, True, True);
       { Chromium (~320 MB) that older versions downloaded next to the exe. }
       DelTree(AppDir + '\browsers', True, True, True);
       { Fallback data dir used when the install dir is read-only.

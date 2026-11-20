@@ -39,13 +39,24 @@ bool get _isPhone => Platform.isAndroid || Platform.isIOS;
 
 /// What [prepareStartup] found out before the UI exists.
 class StartupContext {
-  const StartupContext({this.minimized = false, this.guard});
+  const StartupContext({
+    this.minimized = false,
+    this.guard,
+    this.layoutResult,
+    this.rootDir,
+  });
 
   /// `--minimized` (autostart): the window starts hidden in the tray.
   final bool minimized;
 
   /// The single-instance guard, held for the process lifetime.
   final SingleInstance? guard;
+
+  /// Result of `ensureMultiAccountLayout(rootDir)` (§4.1, §4.2).
+  final MultiAccountLayoutResult? layoutResult;
+
+  /// Resolved root user data directory.
+  final String? rootDir;
 }
 
 /// Runs before `runApp`. Exits the process for `--forget-secrets` and for
@@ -57,31 +68,44 @@ Future<StartupContext> prepareStartup(List<String> args) async {
     final dataDir = '${support.path}/data';
     await Directory(dataDir).create(recursive: true);
     setMobileDataDir(dataDir);
-    try {
-      await warmAndroidKeystore(dataDir);
-    } on KeyStoreMissing {
-      // No Keystore: the plain file, like Python without pyjnius.
-    } on Object catch (e) {
-      // ignore: avoid_print
-      print('Warning: Keystore warm-up failed (${e.runtimeType}: $e).');
+    // Run the one-time F4 move BEFORE warming all account keys (§4.1).
+    final layout = await ensureMultiAccountLayout(
+      dataDir,
+      warmAndroidRootKey: (r) => warmAndroidRootKeyClean(r),
+    );
+    if (layout.isReady && layout.registry != null) {
+      await warmAndroidKeystoreAll(
+        dataDir,
+        layout.registry!.accounts.map((a) => a.id),
+      );
+    } else if (layout.isDegraded) {
+      try {
+        await warmAndroidKeystore(dataDir);
+      } on KeyStoreMissing {
+        // No Keystore: the plain file, like Python without pyjnius.
+      } on Object catch (e) {
+        // ignore: avoid_print
+        print('Warning: Keystore warm-up failed (${e.runtimeType}: $e).');
+      }
     }
     installAndroidBridges(const AndroidChannel(),
         languageOf: () => Strings.lang);
     // ignore: avoid_print
     print('Info: phone app starting.');
-    return const StartupContext();
+    return StartupContext(layoutResult: layout, rootDir: dataDir);
   }
   if (_isPhone) return const StartupContext();
 
   keyStoreBackend = const DesktopKeyStore();
   if (args.contains('--forget-secrets')) {
-    exit(forgetKey(getUserDataDir()) ? 0 : 1);
+    exit(AccountManager.forgetAllKeys(getUserDataDir()) ? 0 : 1);
   }
   final minimized = launchMinimized(args);
+  final rootDir = getUserDataDir();
   SingleInstance? guard;
   try {
     final (status, held) = await ensureSinglePrimary(
-        dataDir: getUserDataDir(), mode: minimized ? 'ping' : 'show');
+        dataDir: rootDir, mode: minimized ? 'ping' : 'show');
     if (status == 'secondary') exit(0);
     guard = held;
   } on Object catch (e) {
@@ -89,7 +113,14 @@ Future<StartupContext> prepareStartup(List<String> args) async {
     // ignore: avoid_print
     print('Warning: single-instance guard failed ($e).');
   }
-  return StartupContext(minimized: minimized, guard: guard);
+  // Run the one-time F4 move AFTER single-instance guard and BEFORE AppState (§4.1).
+  final layout = await ensureMultiAccountLayout(rootDir);
+  return StartupContext(
+    minimized: minimized,
+    guard: guard,
+    layoutResult: layout,
+    rootDir: rootDir,
+  );
 }
 
 /// `main.py`'s routing: `--minimized` (autostart) starts in the tray, any
@@ -139,6 +170,7 @@ Future<void> startPlatformServices(
       state.applyLaunchRoute(launchRoute);
     }
     final phone = PhoneBackground(state, loop, channel);
+    state.onPrimaryChanged = () => phone.notifier.poke();
     container.listen(appStateProvider, (_, _) => phone.notifier.poke());
     startPhoneBackground(state, phone);
     AppLifecycleListener(onStateChange: (s) {
@@ -180,8 +212,8 @@ Future<void> startPlatformServices(
     iconPath: Platform.isWindows
         ? 'assets/tray-icon.ico'
         : 'assets/tray-icon.png',
-    strings: trayStrings(),
-    onRefreshNow: () async => state.startRefresh('all'),
+    strings: trayStrings(state),
+    onRefreshNow: () async => state.trayRefreshAll(),
     isPaused: () => automationPaused(state.config.data),
     onTogglePause: () async =>
         state.save({'automation_paused': !automationPaused(state.config.data)}),
@@ -193,8 +225,11 @@ Future<void> startPlatformServices(
     },
   );
   await tray.initialize(minimized: ctx.minimized);
-  // The tray re-reads the labels when the language changes.
-  state.configListeners.add(() => unawaited(tray.updateMenu(strings: trayStrings())));
+  // The tray re-reads the labels when the language or active account changes.
+  void refreshTrayMenu() =>
+      unawaited(tray.updateMenu(strings: trayStrings(state)));
+  state.configListeners.add(refreshTrayMenu);
+  state.onAccountChanged = refreshTrayMenu;
   // A second launch restores this window.
   ctx.guard?.setOnShow(() => unawaited(tray.showWindow()));
   ctx.guard?.onQuit = () => unawaited(tray.quit());
@@ -203,13 +238,20 @@ Future<void> startPlatformServices(
 
 /// The tray menu in the configured language (Python's tray applied
 /// `config.language` itself, `_apply_language`; here `AppState` did).
-TrayStrings trayStrings() => TrayStrings(
-      open: Strings.get('tray_open'),
-      refreshNow: Strings.get('tray_refresh'),
-      pause: Strings.get('tray_pause'),
-      resume: Strings.get('tray_pause'),
-      quit: Strings.get('tray_quit'),
-    );
+/// When >1 account exists, appends the active account's label to Pause (§7.2 step 8).
+TrayStrings trayStrings([AppState? state]) {
+  final basePause = Strings.get('tray_pause');
+  final pauseLabel = (state != null && state.isMultiAccount)
+      ? '$basePause (${state.activeAccountDisplayLabel})'
+      : basePause;
+  return TrayStrings(
+    open: Strings.get('tray_open'),
+    refreshNow: Strings.get('tray_refresh'),
+    pause: pauseLabel,
+    resume: pauseLabel,
+    quit: Strings.get('tray_quit'),
+  );
+}
 
 /// Background running is possible here (Android) and switched on.
 bool _phoneBackgroundOn(AppState state) {
