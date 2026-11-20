@@ -25,6 +25,22 @@ String outboxListing(List<String> ids, [List<String> other = const ['777']]) {
   return dxReply('<div class="komens-messages-wrapper">$rows</div>');
 }
 
+String outboxListingWithMarkers(
+  List<String> ids, {
+  int? loadedCount,
+  String? allLoaded,
+}) {
+  final parts = <String>[
+    if (loadedCount != null)
+      '<input type="hidden" id="hfLoadedMessagesCount" value="$loadedCount">',
+    if (allLoaded != null)
+      '<input type="hidden" id="hfAllMessagesLoaded" value="$allLoaded">',
+    for (final id in ids)
+      '<table class="message" data-idmsg="$id" data-msgtype="OMLUVENKA"></table>',
+  ];
+  return dxReply('<div class="komens-messages-wrapper">${parts.join()}</div>');
+}
+
 Map<String, Object?> excuseDetail(String dayFrom,
     [String? dayTo,
     (int, int)? hours,
@@ -201,7 +217,17 @@ void main() {
             final reload = cb['reloadMessages'] as bool;
             final slice =
                 reload ? ids.take(size).toList() : ids.take(pageNumber * size).toList();
-            return outboxListing(slice, const []);
+            final prevEnd = reload ? 0 : (pageNumber - 1) * size;
+            final loadedCount = reload
+                ? slice.length
+                : (slice.length > prevEnd ? slice.length - prevEnd : 0);
+            final allLoaded =
+                (reload ? ids.length < size : loadedCount == 0) ? 'all' : '';
+            return outboxListingWithMarkers(
+              slice,
+              loadedCount: loadedCount,
+              allLoaded: allLoaded,
+            );
           },
           'POST /Komens/GetMessageDataAsync': (FakeRequest req) {
             final payload = jsonDecode(utf8.decode(req.body)) as Map;
@@ -424,6 +450,161 @@ void main() {
         }
       ]);
       expect(server.calls('POST', '/Komens/GetMessageDataAsync'), hasLength(2));
+    });
+
+    test('pageTwoRepeatingPageOneFailsOutboxRead (R4 S1)', () async {
+      var calls = 0;
+      final server = FakeBakalari({
+        'GET /next/komens.aspx': outboxPage,
+        'POST /next/komens.aspx': (_) {
+          calls++;
+          return outboxListingWithMarkers(
+            const ['501', '502', '503', '504'],
+            loadedCount: 4,
+            allLoaded: '',
+          );
+        },
+        'POST /Komens/GetMessageDataAsync': (_) =>
+            {'success': true, 'error': null, 'data': excuseDetail('3.9.2026')},
+      });
+      final bak = BakalariClient(Map.of(fakeConfig), transport: server)
+        ..outboxPageSize = 4;
+      expect(await bak.fetchSentExcuses(), isNull);
+      expect(bak.sentExcusesError, contains('no progress'));
+      expect(calls, 2);
+    });
+
+    test('nonCumulativePagesFailOutboxRead (R4 S1)', () async {
+      var calls = 0;
+      final server = FakeBakalari({
+        'GET /next/komens.aspx': outboxPage,
+        'POST /next/komens.aspx': (_) {
+          calls++;
+          return outboxListingWithMarkers(
+            calls == 1
+                ? const ['501', '502', '503', '504']
+                : const ['505', '506', '507', '508'],
+            loadedCount: 4,
+            allLoaded: '',
+          );
+        },
+        'POST /Komens/GetMessageDataAsync': (_) =>
+            {'success': true, 'error': null, 'data': excuseDetail('3.9.2026')},
+      });
+      final bak = BakalariClient(Map.of(fakeConfig), transport: server)
+        ..outboxPageSize = 4;
+      expect(await bak.fetchSentExcuses(), isNull);
+      expect(bak.sentExcusesError, isNotEmpty);
+      expect(calls, 2);
+    });
+
+    test('exactMultipleEndsWhenOverflowPageCarriesEndMarkers (R4 S1)',
+        () async {
+      final ids = [for (var i = 1; i <= 12; i++) '${500 + i}'];
+      for (final (loadedCount, allLoaded, shouldSucceed) in [
+        (0, 'all', true),
+        (null, 'all', true),
+        (0, '', true),
+        (null, null, false),
+      ]) {
+        final server = FakeBakalari({
+          'GET /next/komens.aspx': outboxPage,
+          'POST /next/komens.aspx': (FakeRequest req) {
+            final form = Uri.splitQueryString(utf8.decode(req.body));
+            final cb = jsonDecode(form['__CALLBACKPARAM']!.substring(3)) as Map;
+            final pageNumber = cb['pageNumber'] as int;
+            if (pageNumber == 1) {
+              return outboxListingWithMarkers(
+                ids.take(6).toList(),
+                loadedCount: 6,
+                allLoaded: '',
+              );
+            }
+            if (pageNumber == 2) {
+              return outboxListingWithMarkers(
+                ids,
+                loadedCount: 6,
+                allLoaded: '',
+              );
+            }
+            return outboxListingWithMarkers(
+              ids,
+              loadedCount: loadedCount,
+              allLoaded: allLoaded,
+            );
+          },
+          'POST /Komens/GetMessageDataAsync': (FakeRequest req) {
+            final id =
+                int.parse('${(jsonDecode(utf8.decode(req.body)) as Map)['idmsg']}');
+            return {
+              'success': true,
+              'error': null,
+              'data': excuseDetail('${id - 500}.9.2026'),
+            };
+          },
+        });
+        final bak = BakalariClient(Map.of(fakeConfig), transport: server)
+          ..outboxPageSize = 6;
+        final parsed = await bak.fetchSentExcuses();
+        if (shouldSucceed) {
+          expect(parsed, hasLength(12),
+              reason: 'markers: ($loadedCount, $allLoaded)');
+          expect(server.calls('POST', '/next/komens.aspx'), hasLength(3));
+        } else {
+          expect(parsed, isNull);
+          expect(bak.sentExcusesError, contains('no progress'));
+        }
+      }
+    });
+
+    test('pageTwoMissingAnIdFromPageOneFailsOutboxRead (R4 S1)', () async {
+      var calls = 0;
+      final server = FakeBakalari({
+        'GET /next/komens.aspx': outboxPage,
+        'POST /next/komens.aspx': (_) {
+          calls++;
+          return outboxListingWithMarkers(
+            calls == 1
+                ? const ['501', '502', '503', '504']
+                : const ['502', '503', '504', '505', '506'],
+            loadedCount: 4,
+            allLoaded: '',
+          );
+        },
+        'POST /Komens/GetMessageDataAsync': (_) =>
+            {'success': true, 'error': null, 'data': excuseDetail('3.9.2026')},
+      });
+      final bak = BakalariClient(Map.of(fakeConfig), transport: server)
+        ..outboxPageSize = 4;
+      expect(await bak.fetchSentExcuses(), isNull);
+      expect(bak.sentExcusesError, contains('not cumulative'));
+      expect(calls, 2);
+    });
+
+    test('fetchAllOutboxIdsThrowsPastMaxPages (R4 S1)', () async {
+      final server = FakeBakalari({
+        'GET /next/komens.aspx': outboxPage,
+        'POST /next/komens.aspx': (FakeRequest req) {
+          final form = Uri.splitQueryString(utf8.decode(req.body));
+          final cb = jsonDecode(form['__CALLBACKPARAM']!.substring(3)) as Map;
+          final pageNumber = cb['pageNumber'] as int;
+          final size = cb['pageSize'] as int;
+          final ids = [
+            for (var i = 1; i <= pageNumber * size; i++) '${500 + i}'
+          ];
+          return outboxListingWithMarkers(
+            ids,
+            loadedCount: size,
+            allLoaded: '',
+          );
+        },
+      });
+      final bak = BakalariClient(Map.of(fakeConfig), transport: server);
+      await expectLater(
+        bak.fetchAllOutboxIds(bak.bakalariSession(), pageSize: 2, maxPages: 3),
+        throwsA(isA<StateError>()),
+      );
+      expect(server.calls('POST', '/next/komens.aspx'), hasLength(3));
     });
   });
 

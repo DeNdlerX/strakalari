@@ -317,7 +317,6 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
     final seenAllIds = <String>{};
     final excuseIds = <String>[];
     final cacheKeys = <String, String>{};
-    var prevTotalCount = 0;
 
     for (var pageNumber = 1;; pageNumber++) {
       raiseIfCancelledNow();
@@ -339,13 +338,21 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
         throw StateError('outbox list did not load (format changed?)');
       }
       final allIds = outboxMessageIds(listing);
-      if (pageNumber > 1 && allIds.length < prevTotalCount) {
-        throw StateError(
-            'outbox page $pageNumber shrank (${allIds.length} < $prevTotalCount)');
+      if (pageNumber > 1) {
+        final pageIdSet = allIds.toSet();
+        if (!pageIdSet.containsAll(seenAllIds)) {
+          throw StateError(
+              'outbox page $pageNumber is not cumulative (missing previous ids)');
+        }
       }
       var newCount = 0;
       for (final id in allIds) {
         if (seenAllIds.add(id)) newCount += 1;
+      }
+      if (pageNumber > 1 && newCount == 0) {
+        if (_outboxReplyMarksEnd(listing)) break;
+        throw StateError(
+            'outbox paging made no progress at page $pageNumber');
       }
       for (final id in outboxExcuseIds(listing)) {
         if (!excuseIds.contains(id)) excuseIds.add(id);
@@ -356,15 +363,10 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
       if (allIds.length < pageNumber * size) {
         break;
       }
-      if (pageNumber > 1 && newCount == 0) {
-        throw StateError(
-            'outbox paging made no progress at page $pageNumber');
-      }
       if (pageNumber >= maxPages) {
         throw StateError(
             'outbox exceeded $maxPages pages without reaching the end');
       }
-      prevTotalCount = allIds.length;
     }
     return (page, excuseIds, cacheKeys);
   }
@@ -666,4 +668,30 @@ double? _toDouble(Object? value) {
   if (value is bool) return value ? 1 : 0;
   if (value == null) return null;
   return double.tryParse('$value'.trim());
+}
+
+String? _hiddenInputValue(String html, String id) {
+  final tagRe = RegExp('<input\\b([^>]*)>', caseSensitive: false);
+  final idRe = RegExp('\\bid=["\']([^"\']*)["\']', caseSensitive: false);
+  final valRe = RegExp('\\bvalue=["\']([^"\']*)["\']', caseSensitive: false);
+  for (final match in tagRe.allMatches(html)) {
+    final attrs = match.group(1)!;
+    final tagId = idRe.firstMatch(attrs)?.group(1);
+    if (tagId == id || (tagId != null && tagId.endsWith('_$id'))) {
+      return valRe.firstMatch(attrs)?.group(1) ?? '';
+    }
+  }
+  return null;
+}
+
+bool _outboxReplyMarksEnd(String listing) {
+  final allLoaded = _hiddenInputValue(listing, 'hfAllMessagesLoaded');
+  if (allLoaded != null && allLoaded.trim().toLowerCase() == 'all') {
+    return true;
+  }
+  final loadedCount = _hiddenInputValue(listing, 'hfLoadedMessagesCount');
+  if (loadedCount != null && loadedCount.trim() == '0') {
+    return true;
+  }
+  return false;
 }
