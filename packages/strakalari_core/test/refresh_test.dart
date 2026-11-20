@@ -954,7 +954,7 @@ void main() {
       expect(askedSem2, ['2027-02-01', '2027-02-08', '2027-02-15']);
     });
 
-    test('incompleteSemesterBackfillDoesNotMarkReconciled', () async {
+    test('incompleteSemesterBackfillRetriesMissingWeekAlone', () async {
       final cfg = {
         ...refreshConfig(),
         'use_strava': false,
@@ -966,16 +966,56 @@ void main() {
           config: cfg, skipHistoryWeeks: {skipped});
       await withClock(Clock.fixed(DateTime(2026, 11, 20, 9, 0)),
           () => runRefresh(app1, cfg, scope: 'bakalari'));
-      final hist = loadDataCache()[timetableHistoryKey] as Map;
-      expect(hist.containsKey('semester_reconciled'), isFalse);
+      var hist = loadDataCache()[timetableHistoryKey] as Map;
+      expect(hist['semester_reconciled'], '2026-11-20');
+      expect(hist['weeks'], isNot(contains('2026-09-14')));
 
-      // Next run the same day still retries the unmark-reconciled day.
+      // Next run the same day retries only the missing week.
       final app2 = _ReconciliationApp([], config: cfg);
       await withClock(Clock.fixed(DateTime(2026, 11, 20, 10, 0)),
           () => runRefresh(app2, cfg, scope: 'bakalari'));
-      expect(app2.recordedHistoryRequests.single, contains(skipped));
-      expect((loadDataCache()[timetableHistoryKey] as Map)['semester_reconciled'],
-          '2026-11-20');
+      expect(app2.recordedHistoryRequests.single, [skipped]);
+      hist = loadDataCache()[timetableHistoryKey] as Map;
+      expect(hist['semester_reconciled'], '2026-11-20');
+      expect(hist['weeks'], contains('2026-09-14'));
+    });
+
+    test('persistentlyFailingWeekIsRetriedAloneNotWholeSemester (R4 S2)',
+        () async {
+      final cfg = {
+        ...refreshConfig(),
+        'use_strava': false,
+        'go_back_weeks': 4,
+        'go_forward_weeks': 1,
+      };
+      final skipped = DateTime(2026, 9, 14);
+      final app1 = _ReconciliationApp([],
+          config: cfg, skipHistoryWeeks: {skipped});
+      await withClock(Clock.fixed(DateTime(2026, 11, 20, 9, 0)),
+          () => runRefresh(app1, cfg, scope: 'bakalari'));
+
+      final app2 = _ReconciliationApp([],
+          config: cfg, skipHistoryWeeks: {skipped});
+      await withClock(Clock.fixed(DateTime(2026, 11, 20, 10, 0)),
+          () => runRefresh(app2, cfg, scope: 'bakalari'));
+      expect(app2.recordedHistoryRequests.single, [skipped]);
+
+      // Finish Day 1 cleanly, then verify Day 2 reconciliation also retries
+      // only the failing week rather than re-reading the whole semester.
+      final app3 = _ReconciliationApp([], config: cfg);
+      await withClock(Clock.fixed(DateTime(2026, 11, 20, 11, 0)),
+          () => runRefresh(app3, cfg, scope: 'bakalari'));
+
+      final appDay2Run1 = _ReconciliationApp([],
+          config: cfg, skipHistoryWeeks: {skipped});
+      await withClock(Clock.fixed(DateTime(2026, 11, 21, 9, 0)),
+          () => runRefresh(appDay2Run1, cfg, scope: 'bakalari'));
+
+      final appDay2Run2 = _ReconciliationApp([],
+          config: cfg, skipHistoryWeeks: {skipped});
+      await withClock(Clock.fixed(DateTime(2026, 11, 21, 10, 0)),
+          () => runRefresh(appDay2Run2, cfg, scope: 'bakalari'));
+      expect(appDay2Run2.recordedHistoryRequests.single, [skipped]);
     });
 
     test('failedOutboxSyncPreservesPreviousSentExcusesFromAndCache', () async {

@@ -393,8 +393,6 @@ void _recordHistoryWeeks(
   Map<String, Object?> fresh,
   DateTime today,
   Set<DateTime> done,
-  String reconciledOn,
-  DateTime floorMonday,
 ) {
   final yearStart = _schoolYearStart(today);
   final firstMonday = addDays(yearStart, -(yearStart.weekday - 1));
@@ -404,28 +402,13 @@ void _recordHistoryWeeks(
       if (!m.isBefore(firstMonday) && m.isBefore(thisMonday))
         DateTime(m.year, m.month, m.day)
   };
-  final todayIso = _isoDate(today);
-  var allSemesterLoaded = true;
-  var cursor = floorMonday.isBefore(firstMonday) ? firstMonday : floorMonday;
-  while (cursor.isBefore(thisMonday)) {
-    if (!loaded.contains(cursor)) {
-      allSemesterLoaded = false;
-      break;
-    }
-    cursor = addDays(cursor, 7);
-  }
-  final nextReconciled =
-      (reconciledOn == todayIso || allSemesterLoaded) ? todayIso : reconciledOn;
-  final entry = <String, Object?>{
+  fresh[timetableHistoryKey] = <String, Object?>{
     'school_year_start': _isoDate(yearStart),
     'weeks': [
       for (final m in {...done, ...loaded}) _isoDate(m)
     ]..sort(),
+    'semester_reconciled': _isoDate(today),
   };
-  if (nextReconciled.isNotEmpty) {
-    entry['semester_reconciled'] = nextReconciled;
-  }
-  fresh[timetableHistoryKey] = entry;
 }
 
 /// Good fresh Bakaláři values only; failed parts are left out.
@@ -526,8 +509,7 @@ Future<void> _fetchPhases(
         result.bakalariFetched = true;
         result.subjects =
             (payload['absence'] as Map?)?.length ?? 0;
-        _recordHistoryWeeks(
-            app, fresh, today, done, reconciledOn, floorMonday);
+        _recordHistoryWeeks(app, fresh, today, effectiveDone);
         emit('bakalari_done_log', {'n': result.subjects});
       } else {
         emit('refresh_empty_warn');
