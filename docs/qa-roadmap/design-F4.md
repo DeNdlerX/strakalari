@@ -289,7 +289,7 @@ Both the live scheduler (`AppState.scheduledRefreshJob` in `app/lib/controllers/
    - `schedulerStartupSeed` anchors to the **oldest** `last_updated` among configured accounts with `background_refresh == true` (falling back to the active account if none), so a stale or newly added account does not wait an extra interval.
 6. **Manual refresh:**
    - TopBar / Activity **Obnovit data** refreshes the **active account** only.
-   - Desktop tray **Obnovit data** refreshes all configured `background_refresh`-enabled accounts sequentially (or the active account if none are enabled). Desktop tray **Pause / Resume** toggles `automation_paused` on the active account.
+   - Desktop tray **Obnovit data** refreshes all configured `background_refresh`-enabled accounts sequentially (or the active account if none are enabled). Desktop tray **Pause / Resume** toggles `automation_paused` on the active account (and appends the active account's label to the tray menu item when `accounts.length > 1` so it is explicit and never silently unpauses another child's account).
 
 ---
 
@@ -366,7 +366,7 @@ Android has **one** ongoing status notification (`KeepAliveService` / `StatusNot
 Reuses the existing F1/F1c wizard without duplicating any login/preset/template UI:
 1. `AppState.beginAddAccount()` creates a provisional `<rootDir>/accounts/<newId>/` directory, warms its Android Keystore key on Android, inserts it into `accounts.json` with `wizard_step = disclaimerAccepted ? stepSchool : stepWelcome`, stores `addingAccountReturnId = previousActiveId`, switches active account to `<newId>`, and navigates to `/wizard`.
 2. In add-account mode (`addingAccount == true`, i.e., `accounts.length > 1 && setupPending`):
-   - Starts on **Škola (`stepSchool`)** when `disclaimer_accepted` is already `true` in `global.json` (skips Welcome/Disclaimer).
+   - `shownSteps()` shows only the applicable per-account steps: **Škola (`stepSchool`) → Bakaláři (`stepBakalari`) → Strava (`stepStrava`) → Omluvenky (`stepExcuses`) → Hotovo (`stepDone`)** — skipping `stepWelcome` (when `disclaimer_accepted` is already `true` in `global.json`) **and** skipping `stepPhone` on Android (notification permission was already handled on first setup, and the phone's wake-up alarm belongs to `primary_id`, not a newly added secondary account).
    - Provides a **Zrušit / Cancel** action (`Key('wiz:cancel_add')`) on the first shown step (and in header if resumed after app restart) that calls `cancelAddAccount()`: deletes the provisional account dir + key, removes `<newId>` from `accounts.json`, and switches back to `addingAccountReturnId` (or first remaining account).
    - Never overwrites `global.json` (`theme`, `language`, `tutorials_done`, `disclaimer_accepted`, `run_in_background`, `gemini_api_key`).
    - On Finish: derives the new account's `label` from `your_signature` → `bakalari_username` → `"Účet N"`, leaves `primary_id` unchanged, offers the `'accounts'` tutorial tour, and starts the new account's first refresh (`finishWizardRefresh()`).
@@ -417,8 +417,8 @@ All new UI strings (~28 keys: `accounts_manage_title`, `account_add`, `account_d
 
 ---
 
-## 12. Open Choices for Reviewer / Owner Confirmation
+## 12. Resolved Owner Choices (2026-11-20)
 
-1. **Q1 (`notifications` scope — shared vs. per-account):** This design places the 13 event notification toggles (`notifications`) in `global.json` (matching Settings' existing *Aplikace / App* section group, alongside `appearance`, and covering app-wide `update_available`), while each account individually toggles whether it refreshes in the background (`background_refresh`). If you prefer the 12 per-account event toggles to be configurable per child instead (with only `update_available` global), we can move `notifications` to per-account `config.json` before coding.
-2. **Q2 (shared `gemini_api_key` vs. per-account):** Placing `gemini_api_key` + `gemini_model` in `global.json` means a parent enters their Google AI Studio key once for all children, while each child keeps their own `gemini_prompt`, `gemini_auto_enabled`, and `gemini_interval_days`. Confirm this matches what you expect.
-3. **Q3 (desktop tray *Obnovit data* & *Pozastavit*):** When >1 account exists on desktop, tray *Obnovit data* refreshes all `background_refresh`-enabled accounts sequentially (same as scheduled ticks), while tray *Pozastavit automatizaci* toggles `automation_paused` on the active account. Confirm this is what you want (or whether tray Pause should pause all accounts).
+1. **Q1 (`notifications` scope) — confirmed:** Keep the 13 event notification toggles (`notifications`) shared in `global.json`, while per-account background refresh is toggled individually via `background_refresh`.
+2. **Q2 (shared `gemini_api_key`) — confirmed:** Keep `gemini_api_key` + `gemini_model` shared in `global.json`, while `gemini_prompt`, `gemini_auto_enabled`, and `gemini_interval_days` stay per-account.
+3. **Q3 (desktop tray *Obnovit data* & *Pozastavit*) — decided:** Tray *Obnovit data* refreshes all `background_refresh`-enabled accounts sequentially; tray *Pozastavit automatizaci* toggles `automation_paused` on the active account and includes the active account's label when `accounts.length > 1` (never silently unpausing another child's account).
