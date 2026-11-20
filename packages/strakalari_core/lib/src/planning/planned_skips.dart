@@ -264,3 +264,36 @@ Set<String> plannedLunchDays(Map<String, Object?>? config) {
   }
   return days;
 }
+
+bool _hasSetPeriod(Object? value) =>
+    value != null && '$value'.trim().isNotEmpty && value != false;
+
+/// `DD.MM.YYYY` whole planned days off whose lunch should be cancelled
+/// automatically.
+///
+/// A day is whole when it is covered by at least one planned entry with
+/// `cancel_lunch != false` where that day is neither the entry's first day
+/// with `start_period` set nor its last day with `end_period` set.
+Set<String> wholePlannedLunchDays(Map<String, Object?>? config) {
+  final days = <String>{};
+  final stored = (config ?? const {})['planned_skips'];
+  if (stored is! List) return days;
+  for (final raw in stored) {
+    if (raw is! Map) continue;
+    final entry = normalizePlannedEntry(raw);
+    if (entry == null || !cancelsLunch(entry)) continue;
+    final covered = entryDays(entry);
+    if (covered.isEmpty) continue;
+    final hasStartP =
+        entry['start_period'] != null || _hasSetPeriod(raw['start_period']);
+    final hasEndP =
+        entry['end_period'] != null || _hasSetPeriod(raw['end_period']);
+    for (final day in covered) {
+      if (day == covered.first && hasStartP) continue;
+      if (day == covered.last && hasEndP) continue;
+      days.add(canonicalDayKey(day));
+    }
+  }
+  return days;
+}
+

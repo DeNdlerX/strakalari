@@ -123,6 +123,7 @@ const Map<String, Object> canonicalDefaults = {
   'excuse_mode': 'confirm',
   'default_excuse_selection': 'first',
   'strava_order_mode': 'confirm',
+  'strava_auto_cancel_lunches': true,
   'automation_paused': false,
   'disclaimer_accepted': false,
   // First-run wizard: the step of an unfinished setup, so it resumes after
@@ -341,6 +342,10 @@ List<String> validateConfig(Map<String, Object?> data) {
           "'$modeKey' must be one of ['auto', 'confirm', 'dry_run'], "
           'got ${_repr(data[modeKey])}.');
     }
+  }
+  final autoCancel = data['strava_auto_cancel_lunches'];
+  if (autoCancel != null && autoCancel is! bool) {
+    problems.add("'strava_auto_cancel_lunches' must be a boolean.");
   }
   if (!lunch_cutoff.isValidCutoffTime(data['lunch_order_cutoff_time'] ?? '')) {
     problems.add(

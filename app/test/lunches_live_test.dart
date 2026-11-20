@@ -179,6 +179,20 @@ void main() {
       );
     }
   });
+
+  test('F3 lunchControllerFor populates unclipped freeDayLabels', () {
+    final s = AppState(
+      configData: {
+        'use_strava': true,
+        'sem1_close': '31.01.2020',
+        'sem2_close': '30.04.2020',
+        'user_free_days': ['2099-10-06'],
+      },
+      data: <String, Object?>{},
+    );
+    final c = lunchControllerFor(s);
+    expect(c.freeDayLabels.containsKey('06.10.2099'), isTrue);
+  });
 }
 
 class _FixedAppState extends AppStateController {

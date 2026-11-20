@@ -141,6 +141,9 @@ void main() {
       const day = '07.09.2026';
       final view = LunchesView(controller: c);
       expect(view.dayStatus(day), isNull);
+      c.webOrders = {day: 'm&-1&0'};
+      c.orders = {day: 'm&-1&0'};
+      expect(view.dayStatus(day), isNull);
       c.webOrders = {day: 'm1'};
       c.orders = {day: 'm1'};
       expect(view.dayStatus(day), Strings.get('web_ordered'));
@@ -149,6 +152,36 @@ void main() {
       expect(view.dayStatus(day), Strings.get('to_send'));
       c.cancelledLunches.add(day);
       expect(view.dayStatus(day), Strings.get('no_lunch'));
+    });
+
+    testWidgets('free day shows no-school badge and named or generic note',
+        (t) async {
+      final savedLang = Strings.lang;
+      addTearDown(() => Strings.lang = savedLang);
+
+      for (final lang in ['cs', 'en']) {
+        Strings.lang = lang;
+        final future = _day(7);
+        final other = _day(8);
+        final c = _controller()
+          ..food = {
+            future: {'jidlo&1&x': 'Vepřové (1)', 'jidlo&-1&x': 'x'},
+            other: {'jidlo2&1&x': 'Ryba (4)', 'jidlo2&-1&x': 'x'},
+          }
+          ..freeDayLabels = {
+            future: 'Podzimní prázdniny',
+            other: '',
+          };
+        await t.pumpWidget(_app(LunchesView(controller: c)));
+        expect(find.text(Strings.get('lunch_no_school_badge')),
+            findsNWidgets(2));
+        expect(
+          find.text(Strings.format(
+              'lunch_no_school_named', {'label': 'Podzimní prázdniny'})),
+          findsOneWidget,
+        );
+        expect(find.text(Strings.get('lunch_no_school_note')), findsOneWidget);
+      }
     });
 
     test('order past cutoff stages nothing', () {
@@ -172,6 +205,29 @@ void main() {
       );
       expect(btn.onPressed, isNull);
       expect(find.text(Strings.get('strava_not_configured')), findsOneWidget);
+    });
+
+    test(
+        'applyFoodFilter skips free days while auto-cancel is on and picks them when off (R5 S4)',
+        () {
+      final free = _day(7);
+      final normal = _day(8);
+      final c = _controller()
+        ..food = {
+          free: {'f&1&0': 'Kuřecí (1)', 'f&-1&0': 'x'},
+          normal: {'n&1&0': 'Ryba (4)', 'n&-1&0': 'x'},
+        }
+        ..freeDayLabels = {free: 'Ředitelské volno'};
+      c.applyFoodFilter('');
+      expect(c.orders.containsKey(free), isFalse);
+      expect(c.orders[normal], 'n&1&0');
+
+      c.config['strava_auto_cancel_lunches'] = false;
+      c.orders.clear();
+      c.pendingOrders.clear();
+      c.applyFoodFilter('');
+      expect(c.orders[free], 'f&1&0');
+      expect(c.orders[normal], 'n&1&0');
     });
   });
 }

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:clock/clock.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:strakalari_core/strakalari_core.dart';
 
@@ -306,6 +307,330 @@ void main() {
       expect(notified, ['lunch_skipped']);
     });
   });
+
+  group('f3AutoCancelLunches (AppState)', () {
+    test('manualWebPickRecordsCancelHandledAndSurvivesRestart', () {
+      withClock(Clock.fixed(DateTime(2099, 10, 1, 9, 0)), () {
+        final cfg = {
+          'use_strava': true,
+          'planned_skips': [
+            {
+              'start_date': '2099-10-06',
+              'end_date': '2099-10-06',
+              'cancel_lunch': true,
+            },
+          ],
+        };
+        saveDataCache({
+          'strava_ordered': {'06.10.2099': ''},
+        });
+        final s1 = AppState(configData: cfg);
+        expect(s1.cancelledLunches, contains('06.10.2099'));
+
+        // User manually picks a real meal on Strava for that planned day.
+        s1.recordWebOrders({'6.10.2099': 'm&1&0'});
+        expect(s1.cancelledLunches, isNot(contains('06.10.2099')));
+        expect(loadDataCache()[cancelHandledKey], ['06.10.2099']);
+
+        // Across app restart, the manual pick is NOT resurrected into cancelledLunches.
+        final s2 = AppState(configData: cfg);
+        expect(s2.cancelledLunches, isNot(contains('06.10.2099')));
+        expect(s2.orders['06.10.2099'], 'm&1&0');
+      });
+    });
+
+    test('planningSkipOrAddingFreeDayClearsCancelHandledAfterSave', () {
+      withClock(Clock.fixed(DateTime(2099, 10, 1, 9, 0)), () {
+        saveDataCache({
+          cancelHandledKey: ['06.10.2099', '07.10.2099', '08.10.2099'],
+          'strava_ordered': {
+            '06.10.2099': 'm1&1&0',
+            '07.10.2099': 'm2&1&0',
+            '08.10.2099': 'm3&1&0',
+          },
+          'strava_meals': {
+            '06.10.2099': {'m1&1&0': 'Guláš', 'm1&-1&0': 'x'},
+            '07.10.2099': {'m2&1&0': 'Řízek', 'm2&-1&0': 'x'},
+            '08.10.2099': {'m3&1&0': 'Ryba', 'm3&-1&0': 'x'},
+          },
+        });
+        final state = AppState(configData: {'use_strava': true})
+          ..isLunchOrderOpenOverride = (_, [_]) => true;
+
+        // Failed save must roll back and leave cancelHandledKey untouched.
+        final lock = InterProcessLock('${state.config.configPath}.lock');
+        expect(lock.acquire(), isTrue);
+        try {
+          expect(
+            state.planCustomSkip(
+              '2099-10-06',
+              '2099-10-06',
+              null,
+              null,
+              'reason',
+              cancelLunch: true,
+            ),
+            isFalse,
+          );
+          expect(loadDataCache()[cancelHandledKey],
+              ['06.10.2099', '07.10.2099', '08.10.2099']);
+        } finally {
+          lock.release();
+        }
+
+        // Successful planCustomSkip clears 06.10.2099 from cancelHandledKey.
+        expect(
+          state.planCustomSkip(
+            '2099-10-06',
+            '2099-10-06',
+            null,
+            null,
+            'reason',
+            cancelLunch: true,
+          ),
+          isTrue,
+        );
+        expect(loadDataCache()[cancelHandledKey], ['07.10.2099', '08.10.2099']);
+
+        // planEntries clears 08.10.2099 after save succeeds.
+        expect(
+          state.planEntries([
+            {
+              'start_date': '2099-10-08',
+              'end_date': '2099-10-08',
+              'template': 'reason',
+              'cancel_lunch': true,
+            },
+          ]),
+          1,
+        );
+        expect(loadDataCache()[cancelHandledKey], ['07.10.2099']);
+
+        // Adding a free day via AppState.save clears 07.10.2099 too.
+        expect(
+          state.save({
+            'user_free_days': ['2099-10-07'],
+          }),
+          isTrue,
+        );
+        expect(loadDataCache()[cancelHandledKey], isEmpty);
+      });
+    });
+
+    test('filterAndAiRecommendSkipFreeDays', () async {
+      await withClock(Clock.fixed(DateTime(2026, 9, 1, 9, 0)), () async {
+        saveDataCache({
+          'absence': {'M': 1.0},
+          'strava_meals': {
+            '16.09.2026': {'a&1&0': 'Kuřecí řízek', 'a&-1&0': 'x'},
+            '17.09.2026': {'b&1&0': 'Rybí filé', 'b&-1&0': 'x'},
+          },
+        });
+        final state = AppState(configData: {
+          'use_strava': true,
+          'user_free_days': ['2026-09-16'],
+        })
+          ..demoMode = false
+          ..isLunchOrderOpenOverride = (_, [_]) => true;
+
+        state.applyFoodFilter('');
+        expect(state.orders.containsKey('16.09.2026'), isFalse);
+        expect(state.orders['17.09.2026'], 'b&1&0');
+
+        state.orders.clear();
+        state.pendingOrders.clear();
+        state.recommendLunchesFn = (
+          foodData,
+          pref,
+          apiKey, {
+          model = 'gemini-3.8-flash',
+          language = 'cs',
+        }) async =>
+            ('', {'16.09.2026': 'a&1&0', '17.09.2026': 'b&1&0'});
+        Future<void>? job;
+        state.spawn = (fn, name) {
+          job = fn();
+        };
+        expect(state.startAiRecommend(), isTrue);
+        await job;
+        expect(state.orders.containsKey('16.09.2026'), isFalse);
+        expect(state.orders['17.09.2026'], 'b&1&0');
+
+        // With automatic lunch cancelling turned off, filter and AI stage
+        // meals on free days again (R5 S3).
+        state.config.set('strava_auto_cancel_lunches', false);
+        state.orders.clear();
+        state.pendingOrders.clear();
+        state.applyFoodFilter('');
+        expect(state.orders['16.09.2026'], 'a&1&0');
+        expect(state.orders['17.09.2026'], 'b&1&0');
+
+        state.orders.clear();
+        state.pendingOrders.clear();
+        expect(state.startAiRecommend(), isTrue);
+        await job;
+        expect(state.orders['16.09.2026'], 'a&1&0');
+        expect(state.orders['17.09.2026'], 'b&1&0');
+      });
+    });
+
+    test('refreshAutoCancelsFreeDaysRespectsKeptLunchAndFiresNotification',
+        () async {
+      await withClock(Clock.fixed(DateTime(2099, 10, 1, 9, 0)), () async {
+        final savedLang = Strings.lang;
+        Strings.lang = 'en';
+        addTearDown(() => Strings.lang = savedLang);
+
+        final notifications = <(String, String)>[];
+        notifierBackend =
+            _CallbackNotifier((tag, body) => notifications.add((tag, body)));
+
+        final cfg = <String, Object?>{
+          'use_strava': true,
+          'strava_username': 'student',
+          'strava_canteen_id': '1234',
+          'strava_order_mode': 'confirm',
+          'strava_auto_cancel_lunches': true,
+          'user_free_days': ['2099-10-06', '2099-10-07'],
+          'notifications': {'lunch_skipped': true, 'refresh_done': false},
+        };
+        saveDataCache({
+          'absence': {'M': 1.0},
+          'strava_meals': {
+            '06.10.2099': {'a&1&0': 'Guláš', 'a&-1&0': 'x'},
+            '07.10.2099': {'b&1&0': 'Řízek', 'b&-1&0': 'x'},
+          },
+          'strava_ordered': {
+            '06.10.2099': 'a&1&0',
+            '07.10.2099': 'b&1&0',
+          },
+        });
+        final state = AppState(configData: cfg);
+        // Keep 07.10.2099 locally as a newly picked meal in pendingOrders;
+        // 06.10.2099 has a planner-staged cancel that auto-cancel completes and clears.
+        state.stageLunchCancel({
+          'start_date': '2099-10-06',
+          'end_date': '2099-10-06',
+        });
+        expect(state.cancelledLunches, contains('06.10.2099'));
+        expect(state.pendingOrders, contains('06.10.2099'));
+        state.orders['07.10.2099'] = 'b&2&0';
+        state.pendingOrders.add('07.10.2099');
+
+        Future<void>? job;
+        state.spawn = (fn, name) {
+          job = fn();
+        };
+        state.createApp = ({onLog, configData}) => _F3RefreshApp(
+              cfg,
+              food: {
+                '06.10.2099': {'a&1&0': 'Guláš', 'a&-1&0': 'x'},
+                '07.10.2099': {'b&1&0': 'Řízek', 'b&2&0': 'Sýr', 'b&-1&0': 'x'},
+              },
+              ordered: {
+                '06.10.2099': 'a&1&0',
+                '07.10.2099': 'b&1&0',
+              },
+            );
+
+        expect(state.startRefresh('strava'), isTrue);
+        await job;
+
+        expect(state.pendingOrders.contains('06.10.2099'), isFalse);
+        expect(state.pendingOrders.contains('07.10.2099'), isTrue);
+        expect('${state.runs.last['detail']}',
+            contains(Strings.format('auto_lunch_cancelled', {'n': 1})));
+        final skipNotif =
+            notifications.where((n) => n.$1 == 'lunch_skipped').toList();
+        expect(skipNotif, hasLength(1));
+        expect(skipNotif.single.$2, contains('6. 10. 2099'));
+        expect(skipNotif.single.$2,
+            contains(Strings.get('lunch_cancel_reason_free_day')));
+      });
+    });
+
+    test('refreshAutoCancelMultipleDaysFormatsPluralNotification', () async {
+      await withClock(Clock.fixed(DateTime(2099, 10, 1, 9, 0)), () async {
+        final savedLang = Strings.lang;
+        Strings.lang = 'cs';
+        addTearDown(() => Strings.lang = savedLang);
+
+        final notifications = <(String, String)>[];
+        notifierBackend =
+            _CallbackNotifier((tag, body) => notifications.add((tag, body)));
+
+        final cfg = <String, Object?>{
+          'use_strava': true,
+          'strava_username': 'student',
+          'strava_canteen_id': '1234',
+          'strava_order_mode': 'confirm',
+          'strava_auto_cancel_lunches': true,
+          'user_free_days': ['2099-10-06', '2099-10-07'],
+          'notifications': {'lunch_skipped': true},
+        };
+        final state = AppState(configData: cfg);
+        Future<void>? job;
+        state.spawn = (fn, name) {
+          job = fn();
+        };
+        state.createApp = ({onLog, configData}) => _F3RefreshApp(
+              cfg,
+              food: {
+                '06.10.2099': {'a&1&0': 'Guláš', 'a&-1&0': 'x'},
+                '07.10.2099': {'b&1&0': 'Řízek', 'b&-1&0': 'x'},
+              },
+              ordered: {
+                '06.10.2099': 'a&1&0',
+                '07.10.2099': 'b&1&0',
+              },
+            );
+
+        expect(state.startRefresh('strava'), isTrue);
+        await job;
+
+        final skipNotif =
+            notifications.where((n) => n.$1 == 'lunch_skipped').toList();
+        expect(skipNotif, hasLength(1));
+        expect(skipNotif.single.$2, contains('6. 10. 2099'));
+        expect(skipNotif.single.$2, contains('7. 10. 2099'));
+        expect(skipNotif.single.$2, contains('2'));
+      });
+    });
+  });
+}
+
+class _F3RefreshApp extends Strakalari {
+  final Map<String, Map<String, String>> foodDictData;
+  final Map<String, String> _ordered;
+
+  _F3RefreshApp(
+    Map<String, Object?> cfg, {
+    required Map<String, Map<String, String>> food,
+    required Map<String, String> ordered,
+  })  : foodDictData = food,
+        _ordered = Map<String, String>.of(ordered),
+        super(configData: cfg);
+
+  @override
+  Map<String, Map<String, String>> get foodDict => foodDictData;
+
+  @override
+  Map<String, String> get orderedDict => _ordered;
+
+  @override
+  Future<void> fetchStravaData() async {}
+
+  @override
+  Future<bool> stravaOrderSelected(Map<String, String> orders,
+      {String source = 'manual'}) async {
+    nextCancelReasons = const {};
+    lastOrderedDays = Set<String>.of(orders.keys);
+    _ordered.addAll(orders);
+    return true;
+  }
+
+  @override
+  void close() {}
 }
 
 class _CallbackNotifier implements NotifierBackend {

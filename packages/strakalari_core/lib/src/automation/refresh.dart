@@ -33,10 +33,20 @@ import '../i18n.dart';
 import '../models.dart';
 import '../storage/cache.dart';
 import '../lunches/lunch_auto.dart'
-    show handledKey, planAutoOrders, updateHandledDays;
+    show
+        autoCancelFreeLunchDays,
+        cancelHandledKey,
+        freeLunchDays,
+        handledKey,
+        planAutoCancels,
+        planAutoOrders,
+        stravaAutoCancelEnabled,
+        updateCancelHandledDays,
+        updateHandledDays;
 import '../storage/helpers.dart';
 import '../news.dart' show findNews;
-import '../planning/planned_skips.dart' show plannedLunchDays;
+import '../planning/planned_skips.dart'
+    show plannedLunchDays, wholePlannedLunchDays;
 import '../planning/planner.dart' show schoolYearTerms;
 import '../planning/schedule.dart' show baselineToDict;
 import 'automation.dart';
@@ -87,6 +97,27 @@ Future<(Map<String, String>, bool)> Function(
 Set<String> Function(Map<String, Object?> cfg) plannedLunchDaysHook =
     (cfg) => plannedLunchDays(cfg);
 
+/// `DD.MM.YYYY` school free days whose ordered lunch should be cancelled.
+Set<String> Function(Map<String, Object?> cfg) freeLunchDaysHook =
+    (cfg) => freeLunchDays(cfg);
+
+/// Auto-cancel lunch picks for ordered lunches on free/planned days.
+Map<String, String> Function(
+  Map<String, Map<String, String>>? foodData,
+  Map<String, Object?>? configData, {
+  Iterable<String>? cancelledDays,
+  Map<String, String>? ordered,
+  Iterable<String>? cancelHandled,
+  bool Function(DateTime)? isOpen,
+}) planAutoCancelsHook = planAutoCancels;
+
+/// Days whose auto-cancel was already applied or manually overridden.
+List<String> Function(
+  Iterable<String>? previous,
+  Iterable<String>? added, [
+  DateTime? today,
+]) updateCancelHandledDaysHook = updateCancelHandledDays;
+
 /// Days auto mode must not touch again (`lunch_auto.update_handled_days`,
 /// like refresh.py's lazy import).
 List<String> Function(
@@ -106,10 +137,13 @@ class RefreshResult {
   int excusesSent;
   int excusesFailed;
   int lunchesOrdered;
+  int lunchesCancelled;
 
   /// True when `automation_paused` kept an `auto` mode from running.
   bool automationPaused;
   Set<String> autoOrderedDays;
+  Set<String> autoCancelledDays;
+  Map<String, String> autoCancelledReasons;
   bool usedGemini;
 
   /// True when Strava refused auto orders for lack of money.
@@ -135,8 +169,11 @@ class RefreshResult {
     this.excusesSent = 0,
     this.excusesFailed = 0,
     this.lunchesOrdered = 0,
+    this.lunchesCancelled = 0,
     this.automationPaused = false,
     Set<String>? autoOrderedDays,
+    Set<String>? autoCancelledDays,
+    Map<String, String>? autoCancelledReasons,
     this.usedGemini = false,
     this.lowBalance = false,
     List<String>? unfundedDays,
@@ -144,6 +181,8 @@ class RefreshResult {
     List<(String, String)>? news,
   })  : saved = saved ?? <String, Object?>{},
         autoOrderedDays = autoOrderedDays ?? <String>{},
+        autoCancelledDays = autoCancelledDays ?? <String>{},
+        autoCancelledReasons = autoCancelledReasons ?? <String, String>{},
         unfundedDays = unfundedDays ?? <String>[],
         errors = errors ?? <(String, Object)>[],
         news = news ?? <(String, String)>[];
@@ -211,6 +250,7 @@ Future<RefreshResult> runRefresh(
   Map<String, Object?>? configData, {
   String scope = 'all',
   Iterable<String>? cancelledLunchDays,
+  Iterable<String>? keptLunchDays,
   bool Function()? isCancelled,
   RefreshEmit? emit,
   String lunchPrompt = '',
@@ -245,7 +285,7 @@ Future<RefreshResult> runRefresh(
         result, emitSafe, checkCancel);
     checkCancel();
     await _autoPhases(app, cfg, fresh, result, emitSafe, isCancelled,
-        cancelledLunchDays, lunchPrompt);
+        cancelledLunchDays, keptLunchDays, lunchPrompt);
   } on CancelledError {
     // Cancelled after (part of) the fetch: keep what already arrived
     // (and any auto order that went through) instead of dropping it.
@@ -607,17 +647,20 @@ Future<void> _autoPhases(
     RefreshEmit emit,
     bool Function()? isCancelled,
     Iterable<String>? cancelledLunchDays,
+    Iterable<String>? keptLunchDays,
     String lunchPrompt) async {
   // -- 3. Auto modes ----------------------------------------------------
   final paused = automationPaused(cfg);
   var wantsExcuse =
       result.bakalariFetched && app.excuseMode == 'auto';
-  var wantsLunch =
+  var wantsLunchOrder =
       result.stravaFetched && app.stravaOrderMode == 'auto';
-  if (paused && (wantsExcuse || wantsLunch)) {
+  var wantsLunchCancel =
+      result.stravaFetched && stravaAutoCancelEnabled(cfg);
+  if (paused && (wantsExcuse || wantsLunchOrder || wantsLunchCancel)) {
     result.automationPaused = true;
     emit('automation_paused_log');
-    wantsExcuse = wantsLunch = false;
+    wantsExcuse = wantsLunchOrder = wantsLunchCancel = false;
   }
 
   if (wantsExcuse && app.lastOutboxSyncOk == false) {
@@ -650,13 +693,23 @@ Future<void> _autoPhases(
     }
   }
 
-  if (wantsLunch) {
-    await _autoLunch(app, cfg, fresh, result, emit, cancelledLunchDays,
-        lunchPrompt);
+  if (wantsLunchOrder || wantsLunchCancel) {
+    await _autoLunch(
+      app,
+      cfg,
+      fresh,
+      result,
+      emit,
+      cancelledLunchDays,
+      keptLunchDays,
+      lunchPrompt,
+      autoOrder: wantsLunchOrder,
+      autoCancel: wantsLunchCancel,
+    );
   }
 }
 
-/// Auto-mode lunch orders (fills gaps only, see `plan_auto_orders`).
+/// Auto-mode lunch orders and automatic cancellations on free/planned days.
 Future<void> _autoLunch(
     RefreshApp app,
     Map<String, Object?> cfg,
@@ -664,51 +717,177 @@ Future<void> _autoLunch(
     RefreshResult result,
     RefreshEmit emit,
     Iterable<String>? cancelledLunchDays,
-    String lunchPrompt) async {
-  emit('auto_lunch_log');
-  List<String> handled;
-  try {
-    final raw = loadDataCache()[handledKey];
-    handled = raw is List ? [for (final h in raw) '$h'] : <String>[];
-  } on Object {
-    handled = <String>[];
+    Iterable<String>? keptLunchDays,
+    String lunchPrompt, {
+    required bool autoOrder,
+    required bool autoCancel,
+}) async {
+  List<String> handled = <String>[];
+  if (autoOrder) {
+    emit('auto_lunch_log');
+    try {
+      final raw = loadDataCache()[handledKey];
+      handled = raw is List ? [for (final h in raw) '$h'] : <String>[];
+    } on Object catch (e) {
+      // ignore: avoid_print
+      print('Warning: could not read $handledKey from cache: $e');
+      handled = <String>[];
+    }
   }
+  List<String> cancelHandled = <String>[];
+  try {
+    final raw = loadDataCache()[cancelHandledKey];
+    cancelHandled = raw is List ? [for (final h in raw) '$h'] : <String>[];
+  } on Object catch (e) {
+    // ignore: avoid_print
+    print('Warning: could not read $cancelHandledKey from cache: $e');
+    cancelHandled = <String>[];
+  }
+  final effectiveCancelHandled = <String>{
+    for (final d in cancelHandled) canonicalDayKey(d),
+    for (final d in keptLunchDays ?? const <String>[]) canonicalDayKey(d),
+  };
   final orderedBefore = Map<String, String>.of(app.orderedDict);
   var placed = <String>{};
   // True when the run ended before showing whether money was short.
   var balanceUnknown = false;
   try {
-    final cancelled =
-        plannedLunchDaysHook(cfg).union(Set<String>.of(cancelledLunchDays ?? const <String>[]));
-    final (orders, usedGemini) = await planAutoOrdersHook(
-      Map<String, Map<String, String>>.of(app.foodDict),
-      cfg,
-      blacklist: List<String>.of(app.stravaBlacklist),
-      blacklistBroken: app.stravaBlacklistBroken,
-      cancelledDays: cancelled,
-      ordered: orderedBefore,
-      handled: handled,
-      promptFallback: lunchPrompt,
-      emit: (key, [fmt = const <String, Object?>{}]) =>
-          emit(key, fmt),
-    );
+    final plannedDays = {
+      for (final d in plannedLunchDaysHook(cfg)) canonicalDayKey(d),
+      for (final d in cancelledLunchDays ?? const <String>[])
+        canonicalDayKey(d),
+    };
+    final wholePlannedDays = {
+      for (final d in wholePlannedLunchDays(cfg)) canonicalDayKey(d),
+    };
+    final cancelPlannedDays = plannedDays.intersection(wholePlannedDays);
+    final freeDays = autoCancelFreeLunchDays(cfg, freeLunchDaysHook(cfg));
+    final allCancelled = plannedDays.union(freeDays);
+    final cancelTargets = cancelPlannedDays.union(freeDays);
+    // When both flags apply to the same day, 'planned' explains the explicit skip.
+    final cancelReasons = <String, String>{
+      for (final d in freeDays) d: 'free_day',
+      for (final d in cancelPlannedDays) d: 'planned',
+    };
+    final food = Map<String, Map<String, String>>.of(app.foodDict);
+    final deorders = autoCancel
+        ? planAutoCancelsHook(
+            food,
+            cfg,
+            cancelledDays: cancelTargets,
+            ordered: orderedBefore,
+            cancelHandled: effectiveCancelHandled,
+          )
+        : <String, String>{};
+    late Map<String, String> orders;
+    var usedGemini = false;
+    if (autoOrder) {
+      final (plannedOrders, geminiUsed) = await planAutoOrdersHook(
+        food,
+        cfg,
+        blacklist: List<String>.of(app.stravaBlacklist),
+        blacklistBroken: app.stravaBlacklistBroken,
+        cancelledDays: allCancelled,
+        ordered: orderedBefore,
+        handled: handled,
+        promptFallback: lunchPrompt,
+        emit: (key, [fmt = const <String, Object?>{}]) => emit(key, fmt),
+      );
+      usedGemini = geminiUsed;
+      orders = Map<String, String>.of(plannedOrders);
+      // planAutoOrdersHook keeps its legacy signature. Drop every
+      // cancellation it produced that isn't a cancel target: partial
+      // planned days (R5 M1), days whose cancelling is off or already
+      // handled, and the filter's "everything blacklisted" fallback on a day
+      // with nothing ordered, which changes nothing on Strava and would
+      // otherwise be reported as an automatic cancel (R5 S5).
+      orders.removeWhere((day, mealId) {
+        if (!mealId.contains('&-1&')) return false;
+        final canon = canonicalDayKey(day);
+        if (!cancelTargets.contains(canon)) return true;
+        return !autoCancel || effectiveCancelHandled.contains(canon);
+      });
+      orders.addAll(deorders);
+    } else {
+      if (deorders.isEmpty) return;
+      emit('auto_lunch_cancel_log');
+      orders = Map<String, String>.of(deorders);
+    }
     result.usedGemini = usedGemini;
     if (orders.isEmpty) {
-      emit('auto_lunch_none');
-    } else if (await app.stravaOrderSelected(orders, source: 'auto')) {
-      placed = orders.keys.toSet();
-      fresh['strava_ordered'] = Map<String, String>.of(app.orderedDict);
-      fresh[lowBalanceKey] = null; // orders go through again
-      result.autoOrderedDays = Set<String>.of(placed);
-      result.lunchesOrdered = orders.length;
-      emit('auto_lunch_sent', {'n': orders.length});
+      if (autoOrder) emit('auto_lunch_none');
+      return;
+    }
+    final appliedReasons = <String, String>{
+      for (final e in orders.entries)
+        if (e.value.contains('&-1&'))
+          e.key: cancelReasons[canonicalDayKey(e.key)] ?? 'planned',
+    };
+    if (app is Strakalari) {
+      app.nextCancelReasons = appliedReasons;
+    }
+    final isDry = app.stravaOrderMode == 'dry_run';
+    if (await app.stravaOrderSelected(orders, source: 'auto')) {
+      if (isDry) {
+        final cancelCount =
+            orders.values.where((v) => v.contains('&-1&')).length;
+        if (cancelCount > 0) {
+          emit('auto_lunch_cancel_dry_run', {'n': cancelCount});
+        }
+      } else {
+        placed = orders.keys.toSet();
+        final orderedPlaced = <String>{
+          for (final d in placed)
+            if (!(orders[d] ?? '').contains('&-1&')) d,
+        };
+        final cancelledPlaced = <String>{
+          for (final d in placed)
+            if ((orders[d] ?? '').contains('&-1&')) d,
+        };
+        fresh['strava_ordered'] = Map<String, String>.of(app.orderedDict);
+        if (autoOrder) fresh[lowBalanceKey] = null; // orders go through again
+        result.autoOrderedDays = Set<String>.of(orderedPlaced);
+        result.lunchesOrdered = orderedPlaced.length;
+        result.autoCancelledDays = Set<String>.of(cancelledPlaced);
+        result.lunchesCancelled = cancelledPlaced.length;
+        result.autoCancelledReasons = {
+          for (final d in cancelledPlaced)
+            if (appliedReasons.containsKey(d)) d: appliedReasons[d]!,
+        };
+        if (orderedPlaced.isNotEmpty) {
+          emit('auto_lunch_sent', {'n': orderedPlaced.length});
+        }
+        if (cancelledPlaced.isNotEmpty) {
+          emit('auto_lunch_cancelled', {'n': cancelledPlaced.length});
+          fresh[cancelHandledKey] =
+              updateCancelHandledDaysHook(cancelHandled, cancelledPlaced);
+        }
+      }
     } else {
-      placed = Set<String>.of(app.lastOrderedDays);
+      placed = isDry ? <String>{} : Set<String>.of(app.lastOrderedDays);
+      final orderedPlaced = <String>{
+        for (final d in placed)
+          if (!(orders[d] ?? '').contains('&-1&')) d,
+      };
+      final cancelledPlaced = <String>{
+        for (final d in placed)
+          if ((orders[d] ?? '').contains('&-1&')) d,
+      };
       if (placed.isNotEmpty) {
         // Partial: what went through is web truth all the same.
         fresh['strava_ordered'] = Map<String, String>.of(app.orderedDict);
-        result.autoOrderedDays = Set<String>.of(placed);
-        result.lunchesOrdered = placed.length;
+        result.autoOrderedDays = Set<String>.of(orderedPlaced);
+        result.lunchesOrdered = orderedPlaced.length;
+        result.autoCancelledDays = Set<String>.of(cancelledPlaced);
+        result.lunchesCancelled = cancelledPlaced.length;
+        result.autoCancelledReasons = {
+          for (final d in cancelledPlaced)
+            if (appliedReasons.containsKey(d)) d: appliedReasons[d]!,
+        };
+        if (cancelledPlaced.isNotEmpty) {
+          fresh[cancelHandledKey] =
+              updateCancelHandledDaysHook(cancelHandled, cancelledPlaced);
+        }
       }
       final unfunded = List<String>.of(app.lastUnfundedDays);
       if (app.lastOrderLowBalance && unfunded.isNotEmpty) {
@@ -724,10 +903,12 @@ Future<void> _autoLunch(
               t('strava_low_balance', args: {'n': unfunded.length}));
         }
       }
-      throw AutomationError(t('auto_orders_failed', args: {
-        'n': orders.length - placed.length,
-        'total': orders.length,
-      }));
+      throw AutomationError(t(
+          autoOrder ? 'auto_orders_failed' : 'auto_cancels_failed',
+          args: {
+            'n': orders.length - placed.length,
+            'total': orders.length,
+          }));
     }
   } on CancelledError {
     balanceUnknown = true;
@@ -739,16 +920,22 @@ Future<void> _autoLunch(
     result.errors.add(('auto_lunch', exc));
     emit('auto_lunch_failed', {'err': _firstLine(exc)});
   } finally {
-    if (!result.lowBalance && !balanceUnknown) {
-      // Nothing was refused for lack of money this run (topped up, or
-      // the days were ordered elsewhere): the warning is over.
-      fresh[lowBalanceKey] = null;
-    }
-    try {
-      fresh[handledKey] = updateHandledDaysHook(
-          handled, app.orderedDict.isNotEmpty ? app.orderedDict : orderedBefore, placed);
-    } on Object {
-      // The handled list is a hint; never fail a refresh on it.
+    if (autoOrder) {
+      if (!result.lowBalance && !balanceUnknown) {
+        // Nothing was refused for lack of money this run (topped up, or
+        // the days were ordered elsewhere): the warning is over.
+        fresh[lowBalanceKey] = null;
+      }
+      try {
+        fresh[handledKey] = updateHandledDaysHook(
+            handled,
+            app.orderedDict.isNotEmpty ? app.orderedDict : orderedBefore,
+            placed);
+      } on Object catch (e) {
+        // The handled list is a hint; never fail a refresh on it.
+        // ignore: avoid_print
+        print('Warning: could not update $handledKey: $e');
+      }
     }
   }
 }

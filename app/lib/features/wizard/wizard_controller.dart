@@ -190,6 +190,16 @@ class WizardController extends ChangeNotifier {
     return (config['use_strava'] ?? true) == true;
   }
 
+  String get stravaOrderMode {
+    final raw = drafts['wiz:strava_order_mode'] ??
+        '${config['strava_order_mode'] ?? 'confirm'}';
+    return (raw == 'auto' || raw == 'dry_run' || raw == 'confirm')
+        ? raw
+        : 'confirm';
+  }
+
+  bool get stravaAutoOrder => stravaOrderMode == 'auto';
+
   bool get alarmEnabled {
     final raw = drafts['wiz:wakeup_enabled'];
     if (raw != null) return raw == '1';
@@ -205,6 +215,11 @@ class WizardController extends ChangeNotifier {
 
   void setStravaEnabled(bool on) =>
       setDraft('wiz:strava_enabled', on ? '1' : '');
+
+  void setStravaOrderMode(String mode) {
+    final normalized = (mode == 'auto' || mode == 'dry_run') ? mode : 'confirm';
+    setDraft('wiz:strava_order_mode', normalized);
+  }
 
   void setAlarmEnabled(bool on) =>
       setDraft('wiz:wakeup_enabled', on ? '1' : '');
@@ -292,6 +307,10 @@ class WizardController extends ChangeNotifier {
       'strava_username': user,
       'strava_canteen_id': cid,
     };
+    final rawMode = drafts['wiz:strava_order_mode'];
+    if (rawMode == 'auto' || rawMode == 'confirm' || rawMode == 'dry_run') {
+      updates['strava_order_mode'] = rawMode!;
+    }
     if (pw.isNotEmpty) updates['strava_password'] = pw;
     return _save(updates);
   }

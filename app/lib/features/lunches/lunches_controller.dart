@@ -24,6 +24,7 @@ class LunchController {
   Map<String, String> orders = {};
   Set<String> pendingOrders = {};
   Set<String> cancelledLunches = {};
+  Map<String, String> freeDayLabels = {};
   Set<String> lunchHidden = {};
   Map<String, String> lunchReasons = {};
   String lunchPrefs = '';
@@ -189,7 +190,8 @@ class LunchController {
     final picks = core.filterPicks(
       food,
       blacklist: combined,
-      cancelledDays: cancelledLunches,
+      cancelledDays: cancelledLunches
+          .union(core.autoCancelFreeLunchDays(config, freeDayLabels.keys)),
       isOpen: isOrderOpen == null
           ? null
           : (dt) => isOrderOpen!(

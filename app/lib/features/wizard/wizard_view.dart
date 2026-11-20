@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../../widgets/app_widgets.dart' as w;
+import '../../widgets/safety_dialog.dart';
 import '../common/app_tokens.dart';
 import '../settings/settings_controller.dart' show SettingsController;
 import '../settings/settings_view.dart' show TemplateGroupsList;
@@ -645,6 +646,32 @@ class _WizardViewState extends State<WizardView>
                         ? Strings.get('new_password')
                         : Strings.get('secret_empty')),
             ..._testRows('strava'),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              key: const Key('wiz:strava_auto_order'),
+              contentPadding: EdgeInsets.zero,
+              value: c.stravaAutoOrder,
+              title: Text(Strings.get('wiz_strava_auto_order')),
+              subtitle: Text(
+                Strings.get(c.stravaOrderMode == 'dry_run'
+                    ? 'wiz_strava_dry_run_note'
+                    : 'wiz_strava_auto_order_hint'),
+                style: TextStyle(color: tokens.muted, fontSize: tokens.fsSmall),
+              ),
+              onChanged: (v) {
+                if (v) {
+                  confirmAutoMode(
+                    context,
+                    'strava_order_mode',
+                    onConfirm: () => c.setStravaOrderMode('auto'),
+                    onDryRun: () => c.setStravaOrderMode('dry_run'),
+                    onCancel: () {},
+                  );
+                } else {
+                  c.setStravaOrderMode('confirm');
+                }
+              },
+            ),
           ],
         ];
       case WizardController.stepExcuses:

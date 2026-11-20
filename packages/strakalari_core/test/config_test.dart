@@ -460,4 +460,22 @@ void main() {
     });
   });
 
+  group('f3AutoCancelConfig', () {
+    test('defaultIsTrueAndRejectsNonBoolean', () {
+      expect(canonicalDefaults['strava_auto_cancel_lunches'], isTrue);
+      final mgr = ConfigManager('${tmp.path}/c_f3.json');
+      expect(mgr.get('strava_auto_cancel_lunches'), isTrue);
+
+      final okCfg = validationBase();
+      okCfg['strava_auto_cancel_lunches'] = false;
+      expect(validateConfig(okCfg), isEmpty);
+
+      final badCfg = validationBase();
+      badCfg['strava_auto_cancel_lunches'] = 'yes';
+      expect(
+          validateConfig(badCfg)
+              .any((p) => p.contains('strava_auto_cancel_lunches')),
+          isTrue);
+    });
+  });
 }

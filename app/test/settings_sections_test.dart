@@ -271,6 +271,18 @@ void main() {
         expect(c.automationPaused(), isTrue);
       });
 
+      testWidgets('auto cancel lunches switch defaults true and toggles',
+          (t) async {
+        final c = _controller();
+        await _openSection(t, c, 'rules');
+        final swFinder = find.byKey(const Key('rule:auto_cancel_lunches'));
+        await t.ensureVisible(swFinder);
+        expect(t.widget<SwitchListTile>(swFinder).value, isTrue);
+        await t.tap(swFinder);
+        await t.pump();
+        expect(c.get('strava_auto_cancel_lunches'), isFalse);
+      });
+
       testWidgets('interval is clamped', (t) async {
         final c = _controller();
         await _openSection(t, c, 'rules');

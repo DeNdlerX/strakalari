@@ -15,6 +15,7 @@ import 'package:clock/clock.dart';
 import 'package:test/test.dart';
 
 import '../bin/refresh_dryrun.dart' as refresh_dryrun;
+import 'package:strakalari_core/src/automation/audit.dart' as audit;
 import 'package:strakalari_core/src/automation/automation.dart';
 import 'package:strakalari_core/src/automation/cancel.dart';
 import 'package:strakalari_core/src/automation/refresh.dart';
@@ -23,14 +24,17 @@ import 'package:strakalari_core/src/bakalari/http_session.dart';
 import 'package:strakalari_core/src/lunches/gemini.dart';
 import 'package:strakalari_core/src/lunches/lunch_auto.dart';
 import 'package:strakalari_core/src/models.dart';
+import 'package:strakalari_core/src/planning/planned_skips.dart';
 import 'package:strakalari_core/src/platform/packaging.dart';
 import 'package:strakalari_core/src/storage/cache.dart';
 import 'package:strakalari_core/src/storage/config.dart';
 import 'package:strakalari_core/src/storage/helpers.dart';
 import 'package:strakalari_core/src/storage/secret_store.dart';
+import 'package:strakalari_core/src/strava/client.dart';
 
 import 'fake_bakalari.dart';
 import 'parity_cases.dart';
+import 'strava_test.dart' as st;
 
 const futureDay = '05.10.2099';
 const otherDay = '06.10.2099';
@@ -435,6 +439,16 @@ class LowBalanceApp implements RefreshApp {
   }
 }
 
+/// [FakeApp] with a Strava blacklist (R5 S5).
+class BlacklistApp extends FakeApp {
+  BlacklistApp(super.calls, this.blacklist, {super.orderMode, super.menu});
+
+  final List<String> blacklist;
+
+  @override
+  List<String> get stravaBlacklist => blacklist;
+}
+
 /// [FakeApp] that records the history weeks `runRefresh` hands the client.
 class HistoryProbeApp extends FakeApp {
   HistoryProbeApp(super.calls);
@@ -454,6 +468,9 @@ void main() {
   final defaultPlan = planAutoOrdersHook;
   final defaultPlanned = plannedLunchDaysHook;
   final defaultHandled = updateHandledDaysHook;
+  final defaultFreeDays = freeLunchDaysHook;
+  final defaultPlanCancels = planAutoCancelsHook;
+  final defaultCancelHandled = updateCancelHandledDaysHook;
 
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('refresh_test_');
@@ -467,6 +484,9 @@ void main() {
     planAutoOrdersHook = testPlanAutoOrders;
     plannedLunchDaysHook = testPlannedLunchDays;
     updateHandledDaysHook = testUpdateHandledDays;
+    freeLunchDaysHook = defaultFreeDays;
+    planAutoCancelsHook = defaultPlanCancels;
+    updateCancelHandledDaysHook = defaultCancelHandled;
   });
 
   tearDown(() {
@@ -476,6 +496,9 @@ void main() {
     planAutoOrdersHook = defaultPlan;
     plannedLunchDaysHook = defaultPlanned;
     updateHandledDaysHook = defaultHandled;
+    freeLunchDaysHook = defaultFreeDays;
+    planAutoCancelsHook = defaultPlanCancels;
+    updateCancelHandledDaysHook = defaultCancelHandled;
     setEnvironmentOverride(null);
     clearKeyCache();
     if (tmp.existsSync()) tmp.deleteSync(recursive: true);
@@ -1082,6 +1105,390 @@ void main() {
       expect((cache[outboxDetailsKey] as Map).containsKey('501'), isTrue);
     });
   });
+
+  group('f3AutoCancelLunches', () {
+    const plannedDay = '05.10.2099';
+    const freeDay = '06.10.2099';
+    const partialDay = '07.10.2099';
+    const absenceDay = '08.10.2099';
+    const keptWholeDay = '09.10.2099';
+
+    setUp(() {
+      planAutoOrdersHook = defaultPlan;
+      plannedLunchDaysHook = defaultPlanned;
+      updateHandledDaysHook = defaultHandled;
+    });
+
+    Map<String, Map<String, String>> fourDayMenu() => {
+          plannedDay: {'t1&1&0': 'Guláš', 't1&-1&0': 'x'},
+          freeDay: {'t2&1&0': 'Řízek', 't2&-1&0': 'x'},
+          partialDay: {'t3&1&0': 'Polévka', 't3&-1&0': 'x'},
+          absenceDay: {'t4&1&0': 'Rizoto', 't4&-1&0': 'x'},
+          keptWholeDay: {'t5&1&0': 'Svíčková', 't5&-1&0': 'x'},
+        };
+
+    Map<String, Object?> baseF3Config({String orderMode = 'confirm'}) => {
+          ...refreshConfig(),
+          'strava_order_mode': orderMode,
+          'strava_auto_cancel_lunches': true,
+          'user_free_days': ['2099-10-06'],
+          'planned_skips': [
+            {
+              'start_date': '2099-10-05',
+              'end_date': '2099-10-05',
+              'cancel_lunch': true,
+            },
+            {
+              'start_date': '2099-10-07',
+              'end_date': '2099-10-07',
+              'start_period': 1,
+              'end_period': 2,
+            },
+            {
+              'start_date': '2099-10-09',
+              'end_date': '2099-10-09',
+              'cancel_lunch': false,
+            },
+          ],
+        };
+
+    test('confirmModeCancelsFreeAndPlannedDaysOnlyNeverPartialOrAbsence',
+        () async {
+      for (final mode in ['confirm', 'auto']) {
+        saveDataCache(<String, Object?>{}, replace: true);
+        final calls = <Object?>[];
+        final app = FakeApp(calls, orderMode: mode, menu: fourDayMenu())
+          ..orderedDict = {
+            plannedDay: 't1&1&0',
+            freeDay: 't2&1&0',
+            partialDay: 't3&1&0',
+            absenceDay: 't4&1&0',
+            keptWholeDay: 't5&1&0',
+          };
+        final result = await withClock(
+          Clock.fixed(DateTime(2099, 10, 1, 9, 0)),
+          () => runRefresh(app, baseF3Config(orderMode: mode), scope: 'strava'),
+        );
+        expect(result.lunchesCancelled, 2, reason: mode);
+        expect(result.autoCancelledDays, {plannedDay, freeDay}, reason: mode);
+        expect(
+          result.autoCancelledReasons,
+          {
+            plannedDay: 'planned',
+            freeDay: 'free_day',
+          },
+          reason: mode,
+        );
+        expect(app.orderedDict[partialDay], 't3&1&0', reason: mode);
+        expect(app.orderedDict[absenceDay], 't4&1&0', reason: mode);
+        expect(app.orderedDict[keptWholeDay], 't5&1&0', reason: mode);
+        final cache = loadDataCache();
+        expect((cache[cancelHandledKey] as List).toSet(),
+            {plannedDay, freeDay},
+            reason: mode);
+        if (mode == 'confirm') {
+          expect(cache.containsKey(handledKey), isFalse);
+        }
+      }
+    });
+
+    test('multiDayPartialEdgesCancelsOnlyWholeMiddleDay (R5 M1)', () async {
+      for (final mode in ['confirm', 'auto']) {
+        saveDataCache(<String, Object?>{}, replace: true);
+        final calls = <Object?>[];
+        final app = FakeApp(
+          calls,
+          orderMode: mode,
+          menu: {
+            '05.10.2099': {'t1&1&0': 'Guláš', 't1&-1&0': 'x'},
+            '06.10.2099': {'t2&1&0': 'Řízek', 't2&-1&0': 'x'},
+            '07.10.2099': {'t3&1&0': 'Polévka', 't3&-1&0': 'x'},
+          },
+        )..orderedDict = {
+            '05.10.2099': 't1&1&0',
+            '06.10.2099': 't2&1&0',
+            '07.10.2099': 't3&1&0',
+          };
+        final cfg = <String, Object?>{
+          ...refreshConfig(),
+          'strava_order_mode': mode,
+          'strava_auto_cancel_lunches': true,
+          'user_free_days': <String>[],
+          'planned_skips': [
+            {
+              'start_date': '2099-10-05',
+              'end_date': '2099-10-07',
+              'start_period': 3,
+              'end_period': 2,
+            },
+          ],
+        };
+        final result = await withClock(
+          Clock.fixed(DateTime(2099, 10, 1, 9, 0)),
+          () => runRefresh(app, cfg, scope: 'strava'),
+        );
+        expect(result.lunchesCancelled, 1, reason: mode);
+        expect(result.autoCancelledDays, {'06.10.2099'}, reason: mode);
+        expect(app.orderedDict['05.10.2099'], 't1&1&0', reason: mode);
+        expect(app.orderedDict['06.10.2099'], 't2&-1&0', reason: mode);
+        expect(app.orderedDict['07.10.2099'], 't3&1&0', reason: mode);
+      }
+    });
+
+    test('wholePlannedLunchDaysCoversOnlyWholeDays (R5 M1)', () {
+      final cfg = <String, Object?>{
+        'planned_skips': [
+          {
+            'start_date': '2099-10-05',
+            'end_date': '2099-10-05',
+          },
+          {
+            'start_date': '2099-10-07',
+            'end_date': '2099-10-07',
+            'start_period': 1,
+            'end_period': 2,
+          },
+          {
+            'start_date': '2099-10-09',
+            'end_date': '2099-10-09',
+            'cancel_lunch': false,
+          },
+          {
+            'start_date': '2099-10-12',
+            'end_date': '2099-10-14',
+            'start_period': 3,
+            'end_period': 2,
+          },
+          {
+            'start_date': '2099-10-15',
+            'end_date': '2099-10-15',
+            'start_period': 2,
+          },
+          {
+            'start_date': '2099-10-15',
+            'end_date': '2099-10-15',
+          },
+        ],
+      };
+      expect(
+        wholePlannedLunchDays(cfg),
+        {'05.10.2099', '13.10.2099', '15.10.2099'},
+      );
+    });
+
+    test('allBlacklistedDayIsNotReportedAsCancelled (R5 S5)', () async {
+      saveDataCache(<String, Object?>{}, replace: true);
+      final calls = <Object?>[];
+      // 05.10.: every meal blacklisted, nothing ordered; 06.10.: a normal day.
+      final app = BlacklistApp(calls, const ['Guláš'],
+          orderMode: 'auto',
+          menu: {
+            '05.10.2099': {'t1&1&0': 'Guláš', 't1&-1&0': 'x'},
+            '06.10.2099': {'t2&1&0': 'Řízek', 't2&-1&0': 'x'},
+          });
+      final cfg = <String, Object?>{
+        ...refreshConfig(),
+        'strava_order_mode': 'auto',
+        'strava_auto_cancel_lunches': true,
+        'user_free_days': <String>[],
+        'planned_skips': <Object?>[],
+      };
+      final result = await withClock(
+        Clock.fixed(DateTime(2099, 10, 1, 9, 0)),
+        () => runRefresh(app, cfg, scope: 'strava'),
+      );
+      final orderCalls =
+          calls.whereType<(String, Map<String, String>)>().toList();
+      expect(orderCalls, hasLength(1));
+      expect(orderCalls.single.$2, {'06.10.2099': 't2&1&0'});
+      expect(result.errors, isEmpty);
+      expect(result.lunchesOrdered, 1);
+      expect(result.lunchesCancelled, 0);
+      expect(result.autoCancelledDays, isEmpty);
+      expect(loadDataCache().containsKey(cancelHandledKey), isFalse);
+    });
+
+    test('disabledSettingCancelsNothingInConfirmOrAutoMode', () async {
+      for (final mode in ['confirm', 'auto']) {
+        saveDataCache(<String, Object?>{}, replace: true);
+        final calls = <Object?>[];
+        final app = FakeApp(calls, orderMode: mode, menu: {
+          freeDay: {'t2&1&0': 'Řízek', 't2&-1&0': 'x'},
+          partialDay: {'t3&1&0': 'Polévka', 't3&-1&0': 'x'},
+        })
+          ..orderedDict = {freeDay: 't2&1&0'};
+        final cfg = {
+          ...baseF3Config(orderMode: mode),
+          'user_free_days': ['2099-10-06', '2099-10-07'],
+          'planned_skips': <Object?>[],
+          'strava_auto_cancel_lunches': false,
+        };
+        final result = await withClock(
+          Clock.fixed(DateTime(2099, 10, 1, 9, 0)),
+          () => runRefresh(app, cfg, scope: 'strava'),
+        );
+        expect(result.lunchesCancelled, 0, reason: mode);
+        expect(app.orderedDict[freeDay], 't2&1&0', reason: mode);
+        if (mode == 'auto') {
+          expect(result.lunchesOrdered, 1);
+          expect(app.orderedDict[partialDay], 't3&1&0');
+        }
+      }
+    });
+
+    test('automationPausedBlocksAutoCancel', () async {
+      final calls = <Object?>[];
+      final app = FakeApp(calls, orderMode: 'confirm', menu: fourDayMenu())
+        ..orderedDict = {freeDay: 't2&1&0'};
+      final cfg = {...baseF3Config(), 'automation_paused': true};
+      final result = await withClock(
+        Clock.fixed(DateTime(2099, 10, 1, 9, 0)),
+        () => runRefresh(app, cfg, scope: 'strava'),
+      );
+      expect(result.automationPaused, isTrue);
+      expect(result.lunchesCancelled, 0);
+      expect(app.orderedDict[freeDay], 't2&1&0');
+    });
+
+    test('dryRunSimulatesAutoCancelWithoutRecordingCacheHandled', () async {
+      final logs = <String>[];
+      final calls = <Object?>[];
+      final app = FakeApp(calls, orderMode: 'dry_run', menu: fourDayMenu())
+        ..orderedDict = {freeDay: 't2&1&0'};
+      final result = await withClock(
+        Clock.fixed(DateTime(2099, 10, 1, 9, 0)),
+        () => runRefresh(
+          app,
+          baseF3Config(orderMode: 'dry_run'),
+          scope: 'strava',
+          emit: (key, [fmt = const {}]) => logs.add('$key:$fmt'),
+        ),
+      );
+      expect(result.lunchesCancelled, 0);
+      expect(result.autoCancelledDays, isEmpty);
+      expect(logs.any((l) => l.startsWith('auto_lunch_cancel_dry_run:')), isTrue);
+      final cache = loadDataCache();
+      expect(cache.containsKey(cancelHandledKey), isFalse);
+    });
+
+    test('cancelHandledAndKeptLunchDaysPreventRecancel', () async {
+      saveDataCache({
+        cancelHandledKey: [freeDay],
+      });
+      final calls = <Object?>[];
+      final app = FakeApp(calls, orderMode: 'confirm', menu: fourDayMenu())
+        ..orderedDict = {
+          plannedDay: 't1&1&0',
+          freeDay: 't2&1&0',
+        };
+      final result = await withClock(
+        Clock.fixed(DateTime(2099, 10, 1, 9, 0)),
+        () => runRefresh(
+          app,
+          baseF3Config(),
+          scope: 'strava',
+          keptLunchDays: {plannedDay},
+        ),
+      );
+      expect(result.lunchesCancelled, 0);
+      expect(app.orderedDict[freeDay], 't2&1&0');
+      expect(app.orderedDict[plannedDay], 't1&1&0');
+    });
+
+    test('failedCancelRaisesAutomationError', () async {
+      final app = _FailingCancelApp(
+        menu: {
+          freeDay: {'t2&1&0': 'Řízek', 't2&-1&0': 'x'},
+        },
+        ordered: {freeDay: 't2&1&0'},
+      );
+      final logs = <String>[];
+      final result = await withClock(
+        Clock.fixed(DateTime(2099, 10, 1, 9, 0)),
+        () => runRefresh(
+          app,
+          {
+            ...baseF3Config(),
+            'planned_skips': <Object?>[],
+          },
+          scope: 'strava',
+          emit: (key, [fmt = const {}]) => logs.add(key),
+        ),
+      );
+      expect(result.automationErrors, isNotEmpty);
+      expect(result.automationErrors.first.$2, isA<AutomationError>());
+      expect(logs, contains('auto_lunch_failed'));
+    });
+
+    test('endToEndStrakalariFakeStravaCancelsInConfirmAndSkipsSendInDryRun',
+        () async {
+      setEnvironmentOverride({
+        'STRAKALARI_DATA_DIR': tmp.path,
+        'STRAKALARI_NO_KEYRING': '1',
+      });
+      final dFree = DateTime(2099, 10, 6);
+      final transport = st.FakeStravaTransport(
+        menu: {
+          'table0': [
+            st.soup(dFree),
+            st.meal(dFree, 1, '1', 'Guláš', count: 1),
+            st.meal(dFree, 2, '2', 'Rizoto'),
+          ],
+        },
+      );
+      final dryCfg = {
+        ...st.testConfig,
+        'strava_order_mode': 'dry_run',
+        'strava_auto_cancel_lunches': true,
+        'user_free_days': ['2099-10-06'],
+      };
+      final dryApp = Strakalari(
+        configFile: '${tmp.path}/cfg_dry.json',
+        configData: dryCfg,
+      )..stravaClient = StravaClient(dryCfg, transport: transport);
+
+      final dryRes = await withClock(
+        Clock.fixed(DateTime(2099, 10, 1, 9, 0)),
+        () => runRefresh(dryApp, dryApp.configData, scope: 'strava'),
+      );
+      expect(dryRes.ok, isTrue);
+      expect(transport.saves, isEmpty);
+      var entries =
+          audit.recent().where((e) => e['kind'] == 'lunch').toList();
+      expect(entries, hasLength(1));
+      expect(entries.single['outcome'], 'dry_run');
+      expect(entries.single['source'], 'auto');
+      expect((entries.single['detail'] as Map)['reason'], 'free_day');
+      expect((entries.single['detail'] as Map)['meal'], contains('&-1&'));
+
+      // Live confirm-mode refresh sends the XML cancel through the one path.
+      final liveCfg = {
+        ...st.testConfig,
+        'strava_order_mode': 'confirm',
+        'strava_auto_cancel_lunches': true,
+        'user_free_days': ['2099-10-06'],
+      };
+      final liveApp = Strakalari(
+        configFile: '${tmp.path}/cfg_live.json',
+        configData: liveCfg,
+      )..stravaClient = StravaClient(liveCfg, transport: transport);
+
+      final liveRes = await withClock(
+        Clock.fixed(DateTime(2099, 10, 1, 9, 0)),
+        () => runRefresh(liveApp, liveApp.configData, scope: 'strava'),
+      );
+      expect(liveRes.ok, isTrue);
+      expect(liveRes.lunchesCancelled, 1);
+      expect(liveRes.autoCancelledDays, {'06.10.2099'});
+      expect(transport.saves, hasLength(1));
+      expect(loadDataCache()[cancelHandledKey], ['06.10.2099']);
+      entries =
+          audit.recent().where((e) => e['kind'] == 'lunch').toList();
+      expect(entries.first['outcome'], 'sent');
+      expect(entries.first['source'], 'auto');
+      expect((entries.first['detail'] as Map)['reason'], 'free_day');
+    });
+  });
 }
 
 class _ReconciliationApp extends FakeApp {
@@ -1144,6 +1551,22 @@ class _FailingExcuseApp extends FakeApp {
 class _FailingOrderApp extends FakeApp {
   _FailingOrderApp() : super([]) {
     stravaOrderMode = 'auto';
+  }
+
+  @override
+  Future<bool> stravaOrderSelected(Map<String, String> orders,
+      {String source = 'manual'}) async {
+    return false;
+  }
+}
+
+/// App whose auto-cancel phase fails in confirm mode.
+class _FailingCancelApp extends FakeApp {
+  _FailingCancelApp({
+    required Map<String, Map<String, String>> menu,
+    required Map<String, String> ordered,
+  }) : super([], orderMode: 'confirm', menu: menu) {
+    orderedDict = Map<String, String>.of(ordered);
   }
 
   @override

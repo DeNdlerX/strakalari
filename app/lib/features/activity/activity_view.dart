@@ -180,6 +180,10 @@ List<String> auditRowSubs(
     }
     if (detail['reason'] == 'low_balance') {
       subs.add(Strings.get('audit_reason_low_balance'));
+    } else if (detail['reason'] == 'free_day') {
+      subs.add(Strings.get('audit_reason_free_day'));
+    } else if (detail['reason'] == 'planned') {
+      subs.add(Strings.get('audit_reason_planned'));
     }
   } else {
     final summaries = [

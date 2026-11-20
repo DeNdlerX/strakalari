@@ -271,4 +271,162 @@ void main() {
       expect(orders[day1], 'a&1&0');
     });
   });
+
+  group('autoCancelLunches (F3)', () {
+    test('stravaAutoCancelEnabledDefaultsTrue', () {
+      expect(stravaAutoCancelEnabled({}), isTrue);
+      expect(stravaAutoCancelEnabled({'strava_auto_cancel_lunches': true}),
+          isTrue);
+      expect(stravaAutoCancelEnabled({'strava_auto_cancel_lunches': false}),
+          isFalse);
+    });
+
+    test('freeLunchDaysUsesUnclippedCalendarAndRespectsForcedSchoolDays', () {
+      final dFree = futureBase.add(const Duration(days: 5));
+      final dForced = futureBase.add(const Duration(days: 6));
+      String iso(DateTime d) =>
+          '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      final cfg = <String, Object?>{
+        // Far past semester closure would clip if clip: true were used.
+        'sem1_close': '31.01.2020',
+        'sem2_close': '30.04.2020',
+        'user_free_days': [iso(dFree), iso(dForced)],
+        'forced_school_days': [iso(dForced)],
+      };
+      final days = freeLunchDays(cfg);
+      expect(days, contains(czDay(dFree)));
+      expect(days, isNot(contains(czDay(dForced))));
+    });
+
+    test('planAutoCancelsCoversFreeAndPlannedDaysAndRespectsOverrides', () {
+      final d1 = futureBase;
+      final d2 = d1.add(const Duration(days: 1));
+      final d3 = d2.add(const Duration(days: 1));
+      String iso(DateTime d) =>
+          '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      final food = futureMenu();
+      final cfg = <String, Object?>{
+        'user_free_days': [iso(d1)],
+      };
+      final ordered = {
+        czDay(d1): 'a&1&0',
+        czDay(d2): 'b&1&0',
+        czDay(d3): 'c&-1&0', // already cancelled
+      };
+
+      // Free day (d1) + planned day (d2) are cancelled; d3 already cancelled.
+      final cancels = planAutoCancels(
+        food,
+        cfg,
+        cancelledDays: {czDay(d2)},
+        ordered: ordered,
+        isOpen: (_) => true,
+      );
+      expect(cancels, {
+        czDay(d1): 'a&-1&0',
+        czDay(d2): 'b&-1&0',
+      });
+
+      // Normal school days not in cancelledDays/freeDays are never cancelled.
+      final noneWhenNormalDay = planAutoCancels(
+        food,
+        const <String, Object?>{},
+        cancelledDays: const <String>{},
+        ordered: {czDay(d2): 'b&1&0'},
+        isOpen: (_) => true,
+      );
+      expect(noneWhenNormalDay, isEmpty);
+
+      // Manual override in cancelHandled suppresses re-cancelling d1.
+      final withOverride = planAutoCancels(
+        food,
+        cfg,
+        cancelledDays: {czDay(d2)},
+        ordered: ordered,
+        cancelHandled: {czDay(d1)},
+        isOpen: (_) => true,
+      );
+      expect(withOverride, {czDay(d2): 'b&-1&0'});
+
+      // Disabled toggle or closed cutoff cancels nothing.
+      expect(
+        planAutoCancels(
+          food,
+          {...cfg, 'strava_auto_cancel_lunches': false},
+          cancelledDays: {czDay(d2)},
+          ordered: ordered,
+          isOpen: (_) => true,
+        ),
+        isEmpty,
+      );
+      expect(
+        planAutoCancels(
+          food,
+          cfg,
+          cancelledDays: {czDay(d2)},
+          ordered: ordered,
+          isOpen: (_) => false,
+        ),
+        isEmpty,
+      );
+    });
+
+    test('planAutoOrdersSkipsFreeDaysAndRespectsCancelFlagAndOverrides',
+        () async {
+      final d1 = futureBase;
+      final d2 = d1.add(const Duration(days: 1));
+      final d3 = d2.add(const Duration(days: 1));
+      String iso(DateTime d) =>
+          '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      final food = futureMenu();
+      final cfg = <String, Object?>{
+        'user_free_days': [iso(d1), iso(d2)],
+      };
+
+      // d1 is already ordered (gets cancelled), d2 is unordered free day (stays
+      // empty!), d3 is normal unordered day (gets ordered).
+      final (orders, _) = await planAutoOrders(
+        food,
+        cfg,
+        ordered: {czDay(d1): 'a&1&0'},
+        isOpen: (_) => true,
+      );
+      expect(orders[czDay(d1)], 'a&-1&0');
+      expect(orders.containsKey(czDay(d2)), isFalse);
+      expect(orders[czDay(d3)], 'c&1&0');
+
+      // When user manually overrode d1, auto mode neither cancels nor replaces d1.
+      final (keptOrders, _) = await planAutoOrders(
+        food,
+        cfg,
+        ordered: {czDay(d1): 'a&1&0'},
+        cancelHandled: {czDay(d1)},
+        isOpen: (_) => true,
+      );
+      expect(keptOrders.containsKey(czDay(d1)), isFalse);
+      expect(keptOrders[czDay(d3)], 'c&1&0');
+
+      // When auto-cancel is disabled, d1 stays ordered (neither cancelled nor replaced)
+      // and unordered free day d2 is ordered like a normal day (R5 S3).
+      final (disabledOrders, _) = await planAutoOrders(
+        food,
+        {...cfg, 'strava_auto_cancel_lunches': false},
+        ordered: {czDay(d1): 'a&1&0'},
+        isOpen: (_) => true,
+      );
+      expect(disabledOrders.containsKey(czDay(d1)), isFalse);
+      expect(disabledOrders[czDay(d2)], 'b&1&0');
+      expect(disabledOrders[czDay(d3)], 'c&1&0');
+    });
+
+    test('updateCancelHandledDaysDedupsSortsAndPrunesPastWeek', () {
+      final today = DateTime(2026, 11, 20);
+      final kept = updateCancelHandledDays(
+        ['12.11.2026', '13.11.2026', '25.11.2026'],
+        ['25.11.2026', '22.11.2026'],
+        today,
+      );
+      expect(kept, ['13.11.2026', '22.11.2026', '25.11.2026']);
+    });
+  });
 }

@@ -733,5 +733,22 @@ void main() {
       expect(Strings.get('tut_plan_strip_body').toLowerCase(),
           contains('evenly'));
     });
+
+    test('F3 lunches tour mentions automatic lunch cancelling and Settings -> Rules in cs and en (R5 S2)', () {
+      final prev = Strings.lang;
+      addTearDown(() => Strings.lang = prev);
+      final sendStep =
+          tours['lunches']!.steps.firstWhere((s) => s.key == 'lunch_send');
+
+      Strings.lang = 'cs';
+      final csBody = Strings.get('tut_${sendStep.key}_body');
+      expect(csBody, contains('Obědy ve volné dny'));
+      expect(csBody, contains('Nastavení → Pravidla'));
+
+      Strings.lang = 'en';
+      final enBody = Strings.get('tut_${sendStep.key}_body');
+      expect(enBody, contains('Lunches on free days'));
+      expect(enBody, contains('Settings → Rules'));
+    });
   });
 }

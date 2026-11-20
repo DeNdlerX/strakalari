@@ -141,7 +141,9 @@ extension PlannerLogic on AppState {
     final prevOrders = Map<String, String>.of(orders);
     final prevPending = Set<String>.of(pendingOrders);
     plannedSkips.add(entry);
-    if (cancelLunch && stravaEnabled()) stageLunchCancel(entry);
+    final stagedCancelDays = (cancelLunch && stravaEnabled())
+        ? stageLunchCancel(entry)
+        : const <String>[];
     try {
       config.set('planned_skips', List<Map<String, Object?>>.of(plannedSkips));
       config.save();
@@ -157,6 +159,9 @@ extension PlannerLogic on AppState {
       _emit();
       return false;
     }
+    if (stagedCancelDays.isNotEmpty) {
+      clearCancelHandledDays(stagedCancelDays);
+    }
     syncAndroidState(); // the phone's alarm skips the planned lessons
     tutorialEvent('day_planned');
     _emit();
@@ -164,8 +169,9 @@ extension PlannerLogic on AppState {
   }
 
   /// Queues the lunch cancellation for every still-open day of [entry].
-  /// Port of `_stage_lunch_cancel()`.
-  void stageLunchCancel(Map<String, Object?> entry) {
+  /// Returns the canonical day keys staged. Port of `_stage_lunch_cancel()`.
+  List<String> stageLunchCancel(Map<String, Object?> entry) {
+    final staged = <String>[];
     for (final day in entryDays(entry)) {
       final dayLabel = fmtDay(day);
       bool open;
@@ -183,6 +189,7 @@ extension PlannerLogic on AppState {
         continue;
       }
       cancelledLunches.add(dayLabel);
+      staged.add(dayLabel);
       // Queue the cancellation so Send transmits it: stage the menu's
       // deorder id as the local pick (pending). Without a known menu
       // just drop the local pick; submit derives the deorder at send.
@@ -206,6 +213,7 @@ extension PlannerLogic on AppState {
         pendingOrders.remove(dayLabel);
       }
     }
+    return staged;
   }
 
   /// Plans several whole days at once (one save, one repaint).
@@ -241,9 +249,12 @@ extension PlannerLogic on AppState {
     final prevOrders = Map<String, String>.of(orders);
     final prevPending = Set<String>.of(pendingOrders);
     final stravaOn = stravaEnabled();
+    final stagedCancelDays = <String>[];
     for (final entry in entries) {
       plannedSkips.add(entry);
-      if (stravaOn && cancelsLunch(entry)) stageLunchCancel(entry);
+      if (stravaOn && cancelsLunch(entry)) {
+        stagedCancelDays.addAll(stageLunchCancel(entry));
+      }
     }
     try {
       config.set('planned_skips', List<Map<String, Object?>>.of(plannedSkips));
@@ -259,6 +270,9 @@ extension PlannerLogic on AppState {
         ..addAll(prevPending);
       _emit();
       return 0;
+    }
+    if (stagedCancelDays.isNotEmpty) {
+      clearCancelHandledDays(stagedCancelDays);
     }
     syncAndroidState();
     tutorialEvent('day_planned');

@@ -98,12 +98,31 @@ class AppState {
         this.data.containsKey('timetable') &&
             this.data['timetable'] is Map &&
             (this.data['timetable'] as Map).isNotEmpty);
+    final cachedOrders = this.data['strava_ordered'];
+    if (cachedOrders is Map) {
+      for (final e in cachedOrders.entries) {
+        orders[canonicalDayKey(e.key)] = '${e.value}';
+      }
+    }
+    webOrders = Map<String, String>.of(orders);
+    final rawCancelHandled = this.data[cancelHandledKey];
+    final cancelHandled = <String>{
+      if (rawCancelHandled is List)
+        for (final d in rawCancelHandled) canonicalDayKey(d),
+    };
     plannedSkips = loadPlannedSkips(config.data);
     cancelledLunches = {};
     for (final entry in plannedSkips) {
       if (!cancelsLunch(entry)) continue;
       for (final day in entryDays(entry)) {
-        cancelledLunches.add(fmtDay(day));
+        final key = fmtDay(day);
+        final web = webOrders[key] ?? '';
+        if (cancelHandled.contains(key) &&
+            web.isNotEmpty &&
+            !web.contains('&-1&')) {
+          continue;
+        }
+        cancelledLunches.add(key);
       }
     }
     try {
@@ -117,13 +136,6 @@ class AppState {
     } catch (_) {
       // Memory default stands when the config cannot be read.
     }
-    final cachedOrders = this.data['strava_ordered'];
-    if (cachedOrders is Map) {
-      for (final e in cachedOrders.entries) {
-        orders[canonicalDayKey(e.key)] = '${e.value}';
-      }
-    }
-    webOrders = Map<String, String>.of(orders);
     for (final day in cancelledLunches) {
       if (!'${orders[day]}'.contains('&-1&')) orders.remove(day);
     }
@@ -360,9 +372,39 @@ class AppState {
     }
   }
 
+  /// Removes [days] from the cached auto-cancel override list so a freshly
+  /// planned skip or newly added free day can cancel again on the next refresh.
+  void clearCancelHandledDays(Iterable<String> days) {
+    final targets = <String>{
+      for (final d in days)
+        if (d.trim().isNotEmpty) canonicalDayKey(d),
+    };
+    if (targets.isEmpty) return;
+    try {
+      final raw = loadDataCache()[cancelHandledKey];
+      if (raw is! List || raw.isEmpty) return;
+      final kept = <String>[
+        for (final item in raw)
+          if (!targets.contains(canonicalDayKey(item))) '$item',
+      ];
+      if (kept.length != raw.length) {
+        saveDataCache({cancelHandledKey: kept});
+      }
+    } on Object catch (exc) {
+      // ignore: avoid_print
+      print('Warning: could not update $cancelHandledKey: $exc');
+    }
+  }
+
   /// Persists config updates. Returns true only if the write succeeded.
   /// Port of `save()` (callers must branch on the result).
   bool save(Map<String, Object?> updates) {
+    final checkFree = updates.containsKey('user_free_days') ||
+        updates.containsKey('school_preset_id') ||
+        updates.containsKey('forced_school_days') ||
+        updates.containsKey('holidays');
+    final freeBefore =
+        checkFree ? freeLunchDays(config.data) : const <String>{};
     var ok = true;
     for (final e in updates.entries) {
       try {
@@ -380,6 +422,10 @@ class AppState {
       // ignore: avoid_print
       print('Warning: could not save config: $exc');
       return false;
+    }
+    if (checkFree) {
+      final added = freeLunchDays(config.data).difference(freeBefore);
+      if (added.isNotEmpty) clearCancelHandledDays(added);
     }
     refreshTokens();
     for (final cb in List.of(configListeners)) {
