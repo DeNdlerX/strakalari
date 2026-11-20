@@ -689,3 +689,93 @@ doesn't say it.
    `main` (`656e118`) has no commits the branch lacks.
 9. **Not checked:** the real Strava site (forbidden; the fakes stand in)
    and macOS/iOS builds (not possible here). F3 has no phone item.
+
+---
+
+## Re-review 2 (2026-11-20)
+
+At the owner's word ("Can you do the fixing yourself?", and while it was
+being done, "And I approve that as reviewed, we need to work quickly", in
+STATUS), the reviewer fixed S5 itself, as in R2, R3c and R4. So this fix
+was written and checked by the same person. What makes up for that: the
+new test fails on the code it guards, and both suites run. Reviewed at
+`qa-roadmap` @ `9d6dd5b`; `main` has no commits the branch lacks. Commits
+since the re-review (`4d92b4e`):
+
+- `9d6dd5b` S5: comment, test and the STATUS *Deviations* line, one commit.
+
+### Verdict: PASS
+
+S5 is done as the re-review described. No behaviour changed; the code
+change is a comment. The comment above the filter in `_autoLunch` now says
+what it drops, including a day where every meal is blacklisted. A test
+now fails if such a day were ever again sent to Strava and reported as
+"lunch cancelled automatically", and STATUS lists the change under
+*Deviations*. F3 is done, and with it phase 5.
+
+### S5, checked
+
+- **Comment:** `packages/strakalari_core/lib/src/automation/refresh.dart:798–803`
+  names every kind of `&-1&` pick the filter drops: partial planned days
+  (M1), days whose cancelling is off or already handled, and the
+  all-blacklisted fallback on a day with nothing ordered, which changes
+  nothing on Strava and would otherwise be reported as an automatic cancel.
+  The code below it is unchanged.
+- **Test:** `allBlacklistedDayIsNotReportedAsCancelled (R5 S5)`
+  (`refresh_test.dart:1279`), with `BlacklistApp` (`:443`, a `FakeApp`
+  whose `stravaBlacklist` is set): the re-review's scenario; one order
+  call holding only `{'06.10.2099': 't2&1&0'}`, no errors, one lunch
+  ordered, none cancelled, no cancelled days, no
+  `auto_lunch_cancel_handled` in the cache. It passes at `9d6dd5b`. With
+  `refresh.dart` from `7de48b3` (the code before M1), and with `:807`
+  narrowed to partial planned days, it fails: `Expected:
+  {'06.10.2099': 't2&1&0'}`, `Actual: {'05.10.2099': 't1&-1&0',
+  '06.10.2099': 't2&1&0'}`.
+- **STATUS:** the *Deviations* line says what the filter drops and what
+  follows for such a day (not reported as cancelled, not on the handled
+  list, checked again on later refreshes).
+
+### Notes
+
+- **N13 (the reviewer's mistake, repaired):** deleting the re-review's
+  throwaway worktree with `robocopy /MIR` (to get past Windows' long-path
+  limit) followed the Flutter plugin links in that worktree
+  (`app/windows/flutter/ephemeral/.plugin_symlinks`) into the shared pub
+  cache. It emptied seven packages there: `jni` 1.1.2,
+  `path_provider_windows` 2.3.0, `screen_retriever_windows` 0.2.2,
+  `share_plus` 12.0.2, `tray_manager` 0.5.3, `url_launcher_windows` 3.1.6
+  and `window_manager` 0.5.2. The next `dart test` failed on it, which is
+  how it was found. The reviewer removed the seven empty folders (only
+  empty folders, by exact path) and ran `dart pub get --enforce-lockfile`,
+  which downloaded the same versions again and checked them against the
+  lockfile. Afterwards no package in the cache lacks its `pubspec.yaml`,
+  and both suites pass. Nothing in the repository, the main checkout or
+  the owner's data was touched. **Next time:** remove a throwaway worktree
+  with `git worktree remove`. If the path is too long, first delete each
+  link in `app/*/flutter/ephemeral/.plugin_symlinks` on its own (removing
+  a link doesn't touch its target), and never use a mirroring delete.
+
+### What the reviewer verified, and how (re-review 2)
+
+1. **Suites** at `9d6dd5b`, after the pub cache was repaired (Flutter
+   3.44.8 / Dart 3.12.2): `dart pub get --enforce-lockfile` OK; core
+   `dart analyze` no issues, `dart test` **855 passed, 2 skipped** (854,
+   +1); app `flutter analyze` no issues, `flutter test` **789 passed,
+   1 skipped** (unchanged). The generated plugin files `flutter test`
+   rewrites were restored (line endings only).
+2. **Test on the old code:** in this worktree, `refresh.dart` replaced in
+   turn by the narrowed filter and by the `7de48b3` version, then restored
+   from a byte-compared copy of the fixed file.
+3. **Test integrity:** one test added, nothing removed or changed;
+   `test(` / `testWidgets(` calls 1590 → 1591. No `skip:`, no
+   `try`/`catch`, no `anything` or `isNotNull`; only `refreshConfig`'s
+   `https://bakalari.test` as a host.
+4. **Scope, keys, strings, safety:** one comment in `refresh.dart`, one
+   test with its fake, one STATUS line. No config key, parity fixture,
+   string, UI or tutorial change; no new `catch`. The order path, the
+   audit, the session lock and `automation_paused` are untouched.
+5. **Hygiene:** committed as the configured user, plain message, no
+   `Co-Authored-By`, `Claude-Session` or "Generated with" lines; no
+   personal file; `qa-roadmap` has no upstream; not merged into `main`.
+6. **Not checked:** the real Strava site (forbidden) and macOS/iOS builds
+   (not possible here). Neither blocks the pass.
