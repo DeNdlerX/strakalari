@@ -1,7 +1,7 @@
 # QA & roadmap status
 
-Branch: qa-roadmap · Base: main @ 656e118 · Current phase: 5 (F3), ⛔ R5 review needed
-Next step: Reviewer check at ⛔ R5 before starting Phase 6 (F4).
+Branch: qa-roadmap · Base: main @ 656e118 · Current phase: 5 (F3), ⛔ R5 review: FAIL, fixing
+Next step: Fix every finding in `reviews/phase-5.md` (blockers first), one commit per finding, then stop for re-review.
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -90,6 +90,7 @@ Next step: Reviewer check at ⛔ R5 before starting Phase 6 (F4).
 - **O9 wizard Strava automatic ordering toggle (2026-11-20):** "Also, could you perhaps add a toggle for automatic lunch ordering into the first time wizard under the existing strava credentials step?"
 
 ## Questions for the owner / reviewer
+- **F3 older installs (2026-11-20, R5, open):** `strava_auto_cancel_lunches` is on whenever the key is missing, so every install from before F3 gets automatic cancelling too, and its first refresh cancels every lunch still ordered on an upcoming free day or planned day off (D3 answered "On by default" for new users). The owner chooses Q1 (a) keep it on for everyone (no change) or (b) older installs start with it off, in [`reviews/phase-5.md`](reviews/phase-5.md#q1-older-installs-get-it-switched-on-too).
 - **F2 legacy `sent_excuses_limit: 100` in existing configs (2026-11-20, answered: Q1 (a), see *Owner decisions*):** Existing pre-F2 `config.json` files already on disk keep `"sent_excuses_limit": 100` (new installs default to `0` = unlimited). If a user has more than 100 sent excuses in Komens, the first F2 version failed closed with a log hint to set `sent_excuses_limit` to `0` instead of silently truncating (since Q1 (a), `c886ac8` and S5, it reads the newest 100 and starts the excuse window after them); should anything automatically migrate existing `100` values to `0`, or leave existing configs untouched? **Reviewer (R4):** no silent change of the setting (CONTRIBUTING §6); the owner chooses between Q1 (a) and (b) in [`reviews/phase-4.md`](reviews/phase-4.md#q1-older-installs-keep-the-hidden-limit-of-100-sent-excuses). Q2 there asks the owner to confirm that older absences back to the semester start may now be excused automatically (answered: confirmed, see *Owner decisions*).
 - **B1 (answered 2026-11-15):** Configs previously saved by the old wizard bug hold plain strings instead of `{name, text}` template objects. Per the plan they are left untouched and load cleanly in Settings and the send path — owner replied `"connected. I dont think any use it."` (no migration needed).
 - **M3 / B3 (2026-11-16):** Do you still see the light theme ("Vzhled → Světlý") staying dark on your phone? In our `before_light_phone.png` screenshot it was already light, though widget tests caught a 1-frame lag / restarted cross-fade animation on rebuilds.
@@ -127,6 +128,7 @@ Next step: Reviewer check at ⛔ R5 before starting Phase 6 (F4).
 
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
 ### Phase 5 (`F3` + `O9` complete, checkpoint ⛔ R5)
+- **2026-11-20 R5 review: FAIL**: F3 cancels ordered lunches on calendar free days and planned days off on every refresh, also in confirm mode, as D3 says; it goes through the one order path under the session lock, respects the deadline and `automation_paused`, audits every attempt with its reason (dry run included, nothing sent), fails loudly, and leaves alone a day the user picked a meal for. O9 (wizard toggle, off by default, behind the safety question) is fine. One must-fix: a day planned off only for some lessons gets its lunch cancelled automatically, in confirm mode too, and the test meant to prove it doesn't uses a real partial day (M1). Four should-fix: the "unclipped calendar" test uses keys that don't exist (S1); no tutorial mentions the cancelling (S2); with the switch off, automatic ordering, the filter and AI picks still skip every free day (S3); two small parts of the fix have no test (S4). 28 of 32 parts of F3 and O9 undone one at a time are caught by the new tests. Owner decision Q1: older installs get the cancelling switched on too. Baseline: core 852 passed / 2 skipped, app 787 passed / 1 skipped. See [`reviews/phase-5.md`](reviews/phase-5.md).
 - **What was done (2026-11-20, `66dae7a`, `05e28ce`):** Fast-forwarded to `main @ 656e118` and implemented Phase 5 (`F3`, automatic Strava lunch cancellation) plus owner-requested `O9` (automatic lunch ordering toggle in the wizard's Strava step), one item per commit:
   1. **Config & core automatic lunch cancellation (`66dae7a`):**
      - Added `'strava_auto_cancel_lunches': true` to `packages/strakalari_core/lib/src/storage/config.dart` (`canonicalDefaults` + boolean validation in `validateConfig`), `config.example.json`, and the two full config snapshots in `packages/strakalari_core/test/parity/helpers.json`.
