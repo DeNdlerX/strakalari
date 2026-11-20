@@ -1269,6 +1269,17 @@ void main() {
           }
           return HttpResponseData(statusCode: 500, url: Uri.parse(fakeRoot));
         },
+        'POST /Komens/GetMessageDataAsync': (_) => {
+              'success': true,
+              'error': null,
+              'data': {
+                'Kind': 'OMLUVENKA',
+                'DateFrom': '03.09.2026',
+                'DateTo': '03.09.2026',
+                'TimeFrom': '',
+                'TimeTo': '',
+              },
+            },
         'POST /Timetable/GetContentData': (FakeRequest req) {
           final payload = jsonDecode(utf8.decode(req.body)) as Map;
           final d = DateTime.tryParse('${payload['date'] ?? ''}') ??
@@ -1328,6 +1339,7 @@ void main() {
       expect(result.excusesSent, 0);
       expect(File(histFile).readAsStringSync().trim(), '[]');
       expect(loadUnconfirmed(histFile, utf8), hasLength(1));
+      expect(server.calls('GET', '/next/komens_zprava.aspx'), isEmpty);
       expect(server.calls('POST', '/next/komens_zprava.aspx'), isEmpty);
     });
   });
