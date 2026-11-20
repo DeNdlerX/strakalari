@@ -400,6 +400,31 @@ void main() {
       expect((jsonDecode(utf8.decode(detailCalls.last.body)) as Map)['idmsg'],
           '503');
     });
+
+    test('aDetailThatGaveNoEntriesIsReadAgainNextSync (R4 M1)', () async {
+      var good = false;
+      final server = FakeBakalari({
+        'GET /next/komens.aspx': outboxPage,
+        'POST /next/komens.aspx': outboxListing(['501'], const []),
+        'POST /Komens/GetMessageDataAsync': (FakeRequest _) => {
+              'success': true,
+              'error': null,
+              'data': good ? excuseDetail('3.9.2026') : null,
+            },
+      });
+      final bak = BakalariClient(Map.of(fakeConfig), transport: server);
+      expect(await bak.fetchSentExcuses(), isEmpty);
+      expect(bak.knownOutboxDetails.containsKey('501'), isFalse);
+      good = true;
+      expect(await bak.fetchSentExcuses(), [
+        {
+          'type': 'pure days',
+          'starting_day': '03.09.2026',
+          'ending_day': '03.09.2026',
+        }
+      ]);
+      expect(server.calls('POST', '/Komens/GetMessageDataAsync'), hasLength(2));
+    });
   });
 
   group('absence', () {

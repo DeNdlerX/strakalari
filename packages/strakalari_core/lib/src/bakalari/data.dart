@@ -212,7 +212,7 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
         final key = cacheKeys[msgId] ?? msgId;
         final cached = knownOutboxDetails[key];
         late final List<Map<String, Object?>> entries;
-        if (cached != null) {
+        if (cached != null && cached.isNotEmpty) {
           entries = [for (final e in cached) Map<String, Object?>.of(e)];
           reused += 1;
         } else {
@@ -220,9 +220,11 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
           entries = sentExcuseEntries(detail);
           fetched += 1;
         }
-        nextCache[key] = [
-          for (final e in entries) Map<String, Object?>.of(e),
-        ];
+        if (entries.isNotEmpty) {
+          nextCache[key] = [
+            for (final e in entries) Map<String, Object?>.of(e),
+          ];
+        }
         for (final entry in entries) {
           if (!parsed.any((p) => jsonEquals(p, entry))) {
             parsed.add(entry);

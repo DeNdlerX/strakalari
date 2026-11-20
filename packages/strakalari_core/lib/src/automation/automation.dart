@@ -518,7 +518,7 @@ class Strakalari implements RefreshApp {
           }
           list.add(item.map((ik, iv) => MapEntry('$ik', iv as Object?)));
         }
-        if (valid) out[k] = list;
+        if (valid && list.isNotEmpty) out[k] = list;
       }
       return out;
     } on Object {
