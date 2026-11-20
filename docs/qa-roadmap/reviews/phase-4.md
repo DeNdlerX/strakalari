@@ -447,3 +447,251 @@ tests run.
     `Co-Authored-By`, `Claude-Session` or "Generated with" lines; the
     branch has no upstream; `main` has nothing the branch lacks. The
     research note holds no names, texts or message ids.
+
+---
+
+## Re-review 2026-11-20
+
+Reviewed at `qa-roadmap` @ `9e2fd3d` (base `main` @ `bfe4860`; `main` has
+no commits the branch lacks). Commits since the review (`c6cb383`):
+
+- `a7f5e1a`, `f3eace3` STATUS: the owner's Q1 answer (a) and Q2
+  confirmation, word for word;
+- `cdd14d7` M1, `b8ec2db` S1, `5c43568` S2, `805fde6` S3 (test only),
+  `31c9a1b` S4, `c886ac8` Q1 (a), one commit each;
+- `9e2fd3d` STATUS.
+
+### Verdict: PASS WITH FIXES
+
+All five findings and the owner's Q1 (a) are done, in the code and not
+just marked done. A message whose details came back empty or unreadable is
+now read again on the next refresh instead of being remembered as
+"excuses nothing" (M1). A page that repeats or drops earlier messages fails
+the read, and after an exact multiple of the page size the list only ends
+when the server says so (S1). A week that doesn't load is retried alone
+instead of the whole semester (S2). The page-2 test now fails when a page-2
+error is ignored (S3). The message cache has a version (S4). Older installs
+with the hidden limit of 100 keep automatic excusing: they read the newest
+100 messages and excuse only after them (Q1 (a)). Every new test fails on
+the code before its fix with an assertion, every part of the fixes undone
+alone breaks a test, both suites are green, and only the two test edits
+R4 allowed were made.
+
+One should-fix is left, and it comes from the reviewer's own R4
+instruction for Q1, not from the agent: **S5**. The cut at 100 messages can
+fall inside a day. The app then counts that whole day as read, although the
+earlier messages of that same day were not read. The reviewer's test shows
+what follows: an excuse the app really sent that day, but whose
+confirmation it missed, is declared "NOT sent and may be sent again", and
+that day's absence is offered for automatic sending once more. It needs more
+than 100 excuse messages in the school year and an unlucky day, so it is
+unlikely, but a second excuse can't be taken back and the fix is a few
+lines.
+
+### Should-fix
+
+#### S5 (F2 / Q1, `c886ac8`): a cut at the limit inside a day counts that day as read
+
+- **Where:** `packages/strakalari_core/lib/src/bakalari/data.dart:199–219`
+  (`fetchSentExcuses`, the limit branch). `sentExcusesFrom` becomes the
+  sent day of the oldest message read (`idsToRead.last`, `:201`, `:218`,
+  `:259`). The list is newest first, so message `limit + 1` and older ones
+  are not read. When message `limit + 1` was sent on the same day as
+  message `limit`, that day counts as read although part of it wasn't.
+- **What is wrong:** `sentExcusesFrom` means "every excuse sent from this
+  day on was read". Two places trust it:
+  - `resolveUnconfirmed` (`excuse_history.dart:380–387`): an unconfirmed
+    submit from that day or later that the read didn't find is settled as
+    "it was NOT sent and may be sent again" (`automation.dart:1182`), and
+    nothing blocks its re-send any more;
+  - `pendingExcuses` → `semesterExcuseWindowStart`: the window starts on
+    that day, so an absence that day excused by the unread message (sent on
+    the website or another phone) is pending again.
+
+  Either way automatic mode can send a second excuse. It needs more than
+  `sent_excuses_limit` excuse messages in the school year (100 on every
+  older install) and the cut on such a day; the unconfirmed path also needs
+  the submit to stay unsettled until that many newer messages exist. The
+  cause is the R4 text of Q1 (a) ("set `sentExcusesFrom` to the sent date of
+  the oldest of them"); the agent did exactly what it said.
+- **Reviewer's check** (throwaway test in `automation_test.dart`, not
+  committed): limit 2; the outbox, newest first: `603` sent 10.11. 10:00
+  (excuses 10.11.), `602` sent 5.11. 12:00 (excuses 4.11.), `601` sent
+  5.11. 09:00 (excuses 5.11.); the sidecar holds the app's own unconfirmed
+  whole-day submit for 5.11., made 5.11. 09:00 (that is `601`); an absent
+  lesson on 5.11.; clock 20.11. 10:00. Result at `9e2fd3d`:
+  `sentExcusesFrom` = 5.11., the sidecar is emptied (`Expected: an object
+  with length of <1>`, `Actual: []`), and `pendingExcuses()` returns
+  `[05.11.2026]`.
+- **What correct looks like:** one commit,
+  `F2: a limit cut inside a day doesn't count that day as read (R4 S5)`.
+  - In the limit branch, also read the sent day of the first message not
+    read, `ids[capped]` (its key in `cacheKeys`, then `parseOutboxSortDate`,
+    as for the oldest read one). The window then starts on the later of
+    the oldest read message's day (as now) and **the day after** the first
+    unread message's day; then the later of that and the period start (as
+    now). Build the day after as `DateTime(y, m, d + 1)`, not with a
+    `Duration`.
+  - Fail the read as today (null, the same log line and
+    `sentExcusesError`) when the first unread message has no
+    `data-sortdate`, and when that start would be after today. The second
+    case only happens when the cut falls on today; it matters because
+    `semesterExcuseWindowStart` (`excuse_history.dart:121`) falls back to
+    the 30-day window for a start in the future, which would be wider than
+    what was read.
+  - Tests, each must fail at `9e2fd3d`:
+    1. `bakalari_data_test.dart`, group `sentExcuses`: the three messages
+       above with limit 2 → `sentExcusesFrom == DateTime(2026, 11, 6)`,
+       two detail reads.
+    2. `automation_test.dart`, group `completeExcuseHistoryF2`: the
+       reviewer's scenario above → the sidecar still holds the 5.11. entry
+       and `pendingExcuses()` doesn't contain `05.11.2026`.
+    3. `bakalari_data_test.dart`: limit 1, two messages both sent today
+       (`withClock` on 20.11.) → `fetchSentExcuses(limit: 1)` returns null.
+  - The existing tests stay as they are: in both R4 Q1 tests the first
+    unread message (`601`) was sent on 10.9., so their start stays 15.10.
+    The reviewer ran this change in a throwaway copy: all 836 existing core
+    tests pass unchanged, and so do tests 2 and 3.
+  - When updating STATUS, also fix the wording of the *F2 legacy
+    `sent_excuses_limit`* question: since Q1 (a) the read no longer fails
+    when the limit is exceeded.
+
+### R4 findings, checked
+
+- **M1 fixed** (`cdd14d7`). `fetchSentExcuses` reuses a cached message only
+  when its entries aren't empty (`data.dart:239`) and stores only non-empty
+  results (`:247`); seeding from `data_cache.json` skips empty lists too
+  (`automation.dart:521`, a second layer). The test is the reviewer's,
+  word for word (`bakalari_data_test.dart:491`); on `f3eace3` it fails with
+  `Expected: false`, `Actual: <true>`.
+- **S1 fixed** (`b8ec2db`). For page N > 1, `fetchAllOutboxIds` throws when
+  the reply lacks an id of an earlier reply (`data.dart:367`, replacing the
+  shrink check); a reply with no new id ends the list only when
+  `hfAllMessagesLoaded` is `all` or `hfLoadedMessagesCount` is `0`, else it
+  throws "no progress" (`:376`, `_outboxReplyMarksEnd` `:711`); otherwise a
+  reply shorter than N × size ends it; the 50-page guard stays (`:390`).
+  The fake of `fetchesWholeSchoolYearPeriodAndPagesCumulatively` now sends
+  the two hidden fields the way the real and the demo server do (allowed in
+  R4). Five tests (`:516`, `:538`, `:562`, `:621`, `:645`): on `cdd14d7`
+  the first four fail with `Expected: null`, `Actual: [...]` (the exact
+  multiple test through its no-marker case), and the 50-page guard test
+  passes there, as R4 said it would.
+- **S2 fixed** (`5c43568`). `_recordHistoryWeeks` writes
+  `semester_reconciled` = today after every Bakaláři fetch
+  (`refresh.dart:410`) and gets `effectiveDone` (`:512`), so a semester
+  week that didn't load stays out of `weeks` and alone is asked for next
+  time. Its stored days are not lost: `_persist` merges the timetable day
+  by day and keeps the school year's earlier days (`refresh.dart:301–321`).
+  The old test was renamed and changed exactly as R4 allowed, and its
+  second half is now stricter (`[skipped]` instead of
+  `contains(skipped)`). On `b8ec2db`:
+  `persistentlyFailingWeekIsRetriedAloneNotWholeSemester` fails
+  (`Expected: [2026-09-14]`, `Actual` starts at 2026-08-31) and
+  `incompleteSemesterBackfillRetriesMissingWeekAlone` fails
+  (`Expected: '2026-11-20'`, `Actual: <null>`).
+- **S3 fixed** (`805fde6`, test only, 12 lines added, nothing changed). With
+  page-2 errors ignored in `fetchAllOutboxIds` (the reviewer's mutation at
+  `9e2fd3d`), the new version fails (`lastOutboxSyncOk`: `Expected: false`,
+  `Actual: <true>`); the version before `805fde6` still passes with the
+  same mutation.
+- **S4 fixed** (`31c9a1b`). `outboxDetailsKey` is
+  `komens_outbox_details_v1` (`cache.dart:28`), and both doc comments say a
+  change to what `sentExcuseEntries` returns must bump it (`cache.dart:26`,
+  `extractors.dart:575`). The test (`automation_test.dart:1346`) seeds a
+  wrong cache under the old and another name; on `805fde6` it fails with 0
+  detail reads (`Expected: an object with length of <1>`). The old key
+  never reached `main`, so no install keeps a dead copy.
+- **Q1 (a) done** (`c886ac8`), apart from S5. With the limit exceeded, only
+  the newest `limit` messages are read, the window starts on the oldest
+  read one's sent day (never before the period start), a row without
+  `data-sortdate` still fails the read
+  (`explicitPositiveLimitFailsClosedWhenExceeded` unchanged and green), and
+  one log line names the start. On `31c9a1b`
+  `positiveLimitReadsNewestAndNarrowsSentExcusesFrom` fails
+  (`Expected: not null`) and
+  `positiveLimitNarrowsPendingWindowInsteadOfStopping` fails
+  (`Expected: true`, `Actual: <false>`); the `parseOutboxSortDate` test
+  can't compile there and was read (valid day, 30 February, empty, null,
+  garbage).
+
+### Each part of the fixes undone alone (at `9e2fd3d`)
+
+| Part undone | Caught by |
+|---|---|
+| containment check off (`data.dart:367`) | `nonCumulativePagesFailOutboxRead`, `pageTwoMissingAnIdFromPageOneFailsOutboxRead` |
+| end markers always "end" | `pageTwoRepeatingPageOneFailsOutboxRead`, `exactMultipleEnds…` |
+| end markers never "end" | `exactMultipleEnds…`, `fetchesWholeSchoolYearPeriodAndPagesCumulatively` |
+| no-progress check off (`:376`) | `pageTwoRepeatingPageOneFailsOutboxRead`, `exactMultipleEnds…` |
+| page-2 error ignored | `pageTwoFailureBlocksAutoExcuse…` (S3), `pageTwoFailureOrDetailFailureFailsWholeRead` |
+| Q1: window not narrowed | `positiveLimitReadsNewest…`, `positiveLimitNarrowsPendingWindow…` |
+| Q1: all messages read | both Q1 tests |
+| Q1: no clamp to the period start | `positiveLimitReadsNewest…` (second half) |
+| M1, S2, S4 | their tests, on the parent commit (above) |
+| M1 seeding filter (`automation.dart:521`) | not caught on its own; a second layer behind `data.dart:239`, fine (like N6) |
+
+### Notes (no action needed)
+
+- **N9 (S1, real markup):** the end markers are read from
+  `<input … id="…hfAllMessagesLoaded" value="…">` (an id ending in the
+  name also counts). The demo server writes them that way, and the
+  reviewer's run against it ends correctly. The research note recorded the
+  values of the two fields on the real server, not their markup. If the
+  real markup differed, a school year whose message count (all types) is
+  an exact multiple of 100 would fail the read with "no progress" until the
+  next message arrives: automatic excusing pauses, nothing wrong is sent.
+  Worth a glance at the next read-only look at the real page.
+- **N10 (S2):** dropping a week that didn't load from `weeks` only makes
+  the next run ask for it again; its stored lessons stay in the cache.
+- **N11 (evidence):** `build/qa-evidence/F2/demo_server_verification.txt`
+  is from before the fixes (16:20). No *Done when* line needs it again; the
+  reviewer ran the fixed code against the demo server itself (below).
+- **N12:** running `flutter test` again rewrote the generated plugin files
+  with other line endings (N8); the reviewer restored them.
+
+### What the reviewer verified, and how
+
+1. **Suites** at `9e2fd3d` (Flutter 3.44.8 / Dart 3.12.2):
+   `dart pub get --enforce-lockfile` OK; core `dart analyze` no issues,
+   `dart test` **836 passed, 2 skipped** (825 at R4, +11); app
+   `flutter analyze` no issues, `flutter test` **777 passed, 1 skipped**
+   (unchanged). These match STATUS.
+2. **Tests on the parent:** a throwaway worktree in the reviewer's scratch
+   space (removed afterwards). For each fix commit, its parent with only
+   that commit's test files copied in; results as listed above. Then each
+   part of the fixes undone alone at `9e2fd3d` (table above).
+3. **S5:** the reviewer's two tests (the boundary day, the cut on today)
+   at `9e2fd3d`, then the change described in S5 applied in the throwaway
+   copy: `dart analyze` clean, the full core suite 838 passed (836 + the 2
+   reviewer tests), 2 skipped.
+4. **Demo server:** `tools/bakalari_demo_server.py` on `127.0.0.1` only,
+   with a throwaway Dart probe on the code at `9e2fd3d` (its 3 seeded
+   excuses): page size 3 (exact multiple) → 2 list callbacks, all 3 read,
+   ended by the markers; size 1 → 4 callbacks; size 2 → 2; size 100 → 1;
+   limit 2 → the newest 2 read, the window from the second one's sent day
+   (31.10.), one log line. Stopped afterwards.
+5. **Code:** `git diff c6cb383..HEAD` read in full: `data.dart`,
+   `automation.dart` (one line), `refresh.dart`, `extractors.dart`,
+   `cache.dart`, four test files, STATUS. Also read, unchanged:
+   `resolveUnconfirmed`, `_settleUnconfirmed`, `sendExcuse`'s unconfirmed
+   path, `semesterExcuseWindowStart`, `fetchTimetableWeeks`, `_persist`.
+6. **Test integrity:** `test(` / `testWidgets(` calls 1549 → 1560; per
+   file 84 → 86, 21 → 28, 24 → 25, 28 → 29. The only removed or changed
+   test lines are the two R4 allowed (the S1 fake's return line; the S2
+   test's rename and its first-run assertion). No `skip:`, no
+   `try`/`catch` around assertions, no `anything`; the one `isNotNull` is
+   followed by `hasLength(5)`. Only `https://bakalari.test` as a host.
+7. **Scope, keys, strings:** every commit touches only its finding's
+   files; no change to `config.example.json`, `config.dart`,
+   `test/parity/`, the ARB files, `strings.dart`, tutorials or UI. No new
+   silent `catch`.
+8. **Safety rules:** no change to `runRefresh`'s lock, `sendExcuse`,
+   `HistoryLock`, the audit or `automation_paused`; the web sync still
+   merges under `HistoryLock`; an unknown outbox still blocks automatic
+   excusing. S5 is the one place where the read can claim more than it
+   saw.
+9. **Hygiene:** all commits by the configured user, no `Co-Authored-By`,
+   `Claude-Session` or "Generated with" lines; no personal file or
+   screenshot committed; `qa-roadmap` has no upstream; `main` has no
+   commits the branch lacks.
+10. **Not checked:** macOS and iOS (not possible here); the real server's
+    markup of the end markers (N9).
