@@ -691,7 +691,7 @@
   "tut_lunch_pick_body": "Click the meal you want. Nothing is sent yet — the pick is only staged and you can still change it.",
   "tut_lunch_pick_title": "Pick a lunch",
   "tut_lunch_pick_try": "Try it: click a meal.",
-  "tut_lunch_send_body": "This button sends every staged change to Strava at once. The number in brackets shows how many are waiting.",
+  "tut_lunch_send_body": "This button sends every staged change to Strava at once. The number in brackets shows how many are waiting. Lunches on free days and planned days off are cancelled on refresh by themselves (turn it off in Settings → Rules).",
   "tut_lunch_send_title": "Send your orders",
   "tut_lunch_send_try": "Try it: send the order.",
   "tut_lunch_tools_body": "This opens the panel with AI lunch picks and a blacklist of meals you never want to see.",
