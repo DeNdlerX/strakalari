@@ -439,6 +439,16 @@ class LowBalanceApp implements RefreshApp {
   }
 }
 
+/// [FakeApp] with a Strava blacklist (R5 S5).
+class BlacklistApp extends FakeApp {
+  BlacklistApp(super.calls, this.blacklist, {super.orderMode, super.menu});
+
+  final List<String> blacklist;
+
+  @override
+  List<String> get stravaBlacklist => blacklist;
+}
+
 /// [FakeApp] that records the history weeks `runRefresh` hands the client.
 class HistoryProbeApp extends FakeApp {
   HistoryProbeApp(super.calls);
@@ -1264,6 +1274,38 @@ void main() {
         wholePlannedLunchDays(cfg),
         {'05.10.2099', '13.10.2099', '15.10.2099'},
       );
+    });
+
+    test('allBlacklistedDayIsNotReportedAsCancelled (R5 S5)', () async {
+      saveDataCache(<String, Object?>{}, replace: true);
+      final calls = <Object?>[];
+      // 05.10.: every meal blacklisted, nothing ordered; 06.10.: a normal day.
+      final app = BlacklistApp(calls, const ['Guláš'],
+          orderMode: 'auto',
+          menu: {
+            '05.10.2099': {'t1&1&0': 'Guláš', 't1&-1&0': 'x'},
+            '06.10.2099': {'t2&1&0': 'Řízek', 't2&-1&0': 'x'},
+          });
+      final cfg = <String, Object?>{
+        ...refreshConfig(),
+        'strava_order_mode': 'auto',
+        'strava_auto_cancel_lunches': true,
+        'user_free_days': <String>[],
+        'planned_skips': <Object?>[],
+      };
+      final result = await withClock(
+        Clock.fixed(DateTime(2099, 10, 1, 9, 0)),
+        () => runRefresh(app, cfg, scope: 'strava'),
+      );
+      final orderCalls =
+          calls.whereType<(String, Map<String, String>)>().toList();
+      expect(orderCalls, hasLength(1));
+      expect(orderCalls.single.$2, {'06.10.2099': 't2&1&0'});
+      expect(result.errors, isEmpty);
+      expect(result.lunchesOrdered, 1);
+      expect(result.lunchesCancelled, 0);
+      expect(result.autoCancelledDays, isEmpty);
+      expect(loadDataCache().containsKey(cancelHandledKey), isFalse);
     });
 
     test('disabledSettingCancelsNothingInConfirmOrAutoMode', () async {

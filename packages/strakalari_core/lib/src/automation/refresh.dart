@@ -795,8 +795,12 @@ Future<void> _autoLunch(
       );
       usedGemini = geminiUsed;
       orders = Map<String, String>.of(plannedOrders);
-      // planAutoOrdersHook keeps its legacy signature; filter out any
-      // cancellations it produced for days disabled, partial, or already handled.
+      // planAutoOrdersHook keeps its legacy signature. Drop every
+      // cancellation it produced that isn't a cancel target: partial
+      // planned days (R5 M1), days whose cancelling is off or already
+      // handled, and the filter's "everything blacklisted" fallback on a day
+      // with nothing ordered, which changes nothing on Strava and would
+      // otherwise be reported as an automatic cancel (R5 S5).
       orders.removeWhere((day, mealId) {
         if (!mealId.contains('&-1&')) return false;
         final canon = canonicalDayKey(day);
