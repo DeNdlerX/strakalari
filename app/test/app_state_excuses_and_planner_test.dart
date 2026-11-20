@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:clock/clock.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:strakalari_core/strakalari_core.dart';
 
@@ -827,6 +828,74 @@ void main() {
       expect(state.finishWizardRefresh(), isFalse);
       expect(spawned.length, 1);
       expect(state.pendingFullRefresh, isFalse);
+    });
+  });
+
+  group('F2 semester excuse window', () {
+    test(
+        'excuseTasks shows older semester absence when sent_excuses_from covers semester and hides it when covered or outbox narrower',
+        () {
+      withClock(Clock.fixed(DateTime(2026, 11, 20, 12, 0)), () {
+        Map<String, Object?> timetable = {
+          // 66 days ago, inside 1st semester (>= 2026-09-01).
+          '15.09.2026': [
+            {
+              'subject': 'Matematika',
+              'teacher': 'Mgr. Jan Novák',
+              'time': '1 (8:00 - 8:45)',
+              'absenceType': 'Absent',
+              'absencetext': 'Absence',
+            },
+          ],
+          // Before Sep 1 semester start -> outside semester window.
+          '28.08.2026': [
+            {
+              'subject': 'Fyzika',
+              'teacher': 'Mgr. Eva Bílá',
+              'time': '1 (8:00 - 8:45)',
+              'absenceType': 'Absent',
+              'absencetext': 'Absence',
+            },
+          ],
+        };
+
+        final fullOutbox = AppState(
+          data: {
+            'timetable': timetable,
+            'sent_excuses_from': '2026-08-20',
+          },
+        )..demoMode = false;
+        expect(
+          [for (final t in fullOutbox.excuseTasks()) t['date']],
+          ['2026-09-15'],
+        );
+
+        // Once covered by already_excused_lessons.json, the 66-day-old task hides.
+        File(fullOutbox.config.getAlreadyExcusedPath()).writeAsStringSync(
+          jsonEncode([
+            {
+              'type': 'pure days',
+              'starting_day': '15.09.2026',
+              'ending_day': '15.09.2026',
+            }
+          ]),
+        );
+        expect(fullOutbox.excuseTasks(), isEmpty);
+
+        // Narrower outbox or missing sent_excuses_from falls back to 30-day window.
+        final narrowOutbox = AppState(
+          data: {
+            'timetable': timetable,
+            'sent_excuses_from': '2026-10-21',
+          },
+        )..demoMode = false;
+        expect(narrowOutbox.excuseTasks(), isEmpty);
+
+        final unknownOutbox = AppState(
+          data: {'timetable': timetable},
+        )..demoMode = false;
+        expect(unknownOutbox.excuseTasks(), isEmpty);
+      });
     });
   });
 }

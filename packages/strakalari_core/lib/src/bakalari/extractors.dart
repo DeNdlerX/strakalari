@@ -505,6 +505,56 @@ List<String> outboxExcuseIds(Object? listHtml) {
   return ids;
 }
 
+/// Message ids of all rows (every message type) of the Komens list, in order.
+///
+/// Used by cumulative outbox paging to count total returned rows against
+/// `pageNumber * pageSize` (non-excuse messages still occupy list slots).
+List<String> outboxMessageIds(Object? listHtml) {
+  final ids = <String>[];
+  final re = RegExp('<table\\b[^>]*?\\bdata-idmsg="(\\d+)"');
+  for (final match in re.allMatches('${listHtml ?? ''}')) {
+    final id = match.group(1)!;
+    if (!ids.contains(id)) ids.add(id);
+  }
+  return ids;
+}
+
+/// Maps each `OMLUVENKA` message id in [listHtml] to its detail-cache key
+/// (`id|sortDate`, or `id` when `data-sortdate` is absent/empty).
+Map<String, String> outboxExcuseCacheKeys(Object? listHtml) {
+  final out = <String, String>{};
+  final tableRe = RegExp('<table\\b([^>]*)>');
+  final idRe = RegExp('\\bdata-idmsg="(\\d+)"');
+  final typeRe = RegExp('\\bdata-msgtype="([^"]*)"');
+  final sortRe = RegExp('\\bdata-sortdate="([^"]*)"');
+  for (final match in tableRe.allMatches('${listHtml ?? ''}')) {
+    final attrs = match.group(1)!;
+    final type = typeRe.firstMatch(attrs)?.group(1);
+    if (type != 'OMLUVENKA') continue;
+    final id = idRe.firstMatch(attrs)?.group(1);
+    if (id == null) continue;
+    final sortDate = (sortRe.firstMatch(attrs)?.group(1) ?? '').trim();
+    out.putIfAbsent(id, () => sortDate.isEmpty ? id : '$id|$sortDate');
+  }
+  return out;
+}
+
+/// Calendar day of a Komens row's `data-sortdate` attribute (e.g.
+/// `"0:2026-10-01T07:12:45"`), or null when missing or unparseable.
+DateTime? parseOutboxSortDate(Object? value) {
+  final text = '${value ?? ''}'.trim();
+  if (text.isEmpty) return null;
+  final m = RegExp(r'(?:^|\D)(\d{4})-(\d{2})-(\d{2})(?:$|\D)')
+      .firstMatch(text);
+  if (m == null) return null;
+  final y = int.parse(m.group(1)!);
+  final mo = int.parse(m.group(2)!);
+  final d = int.parse(m.group(3)!);
+  final day = DateTime(y, mo, d);
+  if (day.year != y || day.month != mo || day.day != d) return null;
+  return day;
+}
+
 int? _lessonCaption(Object? hour) {
   if (hour is! Map) return null;
   try {
@@ -521,6 +571,10 @@ int? _lessonCaption(Object? hour) {
 /// against every locally generated shape); no lessons and no clock times
 /// -> a whole-day entry; clock times without lessons -> the covered
 /// lessons are unknown, so nothing is learned. Never raises.
+///
+/// Results are cached in `data_cache.json` under [outboxDetailsKey]
+/// (`storage/cache.dart`); any change to what this function returns must
+/// bump `outboxDetailsKey` so already-cached messages are re-read.
 List<Map<String, Object?>> sentExcuseEntries(Object? detail) {
   if (detail is! Map) return [];
   try {

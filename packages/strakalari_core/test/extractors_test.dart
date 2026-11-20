@@ -419,6 +419,40 @@ void main() {
       expect(outboxExcuseIds(''), isEmpty);
       expect(outboxExcuseIds(null), isEmpty);
     });
+
+    test('outboxMessageIdsIncludesAllMessageTypesDeduped', () {
+      final html = '<table data-idmsg="501" data-msgtype="OMLUVENKA">'
+          '<table data-idmsg="502" data-msgtype="OBECNA">'
+          '<table data-idmsg="501" data-msgtype="OMLUVENKA">'
+          '<table data-idmsg="503" data-msgtype="SYSTEMOVA">';
+      expect(outboxMessageIds(html), ['501', '502', '503']);
+      expect(outboxMessageIds(''), isEmpty);
+      expect(outboxMessageIds(null), isEmpty);
+    });
+
+    test('outboxExcuseCacheKeysReadsSortDateAndAttributeOrder', () {
+      final html =
+          '<table data-idmsg="501" data-sortdate="0:2026-10-01T07:12:45" data-msgtype="OMLUVENKA">'
+          '<table data-idmsg="502" data-sortdate="0:2026-10-02T08:00:00" data-msgtype="OBECNA">'
+          '<table data-msgtype="OMLUVENKA" data-idmsg="503">'
+          '<table data-idmsg="504" data-sortdate="" data-msgtype="OMLUVENKA">';
+      expect(outboxExcuseCacheKeys(html), {
+        '501': '501|0:2026-10-01T07:12:45',
+        '503': '503',
+        '504': '504',
+      });
+      expect(outboxExcuseCacheKeys(''), isEmpty);
+      expect(outboxExcuseCacheKeys(null), isEmpty);
+    });
+
+    test('parseOutboxSortDateReadsCalendarDayAndRejectsInvalid (R4 Q1)', () {
+      expect(parseOutboxSortDate('0:2026-10-15T08:00:00'), DateTime(2026, 10, 15));
+      expect(parseOutboxSortDate('2026-10-15'), DateTime(2026, 10, 15));
+      expect(parseOutboxSortDate('0:2026-02-30T08:00:00'), isNull);
+      expect(parseOutboxSortDate(''), isNull);
+      expect(parseOutboxSortDate(null), isNull);
+      expect(parseOutboxSortDate('garbage'), isNull);
+    });
   });
 
   group('storeRows', () {

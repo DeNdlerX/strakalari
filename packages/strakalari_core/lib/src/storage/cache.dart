@@ -19,6 +19,14 @@ const String cacheFile = './data_cache.json';
 /// Cache schema version (mismatched files are ignored, not migrated).
 const int cacheVersion = 2;
 
+/// Data-cache key: parsed sent-excuse entries keyed by Komens message key
+/// (`id` or `id|sortDate`), so routine refreshes skip `GetMessageDataAsync`
+/// for messages already read.
+///
+/// Versioned (`_v1`): any change to what `sentExcuseEntries` returns must
+/// bump this version so previously cached entries are re-read.
+const String outboxDetailsKey = 'komens_outbox_details_v1';
+
 /// Parses a `last_updated` stamp; null when missing or unparsable.
 ///
 /// Accepts the same shapes Python does: `DD.MM.YYYY HH:MM:SS`,

@@ -28,6 +28,7 @@ import '../models.dart';
 import '../planning/school_presets.dart'
     show effectiveCalendar, resolveLunchCutoff;
 import '../strava/client.dart';
+import '../storage/cache.dart' show loadDataCache, outboxDetailsKey;
 import '../storage/config.dart';
 import '../storage/helpers.dart';
 import 'audit.dart' as audit;
@@ -488,6 +489,42 @@ class Strakalari implements RefreshApp {
 
   @override
   DateTime? get sentExcusesFrom => bakalariClient?.sentExcusesFrom;
+
+  /// Refreshed Komens outbox detail cache after a successful sync, else null.
+  Map<String, List<Map<String, Object?>>>? get outboxDetailsCache {
+    final client = bakalariClient;
+    if (client == null || !client.outboxDetailsUpdated) return null;
+    return {
+      for (final e in client.knownOutboxDetails.entries)
+        e.key: [for (final m in e.value) Map<String, Object?>.of(m)],
+    };
+  }
+
+  static Map<String, List<Map<String, Object?>>> _readCachedOutboxDetails() {
+    try {
+      final raw = loadDataCache()[outboxDetailsKey];
+      if (raw is! Map) return {};
+      final out = <String, List<Map<String, Object?>>>{};
+      for (final entry in raw.entries) {
+        final k = '${entry.key}';
+        final v = entry.value;
+        if (k.isEmpty || v is! List) continue;
+        final list = <Map<String, Object?>>[];
+        var valid = true;
+        for (final item in v) {
+          if (item is! Map) {
+            valid = false;
+            break;
+          }
+          list.add(item.map((ik, iv) => MapEntry('$ik', iv as Object?)));
+        }
+        if (valid && list.isNotEmpty) out[k] = list;
+      }
+      return out;
+    } on Object {
+      return {};
+    }
+  }
 
   @override
   Set<DateTime> get timetableLoadedWeeks =>
@@ -1038,7 +1075,7 @@ class Strakalari implements RefreshApp {
     if (_isCancelled()) return 0;
     final client = bakalariClient;
     if (client == null) return 0;
-    var capped = limit ?? 100;
+    var capped = limit ?? 0;
     try {
       final raw = configData['sent_excuses_limit'];
       if (limit == null && raw != null) {
@@ -1049,11 +1086,15 @@ class Strakalari implements RefreshApp {
         } else if (raw is bool) {
           capped = raw ? 1 : 0;
         } else {
-          capped = int.tryParse('$raw'.trim()) ?? 100;
+          capped = int.tryParse('$raw'.trim()) ?? 0;
         }
       }
     } on Object {
-      capped = 100;
+      capped = 0;
+    }
+    if (client.knownOutboxDetails.isEmpty) {
+      final cached = _readCachedOutboxDetails();
+      if (cached.isNotEmpty) client.knownOutboxDetails = cached;
     }
     client.cancelRequested = cancelRequested;
     client.cancelCallback = cancelCallback;
@@ -1381,7 +1422,7 @@ class Strakalari implements RefreshApp {
     return generateExcuses(Map<String, Object?>.of(timetableData),
         delayDays: excuseDelayDays,
         ignored: ignored,
-        notBefore: excuseWindowStart(
+        notBefore: semesterExcuseWindowStart(
             _todayDate(), bakalariClient?.sentExcusesFrom));
   }
 

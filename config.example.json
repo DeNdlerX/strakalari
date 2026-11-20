@@ -39,7 +39,7 @@
   "go_back_weeks": 4,
   "go_forward_weeks": 1,
   "excuse_delay_days": 2,
-  "sent_excuses_limit": 100,
+  "sent_excuses_limit": 0,
   "minimize_to_tray": true,
   "run_in_background": true,
   "background_notification_items": ["next_lesson", "lunch", "excuses", "wakeup"],

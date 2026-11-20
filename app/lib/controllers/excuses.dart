@@ -100,7 +100,7 @@ extension ExcuseTasksLogic on AppState {
     }
     final now = clock.now();
     final today = DateTime(now.year, now.month, now.day);
-    return core.excuseWindowStart(today, outboxFrom);
+    return core.semesterExcuseWindowStart(today, outboxFrom);
   }
 
   /// Timetable absence tasks that have not been excused yet.

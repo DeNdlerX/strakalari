@@ -93,6 +93,15 @@ abstract class BakalariClientBase {
   // First day of the range Odeslané showed on the last sync (the
   // web defaults to one month) — bounds the excuse window. Null = unknown.
   DateTime? sentExcusesFrom;
+  // Page size for Komens -> Odeslané list callbacks (tests may lower it).
+  int outboxPageSize = defaultOutboxPageSize;
+  // Cached parsed excuse entries per Komens message key (`id` or
+  // `id|sortDate`), seeded from `data_cache.json` before sync so already
+  // known outbox messages skip `GetMessageDataAsync`.
+  Map<String, List<Map<String, Object?>>> knownOutboxDetails = {};
+  // True after [DataMixin.fetchSentExcuses] completed cleanly and refreshed
+  // [knownOutboxDetails] (stubbed test clients leave this false).
+  bool outboxDetailsUpdated = false;
   // True after a send the site never confirmed (see
   // ExcuseFormMixin.execute_excuse): it may have gone out.
   bool lastSubmitUncertain = false;

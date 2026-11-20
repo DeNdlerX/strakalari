@@ -25,9 +25,12 @@ import 'http_session.dart';
 /// Komens → Odeslané (the menu's own link), its list callback control and
 /// the list type the page reports for the sent folder.
 const String _outboxPath = '/next/komens.aspx?l=o';
+const String _outboxYearPath = '/next/komens.aspx?s=rok&l=o';
 const String _outboxCallbackId =
     'ctl00\$cphmain\$message_list_content';
 const String _outboxListType = 'odeslane';
+const int defaultOutboxPageSize = 100;
+const int maxOutboxPages = 50;
 
 /// Local [day] + [hour]:[minute] as the UTC ISO string the web's scripts send.
 String utcIso(DateTime day, {int hour = 0, int minute = 0}) {
@@ -158,10 +161,16 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
 
   /// Reads already-sent excuses (Komens → Odeslané → OMLUVENKA).
   ///
-  /// Loads the outbox list the way the page does (its DevExpress list
-  /// callback), then each excuse's detail (Od/Do dates + optional
-  /// lessons), and stores the history-shaped entries on [sentExcuses].
-  /// Returns them.
+  /// Loads the whole school-year period (`?s=rok&l=o`) and walks every page
+  /// of its DevExpress list callback, then reads each newly seen excuse's
+  /// detail (reusing [knownOutboxDetails] for already cached keys) and stores
+  /// the history-shaped entries on [sentExcuses]. Any page or detail failure
+  /// aborts the read (never partial success). When [limit] > 0 is exceeded,
+  /// reads only the newest [limit] excuses and narrows [sentExcusesFrom] to
+  /// the sent date of the oldest among them, or to the day after the newest
+  /// excuse left out if that is later (a cut inside a day leaves that day
+  /// partly unread). Fails closed when either row has no `data-sortdate` or
+  /// that start would be after today; 0 = unlimited.
   ///
   /// Tri-state: a list (possibly empty) = the outbox was actually read
   /// (empty genuinely means "nothing sent"); null = the sync failed or
@@ -169,81 +178,127 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
   /// learned", never as "nothing sent". Never raises except on user
   /// cancel. [sentExcusesError] carries the last failure.
   Future<List<Map<String, Object?>>?> fetchSentExcuses(
-      {int limit = 100}) async {
+      {int limit = 0}) async {
     raiseIfCancelledNow();
-    var capped = limit;
-    try {
-      if (capped < 1) capped = 1;
-    } on Object {
-      capped = 100;
-    }
+    outboxDetailsUpdated = false;
+    sentExcusesFrom = null;
+    final capped = limit < 0 ? 0 : limit;
     try {
       final session = bakalariSession();
-      final (page, ids) =
-          await fetchOutboxIds(session, capped + 1);
-      sentExcusesFrom = _outboxPeriodStart(page);
+      final (page, ids, cacheKeys) = await fetchAllOutboxIds(session);
+      final periodStart = _outboxPeriodStart(page);
       if (ids.isEmpty) {
         log('No sent excuses (OMLUVENKA) found in Komens → Odeslané.');
+        sentExcusesFrom = periodStart;
+        knownOutboxDetails = {};
+        outboxDetailsUpdated = true;
         sentExcuses = [];
         sentExcusesError = '';
         return [];
       }
-      var wanted = ids;
-      if (ids.length > capped) {
-        log('Sent excuses: ${ids.length} on the web, '
-            'reading first $capped.');
-        wanted = ids.sublist(0, capped);
+      var effectiveFrom = periodStart;
+      var idsToRead = ids;
+      if (capped > 0 && ids.length > capped) {
+        idsToRead = ids.sublist(0, capped);
+        DateTime? sentDay(String id) {
+          final key = cacheKeys[id] ?? id;
+          final sep = key.indexOf('|');
+          return sep >= 0 ? parseOutboxSortDate(key.substring(sep + 1)) : null;
+        }
+
+        final oldestDay = sentDay(idsToRead.last);
+        // The newest excuse left out: its day may hold more unread
+        // excuses, so only the days after it are read completely.
+        final unreadDay = sentDay(ids[capped]);
+        if (oldestDay == null || unreadDay == null) {
+          sentExcuses = null;
+          sentExcusesError =
+              'outbox has ${ids.length} excuses (limit $capped)';
+          log('Warning: Komens → Odeslané has ${ids.length} excuses, '
+              'exceeding sent_excuses_limit ($capped), and the $capped-th '
+              'or ${capped + 1}-th excuse has no sent date — treating read '
+              'as incomplete (set sent_excuses_limit to 0 for no limit).');
+          return null;
+        }
+        final afterUnread =
+            DateTime(unreadDay.year, unreadDay.month, unreadDay.day + 1);
+        final bound = afterUnread.isAfter(oldestDay) ? afterUnread : oldestDay;
+        final now = clock.now();
+        if (bound.isAfter(DateTime(now.year, now.month, now.day))) {
+          sentExcuses = null;
+          sentExcusesError =
+              'outbox has ${ids.length} excuses (limit $capped)';
+          log('Warning: Komens → Odeslané has ${ids.length} excuses, '
+              'exceeding sent_excuses_limit ($capped), and the cut falls on '
+              'today — treating read as incomplete (set sent_excuses_limit '
+              'to 0 for no limit).');
+          return null;
+        }
+        if (effectiveFrom == null || bound.isAfter(effectiveFrom)) {
+          effectiveFrom = bound;
+        }
+        String two(int n) => n.toString().padLeft(2, '0');
+        final boundStr =
+            '${two(effectiveFrom.day)}.${two(effectiveFrom.month)}.${effectiveFrom.year}';
+        log('Komens → Odeslané has ${ids.length} excuse(s), reading the '
+            'newest $capped (excuse window starts $boundStr; set '
+            'sent_excuses_limit to 0 for no limit).');
       } else {
         log('Komens → Odeslané: ${ids.length} excuse(s) on the web.');
       }
 
       final parsed = <Map<String, Object?>>[];
-      var read = 0;
-      for (final msgId in wanted) {
+      final nextCache = <String, List<Map<String, Object?>>>{};
+      var reused = 0;
+      var fetched = 0;
+      for (final msgId in idsToRead) {
         raiseIfCancelledNow();
-        late final Object? detail;
-        try {
-          detail = await fetchOutboxDetail(session, msgId);
-        } on CancelledError {
-          rethrow;
-        } on Object catch (e) {
-          log('Warning: could not read sent excuse $msgId: $e');
-          continue;
+        final key = cacheKeys[msgId] ?? msgId;
+        final cached = knownOutboxDetails[key];
+        late final List<Map<String, Object?>> entries;
+        if (cached != null && cached.isNotEmpty) {
+          entries = [for (final e in cached) Map<String, Object?>.of(e)];
+          reused += 1;
+        } else {
+          final detail = await fetchOutboxDetail(session, msgId);
+          entries = sentExcuseEntries(detail);
+          fetched += 1;
         }
-        read += 1;
-        for (final entry in sentExcuseEntries(detail)) {
+        if (entries.isNotEmpty) {
+          nextCache[key] = [
+            for (final e in entries) Map<String, Object?>.of(e),
+          ];
+        }
+        for (final entry in entries) {
           if (!parsed.any((p) => jsonEquals(p, entry))) {
             parsed.add(entry);
           }
         }
       }
 
-      if (read == 0) {
-        // Not one detail readable: [] must not read as "nothing
-        // sent" — report unknown (null) so callers keep the last
-        // known state.
-        sentExcuses = null;
-        sentExcusesError = 'outbox details unreadable';
-        log('Warning: sent-excuse details unreadable — '
-            'keeping last known state.');
-        return null;
-      }
+      sentExcusesFrom = effectiveFrom;
+      knownOutboxDetails = nextCache;
+      outboxDetailsUpdated = true;
       sentExcuses = parsed;
       sentExcusesError = '';
-      if (parsed.length != read) {
+      final cacheNote = reused > 0 ? ', $reused cached' : '';
+      if (parsed.length != idsToRead.length) {
         // One hour-based web message expands to three history
         // entries (income + soon + days and hours) for dedupe —
         // report the web message count so the log never claims more
         // sent messages than the outbox actually holds.
-        log('Sent excuses synced from the web: $read message(s) '
-            '(${parsed.length} history entries).');
+        log('Sent excuses synced from the web: ${idsToRead.length} message(s) '
+            '(${parsed.length} history entries; $fetched read$cacheNote).');
       } else {
-        log('Sent excuses synced from the web: $read message(s).');
+        log('Sent excuses synced from the web: ${idsToRead.length} message(s) '
+            '($fetched read$cacheNote).');
       }
       return parsed;
     } on CancelledError {
       rethrow;
     } on Object catch (e) {
+      sentExcuses = null;
+      sentExcusesFrom = null;
       sentExcusesError =
           truncateRunes('${e.runtimeType}: $e'.split('\n').first, 200);
       log('Could not sync sent excuses: $e — will retry next time.');
@@ -254,8 +309,9 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
   /// `(pageHtml, ids)`: Komens → Odeslané and the message ids of its
   /// excuse rows, loaded the way the page does (its list callback).
   Future<(String, List<String>)> fetchOutboxIds(
-      BakalariSession session, int pageSize) async {
-    final page = await session.getHtml(_outboxPath);
+      BakalariSession session, int pageSize,
+      {String path = _outboxPath}) async {
+    final page = await session.getHtml(path);
     final listType = RegExp('id="hfListType"[^>]*?value="([^"]*)"')
         .firstMatch(page);
     if (listType == null || listType.group(1) != _outboxListType) {
@@ -276,11 +332,87 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
       'onlyUnread': false,
     });
     final listing = await session.dxCallback(
-        _outboxPath, page, _outboxCallbackId, param);
+        path, page, _outboxCallbackId, param);
     if (!listing.contains('komens-messages-wrapper')) {
       throw StateError('outbox list did not load (format changed?)');
     }
     return (page, outboxExcuseIds(listing));
+  }
+
+  /// `(pageHtml, excuseIds, cacheKeys)`: Komens → Odeslané and every
+  /// excuse message id across all cumulative callback pages of [path].
+  Future<(String, List<String>, Map<String, String>)> fetchAllOutboxIds(
+    BakalariSession session, {
+    String path = _outboxYearPath,
+    int? pageSize,
+    int maxPages = maxOutboxPages,
+  }) async {
+    final requestedSize = pageSize ?? outboxPageSize;
+    final size =
+        requestedSize < 1 ? defaultOutboxPageSize : requestedSize;
+    final page = await session.getHtml(path);
+    final listType = RegExp('id="hfListType"[^>]*?value="([^"]*)"')
+        .firstMatch(page);
+    if (listType == null || listType.group(1) != _outboxListType) {
+      // Another folder read as the outbox would report "nothing sent".
+      throw StateError(
+          'Komens page is not the sent folder (format changed?)');
+    }
+    final seenAllIds = <String>{};
+    final excuseIds = <String>[];
+    final cacheKeys = <String, String>{};
+
+    for (var pageNumber = 1;; pageNumber++) {
+      raiseIfCancelledNow();
+      final param = jsonEncode({
+        'showRepressed': false,
+        'pageNumber': pageNumber,
+        'pageSize': size,
+        'reloadMessages': pageNumber == 1,
+        'sortOrder': 0,
+        'onlyRating': true,
+        'onlyExcuses': true,
+        'onlySystemMessages': true,
+        'onlyGeneralMessages': true,
+        'onlyUnread': false,
+      });
+      final listing = await session.dxCallback(
+          path, page, _outboxCallbackId, param);
+      if (!listing.contains('komens-messages-wrapper')) {
+        throw StateError('outbox list did not load (format changed?)');
+      }
+      final allIds = outboxMessageIds(listing);
+      if (pageNumber > 1) {
+        final pageIdSet = allIds.toSet();
+        if (!pageIdSet.containsAll(seenAllIds)) {
+          throw StateError(
+              'outbox page $pageNumber is not cumulative (missing previous ids)');
+        }
+      }
+      var newCount = 0;
+      for (final id in allIds) {
+        if (seenAllIds.add(id)) newCount += 1;
+      }
+      if (pageNumber > 1 && newCount == 0) {
+        if (_outboxReplyMarksEnd(listing)) break;
+        throw StateError(
+            'outbox paging made no progress at page $pageNumber');
+      }
+      for (final id in outboxExcuseIds(listing)) {
+        if (!excuseIds.contains(id)) excuseIds.add(id);
+      }
+      for (final entry in outboxExcuseCacheKeys(listing).entries) {
+        cacheKeys.putIfAbsent(entry.key, () => entry.value);
+      }
+      if (allIds.length < pageNumber * size) {
+        break;
+      }
+      if (pageNumber >= maxPages) {
+        throw StateError(
+            'outbox exceeded $maxPages pages without reaching the end');
+      }
+    }
+    return (page, excuseIds, cacheKeys);
   }
 
   /// The detail of one sent message (`/Komens/GetMessageDataAsync`).
@@ -580,4 +712,30 @@ double? _toDouble(Object? value) {
   if (value is bool) return value ? 1 : 0;
   if (value == null) return null;
   return double.tryParse('$value'.trim());
+}
+
+String? _hiddenInputValue(String html, String id) {
+  final tagRe = RegExp('<input\\b([^>]*)>', caseSensitive: false);
+  final idRe = RegExp('\\bid=["\']([^"\']*)["\']', caseSensitive: false);
+  final valRe = RegExp('\\bvalue=["\']([^"\']*)["\']', caseSensitive: false);
+  for (final match in tagRe.allMatches(html)) {
+    final attrs = match.group(1)!;
+    final tagId = idRe.firstMatch(attrs)?.group(1);
+    if (tagId == id || (tagId != null && tagId.endsWith('_$id'))) {
+      return valRe.firstMatch(attrs)?.group(1) ?? '';
+    }
+  }
+  return null;
+}
+
+bool _outboxReplyMarksEnd(String listing) {
+  final allLoaded = _hiddenInputValue(listing, 'hfAllMessagesLoaded');
+  if (allLoaded != null && allLoaded.trim().toLowerCase() == 'all') {
+    return true;
+  }
+  final loadedCount = _hiddenInputValue(listing, 'hfLoadedMessagesCount');
+  if (loadedCount != null && loadedCount.trim() == '0') {
+    return true;
+  }
+  return false;
 }
