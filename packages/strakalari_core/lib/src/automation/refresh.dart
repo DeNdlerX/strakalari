@@ -34,6 +34,7 @@ import '../models.dart';
 import '../storage/cache.dart';
 import '../lunches/lunch_auto.dart'
     show
+        autoCancelFreeLunchDays,
         cancelHandledKey,
         freeLunchDays,
         handledKey,
@@ -760,9 +761,7 @@ Future<void> _autoLunch(
       for (final d in wholePlannedLunchDays(cfg)) canonicalDayKey(d),
     };
     final cancelPlannedDays = plannedDays.intersection(wholePlannedDays);
-    final freeDays = {
-      for (final d in freeLunchDaysHook(cfg)) canonicalDayKey(d),
-    };
+    final freeDays = autoCancelFreeLunchDays(cfg, freeLunchDaysHook(cfg));
     final allCancelled = plannedDays.union(freeDays);
     final cancelTargets = cancelPlannedDays.union(freeDays);
     // When both flags apply to the same day, 'planned' explains the explicit skip.

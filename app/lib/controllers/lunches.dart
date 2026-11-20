@@ -411,7 +411,8 @@ extension LunchLogic on AppState {
       var staged = 0;
       var skipped = 0;
       var closed = 0;
-      final blockedDays = cancelledLunches.union(freeLunchDays(config.data));
+      final blockedDays =
+          cancelledLunches.union(autoCancelFreeLunchDays(config.data));
       for (final e in recOrders.entries) {
         final day = e.key;
         final mid = e.value;
@@ -505,7 +506,8 @@ extension LunchLogic on AppState {
       picks = filterPicks(
         menu.map((k, v) => MapEntry(k, v)),
         blacklist: combined,
-        cancelledDays: cancelledLunches.union(freeLunchDays(config.data)),
+        cancelledDays:
+            cancelledLunches.union(autoCancelFreeLunchDays(config.data)),
         isOpen: (day) {
           try {
             return isLunchOrderOpen(fmtDay(day));

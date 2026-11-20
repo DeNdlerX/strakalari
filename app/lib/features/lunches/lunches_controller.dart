@@ -190,7 +190,8 @@ class LunchController {
     final picks = core.filterPicks(
       food,
       blacklist: combined,
-      cancelledDays: cancelledLunches.union(freeDayLabels.keys.toSet()),
+      cancelledDays: cancelledLunches
+          .union(core.autoCancelFreeLunchDays(config, freeDayLabels.keys)),
       isOpen: isOrderOpen == null
           ? null
           : (dt) => isOrderOpen!(

@@ -406,7 +406,8 @@ void main() {
       expect(keptOrders.containsKey(czDay(d1)), isFalse);
       expect(keptOrders[czDay(d3)], 'c&1&0');
 
-      // When auto-cancel is disabled, d1 stays ordered (neither cancelled nor replaced).
+      // When auto-cancel is disabled, d1 stays ordered (neither cancelled nor replaced)
+      // and unordered free day d2 is ordered like a normal day (R5 S3).
       final (disabledOrders, _) = await planAutoOrders(
         food,
         {...cfg, 'strava_auto_cancel_lunches': false},
@@ -414,6 +415,7 @@ void main() {
         isOpen: (_) => true,
       );
       expect(disabledOrders.containsKey(czDay(d1)), isFalse);
+      expect(disabledOrders[czDay(d2)], 'b&1&0');
       expect(disabledOrders[czDay(d3)], 'c&1&0');
     });
 

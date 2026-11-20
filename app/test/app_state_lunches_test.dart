@@ -455,6 +455,22 @@ void main() {
         await job;
         expect(state.orders.containsKey('16.09.2026'), isFalse);
         expect(state.orders['17.09.2026'], 'b&1&0');
+
+        // With automatic lunch cancelling turned off, filter and AI stage
+        // meals on free days again (R5 S3).
+        state.config.set('strava_auto_cancel_lunches', false);
+        state.orders.clear();
+        state.pendingOrders.clear();
+        state.applyFoodFilter('');
+        expect(state.orders['16.09.2026'], 'a&1&0');
+        expect(state.orders['17.09.2026'], 'b&1&0');
+
+        state.orders.clear();
+        state.pendingOrders.clear();
+        expect(state.startAiRecommend(), isTrue);
+        await job;
+        expect(state.orders['16.09.2026'], 'a&1&0');
+        expect(state.orders['17.09.2026'], 'b&1&0');
       });
     });
 

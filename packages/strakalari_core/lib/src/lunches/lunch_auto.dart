@@ -66,6 +66,19 @@ Set<String> freeLunchDays(Map<String, Object?>? configData) {
   }
 }
 
+/// School free days skipped by ordering/filtering when automatic lunch
+/// cancellation is enabled (empty when `strava_auto_cancel_lunches` is off).
+Set<String> autoCancelFreeLunchDays(
+  Map<String, Object?>? configData, [
+  Iterable<String>? freeDays,
+]) {
+  if (!stravaAutoCancelEnabled(configData)) return <String>{};
+  if (freeDays != null) {
+    return <String>{for (final d in freeDays) _canonDay(d)};
+  }
+  return freeLunchDays(configData);
+}
+
 /// Progress events from [planAutoOrders] (`emit(key, {field: value})`).
 typedef LunchAutoEmit = void Function(String key,
     [Map<String, Object?> fields]);
@@ -517,7 +530,7 @@ Future<(Map<String, String>, bool)> planAutoOrders(
   final cfg = configData ?? <String, Object?>{};
   final cancelled = <String>{
     for (final d in cancelledDays ?? <String>[]) _canonDay(d),
-    ...freeLunchDays(cfg),
+    ...autoCancelFreeLunchDays(cfg),
   };
   final open = isOpen ?? orderWindowPredicate(cfg);
   if (open == null) {

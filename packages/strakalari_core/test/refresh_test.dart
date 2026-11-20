@@ -1268,13 +1268,16 @@ void main() {
 
     test('disabledSettingCancelsNothingInConfirmOrAutoMode', () async {
       for (final mode in ['confirm', 'auto']) {
+        saveDataCache(<String, Object?>{}, replace: true);
         final calls = <Object?>[];
         final app = FakeApp(calls, orderMode: mode, menu: {
           freeDay: {'t2&1&0': 'Řízek', 't2&-1&0': 'x'},
+          partialDay: {'t3&1&0': 'Polévka', 't3&-1&0': 'x'},
         })
           ..orderedDict = {freeDay: 't2&1&0'};
         final cfg = {
           ...baseF3Config(orderMode: mode),
+          'user_free_days': ['2099-10-06', '2099-10-07'],
           'planned_skips': <Object?>[],
           'strava_auto_cancel_lunches': false,
         };
@@ -1282,8 +1285,12 @@ void main() {
           Clock.fixed(DateTime(2099, 10, 1, 9, 0)),
           () => runRefresh(app, cfg, scope: 'strava'),
         );
-        expect(result.lunchesCancelled, 0);
-        expect(app.orderedDict[freeDay], 't2&1&0');
+        expect(result.lunchesCancelled, 0, reason: mode);
+        expect(app.orderedDict[freeDay], 't2&1&0', reason: mode);
+        if (mode == 'auto') {
+          expect(result.lunchesOrdered, 1);
+          expect(app.orderedDict[partialDay], 't3&1&0');
+        }
       }
     });
 
