@@ -14,11 +14,21 @@
 // Phase 2 landed the foundation the HTTP session needs ([UserError],
 // [timeoutUserMessage]); phase 4 ports the redaction and report builders.
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:clock/clock.dart';
+import 'package:path/path.dart' as p;
 
 import 'i18n.dart';
+import 'storage/accounts.dart'
+    show
+        accountDirFor,
+        accountsModeRootDir,
+        discoverAccountFolderIds,
+        globalConfigFile,
+        hasAnyAccountFolder,
+        isAccountsMode;
 import 'storage/config.dart';
 import 'storage/helpers.dart';
 import 'update.dart' show getCurrentVersion;
@@ -139,9 +149,14 @@ Map<String, String> redactConfig(Map<String, Object?>? config) {
 /// match a leaked plaintext password (e.g. echoed in an exception
 /// text) — the decrypted value is scrubbed too. The signature (usually
 /// the student's name) is also scrubbed word by word.
-Set<String> _sensitiveValues(Map<String, Object?>? config) {
+Set<String> _sensitiveValues(
+  Map<String, Object?>? config, {
+  String? dataDir,
+  String? rootDir,
+}) {
   final values = <String>{};
   final cfg = config ?? const <String, Object?>{};
+  final effectiveRoot = rootDir ?? (isAccountsMode ? accountsModeRootDir : null);
   for (final entry in cfg.entries) {
     final key = entry.key;
     final value = entry.value;
@@ -156,8 +171,16 @@ Set<String> _sensitiveValues(Map<String, Object?>? config) {
       values.add(text);
       if (cfg['${key}_encrypted'] == true) {
         try {
-          final plain = decryptStrict(text);
-          if (plain != null && plain.isNotEmpty) values.add(plain);
+          final decDir =
+              key == 'gemini_api_key' ? (effectiveRoot ?? dataDir) : dataDir;
+          if (decDir != null || !isAccountsMode) {
+            final plain = decryptStrict(
+              text,
+              dataDir: decDir,
+              fallbackKeyDir: key == 'gemini_api_key' ? null : effectiveRoot,
+            );
+            if (plain != null && plain.isNotEmpty) values.add(plain);
+          }
         } catch (_) {
           // Ciphertext still scrubbed.
         }
@@ -183,13 +206,57 @@ Set<String> _sensitiveValues(Map<String, Object?>? config) {
 /// For the local `log.txt`: it stays on the user's machine, so names
 /// and usernames may stay in it, but a password must never be written
 /// to disk in the clear.
-Set<String> secretValues(Map<String, Object?>? config) {
+Set<String> secretValues(
+  Map<String, Object?>? config, {
+  String? dataDir,
+  String? rootDir,
+}) {
   final cfg = config ?? const <String, Object?>{};
-  return _sensitiveValues({
-    for (final entry in cfg.entries)
-      if (_isSecretKey(entry.key) || entry.key.endsWith('_encrypted'))
-        entry.key: entry.value,
-  });
+  return _sensitiveValues(
+    {
+      for (final entry in cfg.entries)
+        if (_isSecretKey(entry.key) || entry.key.endsWith('_encrypted'))
+          entry.key: entry.value,
+    },
+    dataDir: dataDir,
+    rootDir: rootDir,
+  );
+}
+
+/// Collects secret (or all sensitive) values across `global.json` and every
+/// account folder under [rootDir] (§7.2 step 7). Never raises.
+Set<String> allAccountSensitiveValues({
+  String? rootDir,
+  bool secretsOnly = false,
+}) {
+  final root = rootDir ?? (isAccountsMode ? accountsModeRootDir : null);
+  if (root == null || root.isEmpty) return const <String>{};
+  final values = <String>{};
+  void collectFile(String path, {required String keyDir, String? fallback}) {
+    try {
+      if (!File(path).existsSync()) return;
+      final decoded = jsonDecode(File(path).readAsStringSync(encoding: utf8));
+      if (decoded is! Map) return;
+      final map = decoded.map((k, v) => MapEntry('$k', v as Object?));
+      values.addAll(secretsOnly
+          ? secretValues(map, dataDir: keyDir, rootDir: fallback ?? root)
+          : _sensitiveValues(map, dataDir: keyDir, rootDir: fallback ?? root));
+    } catch (_) {
+      // Best-effort collection across accounts.
+    }
+  }
+
+  collectFile(p.join(root, globalConfigFile), keyDir: root, fallback: root);
+  for (final id in discoverAccountFolderIds(root)) {
+    try {
+      final accDir = accountDirFor(root, id);
+      collectFile(p.join(accDir, 'config.json'), keyDir: accDir, fallback: root);
+    } catch (_) {
+      // Skip invalid folder.
+    }
+  }
+  values.remove('');
+  return values;
 }
 
 /// Replaces every value of [values] in [text] with the redaction marker.
@@ -218,21 +285,39 @@ String redactValues(String text, Set<String> values) {
 }
 
 /// Scrubs known secret and personal *values* out of free text (tracebacks, logs).
-String redactText(String text, [Map<String, Object?>? config]) =>
-    redactValues(text, _sensitiveValues(config));
+String redactText(
+  String text, [
+  Map<String, Object?>? config,
+  String? dataDir,
+  String? rootDir,
+]) {
+  final values = _sensitiveValues(config, dataDir: dataDir, rootDir: rootDir);
+  if (isAccountsMode || rootDir != null) {
+    values.addAll(allAccountSensitiveValues(rootDir: rootDir));
+  }
+  return redactValues(text, values);
+}
 
 /// [redactText] against the config on disk, for code with no config at hand.
 ///
 /// Used before tracebacks go to the log (the scheduler): an exception
-/// text can echo a password. Never raises.
-String redactWithSavedConfig(String text) {
-  Map<String, Object?>? config;
+/// text can echo a password. In multi-account layouts, scrubs secrets and
+/// personal values from every account plus `global.json` (§7.2 step 7).
+/// Never raises.
+String redactWithSavedConfig(String text, {String? rootDir}) {
   try {
-    config = ConfigManager().data;
-  } catch (_) {
-    config = null; // No config means no known secrets.
-  }
-  try {
+    final effectiveRoot = rootDir ?? (isAccountsMode ? accountsModeRootDir : null);
+    if (effectiveRoot != null || hasAnyAccountFolder(getUserDataDir())) {
+      final root = effectiveRoot ?? getUserDataDir();
+      final values = allAccountSensitiveValues(rootDir: root);
+      return redactValues(text, values);
+    }
+    Map<String, Object?>? config;
+    try {
+      config = ConfigManager().data;
+    } catch (_) {
+      config = null; // No config means no known secrets.
+    }
     return redactText(text, config);
   } catch (_) {
     return '(redaction failed, details withheld)';
@@ -323,6 +408,8 @@ Map<String, Object?> buildReport(
   Map<String, Object?>? config,
   Map<String, Object?>? extra,
   String userMessage = '',
+  String? dataDir,
+  String? rootDir,
 }) {
   final all = logTail ?? const <Object?>[];
   final tail = all.length > logTailLines
@@ -334,7 +421,8 @@ Map<String, Object?> buildReport(
   var safeExtra = <String, Object?>{};
   try {
     for (final entry in (extra ?? const <String, Object?>{}).entries) {
-      safeExtra[entry.key] = redactText('${entry.value}', config);
+      safeExtra[entry.key] =
+          redactText('${entry.value}', config, dataDir, rootDir);
     }
   } catch (_) {
     safeExtra = {};
@@ -345,16 +433,17 @@ Map<String, Object?> buildReport(
     'at': '${two(now.day)}.${two(now.month)}.${now.year} '
         '${two(now.hour)}:${two(now.minute)}:${two(now.second)}',
     'operation': operation.isEmpty ? '?' : operation,
-    'summary': redactText(cleanSummary, config),
-    'traceback': redactText(tracebackStr.trim(), config),
+    'summary': redactText(cleanSummary, config, dataDir, rootDir),
+    'traceback': redactText(tracebackStr.trim(), config, dataDir, rootDir),
     'log_tail': [
-      for (final line in tail) redactText(_truncateLine('$line'), config)
+      for (final line in tail)
+        redactText(_truncateLine('$line'), config, dataDir, rootDir)
     ],
     'config': redactConfig(config),
     'context': collectContext(),
     'extra': safeExtra,
     // Friendly fix-it text for user-fixable failures ("") for real bugs.
-    'user_message': redactText(userMessage.trim(), config),
+    'user_message': redactText(userMessage.trim(), config, dataDir, rootDir),
   };
 }
 

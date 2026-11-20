@@ -18,6 +18,7 @@ class _CallbackNotifier implements NotifierBackend {
     required String title,
     required String body,
     required String tag,
+    String? route,
   }) {
     onNotify(tag, body);
     return true;

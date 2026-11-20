@@ -402,6 +402,7 @@ class SubprocessNotifierBackend implements NotifierBackend {
     required String title,
     required String body,
     required String tag,
+    String? route,
   }) {
     unawaited(sendDesktop(title, body, tag));
     return true;

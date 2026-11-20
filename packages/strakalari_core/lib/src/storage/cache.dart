@@ -10,6 +10,7 @@ import 'package:clock/clock.dart';
 
 import '../i18n.dart';
 import '../models.dart';
+import 'accounts.dart' show isAccountDirDeleted, requirePerAccountDir;
 import 'helpers.dart';
 
 /// Cache file name, resolved against the user data dir (mirrors
@@ -18,6 +19,12 @@ const String cacheFile = './data_cache.json';
 
 /// Cache schema version (mismatched files are ignored, not migrated).
 const int cacheVersion = 2;
+
+/// Data-cache key: ISO timestamp recorded when a scheduled refresh fails for
+/// this account, and cleared when a refresh succeeds (§7.2 step 3). Keeps a
+/// failing account due for the 5-minute retry even if `last_updated` was
+/// stamped before an auto-phase error.
+const String scheduledRefreshFailedKey = 'scheduled_refresh_failed';
 
 /// Data-cache key: parsed sent-excuse entries keyed by Komens message key
 /// (`id` or `id|sortDate`), so routine refreshes skip `GetMessageDataAsync`
@@ -97,8 +104,9 @@ DateTime? _parseIsoSpaceHms(String text) {
 ///
 /// Only undecodable content is quarantined — a merely locked file must
 /// survive untouched.
-Map<String, Object?> _readCache({bool strict = false}) {
-  final path = resolvePath(cacheFile);
+Map<String, Object?> _readCache({bool strict = false, String? dataDir}) {
+  final dir = requirePerAccountDir(dataDir);
+  final path = resolvePath(cacheFile, dir);
   if (!File(path).existsSync()) return <String, Object?>{};
   try {
     final decoded =
@@ -125,7 +133,8 @@ Map<String, Object?> _readCache({bool strict = false}) {
 }
 
 /// Reads the on-disk data cache (empty map when missing/unreadable).
-Map<String, Object?> loadDataCache() => _readCache(strict: false);
+Map<String, Object?> loadDataCache({String? dataDir}) =>
+    _readCache(strict: false, dataDir: dataDir);
 
 String _stampNow() {
   final now = clock.now();
@@ -138,11 +147,16 @@ String _stampNow() {
 /// when [replace] is true. A busy cache file is left untouched: merging
 /// against an unreadable file would drop every other key.
 Map<String, Object?> saveDataCache(Map<String, Object?>? data,
-    {bool replace = false}) {
-  final path = resolvePath(cacheFile);
+    {bool replace = false, String? dataDir}) {
+  final dir = requirePerAccountDir(dataDir);
+  if (isAccountDirDeleted(dir)) {
+    throw StateError("Account folder '$dir' was deleted; refusing cache write.");
+  }
+  final path = resolvePath(cacheFile, dir);
   late Map<String, Object?> current;
   try {
-    current = replace ? <String, Object?>{} : _readCache(strict: true);
+    current =
+        replace ? <String, Object?>{} : _readCache(strict: true, dataDir: dir);
   } on FileSystemException catch (e) {
     print('Warning: Could not save data cache: $e — disk cache unchanged.');
     return Map<String, Object?>.of(data ?? <String, Object?>{});

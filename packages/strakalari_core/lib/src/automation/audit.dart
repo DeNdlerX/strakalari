@@ -14,6 +14,7 @@ import 'dart:io';
 import 'package:clock/clock.dart';
 import 'package:path/path.dart' as p;
 
+import '../storage/accounts.dart' show isAccountDirDeleted, requirePerAccountDir;
 import '../storage/helpers.dart';
 
 /// History file name, resolved against the user data dir.
@@ -41,7 +42,8 @@ const List<String> outcomes = [
 ];
 
 /// Resolved history file path.
-String historyPath() => resolvePath(historyFile);
+String historyPath({String? dataDir}) =>
+    resolvePath(historyFile, requirePerAccountDir(dataDir));
 
 String _two(int n) => n.toString().padLeft(2, '0');
 
@@ -57,7 +59,12 @@ String _truncate(String text, int maxRunes) {
 
 /// Appends one record. Returns false (and prints why) when it could not.
 bool record(String kind, String outcome, String source, String summary,
-    {Map<String, Object?>? detail, DateTime? now}) {
+    {Map<String, Object?>? detail, DateTime? now, String? dataDir}) {
+  final dir = requirePerAccountDir(dataDir);
+  if (isAccountDirDeleted(dir)) {
+    print("Warning: Account folder '$dir' was deleted; skipping audit write.");
+    return false;
+  }
   final entry = <String, Object?>{
     'ts': _stamp(now ?? clock.now()),
     'kind': kind,
@@ -68,7 +75,7 @@ bool record(String kind, String outcome, String source, String summary,
   if (detail != null && detail.isNotEmpty) {
     entry['detail'] = detail;
   }
-  final path = historyPath();
+  final path = historyPath(dataDir: dir);
   try {
     final line = toPlatformNewlines('${pyJsonDumps(entry)}\n');
     _rotateIfLarge(path);
@@ -107,8 +114,8 @@ void _rotateIfLarge(String path) {
 }
 
 /// The newest [limit] records, newest first. Unreadable lines are skipped.
-List<Map<String, Object?>> recent({int limit = 50}) {
-  final path = historyPath();
+List<Map<String, Object?>> recent({int limit = 50, String? dataDir}) {
+  final path = historyPath(dataDir: dataDir);
   if (!File(path).existsSync()) return [];
   late final List<String> lines;
   try {
@@ -135,8 +142,9 @@ List<Map<String, Object?>> recent({int limit = 50}) {
 }
 
 /// True when at least one dry run of [kind] completed successfully.
-bool hasDryRun(String kind) => recent(limit: 2000)
-    .any((item) => item['kind'] == kind && item['outcome'] == 'dry_run');
+bool hasDryRun(String kind, {String? dataDir}) =>
+    recent(limit: 2000, dataDir: dataDir)
+        .any((item) => item['kind'] == kind && item['outcome'] == 'dry_run');
 
 /// Short, text-free label of an excuse range (no excuse wording).
 String describeExcuse(Map<String, Object?> excuse) {

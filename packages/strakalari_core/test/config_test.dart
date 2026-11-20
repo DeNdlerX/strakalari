@@ -478,4 +478,23 @@ void main() {
           isTrue);
     });
   });
+
+  group('f4BackgroundRefreshConfig', () {
+    test('defaultIsTrueAndRejectsNonBoolean', () {
+      expect(canonicalDefaults['background_refresh'], isTrue);
+      final mgr = ConfigManager('${tmp.path}/c_f4.json');
+      expect(mgr.get('background_refresh'), isTrue);
+
+      final okCfg = validationBase();
+      okCfg['background_refresh'] = false;
+      expect(validateConfig(okCfg), isEmpty);
+
+      final badCfg = validationBase();
+      badCfg['background_refresh'] = 'no';
+      expect(
+          validateConfig(badCfg)
+              .any((p) => p.contains('background_refresh')),
+          isTrue);
+    });
+  });
 }

@@ -303,6 +303,7 @@ class _RecordingBackend implements notifier.NotifierBackend {
     required String title,
     required String body,
     required String tag,
+    String? route,
   }) {
     sent.add(tag);
     return true;

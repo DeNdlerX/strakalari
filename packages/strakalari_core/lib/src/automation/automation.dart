@@ -21,6 +21,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:clock/clock.dart';
+import 'package:path/path.dart' as p;
 
 import '../bakalari/client.dart';
 import '../lunches/lunch_cutoff.dart' show isLunchOrderOpen;
@@ -28,13 +29,20 @@ import '../models.dart';
 import '../planning/school_presets.dart'
     show effectiveCalendar, resolveLunchCutoff;
 import '../strava/client.dart';
+import '../storage/accounts.dart'
+    show
+        accountsModeRootDir,
+        globalConfigFile,
+        isAccountsMode,
+        requirePerAccountDir;
 import '../storage/cache.dart' show loadDataCache, outboxDetailsKey;
 import '../storage/config.dart';
 import '../storage/helpers.dart';
 import 'audit.dart' as audit;
 import 'cancel.dart';
 import 'excuse_history.dart';
-import '../error_report.dart' show redactValues, secretValues;
+import '../error_report.dart'
+    show allAccountSensitiveValues, redactValues, secretValues;
 import '../i18n.dart';
 
 /// Resolved lunch cutoff `HH:MM` (`school_presets.resolve_lunch_cutoff`,
@@ -278,6 +286,13 @@ class Strakalari implements RefreshApp {
 
   late final ConfigManager configManager;
   late final String configFile;
+
+  /// Explicit per-account directory (`<rootDir>/accounts/<id>`), else null.
+  final String? dataDir;
+
+  /// Root user data directory (shared `global.json`, fallback key dir), else null.
+  final String? rootDir;
+
   @override
   Map<String, Object?> get configData => configManager.data;
 
@@ -367,8 +382,27 @@ class Strakalari implements RefreshApp {
     this.encoding = 'utf-8',
     this.onLog,
     Map<String, Object?>? configData,
-  }) {
-    configManager = ConfigManager(configFile, utf8);
+    String? dataDir,
+    String? rootDir,
+  })  : dataDir = dataDir,
+        rootDir = rootDir ?? (isAccountsMode ? accountsModeRootDir : null) {
+    final effectiveRoot = this.rootDir;
+    if (dataDir != null && dataDir.isNotEmpty) {
+      final globalPath = effectiveRoot != null &&
+              (isAccountsMode ||
+                  File(p.join(effectiveRoot, globalConfigFile)).existsSync())
+          ? p.join(effectiveRoot, globalConfigFile)
+          : null;
+      configManager = ConfigManager.scoped(
+        configFile,
+        encoding: utf8,
+        globalPath: globalPath,
+        baseDir: dataDir,
+        rootDir: effectiveRoot,
+      );
+    } else {
+      configManager = ConfigManager(configFile, utf8);
+    }
     if (configData != null) {
       // Overrides are stored verbatim under canonical names (no
       // aliases, no migration). Secrets still get the same encryption
@@ -388,7 +422,10 @@ class Strakalari implements RefreshApp {
               configManager.data[k] == v) {
             continue;
           }
-          configManager.data[k] = encrypt('$v');
+          final encDir = k == 'gemini_api_key'
+              ? (effectiveRoot ?? dataDir)
+              : dataDir;
+          configManager.data[k] = encrypt('$v', dataDir: encDir);
           configManager.data['${k}_encrypted'] = true;
         } else {
           configManager.data[k] = v;
@@ -397,6 +434,7 @@ class Strakalari implements RefreshApp {
     }
     this.configFile = configManager.configPath;
     final data = configManager.data;
+    final resolvedBase = requirePerAccountDir(dataDir);
 
     bakalariUrl = '${data['bakalari_url'] ?? ''}';
     bakalariUsername = '${data['bakalari_username'] ?? ''}';
@@ -419,8 +457,9 @@ class Strakalari implements RefreshApp {
         ? data['use_strava']
         : data['strava_enable'];
     stravaEnable = useStrava == null ? true : _pyTruthy(useStrava);
-    stravaBlacklistPath =
-        resolvePath('${data['strava_blacklist'] ?? './strava_blacklist.json'}');
+    stravaBlacklistPath = resolvePath(
+        '${data['strava_blacklist'] ?? './strava_blacklist.json'}',
+        resolvedBase);
 
     excuseMode = _mode('${data['excuse_mode'] ?? 'confirm'}');
     defaultExcuseSelection =
@@ -434,12 +473,17 @@ class Strakalari implements RefreshApp {
     signature = '${data['your_signature'] ?? ''}';
 
     alreadyExcusedFile = resolvePath(
-        '${data['already_excused_file'] ?? './already_excused_lessons.json'}');
-    logFile = resolvePath('${data['log_file'] ?? './log.txt'}');
+        '${data['already_excused_file'] ?? './already_excused_lessons.json'}',
+        resolvedBase);
+    logFile = resolvePath(
+        '${data['log_file'] ?? './log.txt'}',
+        resolvedBase);
 
     // Both services go over plain HTTP (no browser).
-    bakalariClient = BakalariClient(data, logger: writeLog);
-    stravaClient = StravaClient(data, logger: writeLog);
+    bakalariClient = BakalariClient(data,
+        logger: writeLog, dataDir: dataDir, fallbackKeyDir: effectiveRoot);
+    stravaClient = StravaClient(data,
+        logger: writeLog, dataDir: dataDir, fallbackKeyDir: effectiveRoot);
   }
 
   static String _mode(String mode) {
@@ -504,9 +548,9 @@ class Strakalari implements RefreshApp {
     };
   }
 
-  static Map<String, List<Map<String, Object?>>> _readCachedOutboxDetails() {
+  Map<String, List<Map<String, Object?>>> _readCachedOutboxDetails() {
     try {
-      final raw = loadDataCache()[outboxDetailsKey];
+      final raw = loadDataCache(dataDir: dataDir)[outboxDetailsKey];
       if (raw is! Map) return {};
       final out = <String, List<Map<String, Object?>>>{};
       for (final entry in raw.entries) {
@@ -602,7 +646,12 @@ class Strakalari implements RefreshApp {
       ].join('\x00');
       if (_logSecretsKey == null || _logSecretsKey!.join('\x00') != key) {
         _logSecretsKey = key.split('\x00');
-        _logSecrets = secretValues(cfg);
+        final secrets = secretValues(cfg, dataDir: dataDir, rootDir: rootDir);
+        if (rootDir != null || isAccountsMode) {
+          secrets.addAll(
+              allAccountSensitiveValues(rootDir: rootDir, secretsOnly: true));
+        }
+        _logSecrets = secrets;
       }
       final secrets = _logSecrets ?? const <String>{};
       return secrets.isEmpty ? message : redactValues(message, secrets);
@@ -737,7 +786,7 @@ class Strakalari implements RefreshApp {
         }
         audit.record('lunch', outcome, source,
             '${entry.key}: ${deorder ? 'cancel lunch' : 'order'}',
-            detail: detail);
+            detail: detail, dataDir: dataDir);
       }
     } on Object catch (e) {
       // The order result stands.
@@ -1279,7 +1328,8 @@ class Strakalari implements RefreshApp {
     try {
       audit.record('excuse', outcome, source,
           audit.describeExcuse(excuse),
-          detail: {'type': excuse['type'], 'mode': excuseMode});
+          detail: {'type': excuse['type'], 'mode': excuseMode},
+          dataDir: dataDir);
     } on Object catch (e) {
       // The send result stands.
       writeLog('Warning: could not record the excuse in the history: $e');

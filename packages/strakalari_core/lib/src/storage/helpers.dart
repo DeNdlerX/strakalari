@@ -14,6 +14,14 @@ import 'package:path/path.dart' as p;
 
 import '../platform/keystore.dart' show KeyStoreUnavailable;
 import '../platform/packaging.dart';
+import 'accounts.dart'
+    show
+        accountsDirName,
+        accountsFile,
+        globalConfigFile,
+        hasAnyAccountFolder,
+        isAccountsMode,
+        migratingDirName;
 import 'fernet.dart';
 import 'secret_store.dart';
 
@@ -209,6 +217,10 @@ String _macosAppDataDir() {
 
 bool _needsBundleMigration(String bundle, String target) {
   if (p.equals(p.absolute(bundle), p.absolute(target))) return false;
+  if (File(p.join(bundle, accountsFile)).existsSync()) {
+    return !File(p.join(target, accountsFile)).existsSync() &&
+        !hasAnyAccountFolder(target);
+  }
   return File(p.join(bundle, 'config.json')).existsSync() &&
       !File(p.join(target, 'config.json')).existsSync();
 }
@@ -284,10 +296,56 @@ bool _migrateBundleData(String bundle, String target) {
   if (!lock.acquire(timeoutS: 30)) return false;
   try {
     if (!_needsBundleMigration(bundle, target)) return true;
+    final hasAccounts = File(p.join(bundle, accountsFile)).existsSync();
+    final carry = carryKeyHook ?? carryKey;
+    if (hasAccounts) {
+      for (final rel in _bundleDataItems(bundle)) {
+        _copyMissing(p.join(bundle, rel), p.join(target, rel));
+      }
+      _copyMissing(
+          p.join(bundle, 'config.json'), p.join(target, 'config.json'));
+      _copyMissing(
+          p.join(bundle, globalConfigFile), p.join(target, globalConfigFile));
+      final srcAccounts = Directory(p.join(bundle, accountsDirName));
+      final accountNames = <String>[];
+      if (srcAccounts.existsSync()) {
+        for (final entity in srcAccounts.listSync(recursive: false)) {
+          if (entity is! Directory) continue;
+          final name = p.basename(entity.path);
+          if (name == migratingDirName) continue;
+          accountNames.add(name);
+        }
+      }
+      // Carry root and per-account keys BEFORE writing any target
+      // `accounts/<id>/config.json` or `accounts.json`, so an interrupted
+      // key carry leaves `hasAnyAccountFolder(target) == false` and retries
+      // cleanly on the next launch (§4.1, §11.2 item 8).
+      if (!carry(bundle, target)) return false;
+      for (final name in accountNames) {
+        final srcAcc = p.join(bundle, accountsDirName, name);
+        final dstAcc = p.join(target, accountsDirName, name);
+        Directory(dstAcc).createSync(recursive: true);
+        if (!carry(srcAcc, dstAcc)) return false;
+      }
+      for (final name in accountNames) {
+        final srcAcc = p.join(bundle, accountsDirName, name);
+        final dstAcc = p.join(target, accountsDirName, name);
+        for (final item in Directory(srcAcc).listSync(recursive: false)) {
+          final itemName = p.basename(item.path);
+          if (itemName == 'config.json' || itemName == keyFile) continue;
+          _copyMissing(item.path, p.join(dstAcc, itemName));
+        }
+        _copyMissing(p.join(srcAcc, 'config.json'), p.join(dstAcc, 'config.json'));
+      }
+      // Copy accounts.json LAST as the "move finished" marker (§4.1).
+      _copyMissing(
+          p.join(bundle, accountsFile), p.join(target, accountsFile));
+      return true;
+    }
     for (final rel in _bundleDataItems(bundle)) {
       _copyMissing(p.join(bundle, rel), p.join(target, rel));
     }
-    if (!(carryKeyHook ?? carryKey)(bundle, target)) return false;
+    if (!carry(bundle, target)) return false;
     _copyMissing(
         p.join(bundle, 'config.json'), p.join(target, 'config.json'));
     return true;
@@ -910,32 +968,71 @@ void _replaceFile(String tmpPath, String path) {
   File(tmpPath).renameSync(path);
 }
 
-/// Encrypts text using Fernet. [key] is ignored and kept for backward
-/// compatibility.
-String encrypt(String password, [String? key]) {
-  if (password.isEmpty) return '';
-  return _getFernet().encryptBytes(utf8.encode(password));
+Fernet _fernetForDir(String? dataDir) {
+  if (dataDir != null && dataDir.isNotEmpty) {
+    return Fernet.fromKeyBytes(getKey(dataDir));
+  }
+  if (isAccountsMode) {
+    throw StateError('per-account file used without an account folder');
+  }
+  return _getFernet();
 }
 
-/// Decrypts text. Automatically falls back to legacy XOR if Fernet fails,
-/// migrating it seamlessly.
+bool _sameDir(String? a, String? b) {
+  if (a == null || b == null || a.isEmpty || b.isEmpty) return false;
+  return p.equals(p.normalize(p.absolute(a)), p.normalize(p.absolute(b)));
+}
+
+/// Encrypts text using Fernet. [key] is ignored and kept for backward
+/// compatibility. When [dataDir] is provided, uses that folder's key.
+String encrypt(String password, {String? key, String? dataDir}) {
+  if (dataDir == null && isAccountsMode) {
+    throw StateError('per-account file used without an account folder');
+  }
+  if (password.isEmpty) return '';
+  return _fernetForDir(dataDir).encryptBytes(utf8.encode(password));
+}
+
+/// Decrypts text. Automatically falls back to [fallbackKeyDir] (if given and
+/// distinct from [dataDir]) and then to legacy XOR if Fernet fails.
 ///
 /// NOTE: this returns the input unchanged when nothing can decode it —
 /// callers that must distinguish failure (e.g. settings UI) should use
 /// decryptStrict().
-String decrypt(String? passwordHash, [String? key]) {
+String decrypt(String? passwordHash,
+    {String? key, String? dataDir, String? fallbackKeyDir}) {
+  if (dataDir == null && isAccountsMode) {
+    throw StateError('per-account file used without an account folder');
+  }
   if (passwordHash == null || passwordHash.isEmpty) return '';
   try {
     ascii.encode(passwordHash);
-    return utf8.decode(_getFernet().decryptToken(passwordHash));
+    return utf8.decode(_fernetForDir(dataDir).decryptToken(passwordHash));
   } on InvalidTokenException {
-    // Fall through to the legacy XOR cipher below.
+    // Try fallback key dir or legacy XOR below.
   } on FormatException {
     // Non-ASCII input: undecodable as a token either.
   } on FileSystemException {
-    // secret.key file IO failed: try the legacy cipher then.
+    // secret.key file IO failed: try fallback below.
   } on KeyStoreUnavailable {
     // Python's `KeyStoreUnavailable` is an `OSError`: same fallback.
+  }
+  if (fallbackKeyDir != null &&
+      fallbackKeyDir.isNotEmpty &&
+      !_sameDir(dataDir, fallbackKeyDir)) {
+    try {
+      ascii.encode(passwordHash);
+      return utf8.decode(
+          Fernet.fromKeyBytes(getKey(fallbackKeyDir)).decryptToken(passwordHash));
+    } on InvalidTokenException {
+      // Fall through to legacy XOR.
+    } on FormatException {
+      // Fall through.
+    } on FileSystemException {
+      // Fall through.
+    } on KeyStoreUnavailable {
+      // Fall through.
+    }
   }
   try {
     final encrypted = base64.decode(passwordHash);
@@ -960,13 +1057,28 @@ bool isEncryptedFlag(Object? value) {
 }
 
 /// Like [decrypt], but returns null when the value cannot be decoded.
-String? decryptStrict(String? passwordHash, [String? key]) {
+String? decryptStrict(String? passwordHash,
+    {String? key, String? dataDir, String? fallbackKeyDir}) {
+  if (dataDir == null && isAccountsMode) {
+    throw StateError('per-account file used without an account folder');
+  }
   if (passwordHash == null || passwordHash.isEmpty) return '';
   try {
     ascii.encode(passwordHash);
-    return utf8.decode(_getFernet().decryptToken(passwordHash));
+    return utf8.decode(_fernetForDir(dataDir).decryptToken(passwordHash));
   } catch (_) {
-    // Try the legacy cipher below.
+    // Try fallback key dir or legacy cipher below.
+  }
+  if (fallbackKeyDir != null &&
+      fallbackKeyDir.isNotEmpty &&
+      !_sameDir(dataDir, fallbackKeyDir)) {
+    try {
+      ascii.encode(passwordHash);
+      return utf8.decode(
+          Fernet.fromKeyBytes(getKey(fallbackKeyDir)).decryptToken(passwordHash));
+    } catch (_) {
+      // Try legacy cipher below.
+    }
   }
   try {
     final encrypted = base64.decode(passwordHash);

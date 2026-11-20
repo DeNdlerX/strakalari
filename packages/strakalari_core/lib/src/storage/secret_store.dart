@@ -324,10 +324,55 @@ bool carryKey(String oldDir, String newDir) {
   return true;
 }
 
+/// Optional hook notified when [forgetKey] deletes a directory's key
+/// (used by Android's `WarmedAndroidKeystore` to evict the folder's entry).
+void Function(String dataDir)? onForgetKeyHook;
+
+/// True when a desktop OS credential store backend is configured and active.
+bool hasDesktopKeyStore() {
+  if (_noKeyring || allowMissingKeyStoreForTesting || isMobile()) return false;
+  return keyStoreBackend != null;
+}
+
+/// Reads and validates `<dataDir>/secret.key` without creating or modifying it.
+Uint8List? readKeyFromFileOnly(String dataDir) {
+  final key = _readFile(p.join(dataDir, keyFile));
+  return Fernet.isValidKeyBytes(key) ? key : null;
+}
+
+/// Reads and validates `<dataDir>`'s key from the OS credential store without
+/// creating or modifying anything. Throws [KeyStoreUnavailable] on store error.
+Uint8List? readKeyFromStoreOnly(String dataDir) {
+  final backend = _desktopBackend();
+  if (backend == null) return null;
+  final stored = _fromStore(backend, entryName(dataDir));
+  return Fernet.isValidKeyBytes(stored) ? stored : null;
+}
+
+/// Writes [key] to the OS credential store for [dataDir] and verifies the round
+/// trip; never falls back to writing a file on disk.
+bool writeKeyToStoreOnly(String dataDir, Uint8List key) {
+  final backend = _desktopBackend();
+  if (backend == null) return false;
+  final ok = _toStore(backend, entryName(dataDir), key);
+  if (ok) _cache.remove(dataDir);
+  return ok;
+}
+
+/// Writes [key] atomically to [path] with restricted permissions (`chmod 600`).
+void writeKeyFileDirect(String path, Uint8List key) {
+  _writeFile(path, key);
+}
+
+/// Evicts [dataDir] from the in-process key cache.
+void evictKeyCache(String dataDir) {
+  _cache.remove(dataDir);
+}
+
 /// Deletes [dataDir]'s key from the OS credential store and disk.
 ///
-/// Used by the uninstaller's "remove all user data". True when nothing
-/// is left behind. Never raises.
+/// Used by the uninstaller's "remove all user data" and account deletion.
+/// True when nothing is left behind. Never raises.
 bool forgetKey(String dataDir) {
   var ok = true;
   final backend = _desktopBackend();
@@ -348,6 +393,11 @@ bool forgetKey(String dataDir) {
     }
   }
   _cache.remove(dataDir);
+  try {
+    onForgetKeyHook?.call(dataDir);
+  } catch (_) {
+    // Best effort eviction.
+  }
   return ok;
 }
 

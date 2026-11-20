@@ -12,11 +12,13 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:meta/meta.dart';
+import 'package:path/path.dart' as p;
 
 import '../lunches/lunch_cutoff.dart' as lunch_cutoff;
 import '../planning/grades.dart' as grades;
 import '../status_notification.dart' as status_notification;
 import '../update.dart' as update;
+import 'accounts.dart';
 import 'helpers.dart';
 
 /// Allowed values for `excuse_mode` / `strava_order_mode`.
@@ -124,6 +126,10 @@ const Map<String, Object> canonicalDefaults = {
   'default_excuse_selection': 'first',
   'strava_order_mode': 'confirm',
   'strava_auto_cancel_lunches': true,
+  // Multiple accounts: this account takes part in the scheduled
+  // background refresh (per account; the device switch is
+  // `run_in_background`).
+  'background_refresh': true,
   'automation_paused': false,
   'disclaimer_accepted': false,
   // First-run wizard: the step of an unfinished setup, so it resumes after
@@ -347,6 +353,10 @@ List<String> validateConfig(Map<String, Object?> data) {
   if (autoCancel != null && autoCancel is! bool) {
     problems.add("'strava_auto_cancel_lunches' must be a boolean.");
   }
+  final backgroundRefresh = data['background_refresh'];
+  if (backgroundRefresh != null && backgroundRefresh is! bool) {
+    problems.add("'background_refresh' must be a boolean.");
+  }
   if (!lunch_cutoff.isValidCutoffTime(data['lunch_order_cutoff_time'] ?? '')) {
     problems.add(
         "'lunch_order_cutoff_time' must be empty (school preset, else 12:00) "
@@ -525,6 +535,15 @@ class ConfigManager {
   /// Resolved absolute config path.
   final String configPath;
 
+  /// Resolved path to shared `global.json` in multi-account mode, else null.
+  final String? globalPath;
+
+  /// Account folder for per-account relative paths and keys, else null.
+  final String? baseDir;
+
+  /// Root data folder for shared `gemini_api_key` encryption and fallback, else null.
+  final String? rootDir;
+
   /// File encoding (JSON is always written as UTF-8-compatible text).
   final Encoding encoding;
 
@@ -534,20 +553,78 @@ class ConfigManager {
   Map<String, Object?> _baseline = {};
   Set<String> _touched = {};
   bool _unreadable = false;
+  bool _globalUnreadable = false;
+  bool _deleted = false;
+
+  /// Marks this manager's account as deleted so late saves fail loudly (§9).
+  void markDeleted() {
+    _deleted = true;
+  }
+
+  /// True when this manager belongs to an account whose folder was deleted.
+  bool get isDeleted =>
+      _deleted || (baseDir != null && isAccountDirDeleted(baseDir));
 
   /// Test seam (simulates disk / lock failures in unit tests). Skips the
   /// lock and the "unreadable at start" guard, so production code never sets it.
   @visibleForTesting
   void Function()? saveOverride;
 
+  /// Test seam to fail only the per-account file write during split save.
+  @visibleForTesting
+  void Function()? accountWriteOverride;
+
   factory ConfigManager([String configPath = './config.json',
-      Encoding encoding = utf8]) {
-    final manager = ConfigManager._(resolvePath(configPath), encoding);
+      Encoding encoding = utf8]) =>
+      ConfigManager.scoped(configPath, encoding: encoding);
+
+  factory ConfigManager.scoped(
+    String configPath, {
+    Encoding encoding = utf8,
+    String? globalPath,
+    String? baseDir,
+    String? rootDir,
+  }) {
+    final resolvedConfig = baseDir != null
+        ? resolvePath(configPath, baseDir)
+        : resolvePath(configPath);
+    guardAccountsModeConfigPath(resolvedConfig);
+    final resolvedGlobal =
+        globalPath != null ? resolvePath(globalPath, rootDir) : null;
+    final manager = ConfigManager._(
+      resolvedConfig,
+      encoding,
+      globalPath: resolvedGlobal,
+      baseDir: baseDir,
+      rootDir: rootDir,
+    );
     manager.load();
     return manager;
   }
 
-  ConfigManager._(this.configPath, this.encoding);
+  /// Opens the multi-account config for [accountId] under [rootDir].
+  factory ConfigManager.forAccount(
+    String rootDir,
+    String accountId, {
+    Encoding encoding = utf8,
+  }) {
+    final accDir = accountDirFor(rootDir, accountId);
+    return ConfigManager.scoped(
+      p.join(accDir, 'config.json'),
+      encoding: encoding,
+      globalPath: p.join(rootDir, globalConfigFile),
+      baseDir: accDir,
+      rootDir: rootDir,
+    );
+  }
+
+  ConfigManager._(
+    this.configPath,
+    this.encoding, {
+    this.globalPath,
+    this.baseDir,
+    this.rootDir,
+  });
 
   /// Loads configuration from the JSON file and merges on top of defaults.
   Map<String, Object?> load() {
@@ -565,6 +642,10 @@ class ConfigManager {
   /// Snapshot of what is on disk, so save() writes only real edits.
   void _loadInner() {
     final defaults = defaultConfig();
+    if (globalPath != null) {
+      _loadMultiAccount(defaults);
+      return;
+    }
     if (!File(configPath).existsSync()) {
       data = defaults;
       _unreadable = false;
@@ -612,6 +693,81 @@ class ConfigManager {
     // keys stay on disk untouched but are never read.
   }
 
+  /// Multi-account precedence (§3.4): canonical defaults -> per-account keys
+  /// from `<accountDir>/config.json` -> shared keys from `<rootDir>/global.json`.
+  /// Shared keys are NEVER read from the account file, even if a migrated copy
+  /// still holds them.
+  void _loadMultiAccount(Map<String, Object?> defaults) {
+    // 1. Account file (per-account keys only).
+    if (!File(configPath).existsSync()) {
+      _unreadable = false;
+    } else {
+      try {
+        final loaded = jsonDecode(
+            File(configPath).readAsStringSync(encoding: encoding));
+        if (loaded is Map) {
+          for (final entry in loaded.entries) {
+            final k = '${entry.key}';
+            if (globalConfigKeys.contains(k)) continue;
+            if (entry.value != null) {
+              defaults[k] = entry.value as Object?;
+            }
+          }
+        } else {
+          print("Warning: Config '$configPath' does not contain a JSON "
+              'object. Using fallback defaults.');
+        }
+        _unreadable = false;
+      } on FormatException catch (e) {
+        final backup = quarantineCorruptFile(configPath);
+        final hint = backup.isNotEmpty ? ' Preserved at $backup.' : '';
+        print("Warning: Failed to load '$configPath': $e. "
+            'Using fallback defaults.$hint');
+        _unreadable = false;
+      } on FileSystemException catch (e) {
+        print("Warning: Could not read '$configPath' right now: $e. "
+            'Using defaults, not saving.');
+        _unreadable = true;
+      }
+    }
+
+    // 2. Global file (shared keys only).
+    final gPath = globalPath!;
+    if (!File(gPath).existsSync()) {
+      _globalUnreadable = false;
+    } else {
+      try {
+        final loaded =
+            jsonDecode(File(gPath).readAsStringSync(encoding: encoding));
+        if (loaded is Map) {
+          for (final entry in loaded.entries) {
+            final k = '${entry.key}';
+            if (!globalConfigKeys.contains(k)) continue;
+            if (entry.value != null) {
+              defaults[k] = entry.value as Object?;
+            }
+          }
+        } else {
+          print("Warning: Global config '$gPath' does not contain a JSON "
+              'object. Using fallback defaults.');
+        }
+        _globalUnreadable = false;
+      } on FormatException catch (e) {
+        final backup = quarantineCorruptFile(gPath);
+        final hint = backup.isNotEmpty ? ' Preserved at $backup.' : '';
+        print("Warning: Failed to load '$gPath': $e. "
+            'Using fallback defaults.$hint');
+        _globalUnreadable = false;
+      } on FileSystemException catch (e) {
+        print("Warning: Could not read '$gPath' right now: $e. "
+            'Using defaults, not saving.');
+        _globalUnreadable = true;
+      }
+    }
+
+    data = defaults;
+  }
+
   /// Reloads configuration from disk.
   Map<String, Object?> reload() => load();
 
@@ -622,6 +778,14 @@ class ConfigManager {
   void save() {
     if (saveOverride != null) {
       saveOverride!();
+      return;
+    }
+    if (isDeleted) {
+      throw StateError(
+          "Account folder for '$configPath' was deleted; refusing to save.");
+    }
+    if (globalPath != null) {
+      _saveMultiAccount();
       return;
     }
     if (_unreadable && File(configPath).existsSync()) {
@@ -659,6 +823,167 @@ class ConfigManager {
       lock.release();
     }
     _rememberBaseline();
+  }
+
+  void _saveMultiAccount() {
+    final gPath = globalPath!;
+    final allKeys = <String>{...data.keys, ..._baseline.keys, ..._touched};
+    final editedGlobal = <String>{};
+    final editedAccount = <String>{};
+    for (final k in allKeys) {
+      final changed = _touched.contains(k) ||
+          !_baseline.containsKey(k) ||
+          !data.containsKey(k) ||
+          !jsonEquals(_baseline[k], data[k]);
+      if (!changed) continue;
+      if (globalConfigKeys.contains(k)) {
+        editedGlobal.add(k);
+      } else {
+        editedAccount.add(k);
+      }
+    }
+    final writeGlobal =
+        editedGlobal.isNotEmpty || !File(gPath).existsSync();
+    final writeAccount =
+        editedAccount.isNotEmpty || !File(configPath).existsSync();
+
+    // 1. Write global.json first (never nested with config.json.lock, §3.4).
+    if (writeGlobal) {
+      if (_globalUnreadable && File(gPath).existsSync()) {
+        throw StateError("Config '$gPath' could not be read at startup; "
+            'not overwriting it. Restart the app.');
+      }
+      final gLock = InterProcessLock('$gPath.lock');
+      if (!gLock.acquire(timeoutS: 10.0)) {
+        throw StateError("Config '$gPath' is being saved by another "
+            'process; not saved — try again.');
+      }
+      try {
+        final mergedGlobal = _mergeSplitOntoDisk(
+          gPath,
+          globalOnly: true,
+          editedKeys: editedGlobal,
+        );
+        try {
+          atomicWriteJson(gPath, mergedGlobal, encoding: encoding);
+        } on FileSystemException catch (e) {
+          throw StateError("Could not save config to '$gPath': $e");
+        }
+        for (final k in globalConfigKeys) {
+          if (mergedGlobal.containsKey(k)) {
+            data[k] = mergedGlobal[k];
+            _baseline[k] = _deepCopyJson(mergedGlobal[k]);
+          } else {
+            data.remove(k);
+            _baseline.remove(k);
+          }
+          _touched.remove(k);
+        }
+      } finally {
+        gLock.release();
+      }
+    }
+
+    // 2. Write per-account config.json second (§3.4).
+    if (writeAccount) {
+      if (isDeleted) {
+        throw StateError(
+            "Account folder for '$configPath' was deleted; refusing to save.");
+      }
+      if (_unreadable && File(configPath).existsSync()) {
+        throw StateError("Config '$configPath' could not be read at startup; "
+            'not overwriting it. Restart the app.');
+      }
+      final aLock = InterProcessLock('$configPath.lock');
+      if (!aLock.acquire(timeoutS: 10.0)) {
+        throw StateError("Config '$configPath' is being saved by another "
+            'process; not saved — try again.');
+      }
+      try {
+        final mergedAccount = _mergeSplitOntoDisk(
+          configPath,
+          globalOnly: false,
+          editedKeys: editedAccount,
+        );
+        if (accountWriteOverride != null) {
+          accountWriteOverride!();
+        } else {
+          try {
+            atomicWriteJson(configPath, mergedAccount, encoding: encoding);
+          } on FileSystemException catch (e) {
+            throw StateError("Could not save config to '$configPath': $e");
+          }
+        }
+        final accountKeys = <String>{
+          ...mergedAccount.keys,
+          for (final k in data.keys)
+            if (!globalConfigKeys.contains(k)) k,
+          for (final k in _baseline.keys)
+            if (!globalConfigKeys.contains(k)) k,
+        };
+        for (final k in accountKeys) {
+          if (mergedAccount.containsKey(k)) {
+            data[k] = mergedAccount[k];
+            _baseline[k] = _deepCopyJson(mergedAccount[k]);
+          } else {
+            data.remove(k);
+            _baseline.remove(k);
+          }
+          _touched.remove(k);
+        }
+      } finally {
+        aLock.release();
+      }
+    }
+  }
+
+  Map<String, Object?> _mergeSplitOntoDisk(
+    String path, {
+    required bool globalOnly,
+    required Set<String> editedKeys,
+  }) {
+    final defaults = defaultConfig();
+    final merged = <String, Object?>{
+      for (final e in defaults.entries)
+        if (globalConfigKeys.contains(e.key) == globalOnly) e.key: e.value,
+    };
+    if (File(path).existsSync()) {
+      try {
+        final decoded =
+            jsonDecode(File(path).readAsStringSync(encoding: encoding));
+        if (decoded is Map) {
+          for (final entry in decoded.entries) {
+            final k = '${entry.key}';
+            if (globalConfigKeys.contains(k) != globalOnly) continue;
+            if (entry.value != null) merged[k] = entry.value as Object?;
+          }
+        }
+      } on FileSystemException {
+        // Fall back to in-memory values for this split below.
+        for (final entry in data.entries) {
+          if (globalConfigKeys.contains(entry.key) == globalOnly) {
+            merged[entry.key] = entry.value;
+          }
+        }
+        return merged;
+      } on FormatException {
+        for (final entry in data.entries) {
+          if (globalConfigKeys.contains(entry.key) == globalOnly) {
+            merged[entry.key] = entry.value;
+          }
+        }
+        return merged;
+      }
+    }
+    for (final k in editedKeys) {
+      if (globalConfigKeys.contains(k) != globalOnly) continue;
+      if (data.containsKey(k)) {
+        merged[k] = data[k];
+      } else {
+        merged.remove(k);
+      }
+    }
+    return merged;
   }
 
   /// Current file content with this instance's edits applied.
@@ -727,7 +1052,8 @@ class ConfigManager {
             key == 'gemini_api_key')) {
       // Avoid re-encrypting if value is already the encrypted string.
       if (data['${key}_encrypted'] == true && data[key] == value) return;
-      data[key] = encrypt('$value');
+      final encDir = key == 'gemini_api_key' ? (rootDir ?? baseDir) : baseDir;
+      data[key] = encrypt('$value', dataDir: encDir);
       data['${key}_encrypted'] = true;
     } else {
       data[key] = value;
@@ -745,7 +1071,8 @@ class ConfigManager {
 
   /// Returns the resolved absolute path to the blacklist file.
   String getBlacklistPath() => resolvePath(
-      '${get('strava_blacklist', './strava_blacklist.json')}');
+      '${get('strava_blacklist', './strava_blacklist.json')}',
+      requirePerAccountDir(baseDir));
 
   /// Loads blacklist keywords from strava_blacklist.json.
   ///
@@ -832,7 +1159,8 @@ class ConfigManager {
 
   /// Returns the resolved absolute path to the already excused lessons file.
   String getAlreadyExcusedPath() => resolvePath(
-      '${get('already_excused_file', './already_excused_lessons.json')}');
+      '${get('already_excused_file', './already_excused_lessons.json')}',
+      requirePerAccountDir(baseDir));
 
   /// Loads history from already_excused_lessons.json (or the example
   /// template if missing, with demo rows filtered out).
