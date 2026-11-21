@@ -553,3 +553,57 @@ Unchanged from R7, with item 4 now about the fixed code:
    packages in the pub cache still have their `pubspec.yaml`.
 10. **Not checked:** anything that needs a Mac or an iPhone (list
     above); the Android phone (no Android change since R6).
+
+---
+
+## Re-review 2 (2026-11-21)
+
+The owner asked the reviewer, right after the re-review: "can you fix
+the two doc lines yourself?" So the reviewer fixed S4 and S5 itself,
+one commit each, as at R4 S5 and R5 S5. For these two commits the
+review isn't independent; each is one sentence in
+`docs/IOS_SIDELOADING.md` plus a doc-test check, and the owner can read
+both diffs in a minute.
+
+- `c8101a3` F5: say an expired .ipa needs a new release and never reuse
+  a released tag (R7 S4);
+- `9923cb0` F5: name Google Gemini in the iOS doc's privacy line, as the
+  README does (R7 S5).
+
+### Verdict: PASS
+
+Every R7 finding is fixed. Everything that needs a Mac or an iPhone stays
+unverified until the owner's CI run and a sideload (the six points in
+*Unverified until the owner's CI run and an iPhone (updated)* above).
+
+### S4 and S5, checked
+
+- **S4 ✔ (`c8101a3`).** `docs/IOS_SIDELOADING.md:18` now says GitHub
+  deletes the `.ipa` 14 days after the run, that a new one is built only
+  together with a new release (a new `v…` version, for example a beta)
+  because every run that builds it also publishes that release, and
+  never to start a run with the tag of a version that's already out. It
+  no longer suggests any run. `ios_project_config_test.dart` checks both
+  sentences and that "start a new release run" is gone. With the old doc
+  (`9923cb0^^`) the test fails (`contains 'built only together with a
+  new release'`); with the new one it passes.
+- **S5 ✔ (`9923cb0`).** The privacy line (`:90`) ends "…and Google
+  Gemini only if you turn on **AI recommendations** in Settings
+  yourself." That's the README's condition, and *AI recommendations* is
+  the Settings section's English name (`sec_ai`, `app_en.arb:584`). The
+  test checks the phrase; it fails with the old doc and passes with the
+  new one.
+
+### What the reviewer verified, and how (re-review 2)
+
+1. Each doc-test check run against the doc before and after its commit
+   (fails before, passes after).
+2. App `flutter analyze` no issues, `flutter test` **829 passed, 1
+   skipped** at `9923cb0` (same count: the checks went into the existing
+   doc test). Core wasn't touched since the re-review (881 passed / 2
+   skipped there). The generated plugin registrants' line endings were
+   restored to `HEAD` again.
+3. Both commits touch only `docs/IOS_SIDELOADING.md` and
+   `app/test/ios_project_config_test.dart`; both are by DeNdlerX with no
+   `Co-Authored-By` / `Claude-Session` / "Generated with" line; no
+   upstream; `git log qa-roadmap..main` empty.
