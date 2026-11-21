@@ -337,3 +337,190 @@ so they were judged by reading and by the table above.
 10. **Throwaway worktree** in the reviewer's scratch folder: plugin links
     removed one by one first, then the folder; every package in the pub
     cache still has its `pubspec.yaml`.
+
+---
+
+## Re-review 2026-11-21
+
+Reviewed at `qa-roadmap` @ `aa5030c` (base `main` @ `527699b`; `main` has
+no commits the branch lacks, and the branch has no upstream). Commits
+since the R6 review (`d5ce926`), one per finding:
+
+- `5222cb2` M1: *Aktivita* reads the active account's audit history;
+- `5a858e2` M2: tests for the *Zrušit* guards with two finished accounts;
+- `b765169` S1: scheduler test for *Pozadí vypnuto*;
+- `bef0011` S2: test that the move rejects passwords the carried key can't open;
+- `4383cc6` S3: Android with two different keys carries the file key (and N3);
+- `78e67dd` S4: an interrupted Store/macOS copy is finished on the next launch;
+- `f379d37` S5: switcher test for *Spravovat účty* → Settings → Účty;
+- `aa5030c` STATUS.
+
+### Verdict: PASS
+
+Every R6 finding is fixed in the code or, where the code was already
+right, covered by a test that fails without it. After the update,
+*Aktivita* shows the automation history and *Odesláno za 7 dní* counts
+again; the reviewer checked that on a real move of a demo folder, not
+only in the agent's test. *Zrušit* in the add-account wizard is now
+proven unable to delete a finished account, in both layers. An Android
+install with two different saved keys now moves (it stayed in degraded
+mode for good before), and an interrupted Store/macOS copy is completed
+on the next start with every account. All suites are green, the test
+count grew (core 875 → 879, app 807 → 810), nothing was removed,
+skipped or weakened, and no config key, string, tutorial or parity
+fixture changed. No new findings that need work; four notes below.
+F4 is done, and with it phase 6.
+
+### R6 findings, checked
+
+- **M1 ✔** `activity_live.dart:55–64`: `loadAuditItems([limit, dataDir])`
+  passes `dataDir` to `core.recent`, and `LiveActivityView` calls it with
+  `s.activeAccountDir` (`:77`), which is `null` outside accounts mode, so
+  legacy and degraded mode keep today's root file. The reviewer's own grep
+  of `app/lib` for `loadDataCache`, `saveDataCache`, `recent`,
+  `historyPath`, `hasDryRun`, `record`, `encrypt`/`decrypt`/
+  `decryptStrict` without `dataDir` finds nothing else (the one hit,
+  `activity.dart:983`, passes `dataDir` on the next line; the two
+  `ConfigManager()` calls without an account, `app_state.dart:532` and
+  `background.dart:180`, are in the non-accounts branches). The new test
+  (`accounts_ui_test.dart`, *LiveActivityView reads only active account
+  audit history and updates on switchAccount*) can't compile at
+  `d5ce926` (it also calls `loadAuditItems(80, dir)` directly); with
+  those ten direct-call lines taken out, its screen part fails there with
+  `Historie automatizace: Bad state: per-account file used without an
+  account folder`, exactly the bug, and passes on the fix.
+- **M2 ✔** Two tests with two finished accounts:
+  `cancelAddingAccountRefusesNonAddingAccountEvenWithTwoAccounts (R6 M2)`
+  (core) and `cancelAddAccountRefusesNonAddingAccountWithClearedCredentials
+  (R6 M2)` (`AppState`, with `setupPending == true`). Each fails when its
+  guard is removed (`accounts.dart:1476` + `:1501`; `app_state.dart:645`),
+  see the table below and N8.
+- **S1 ✔** `scheduledRefreshSkipsBackgroundRefreshDisabledAccount (R6 S1)`:
+  two due accounts, the second switched off → only the first refreshes,
+  in the scheduler and from the tray; switched on again → both. Fails
+  when the skip at `activity.dart:372` is removed. The tray pre-check's
+  copy of the skip (`:466`) isn't caught (N9).
+- **S2 ✔** `migrationVerificationRejectsUnopenablePasswords (R6 S2)`: a
+  `bakalari_password` and, separately, a `gemini_api_key` encrypted under
+  a foreign key → the move ends degraded, no `accounts.json`, no
+  `accounts/default/`, root files byte-identical. Disabling step 4 or
+  step 5 of `_verifyMigration` (`accounts.dart:1306–1322`) each fails it.
+- **S3 ✔** `_carryKeyForMigration` (`accounts.dart:1096–1112`): when both
+  `secret.key.wrapped` and a valid plain `secret.key` exist and differ,
+  the move carries the file key in file mode, the same choice
+  `secret_store._androidLoadOrCreate` (`secret_store.dart:112–118`) makes
+  at run time; both files are copied, and the account folder later
+  resolves to the same file key by that same rule. Equal keys keep the
+  wrapped path. `androidDifferingPlainAndWrappedKeysUsesPlainKey (R6 S3)`
+  fails at `bef0011` with `Account secret 'bakalari_password' failed to
+  decrypt with carried key alone`, passes on the fix, and opens the
+  password with `decryptStrict(dataDir: accounts/default)` and no
+  `fallbackKeyDir`, so with the account's own key alone.
+- **S4 ✔** `helpers.dart`: `_needsBundleMigration` (`:221–228`) decides
+  from the target's `accounts.json` alone when the old folder has one, and
+  `_migrateBundleData` (from `:297`) copies every account's other files,
+  then all `config.json` files, then `accounts.json`. The test
+  `interruptedAfterFirstAccountConfigCompletesOnNextLaunch (R6 S4)` (macOS
+  bundle, and MSIX Store on Windows; both ran here) needs the new
+  `bundleCopyHook` seam, so it can't compile at `4383cc6`; the seam is a
+  one-line test hook like the existing `carryKeyHook`. Reading it and
+  undoing each half of the fix alone (table) shows it catches the bug.
+  See N10.
+- **S5 ✔ (R6's own mistake):** the switcher already called
+  `appState.setSettingsSection('accounts')` before going to Settings
+  (`account_switcher.dart:320`, there since `99cafd4`); `setSettingsSection`
+  sets the section and opens it (`app_state.dart:1354–1361`). The R6
+  reviewer looked only at the callback in `scaffold.dart:680`. The agent
+  checked, changed no code, and extended the switcher test to tap
+  *Spravovat účty* from the More card, the top-bar pill on Dnes, the pill
+  while already on the Settings list (390 px) and the dialog (1280 px),
+  each time with another section set first. It passes at `78e67dd` (as it
+  must: the code was right) and fails when the call is removed.
+- **Notes:** N3 done in `4383cc6` (`strava_id` / `strava_user` no longer
+  read), as R6 allowed ("with the next change there"); N7 done (header
+  says `main @ 527699b`). N1 and N2 untouched, which is fine: nothing
+  changed there.
+
+### Each part undone alone (at `aa5030c`)
+
+| Undone | Caught? |
+|---|---|
+| core *Zrušit* guard (`!adding`, both places) | yes, M2 core test (`throws StateError` not met) |
+| `AppState.cancelAddAccount` guard | yes, M2 app test (see N8) |
+| scheduler skip of `background_refresh: false` (`activity.dart:372`) | yes, S1 |
+| tray pre-check skip (`activity.dart:466`) | **no** (N9) |
+| `_verifyMigration` step 4 (account passwords) | yes, S2 |
+| `_verifyMigration` step 5 (shared Gemini key) | yes, S2 |
+| S3 "plain key differs → carry it" | yes, S3 |
+| S4 copy rule (old `hasAnyAccountFolder` condition back) | yes, S4 |
+| S4 copy order (`config.json` copied with the other files again) | yes, S4 |
+| switcher `setSettingsSection('accounts')` | yes, S5 |
+
+The R6 table's three "no" rows (cancel guard, move verify, scheduler
+switch) are all "yes" now.
+
+### Notes (no action needed)
+
+- **N8 (M2 app test):** with only `AppState`'s guard removed, the core
+  guard still refuses, so nothing is deleted and the app test notices
+  only through its "nothing printed" check. That is enough: each layer
+  has a test that fails when its own guard is gone.
+- **N9 (tray pre-check):** `trayRefreshAll` checks first whether any
+  account has background refresh on (`activity.dart:461–474`), and if
+  none has, refreshes the active one. That skip has no test; without it,
+  the tray's *Obnovit data* would refresh nothing when every account has
+  *Pozadí vypnuto*. Desktop only, nothing sent or lost; test it if that
+  code is touched again.
+- **N10 (S4 rule):** the copy now runs whenever the target has no
+  `accounts.json`. Apart from the S4 crash, that only happens if someone
+  deletes that file by hand: the app writes it atomically and never
+  deletes it. Then the old folder's accounts and registry would be
+  copied in again (`_copyMissing` never overwrites, so no newer file is
+  lost, but an account deleted since could reappear). This is the rule
+  R6 asked for; accepted.
+- **N11 (phone):** no phone run in this round. No fix touches
+  Android-only code; M1 also affects the phone (the history card in
+  `phone/21b` sat below the fold) and is covered by the test and the
+  reviewer's render below.
+
+### What the reviewer verified, and how (re-review)
+
+1. **Suites**, at `aa5030c` after `dart pub get --enforce-lockfile`: core
+   `dart analyze` no issues, `dart test` **879 passed, 2 skipped**; app
+   `flutter analyze` no issues, `flutter test` **810 passed, 1 skipped**.
+   Both match STATUS. Flutter again rewrote the line endings of the seven
+   generated plugin registrant files; restored to `HEAD`.
+2. **Parent runs** in a throwaway worktree: each item's new or changed
+   test file copied onto the commit's parent (M1 at `d5ce926`, S3 at
+   `bef0011`, S4 at `4383cc6`, S5 at `78e67dd`); results above. M2, S1
+   and S2 add tests only, so they were judged by the ten mutations in
+   the table, each applied alone at `aa5030c` and run against its test.
+3. **M1 end to end** (throwaway test, not committed): a
+   `tools/demo_data.py generate` folder with one sent excuse in the root
+   `automation_history.jsonl`, moved by `ensureMultiAccountLayout`, then
+   the real shell router on `/activity` with the resulting `AppState`:
+   the history card lists the excuse, *Odesláno za 7 dní* shows 1, no
+   error text; captured cs and en, dark at 390 px and light at 1280 px,
+   and looked at.
+4. **Test integrity:** `git diff d5ce926..HEAD` on the test files removes
+   only two comments and one `Navigator.pop` (the sheet is now closed by
+   tapping *Spravovat účty*, followed by more assertions). No `skip:`,
+   `anything`, `isNotNull` or `try`/`catch` in added test lines.
+5. **Keys, strings, fixtures, tutorials:** `git diff --stat d5ce926..HEAD`
+   on `config.example.json`, `config.dart`, `test/parity/`,
+   `app/lib/l10n/` and `app/lib/tutorial/` is empty.
+6. **Safety rules:** the code changes are in `storage/accounts.dart` (key
+   choice for the move), `storage/helpers.dart` (bundle copy order and
+   rule, test hook) and `features/activity/activity_live.dart` (read
+   only). No new `catch`; refresh, send, order, lock, audit and pause
+   code untouched.
+7. **Hygiene:** no upstream; `git log qa-roadmap..main` empty; every fix
+   commit by DeNdlerX with no `Co-Authored-By` / `Claude-Session` /
+   "Generated with" line; only the seven files above changed, no personal
+   data; the new tests' addresses are config values for the move and the
+   duplicate check, no test opens a connection.
+8. **Throwaway worktree:** plugin links removed one by one first, then
+   `git worktree remove --force`, which unregistered it but couldn't
+   delete the folder (Windows long paths); the leftover folder in the
+   reviewer's scratch space has no links left. Every one of the 338
+   packages in the pub cache still has its `pubspec.yaml`.
