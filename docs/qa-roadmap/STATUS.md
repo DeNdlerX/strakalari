@@ -1,7 +1,7 @@
 # QA & roadmap status
 
 Branch: qa-roadmap · Base: main @ be701d9 · Current phase: 6 (F4) complete, checkpoint ⛔ R6
-Next step: Phase 6 (F4) is complete (including Pixel 7 Pro `.test` hardware verification); await reviewer check at ⛔ R6 before starting Phase 7 (F5).
+Next step: Fix every finding in `reviews/phase-6.md` (blockers first), one commit per finding, then stop for re-review.
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -144,6 +144,7 @@ Next step: Phase 6 (F4) is complete (including Pixel 7 Pro `.test` hardware veri
 
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
 ### Phase 6 (`F4` complete, checkpoint ⛔ R6)
+- **2026-11-21 R6 review: FAIL**: the move works as the note says: run by the reviewer on copies of demo data (Flutter layout with and without the OS key store, Play-style wrapped key), every original kept its bytes and timestamp, the copies were identical, passwords opened with the account's own key, a second start changed nothing, and ten real kills during the move each recovered cleanly on the next start. Refreshes run one account at a time under the session lock through `runRefresh`; sends, orders and the audit stay per account; delete asks first and removes only `accounts/<id>/`. Two must-fix: *Aktivita* can't show the automation history any more and *Odesláno za 7 dní* is always 0, for every user after the update (M1); no test catches *Zrušit* deleting an account that isn't being added (M2). Five should-fix: the per-account background switch isn't tested in the scheduler (S1); the move's password check is untested (S2); an Android install with two different saved keys never moves (S3); an interrupted Store/macOS copy can drop accounts (S4); *Spravovat účty* doesn't open Settings → Účty (S5). No owner decision needed. Baseline: core 875 passed / 2 skipped, app 807 passed / 1 skipped. See [`reviews/phase-6.md`](reviews/phase-6.md).
 - **What was done (2026-11-20, `3ee48eb`, `458fa1e`, `99cafd4`):** Implemented `docs/qa-roadmap/design-F4.md` across the three planned commits, keeping all existing single-account tests green and all CONTRIBUTING §5 safety invariants intact:
   1. **Commit 1 (`3ee48eb`) — `F4: add background_refresh config key and multi-account storage core`:**
      - Added canonical boolean key `'background_refresh': true` to `config.example.json`, `packages/strakalari_core/lib/src/storage/config.dart`, `packages/strakalari_core/test/config_test.dart`, and `packages/strakalari_core/test/parity/helpers.json` (`roundTripFiles`).
