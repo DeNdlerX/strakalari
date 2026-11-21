@@ -258,6 +258,73 @@ void main() {
 
     test('keyringBackend', () => runDesktopMove(noKeyring: false));
     test('noKeyringFileFallback', () => runDesktopMove(noKeyring: true));
+
+    test('migrationVerificationRejectsUnopenablePasswords (R6 S2)', () async {
+      // Case 1: account password encrypted with a key different from the carried root key.
+      final root1 = Directory(p.join(tmp.path, 'bad_acct_pw'))
+        ..createSync(recursive: true);
+      setEnvironmentOverride({'STRAKALARI_DATA_DIR': root1.path});
+      clearKeyCache();
+
+      // Create a valid root key in the store, then write a config whose
+      // bakalari_password was encrypted under a completely different key.
+      final legacy1 = ConfigManager(p.join(root1.path, 'config.json'));
+      legacy1.set('bakalari_url', 'https://bakaweb.school.cz');
+      legacy1.set('bakalari_username', 'jan');
+      legacy1.set('bakalari_password', 'ValidInitialPw');
+      legacy1.save();
+
+      final otherKey = Fernet.generateKey();
+      final wrongToken = Fernet.fromKeyBytes(otherKey)
+          .encryptBytes(utf8.encode('EncryptedWithWrongKey'));
+      final cfgFile1 = File(p.join(root1.path, 'config.json'));
+      final raw1 = jsonDecode(cfgFile1.readAsStringSync()) as Map<String, Object?>;
+      raw1['bakalari_password'] = wrongToken;
+      raw1['bakalari_password_encrypted'] = true;
+      cfgFile1.writeAsStringSync(jsonEncode(raw1));
+      _writeText(p.join(root1.path, 'data_cache.json'), '{"v":1}');
+
+      final before1 =
+          _snapshotRootHashes(root1.path, ['config.json', 'data_cache.json']);
+      final res1 = await ensureMultiAccountLayout(root1.path);
+      expect(res1.isDegraded, isTrue);
+      expect(res1.error, contains('bakalari_password'));
+      expect(File(p.join(root1.path, accountsFile)).existsSync(), isFalse);
+      expect(Directory(accountDirFor(root1.path, 'default')).existsSync(), isFalse);
+      expect(_snapshotRootHashes(root1.path, ['config.json', 'data_cache.json']),
+          before1);
+
+      // Case 2: account password opens with carried key, but shared gemini_api_key
+      // is encrypted with another key (covers _verifyMigration step 5).
+      resetAccountsModeForTesting();
+      final root2 = Directory(p.join(tmp.path, 'bad_gemini_pw'))
+        ..createSync(recursive: true);
+      setEnvironmentOverride({'STRAKALARI_DATA_DIR': root2.path});
+      clearKeyCache();
+
+      final legacy2 = ConfigManager(p.join(root2.path, 'config.json'));
+      legacy2.set('bakalari_url', 'https://bakaweb.school.cz');
+      legacy2.set('bakalari_username', 'jan');
+      legacy2.set('bakalari_password', 'ValidAccountPw');
+      legacy2.set('gemini_api_key', 'ValidGemini');
+      legacy2.save();
+
+      final wrongGemini = Fernet.fromKeyBytes(Fernet.generateKey())
+          .encryptBytes(utf8.encode('WrongGeminiKey'));
+      final cfgFile2 = File(p.join(root2.path, 'config.json'));
+      final raw2 = jsonDecode(cfgFile2.readAsStringSync()) as Map<String, Object?>;
+      raw2['gemini_api_key'] = wrongGemini;
+      raw2['gemini_api_key_encrypted'] = true;
+      cfgFile2.writeAsStringSync(jsonEncode(raw2));
+
+      final before2 = _snapshotRootHashes(root2.path, ['config.json']);
+      final res2 = await ensureMultiAccountLayout(root2.path);
+      expect(res2.isDegraded, isTrue);
+      expect(res2.error, contains('gemini_api_key'));
+      expect(File(p.join(root2.path, accountsFile)).existsSync(), isFalse);
+      expect(Directory(accountDirFor(root2.path, 'default')).existsSync(), isFalse);
+      expect(_snapshotRootHashes(root2.path, ['config.json']), before2);
+    });
   });
 
   group('Item 2: Android / Play (Flet) layout move', () {
