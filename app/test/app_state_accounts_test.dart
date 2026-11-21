@@ -750,4 +750,53 @@ void main() {
     final regAfter = AccountRegistry.load(root)!;
     expect(regAfter.accounts.map((a) => a.id).toList(), ['default', acc2Id]);
   });
+
+  test('scheduledRefreshSkipsBackgroundRefreshDisabledAccount (R6 S1)',
+      () async {
+    final (root, acc2Id) = await _setupTwoAccounts(tmp);
+    final defDir = accountDirFor(root, 'default');
+    final acc2Dir = accountDirFor(root, acc2Id);
+
+    // Seed both accounts as due (> 60 min old).
+    saveDataCache({'last_updated': '20.11.2026 08:00:00'}, dataDir: defDir);
+    saveDataCache({'last_updated': '20.11.2026 08:00:00'}, dataDir: acc2Dir);
+
+    final state = AppState(rootDir: root)..spawn = AppState.liveSpawn;
+    final refreshedDirs = <String>[];
+    state.createAppForAccount = ({onLog, configData, dataDir, rootDir}) {
+      return _ScriptedRefreshApp(
+        dataDir: dataDir,
+        rootDir: rootDir,
+        onLog: onLog,
+        configData: configData,
+        onFetchBak: () async {
+          refreshedDirs.add(dataDir ?? '');
+        },
+      );
+    };
+
+    // Disable background_refresh on the second account.
+    await state.setAccountBackgroundRefresh(acc2Id, false);
+
+    // Pass 1: both accounts are due, but only the first is refreshed.
+    await withClock(Clock.fixed(DateTime(2026, 11, 20, 10, 0, 0)), () async {
+      await state.scheduledRefreshJob();
+    });
+    expect(refreshedDirs, [defDir]);
+
+    // Tray Refresh All also respects background_refresh: false.
+    refreshedDirs.clear();
+    await withClock(Clock.fixed(DateTime(2026, 11, 20, 10, 5, 0)), () async {
+      await state.trayRefreshAll();
+    });
+    expect(refreshedDirs, [defDir]);
+
+    // Turn background_refresh back ON; once both are due again, both refresh.
+    await state.setAccountBackgroundRefresh(acc2Id, true);
+    refreshedDirs.clear();
+    await withClock(Clock.fixed(DateTime(2026, 11, 20, 12, 0, 0)), () async {
+      await state.scheduledRefreshJob();
+    });
+    expect(refreshedDirs, unorderedEquals([defDir, acc2Dir]));
+  });
 }
