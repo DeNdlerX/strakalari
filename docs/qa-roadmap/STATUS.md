@@ -1,7 +1,7 @@
 # QA & roadmap status
 
 Branch: qa-roadmap · Base: main @ 9ed39d8 · Current phase: 6 (F4) done, ⛔ R6 re-review: PASS, merged into main
-Next step: Phase 6 passed (2026-11-21). Start phase 7 once the owner's go and answers are in STATUS.md.
+Next step: Phase 6 passed (2026-11-21). The owner's go and D5 answers are in STATUS.md (2026-11-21): start phase 7 (`F5`).
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -102,6 +102,11 @@ Next step: Phase 6 passed (2026-11-21). Start phase 7 once the owner's go and an
   - "One question. Does creating a new account open the wizard again? (with the applicable steps)"
 - **Reviewer fixes the F4 note (2026-11-20, after the R6a review):** "Can you fix the plan?" → the reviewer fixed M1–M7 and S1–S13 in `design-F4.md` itself; see [`reviews/phase-6-design.md`](reviews/phase-6-design.md#re-review-2026-11-20).
 - **Merge after R6 (2026-11-21, after the R6 re-review):** "Yes, merge" (answering the reviewer's "Merge phase 6 into main now?") → the reviewer merged `qa-roadmap` (phase 6: F4) into `main` (`9ed39d8`); not pushed.
+- **Go for F5 & D5 (2026-11-21, after the R6 merge, given to the reviewer):**
+  - Go for iOS: "Yes, I want an iOS version. For internal testing for now, but still, I want it."
+  - Same bundle id `io.github.dendlerx.strakalari`: "Sure"
+  - CI trigger: "Github can build it on every build we do, as android. I have it for free since its public repo."
+  - → Reviewer's reading of the CI answer: the `ios` job runs under the same condition as `build-flutter-android` in `.github/workflows/dart.yml` (`needs: meta`, `if: needs.meta.outputs.release == 'true'`, i.e. a `v*` tag or a manual run with a release tag), not on every push to `main`. "Internal testing" means sideloading only, no App Store (PLAN §6 phase 7, `docs/IOS_SIDELOADING.md`).
 
 ## Questions for the owner / reviewer
 - **F4 / R6a design choices (2026-11-20, answered — see *Owner decisions* & `design-F4.md` §10.3, §12):** Q1 (`notifications` shared in `global.json`) confirmed; Q2 (`gemini_api_key` + `gemini_model` shared in `global.json`, per-child AI prefs per-account) confirmed; Q3 decided (desktop tray Pause toggles active account and shows its label when >1 account, never silently unpausing another child's account). Add-account wizard skips both Welcome/Disclaimer (already accepted) and Android's Phone/Alarm step (belongs to primary account), showing only the 5 applicable steps (School → Bakaláři → Strava → Excuses → Done) with Cancel cleanup.
