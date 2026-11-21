@@ -333,6 +333,53 @@ void main() {
       expect(androidCalls, isEmpty);
     });
 
+    test('startPlatformServices pauses scheduler when iOS app backgrounds and resumes on foreground (R7 S2)',
+        () async {
+      final ctx = await prepareStartup(
+        const [],
+        supportDirProvider: () async => tmp,
+      );
+      PeriodicRunner? createdLoop;
+      final container = ProviderContainer(
+        overrides: [
+          startupLayoutProvider.overrideWithValue(
+            (layout: ctx.layoutResult, rootDir: ctx.rootDir),
+          ),
+        ],
+      );
+      final binding = TestWidgetsFlutterBinding.instance;
+      addTearDown(() {
+        createdLoop?.stop();
+        container.dispose();
+        if (binding.lifecycleState != AppLifecycleState.resumed) {
+          binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+          binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+          binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        }
+      });
+
+      await startPlatformServices(
+        container,
+        ctx,
+        onLoopCreated: (loop) => createdLoop = loop,
+      );
+      expect(createdLoop?.paused, isNotNull);
+      expect(createdLoop!.paused!(), isFalse);
+
+      // Follow Flutter's AppLifecycleListener state machine to background:
+      // resumed -> inactive -> hidden -> paused.
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      expect(createdLoop!.paused!(), isTrue);
+
+      // Return to foreground: paused -> hidden -> inactive -> resumed.
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      expect(createdLoop!.paused!(), isFalse);
+    });
+
     test('AppState ensureWarmedFn warms iOS Keychain without touching Android',
         () async {
       final accDir = Directory('${tmp.path}/accounts/acc_ios')
