@@ -86,5 +86,43 @@ void main() {
         expect(f.lengthSync(), greaterThan(100), reason: 'Empty icon $name');
       }
     });
+
+    test('GitHub Actions dart.yml has SHA-pinned build-flutter-ios job gated like Android',
+        () {
+      final yml = File('../.github/workflows/dart.yml')
+          .readAsStringSync()
+          .replaceAll('\r\n', '\n');
+      final start = yml.indexOf('  build-flutter-ios:\n');
+      expect(start, greaterThan(0), reason: 'Missing build-flutter-ios job');
+      final nextJob = yml.indexOf('\n  release-flutter:\n', start);
+      expect(nextJob, greaterThan(start));
+      final job = yml.substring(start, nextJob);
+
+      expect(job, contains('needs: meta'));
+      expect(job, contains("if: needs.meta.outputs.release == 'true'"));
+      expect(job, contains('runs-on: macos-latest'));
+      expect(job, contains('flutter build ios --release --no-codesign'));
+      expect(job, contains('-ios-unsigned.ipa'));
+
+      final usesMatches = RegExp(r'uses:\s*([^\s#]+)').allMatches(job).toList();
+      expect(usesMatches.length, greaterThanOrEqualTo(3));
+      for (final m in usesMatches) {
+        final ref = m.group(1)!;
+        expect(
+          RegExp(r'^[^@]+@[0-9a-f]{40}$').hasMatch(ref),
+          isTrue,
+          reason: 'Action $ref in build-flutter-ios must be pinned to a 40-char commit SHA',
+        );
+      }
+    });
+
+    test('docs/IOS_SIDELOADING.md exists and covers key sideloading steps', () {
+      final doc = File('../docs/IOS_SIDELOADING.md').readAsStringSync();
+      expect(doc, contains('Sideloadly'));
+      expect(doc, contains('Xcode'));
+      expect(doc, contains('Developer Mode'));
+      expect(doc, contains('7 days'));
+      expect(doc, contains('io.github.dendlerx.strakalari'));
+    });
   });
 }
