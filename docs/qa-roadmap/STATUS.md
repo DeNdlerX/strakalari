@@ -1,7 +1,7 @@
 # QA & roadmap status
 
 Branch: qa-roadmap · Base: main @ 9fc53a1 · Current phase: 7 (F5) complete, waiting for ⛔ R7 review
-Next step: Wait for reviewer ⛔ R7 review of phase 7 (F5). Do not start F6 or any other work until reviewed.
+Next step: Fix every finding in `reviews/phase-7.md` (blockers first), one commit per finding, then stop for re-review.
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -151,6 +151,7 @@ Next step: Wait for reviewer ⛔ R7 review of phase 7 (F5). Do not start F6 or a
 
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
 ### Phase 7 (`F5` complete, checkpoint ⛔ R7 — unverified on macOS/iOS)
+- **2026-11-21 R7 review: FAIL**: `app/ios/` is Flutter 3.44.8's own template plus only the D5 bundle id, the app's name and languages, the Keychain channel and the app's icon; `Info.plist` asks for nothing unused; no Android-only call runs on iOS; the Keychain key is readable after the first unlock and a locked Keychain never makes a new key; the `flock` fix makes the session lock work on iOS; the CI job builds an unsigned `.ipa` under Android's condition with every action pinned to the same SHAs. One must-fix: the Keychain item's name comes from the app folder's full path, which iOS changes on every reinstall or update (the 7-day renewal too), so the app makes a new key and every saved password becomes unreadable; reproduced by the reviewer with a test (M1). Three should-fix: the `flock` test doesn't test the iOS fix (S1); the iOS "wait while in the background" wiring is untested (S2); `docs/IOS_SIDELOADING.md` says things work that nobody has run yet, promises the keys survive the renewal, misses Flutter for the Xcode route and the 14-day artifact limit (S3). No owner decision needed. Baseline: core 880 passed / 2 skipped, app 827 passed / 1 skipped. Everything that needs a Mac or an iPhone stays unverified until the owner's CI run (list in the review). See [`reviews/phase-7.md`](reviews/phase-7.md).
 - **What was done (2026-11-21, `52ba12b`, `55dca7c`, `b37f8a5`):**
   1. **Commit 1 (`52ba12b`) — `F5: scaffold app/ios runner with D5 bundle id, minimal Info.plist, and Keychain channel`:**
      - Ran `flutter create --platforms=ios .` inside `app/`, restored the existing 4 platform entries alongside `ios` in `app/.metadata`, and reverted/removed stray IDE and line-ending diffs so only `app/ios/` and `app/.metadata` changed.
