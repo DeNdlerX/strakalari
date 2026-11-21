@@ -472,6 +472,72 @@ jobs:
             Strakalari-*.dmg
           retention-days: 14
 
+  # Unsigned iOS .ipa for internal testing / sideloading (docs/IOS_SIDELOADING.md).
+  # Runs under the same release condition as build-flutter-android (D5); uploaded
+  # as a workflow artifact and not attached to public GitHub Releases.
+  build-flutter-ios:
+    name: Build Flutter iOS (unsigned .ipa)
+    needs: meta
+    if: needs.meta.outputs.release == 'true'
+    runs-on: macos-latest
+    env:
+      STRAKALARI_VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+
+      - name: Set up Flutter 3.44.8
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
+        with:
+          flutter-version: '3.44.8'
+          cache: true
+
+      - name: Free disk space (macOS runners are nearly full)
+        run: |
+          df -h /
+          sudo rm -rf /Users/runner/Library/Android || true
+          sudo rm -rf /Library/Developer/CoreSimulator/Caches || true
+          rm -rf ~/Library/Caches/* || true
+          df -h /
+
+      - name: Resolve workspace dependencies
+        run: dart pub get --enforce-lockfile
+
+      - name: Build unsigned iOS bundle
+        working-directory: app
+        run: |
+          set -euo pipefail
+          # Apple CFBundleShortVersionString accepts numeric X.Y.Z only (no -beta suffix).
+          IOS_BUILD_NAME="${STRAKALARI_VERSION%%-*}"
+          IOS_BUILD_NUMBER="$(dart run strakalari_core:build_number "$STRAKALARI_VERSION" | tail -n1 | tr -d '\r\n')"
+          echo "iOS build-name=$IOS_BUILD_NAME build-number=$IOS_BUILD_NUMBER (app version=$STRAKALARI_VERSION)"
+          flutter build ios --release --no-codesign \
+            --build-name="$IOS_BUILD_NAME" \
+            --build-number="$IOS_BUILD_NUMBER" \
+            --dart-define="STRAKALARI_VERSION=$STRAKALARI_VERSION"
+
+      - name: Pack unsigned .ipa
+        run: |
+          set -euo pipefail
+          APP_BUNDLE="app/build/ios/iphoneos/Runner.app"
+          if [[ ! -d "$APP_BUNDLE" ]]; then
+            echo "::error::Expected iOS bundle not found at $APP_BUNDLE"
+            exit 1
+          fi
+          rm -rf Payload "Strakalari-${STRAKALARI_VERSION}-ios-unsigned.ipa"
+          mkdir -p Payload
+          cp -R "$APP_BUNDLE" Payload/Runner.app
+          zip -r -y "Strakalari-${STRAKALARI_VERSION}-ios-unsigned.ipa" Payload
+          rm -rf Payload
+          ls -lh Strakalari-*-ios-unsigned.ipa
+
+      - name: Upload iOS Artifacts
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
+        with:
+          name: flutter-ios-unsigned
+          path: Strakalari-*-ios-unsigned.ipa
+          retention-days: 14
+
   # One job publishes all GitHub Release assets together: parallel jobs
   # creating/updating the release raced into duplicate drafts. The MSIX
   # is deliberately NOT attached here — it goes straight to the

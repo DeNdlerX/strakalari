@@ -25,6 +25,7 @@ import 'package:strakalari_core/strakalari_core.dart' as core;
 import '../features/planner/planner_view.dart' show PickerSlot;
 import '../l10n/strings.dart';
 import '../platform/android/android_keystore.dart' show ensureWarmed;
+import '../platform/ios/ios_keystore.dart' show ensureIosWarmed;
 import '../shell/router.dart' show routeForLocation;
 import '../shell/theme.dart';
 import '../tutorial/tours.dart';
@@ -407,9 +408,15 @@ class AppState {
   /// Fired after account switches so the desktop tray menu updates its label.
   void Function()? onAccountChanged;
 
-  /// Test seam for `ensureWarmed(accountDir)` (defaults to [ensureWarmed]).
-  Future<void> Function(String accountDir) ensureWarmedFn =
-      (dir) => ensureWarmed(dir);
+  /// Test seam for mobile keystore warm-up (Android Keystore / iOS Keychain).
+  Future<void> Function(String accountDir) ensureWarmedFn = (dir) async {
+    final plat = core.mobilePlatform();
+    if (plat == 'android') {
+      await ensureWarmed(dir);
+    } else if (plat == 'ios') {
+      await ensureIosWarmed(dir);
+    }
+  };
 
   bool get accountsEnabled =>
       registry != null && !migrationDegraded && rootDir != null;

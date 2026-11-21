@@ -154,6 +154,9 @@ void setMobileDataDir(String? dir) {
   _mobileDataDirOverride = dir;
 }
 
+/// Returns the registered mobile data root (from [setMobileDataDir]), or null.
+String? mobileDataDirRoot() => _mobileDataDirOverride;
+
 String _mobileDataDir() {
   final dataDir = getenvNonEmpty('FLET_APP_STORAGE_DATA') ??
       _mobileDataDirOverride ??
@@ -547,14 +550,30 @@ class InterProcessLock {
   bool get held => _handle != null || _fd != null;
 }
 
-/// `flock(2)` operation flags (identical on Linux, macOS and Android).
+/// `flock(2)` operation flags (identical on Linux, macOS, iOS and Android).
 const int _lockEx = 2; // LOCK_EX
 const int _lockNb = 4; // LOCK_NB
 const int _lockUn = 8; // LOCK_UN
 
-/// `open(2)` flags: `O_RDWR` is 2 everywhere, `O_CREAT` differs per OS.
+/// `open(2)` flags: `O_RDWR` is 2 everywhere, `O_CREAT` differs per OS
+/// (0x200 on Darwin — both macOS and iOS — vs 64 on Linux/Android).
 const int _oRdwr = 2;
-int get _oCreat => Platform.isMacOS ? 0x200 : 64;
+
+/// Returns the OS-specific `O_CREAT` flag for POSIX `open(2)`.
+int posixOCreatFlag({String? os}) {
+  final target = (os ?? Platform.operatingSystem).toLowerCase();
+  return (target == 'macos' || target == 'ios') ? 0x200 : 64;
+}
+
+/// Returns the libc shared-library name for POSIX `flock`/`open` FFI lookup.
+String posixLibcLibraryName({String? os}) {
+  final target = (os ?? Platform.operatingSystem).toLowerCase();
+  if (target == 'macos' || target == 'ios') return '/usr/lib/libSystem.dylib';
+  if (target == 'android') return 'libc.so';
+  return 'libc.so.6';
+}
+
+int get _oCreat => posixOCreatFlag();
 
 typedef _FlockC = ffi.Int32 Function(ffi.Int32 fd, ffi.Int32 operation);
 /// `open` is variadic (`int open(const char *, int, ...)`): on Apple arm64
@@ -584,11 +603,7 @@ _Libc? _loadLibc() {
   if (_libcCache != null) return _libcCache;
   if (_libcFailed) return null;
   try {
-    final name = Platform.isMacOS
-        ? '/usr/lib/libSystem.dylib'
-        : Platform.isAndroid
-            ? 'libc.so'
-            : 'libc.so.6';
+    final name = posixLibcLibraryName();
     ffi.DynamicLibrary lib;
     try {
       lib = ffi.DynamicLibrary.open(name);

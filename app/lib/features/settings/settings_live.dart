@@ -76,12 +76,12 @@ SettingsController settingsControllerFor(
     autostartEnabled: liveAutostartEnabled,
     setAutostart: liveSetAutostart,
     storeManaged: storeManaged,
-    isAndroid: Platform.isAndroid,
+    isAndroid: core.mobilePlatform() == 'android',
     wakeupAvailable: s.wakeupAvailable,
   );
   if (wakeupPhone != null) {
     c.wakeupPhone = wakeupPhone;
-  } else if (s.wakeupAvailable) {
+  } else if (s.wakeupAvailable && core.mobilePlatform() != 'ios') {
     c.wakeupPhone = channelWakeupPhone(s);
   }
   c.backgroundStatusInputs = s.backgroundStatusInputs;
@@ -207,6 +207,7 @@ class _LiveSettingsViewState extends ConsumerState<LiveSettingsView> {
   }
 
   Future<void> _loadPermissions() async {
+    if (core.mobilePlatform() == 'ios') return;
     if (!ref.read(appStateProvider).wakeupAvailable) return;
     const channel = AndroidChannel();
     final notif = await channel.notificationsEnabled();
@@ -223,7 +224,7 @@ class _LiveSettingsViewState extends ConsumerState<LiveSettingsView> {
     final s = ref.watch(appStateProvider);
     final controller = settingsControllerFor(
       s,
-      wakeupPhone: s.wakeupAvailable
+      wakeupPhone: (s.wakeupAvailable && core.mobilePlatform() != 'ios')
           ? channelWakeupPhone(
               s,
               notif: _notifOn,
@@ -248,9 +249,7 @@ class _LiveSettingsViewState extends ConsumerState<LiveSettingsView> {
       },
     );
     controller.modeRevision = _modeRevision;
-    final platform = Platform.isAndroid
-        ? 'android'
-        : (Platform.isIOS ? 'ios' : '');
+    final platform = core.mobilePlatform() ?? '';
     return SettingsView(
       key: ValueKey('settings:${s.activeAccountId ?? 'single'}'),
       controller: controller,

@@ -33,9 +33,13 @@ import 'desktop/keystore_desktop.dart';
 import 'desktop/notifications.dart';
 import 'desktop/single_instance.dart';
 import 'desktop/tray.dart';
+import 'ios/ios_channel.dart';
+import 'ios/ios_keystore.dart';
 import 'scheduler_jobs.dart';
 
-bool get _isPhone => Platform.isAndroid || Platform.isIOS;
+bool get _isAndroid => mobilePlatform() == 'android';
+bool get _isIos => mobilePlatform() == 'ios';
+bool get _isPhone => isMobile();
 
 /// What [prepareStartup] found out before the UI exists.
 class StartupContext {
@@ -61,10 +65,14 @@ class StartupContext {
 
 /// Runs before `runApp`. Exits the process for `--forget-secrets` and for
 /// a second launch (after telling the running one to show its window).
-Future<StartupContext> prepareStartup(List<String> args) async {
+Future<StartupContext> prepareStartup(
+  List<String> args, {
+  @visibleForTesting Future<Directory> Function()? supportDirProvider,
+  @visibleForTesting IosChannel iosChannel = const IosChannel(),
+}) async {
   Strings.isMobile = isMobile();
-  if (Platform.isAndroid) {
-    final support = await getApplicationSupportDirectory();
+  if (_isAndroid) {
+    final support = await (supportDirProvider ?? getApplicationSupportDirectory)();
     final dataDir = '${support.path}/data';
     await Directory(dataDir).create(recursive: true);
     setMobileDataDir(dataDir);
@@ -92,6 +100,32 @@ Future<StartupContext> prepareStartup(List<String> args) async {
         languageOf: () => Strings.lang);
     // ignore: avoid_print
     print('Info: phone app starting.');
+    return StartupContext(layoutResult: layout, rootDir: dataDir);
+  }
+  if (_isIos) {
+    final support = await (supportDirProvider ?? getApplicationSupportDirectory)();
+    final dataDir = '${support.path}/data';
+    await Directory(dataDir).create(recursive: true);
+    setMobileDataDir(dataDir);
+    final layout = await ensureMultiAccountLayout(dataDir);
+    if (layout.isReady && layout.registry != null) {
+      await warmIosKeystoreAll(
+        dataDir,
+        layout.registry!.accounts.map((a) => a.id),
+        channel: iosChannel,
+      );
+    } else if (layout.isDegraded) {
+      try {
+        await warmIosKeystore(dataDir, channel: iosChannel);
+      } on KeyStoreMissing {
+        // No Keychain backend: fall back to secret.key.
+      } on Object catch (e) {
+        // ignore: avoid_print
+        print('Warning: iOS Keychain warm-up failed (${e.runtimeType}: $e).');
+      }
+    }
+    // ignore: avoid_print
+    print('Info: iOS app starting.');
     return StartupContext(layoutResult: layout, rootDir: dataDir);
   }
   if (_isPhone) return const StartupContext();
@@ -140,7 +174,10 @@ void startPhoneBackground(AppState state, PhoneBackground phone) {
 /// Starts the scheduler and the platform services once the UI's state
 /// exists. Never throws.
 Future<void> startPlatformServices(
-    ProviderContainer container, StartupContext ctx) async {
+  ProviderContainer container,
+  StartupContext ctx, {
+  @visibleForTesting void Function(PeriodicRunner loop)? onLoopCreated,
+}) async {
   final state = container.read(appStateProvider);
   var stopping = false;
   var visible = true;
@@ -153,16 +190,17 @@ Future<void> startPlatformServices(
     // the background (the OS freezes it there, mid-run).
     paused: _isPhone ? () => !visible && !_phoneBackgroundOn(state) : null,
     stopped: () => stopping,
-    keepAwake: Platform.isAndroid ? androidKeepAwake : null,
+    keepAwake: _isAndroid ? androidKeepAwake : null,
     intervalProvider: () =>
         checkIntervalMinutes(state.get('check_interval_minutes', 60)),
   );
+  onLoopCreated?.call(loop);
   // Non-blocking release check (silent when offline).
   try {
     state.startUpdateCheck();
   } catch (_) {}
 
-  if (Platform.isAndroid) {
+  if (_isAndroid) {
     const channel = AndroidChannel();
     channel.setLaunchRouteHandler(state.applyLaunchRoute);
     final launchRoute = await channel.takeLaunchRoute();
@@ -203,6 +241,13 @@ Future<void> startPlatformServices(
       // ignore: avoid_print
       print('Warning: background hand-off port failed ($e).');
     }
+    return;
+  }
+  if (_isIos) {
+    AppLifecycleListener(onStateChange: (s) {
+      visible = s == AppLifecycleState.resumed;
+    });
+    loop.start();
     return;
   }
   loop.start();
@@ -256,7 +301,7 @@ TrayStrings trayStrings([AppState? state]) {
 /// Background running is possible here (Android) and switched on.
 bool _phoneBackgroundOn(AppState state) {
   try {
-    return Platform.isAndroid &&
+    return _isAndroid &&
         backgroundSwitchOn(state.get('run_in_background', true));
   } catch (_) {
     return false;
@@ -289,7 +334,7 @@ class PhoneBackground {
   final bool startNotifier;
 
   /// `_phone_background_on`: Android and the switch on.
-  bool _isOn() => (onAndroid ?? () => Platform.isAndroid)() &&
+  bool _isOn() => (onAndroid ?? () => _isAndroid)() &&
       backgroundSwitchOn(state.get('run_in_background', true));
   late final StatusNotifier notifier;
   bool _asked = false;
