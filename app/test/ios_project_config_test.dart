@@ -131,6 +131,8 @@ void main() {
       expect(doc, contains('Generated.xcconfig'));
       expect(doc, contains('io.github.dendlerx.strakalari'));
       expect(doc, isNot(contains('push notifications')));
+      // R7 S5: the privacy line names Gemini, as the README does.
+      expect(doc, contains('and Google Gemini only if you turn on'));
     });
   });
 }

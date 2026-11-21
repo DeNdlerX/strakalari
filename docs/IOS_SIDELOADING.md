@@ -87,7 +87,7 @@ Now tap **Strakaláři** on your Home Screen — it should open normally.
 - **7-day renewal (free Apple ID):** Apps sideloaded with a free Apple ID stop opening after 7 days. To renew or update to a newer version, install the `.ipa` again with the **same Apple ID** (and the same Bundle Identifier) **without uninstalling** the app first. Your saved accounts, settings, and Keychain encryption keys are designed to stay intact across that reinstall (Keychain names do not depend on the changing iOS container path), though this is untested until the first renewal on a real iPhone.
 - **Paid Apple Developer account ($99/year):** If signed with a paid Apple Developer account, the app stays valid for a full year instead of 7 days.
 - **Uninstalling wipes local data:** Removing the app from your iPhone deletes its saved data folder on the phone.
-- **Privacy:** Your Bakaláři and Strava.cz credentials stay on your iPhone and are encrypted with a key stored in the iOS Keychain; nothing is sent anywhere except your school's Bakaláři server and Strava.cz.
+- **Privacy:** Your Bakaláři and Strava.cz credentials stay on your iPhone and are encrypted with a key stored in the iOS Keychain; nothing is sent anywhere except your school's Bakaláři server and Strava.cz, and Google Gemini only if you turn on **AI recommendations** in Settings yourself.
 
 ---
 
