@@ -230,7 +230,9 @@ void main() {
         expect(state.activeAccountId, 'acc_second');
         expect(find.text('Tonda'), findsOneWidget);
 
-        // Check MorePage active-account card on narrow
+        // Check MorePage active-account card on narrow & "Spravovat účty" -> Settings -> Účty
+        state.settingsSection = 'rules';
+        state.settingsOpen = false;
         await tester.pumpWidget(_shellApp(state, initialLocation: '/more'));
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('more:account_card')), findsOneWidget);
@@ -238,10 +240,41 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('account_switcher_sheet')), findsOneWidget);
 
-        // Close sheet and verify 1280px wide dialog
-        Navigator.of(tester.element(find.byKey(const Key('account_switcher_sheet')))).pop();
+        await tester.tap(find.byKey(const Key('switcher:manage_accounts')));
         await tester.pumpAndSettle();
+        expect(state.settingsSection, 'accounts');
+        expect(state.settingsOpen, isTrue);
+        expect(find.byKey(const Key('settings:accounts_card')), findsOneWidget);
 
+        // Also test TopBar pill -> "Spravovat účty" on 390px phone when another section was open
+        state.settingsSection = 'rules';
+        state.settingsOpen = false;
+        await tester.pumpWidget(_shellApp(state, initialLocation: '/today'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('account_switcher')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('switcher:manage_accounts')));
+        await tester.pumpAndSettle();
+        expect(state.settingsSection, 'accounts');
+        expect(state.settingsOpen, isTrue);
+        expect(find.byKey(const Key('settings:accounts_card')), findsOneWidget);
+
+        // Also test TopBar pill -> "Spravovat účty" on 390px phone when already on /settings list
+        state.settingsSection = 'rules';
+        state.settingsOpen = false;
+        await tester.pumpWidget(_shellApp(state, initialLocation: '/settings'));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('settings:accounts_card')), findsNothing);
+        await tester.tap(find.byKey(const Key('account_switcher')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('switcher:manage_accounts')));
+        await tester.pumpAndSettle();
+        expect(state.settingsSection, 'accounts');
+        expect(state.settingsOpen, isTrue);
+        expect(find.byKey(const Key('settings:accounts_card')), findsOneWidget);
+
+        // Verify 1280px wide dialog & "Spravovat účty"
+        state.settingsSection = 'rules';
         tester.view.physicalSize = const Size(1280, 800);
         await tester.pumpWidget(_shellApp(state));
         await tester.pumpAndSettle();
@@ -250,6 +283,10 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(Dialog), findsOneWidget);
         expect(find.byKey(const Key('account_switcher_sheet')), findsOneWidget);
+        await tester.tap(find.byKey(const Key('switcher:manage_accounts')));
+        await tester.pumpAndSettle();
+        expect(state.settingsSection, 'accounts');
+        expect(find.byKey(const Key('settings:accounts_card')), findsOneWidget);
       },
     );
   });
