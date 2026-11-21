@@ -359,12 +359,8 @@ AccountInfo? findDuplicateStravaLogin(
     final useStrava = cfg['use_strava'];
     if (useStrava == false || '$useStrava'.toLowerCase() == 'false') continue;
     final otherCanteen =
-        '${cfg['strava_canteen_id'] ?? cfg['strava_id'] ?? ''}'
-            .trim()
-            .toLowerCase();
-    final otherUser = '${cfg['strava_username'] ?? cfg['strava_user'] ?? ''}'
-        .trim()
-        .toLowerCase();
+        '${cfg['strava_canteen_id'] ?? ''}'.trim().toLowerCase();
+    final otherUser = '${cfg['strava_username'] ?? ''}'.trim().toLowerCase();
     if (otherCanteen == normCanteen && otherUser == normUser) {
       return acc;
     }
@@ -1100,6 +1096,19 @@ Future<_KeyCarryResult> _carryKeyForMigration({
         if (hasKeyFile) {
           _copyFileAtomic(rootKeyFilePath, p.join(stagingDir, keyFile));
           extra.add(keyFile);
+          final fileKey = readKeyFromFileOnly(rootDir);
+          if (fileKey != null &&
+              Fernet.isValidKeyBytes(fileKey) &&
+              !_uint8Equals(fileKey, unwrapped)) {
+            // Mirrors secret_store._androidLoadOrCreate: when both files exist
+            // and differ, getKey() uses the plain secret.key file.
+            return _KeyCarryResult(
+              ok: true,
+              mode: _KeyCarryMode.file,
+              rootKey: fileKey,
+              extraCopiedFiles: extra,
+            );
+          }
         }
         return _KeyCarryResult(
           ok: true,

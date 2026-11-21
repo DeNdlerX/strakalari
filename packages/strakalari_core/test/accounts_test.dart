@@ -436,6 +436,64 @@ void main() {
           _snapshotRootHashes(rootBad.path, ['config.json', wrappedFile]),
           badBefore);
     });
+
+    test('androidDifferingPlainAndWrappedKeysUsesPlainKey (R6 S3)', () async {
+      final root = Directory(p.join(tmp.path, 'android_two_keys'))
+        ..createSync(recursive: true);
+      final bridge = _FakeAndroidKeystore();
+      androidKeystoreBridge = bridge;
+      keyStoreBackend = null;
+      setEnvironmentOverride({
+        'STRAKALARI_DATA_DIR': root.path,
+        'FLET_PLATFORM': 'android',
+      });
+      clearKeyCache();
+
+      // Seed both secret.key.wrapped (key A) and plain secret.key (key B != A).
+      final wrappedKey = Fernet.generateKey();
+      final plainKey = Fernet.generateKey();
+      File(p.join(root.path, wrappedFile))
+          .writeAsBytesSync(ascii.encode(base64.encode(bridge.wrap(wrappedKey))));
+      writeKeyFileDirect(p.join(root.path, keyFile), plainKey);
+
+      // Legacy save encrypts via getKey(), which chooses plainKey when they differ.
+      final legacy = ConfigManager(p.join(root.path, 'config.json'));
+      legacy.set('bakalari_url', 'https://bakaweb.gekom.cz');
+      legacy.set('bakalari_username', 'two.keys');
+      legacy.set('bakalari_password', 'PlainKeyWins#42');
+      legacy.set('gemini_api_key', 'GeminiPlainKey');
+      legacy.save();
+
+      final rootFiles = ['config.json', wrappedFile, keyFile];
+      final before = _snapshotRootHashes(root.path, rootFiles);
+
+      clearKeyCache();
+      final res = await ensureMultiAccountLayout(root.path);
+      expect(res.isReady, isTrue, reason: res.error);
+      expect(res.migratedNow, isTrue);
+
+      // Originals untouched.
+      expect(_snapshotRootHashes(root.path, rootFiles), before);
+
+      // Both key files were copied and password opens with accounts/default alone.
+      final defDir = accountDirFor(root.path, 'default');
+      for (final rel in rootFiles) {
+        final h = sha256
+            .convert(File(p.join(defDir, rel)).readAsBytesSync())
+            .toString();
+        expect(h, before[rel], reason: 'Mismatch for $rel');
+      }
+      clearKeyCache();
+      final movedCfg = ConfigManager.forAccount(root.path, 'default');
+      expect(
+        decryptStrict('${movedCfg.get('bakalari_password')}', dataDir: defDir),
+        'PlainKeyWins#42',
+      );
+      expect(
+        decryptStrict('${movedCfg.get('gemini_api_key')}', dataDir: root.path),
+        'GeminiPlainKey',
+      );
+    });
   });
 
   test('Item 3: secondRunChangesNothing', () async {
