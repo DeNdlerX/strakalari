@@ -15,7 +15,7 @@ Strakaláři for iOS is currently for **internal testing only** — it is not on
 3. Scroll down to **Artifacts** and download **`flutter-ios-unsigned`**.
 4. Unzip the downloaded archive to get `Strakalari-<version>-ios-unsigned.ipa`.
 
-> **Note:** GitHub deletes workflow artifacts **14 days** after a run finishes. If you need an older version whose artifact has expired, start a new release run of the **Dart** workflow on GitHub Actions.
+> **Note:** GitHub deletes the `.ipa` **14 days** after the run. A new one is built only together with a new release (a new `v…` version, for example a new beta), because every run that builds it also publishes that release. Never start a run with the tag of a version that's already out: it would change that release.
 
 ---
 

@@ -123,6 +123,10 @@ void main() {
       expect(doc, contains('Developer Mode'));
       expect(doc, contains('7 days'));
       expect(doc, contains('14 days'));
+      // R7 S4: an expired .ipa needs a new release; never reuse a released tag.
+      expect(doc, contains('built only together with a new release'));
+      expect(doc, contains("Never start a run with the tag of a version that's already out"));
+      expect(doc, isNot(contains('start a new release run')));
       expect(doc, contains('Flutter 3.44.8'));
       expect(doc, contains('Generated.xcconfig'));
       expect(doc, contains('io.github.dendlerx.strakalari'));
