@@ -62,11 +62,19 @@ WizardController wizardControllerFor(AppState s) {
     lang = core.getLanguage();
   } catch (_) {}
 
+  final accountIdAtBuild = s.activeAccountId;
+
   late final WizardController c;
   c = WizardController(
     config: Map<String, Object?>.of(s.config.data),
-    onSave: (updates) => s.save(updates),
-    onSaveQuiet: (updates) => s.saveQuiet(updates),
+    onSave: (updates) {
+      if (s.activeAccountId != accountIdAtBuild) return false;
+      return s.save(updates);
+    },
+    onSaveQuiet: (updates) {
+      if (s.activeAccountId != accountIdAtBuild) return false;
+      return s.saveQuiet(updates);
+    },
     onTestRequest: (service, overrides) {
       s.testConnection(
         service,
@@ -85,8 +93,14 @@ WizardController wizardControllerFor(AppState s) {
       await const AndroidChannel().requestNotificationPermission();
     },
     onSetLanguage: (l) => s.setLanguage(l),
-    onDraftChanged: (key, value) => s.setDraft(key, value),
-    onClearDrafts: (prefix) => s.clearDrafts(prefix),
+    onDraftChanged: (key, value) {
+      if (s.activeAccountId != accountIdAtBuild) return;
+      s.setDraft(key, value);
+    },
+    onClearDrafts: (prefix) {
+      if (s.activeAccountId != accountIdAtBuild) return;
+      s.clearDrafts(prefix);
+    },
     onStepChanged: (step) => s.wizardGoto(step, WizardController.stepDone),
     onFinished: () => s.wizardFinished(),
     onVerified: (service, fp) {
@@ -98,10 +112,40 @@ WizardController wizardControllerFor(AppState s) {
         s.wizardEarlyRefreshedFp = fp;
       }
     },
+    onCancelAdd: () => s.cancelAddAccount(),
+    checkDuplicateBakalari: (s.accountsEnabled && s.rootDir != null)
+        ? (url, username) {
+            if (s.registry == null) return null;
+            final dup = core.findDuplicateBakalariLogin(
+              s.rootDir!,
+              s.registry!,
+              url: url,
+              username: username,
+              excludeAccountId: accountIdAtBuild ?? '',
+            );
+            return dup == null ? null : s.accountDisplayLabel(dup);
+          }
+        : null,
+    checkDuplicateStrava: (s.accountsEnabled && s.rootDir != null)
+        ? (canteenId, username) {
+            if (s.registry == null) return null;
+            final dup = core.findDuplicateStravaLogin(
+              s.rootDir!,
+              s.registry!,
+              canteenId: canteenId,
+              username: username,
+              excludeAccountId: accountIdAtBuild ?? '',
+            );
+            return dup == null ? null : s.accountDisplayLabel(dup);
+          }
+        : null,
   );
   c.step = s.wizardStep;
   c.dismissed = s.wizardDismissed;
   c.isAndroid = Platform.isAndroid;
+  c.accountDataDir = s.activeAccountDir;
+  // Add-account mode reads ONLY the active account's `adding` flag (§10.3).
+  c.addingAccount = s.addingAccount;
   c.useExternalWakeupCard = true;
   c.notificationPermissionAlreadyAsked = s.notificationPermissionAsked;
   c.testing = s.testing.isEmpty ? null : s.testing;
@@ -192,7 +236,7 @@ class _LiveWizardViewState extends ConsumerState<LiveWizardView>
   Widget build(BuildContext context) {
     final s = ref.watch(appStateProvider);
     final tok = widget.tokens ?? s.appTokens;
-    if (s.wizardDismissed) {
+    if (s.wizardDismissed || !s.setupPending) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (context.mounted) context.go('/today');
       });

@@ -132,8 +132,17 @@ abstract class BakalariClientBase {
   List<Map<String, Object?>>? substitutions;
   String substitutionsError = '';
 
+  /// Per-account folder for decrypting [password] (null = legacy single-account).
+  final String? dataDir;
+
+  /// Fallback root folder when decrypting a migrated password.
+  final String? fallbackKeyDir;
+
   BakalariClientBase(Map<String, Object?>? configData,
-      {this.logger, HttpTransport? transport})
+      {this.logger,
+      HttpTransport? transport,
+      this.dataDir,
+      this.fallbackKeyDir})
       : config = Map<String, Object?>.of(configData ?? {}),
         _transportOverride = transport {
     bakalariUrl = '${config['bakalari_url'] ?? ''}';
@@ -203,7 +212,8 @@ abstract class BakalariClientBase {
 
   String _plainPassword() {
     if (isEncryptedFlag(passwordEncrypted)) {
-      final plain = decryptStrict(password);
+      final plain = decryptStrict(password,
+          dataDir: dataDir, fallbackKeyDir: fallbackKeyDir);
       if (plain == null) {
         throw UserError(t('bak_password_undecryptable'));
       }
@@ -281,7 +291,8 @@ abstract class BakalariClientBase {
 /// excuse form live in the mixins below.
 class BakalariClient extends BakalariClientBase
     with TimetableMixin, DataMixin, ExcuseFormMixin {
-  BakalariClient(super.configData, {super.logger, super.transport});
+  BakalariClient(super.configData,
+      {super.logger, super.transport, super.dataDir, super.fallbackKeyDir});
 }
 
 int _clampInt(Object? value, int fallback, int min, int max) {

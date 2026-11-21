@@ -24,6 +24,7 @@ import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../features/planner/planner_view.dart' show PickerSlot;
 import '../l10n/strings.dart';
+import '../platform/android/android_keystore.dart' show ensureWarmed;
 import '../shell/router.dart' show routeForLocation;
 import '../shell/theme.dart';
 import '../tutorial/tours.dart';
@@ -58,6 +59,271 @@ String fmtClock(DateTime t) =>
     '${t.minute.toString().padLeft(2, '0')}:'
     '${t.second.toString().padLeft(2, '0')}';
 
+/// Computes planned lunch-cancel days (`DD.MM.YYYY`) from [configData] and
+/// [cacheData], shared by [AppState._loadAccount] and background account
+/// refreshes (§7.2 step 4, S6).
+Set<String> cancelledLunchDaysFor(
+  Map<String, Object?> configData,
+  Map<String, Object?> cacheData, {
+  Map<String, String>? webOrdersMap,
+}) {
+  final web = webOrdersMap ?? _webOrdersFromCache(cacheData);
+  final rawCancelHandled = cacheData[cancelHandledKey];
+  final cancelHandled = <String>{
+    if (rawCancelHandled is List)
+      for (final d in rawCancelHandled) canonicalDayKey(d),
+  };
+  final skips = loadPlannedSkips(configData);
+  final out = <String>{};
+  for (final entry in skips) {
+    if (!cancelsLunch(entry)) continue;
+    for (final day in entryDays(entry)) {
+      final key = fmtDay(day);
+      final ordered = web[key] ?? '';
+      if (cancelHandled.contains(key) &&
+          ordered.isNotEmpty &&
+          !ordered.contains('&-1&')) {
+        continue;
+      }
+      out.add(key);
+    }
+  }
+  return out;
+}
+
+Map<String, String> _webOrdersFromCache(Map<String, Object?> cacheData) {
+  final out = <String, String>{};
+  final cachedOrders = cacheData['strava_ordered'];
+  if (cachedOrders is Map) {
+    for (final e in cachedOrders.entries) {
+      out[canonicalDayKey(e.key)] = '${e.value}';
+    }
+  }
+  return out;
+}
+
+bool _isDemoCache(Map<String, Object?> cacheData) =>
+    !(cacheData.containsKey('absence') &&
+            cacheData['absence'] is Map &&
+            (cacheData['absence'] as Map).isNotEmpty ||
+        cacheData.containsKey('timetable') &&
+            cacheData['timetable'] is Map &&
+            (cacheData['timetable'] as Map).isNotEmpty);
+
+Map<String, List<Map<String, Object?>>> _timetableFromCache(
+    Map<String, Object?> cacheData, bool demo) {
+  final raw = demo ? null : cacheData['timetable'];
+  if (raw is Map && raw.isNotEmpty) {
+    final normalized = <String, List<Map<String, Object?>>>{};
+    for (final e in raw.entries) {
+      final canon = canonicalDayKey(e.key);
+      final lessons = e.value;
+      if (lessons is List) {
+        normalized
+            .putIfAbsent(canon, () => [])
+            .addAll(lessons.whereType<Map>().map(strObjMap));
+      }
+    }
+    return normalized;
+  }
+  return {};
+}
+
+Map<String, Map<String, String>> _foodFromCache(
+    Map<String, Object?> cacheData, bool demo) {
+  final raw = demo ? null : (cacheData['food'] ?? cacheData['strava_meals']);
+  if (raw is Map && raw.isNotEmpty) {
+    final normalized = <String, Map<String, String>>{};
+    for (final e in raw.entries) {
+      if (e.value is! Map) continue;
+      normalized.putIfAbsent(canonicalDayKey(e.key), () => {}).addAll({
+        for (final m in (e.value as Map).entries) '${m.key}': '${m.value}',
+      });
+    }
+    if (normalized.isNotEmpty) return normalized;
+  }
+  return {};
+}
+
+Map<(int, int), Object> _stableBaselineFromCache(
+    Map<String, Object?> cacheData) {
+  final raw = cacheData['stable_baseline'];
+  if (raw is! Map || raw.isEmpty) return {};
+  return {
+    for (final e in baselineFromDict(raw).entries) e.key: e.value,
+  };
+}
+
+bool _stableCompleteFromCache(Map<String, Object?> cacheData) =>
+    cacheData['stable_baseline_source'] == 'scraped';
+
+Set<DateTime> _lunchFreeDaysFromConfig(Map<String, Object?> configData) {
+  try {
+    return effectiveCalendar(configData, clip: false).dates;
+  } catch (_) {
+    return {};
+  }
+}
+
+/// Pending excuse tasks derived from [cfg] and [cacheData], shared by
+/// [ExcuseTasksLogic.excuseTasks] and [buildStatusInputsFrom] (§8, S6).
+List<Map<String, Object?>> pendingExcuseTasksFor(
+  ConfigManager cfg,
+  Map<String, Object?> cacheData, {
+  Set<String>? ignoredOverride,
+  Set<String>? sentKeys,
+}) {
+  final demo = _isDemoCache(cacheData);
+  if (demo) return [];
+  final tt = _timetableFromCache(cacheData, false);
+  var tasks = <Map<String, Object?>>[
+    for (final t in excuseTasksFromLessons(lessonsFromTimetable(tt)))
+      {
+        'key': t.key,
+        'kind': t.kind,
+        'label': t.label,
+        'detail': t.detail,
+        'date': t.date == null ? '' : fmtIso(t.date!),
+        'period': t.period,
+        'status': 'pending',
+      },
+  ];
+  if (tasks.isEmpty) return [];
+  if (sentKeys != null && sentKeys.isNotEmpty) {
+    tasks = [
+      for (final t in tasks)
+        if (!sentKeys.contains('${t['key']}')) t,
+    ];
+  }
+  List<Object?> history = const [];
+  try {
+    history = cfg.getExcuseHistory();
+  } catch (_) {
+    history = const [];
+  }
+  if (history.isNotEmpty) {
+    tasks = [
+      for (final t in tasks)
+        if (!taskCoveredByHistory(t, history)) t,
+    ];
+  }
+  DateTime? outboxFrom;
+  try {
+    outboxFrom = parseCzDate('${cacheData[sentExcusesFromKey] ?? ''}');
+  } catch (_) {
+    outboxFrom = null;
+  }
+  final now = clock.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final windowStart = fmtIso(core.semesterExcuseWindowStart(today, outboxFrom));
+  final Set<String> ignored;
+  if (ignoredOverride != null) {
+    ignored = ignoredOverride;
+  } else {
+    final stored = cfg.get('ignored_excuses', const []);
+    ignored = stored is List
+        ? {
+            for (final k in stored)
+              if ('$k'.trim().isNotEmpty) '$k',
+          }
+        : const <String>{};
+  }
+  return [
+    for (final t in tasks)
+      if ('${t['date'] ?? ''}'.isEmpty ||
+          '${t['date']}'.compareTo(windowStart) >= 0)
+        if (!ignored.contains('${t['key']}')) t,
+  ];
+}
+
+/// Builds [StatusInputs] from an account's config and cache, shared by the
+/// active-account path and the non-active primary-account path (§8, S6).
+StatusInputs buildStatusInputsFrom(
+  ConfigManager cfg,
+  Map<String, Object?> cacheData, {
+  Map<String, String>? webOrdersOverride,
+  int? pendingExcusesOverride,
+  String? accountLabel,
+}) {
+  final demo = _isDemoCache(cacheData);
+  var pending = 0;
+  if (pendingExcusesOverride != null) {
+    pending = pendingExcusesOverride;
+  } else {
+    try {
+      pending = demo ? 0 : pendingExcuseTasksFor(cfg, cacheData).length;
+    } catch (exc) {
+      // ignore: avoid_print
+      print('Warning: pending excuses unavailable (${exc.runtimeType}: $exc)');
+      pending = 0;
+    }
+  }
+  DateTime? updated;
+  try {
+    final raw = '${cacheData['last_updated'] ?? ''}';
+    final m =
+        RegExp(r'^(\d{1,2})\.(\d{1,2})\.(\d{4}) (\d{1,2}):(\d{2}):(\d{2})$')
+            .firstMatch(raw);
+    if (m != null) {
+      updated = DateTime(
+        int.parse(m.group(3)!),
+        int.parse(m.group(2)!),
+        int.parse(m.group(1)!),
+        int.parse(m.group(4)!),
+        int.parse(m.group(5)!),
+        int.parse(m.group(6)!),
+      );
+    }
+  } catch (_) {
+    updated = null;
+  }
+  final tt = <String, Object?>{
+    for (final e in _timetableFromCache(cacheData, demo).entries)
+      e.key: e.value,
+  };
+  final menu = <String, Object?>{
+    for (final e in _foodFromCache(cacheData, demo).entries) e.key: e.value,
+  };
+  final web = webOrdersOverride ?? _webOrdersFromCache(cacheData);
+  return StatusInputs(
+    timetable: tt,
+    food: menu,
+    webOrders: demo ? {} : Map<String, Object?>.of(web),
+    config: Map<String, Object?>.of(cfg.data),
+    stableBaseline: _stableBaselineFromCache(cacheData),
+    stableComplete: _stableCompleteFromCache(cacheData),
+    pendingExcuses: pending,
+    lastUpdated: demo ? null : updated,
+    freeDays: _lunchFreeDaysFromConfig(cfg.data),
+    accountLabel: accountLabel,
+  );
+}
+
+/// Hands widget data and wake-up alarms for [cfg] + [cacheData] to Android (§8).
+void syncAndroidFrom(ConfigManager cfg, Map<String, Object?> cacheData) {
+  try {
+    final demo = _isDemoCache(cacheData);
+    final tt = <String, Object?>{
+      for (final e in _timetableFromCache(cacheData, demo).entries)
+        e.key: e.value,
+    };
+    syncAndroid(
+      tt,
+      config: Map<String, Object?>.of(cfg.data),
+      stableBaseline: _stableBaselineFromCache(cacheData),
+      stableComplete: _stableCompleteFromCache(cacheData),
+    );
+  } catch (_) {
+    // Never break a save or a reload.
+  }
+}
+
+/// Optional startup layout context provided by `prepareStartup` for
+/// [AppStateController.build] (overridden in `main.dart` and tests).
+final startupLayoutProvider =
+    Provider<({MultiAccountLayoutResult? layout, String? rootDir})?>(
+        (ref) => null);
+
 /// Mutable UI + cache state. Field-for-field port of `AppState.__init__`.
 class AppState {
   /// Called after every mutation that used to `_emit()` in Flet
@@ -72,9 +338,202 @@ class AppState {
   /// Fired after every config save, including quiet ones.
   final List<void Function()> configListeners = [];
 
-  AppState({Map<String, Object?>? configData, Map<String, Object?>? data}) {
-    if (configData != null) {
-      for (final e in configData.entries) {
+  AppState({
+    Map<String, Object?>? configData,
+    Map<String, Object?>? data,
+    MultiAccountLayoutResult? layoutResult,
+    String? rootDir,
+  }) {
+    // Resolve multi-account layout context (null in legacy single-file unit tests).
+    if (layoutResult != null) {
+      this.rootDir = rootDir ?? (isAccountsMode ? accountsModeRootDir : null);
+      if (layoutResult.isReady && layoutResult.registry != null) {
+        registry = layoutResult.registry;
+        migrationDegraded = false;
+      } else if (layoutResult.isDegraded) {
+        registry = null;
+        migrationDegraded = true;
+        migrationFailedNoticePending = true;
+      } else if (layoutResult.isRegistryFailed) {
+        registry = null;
+        registryError = layoutResult.error ?? 'Account registry unreadable.';
+      }
+    } else if (isAccountsMode && accountsModeRootDir != null) {
+      this.rootDir = rootDir ?? accountsModeRootDir;
+      try {
+        registry = AccountRegistry.load(this.rootDir!);
+      } on Object catch (e) {
+        registry = null;
+        registryError = '$e';
+      }
+    } else {
+      this.rootDir = rootDir;
+    }
+
+    _loadAccount(seedConfig: configData, seedData: data);
+    if (migrationFailedNoticePending) {
+      migrationFailedNoticePending = false;
+      lastSnackMessage = Strings.get('account_migration_failed');
+    }
+
+    try {
+      final cached = loadCached(updateChannel);
+      if (cached != null &&
+          '${cached['version'] ?? ''}'.isNotEmpty &&
+          updateAvailable(cached)) {
+        updateInfo = cached;
+      }
+    } catch (_) {
+      // Missing or unreadable update cache is non-fatal.
+    }
+  }
+
+  // -- multi-account metadata (survives switchAccount, §10.1 allow-list) ----
+  String? rootDir;
+  AccountRegistry? registry;
+  bool migrationDegraded = false;
+  bool migrationFailedNoticePending = false;
+  String? registryError;
+  String? addingAccountReturnId;
+  bool backgroundAccountRunning = false;
+  (String accountId, String route)? pendingBusyLaunchRoute;
+  final Map<String, List<Map<String, Object?>>> runsByAccount = {};
+  final Map<String, List<String>> logLinesByAccount = {};
+
+  /// Fired when `primary_id` changes so `PhoneBackground` can poke status
+  /// immediately (§8).
+  void Function()? onPrimaryChanged;
+
+  /// Fired after account switches so the desktop tray menu updates its label.
+  void Function()? onAccountChanged;
+
+  /// Test seam for `ensureWarmed(accountDir)` (defaults to [ensureWarmed]).
+  Future<void> Function(String accountDir) ensureWarmedFn =
+      (dir) => ensureWarmed(dir);
+
+  bool get accountsEnabled =>
+      registry != null && !migrationDegraded && rootDir != null;
+
+  bool get isMultiAccount => accountsEnabled && registry!.accounts.length > 1;
+
+  String? get activeAccountId => accountsEnabled ? registry!.activeId : null;
+
+  String? get primaryAccountId => accountsEnabled ? registry!.primaryId : null;
+
+  AccountInfo? get activeAccount =>
+      accountsEnabled ? registry!.activeAccount : null;
+
+  AccountInfo? get primaryAccount =>
+      accountsEnabled ? registry!.primaryAccount : null;
+
+  String? get activeAccountDir =>
+      accountsEnabled ? accountDirFor(rootDir!, registry!.activeId) : null;
+
+  /// True ONLY when the active account carries `adding: true` in accounts.json (§10.3).
+  bool get addingAccount => activeAccount?.adding == true;
+
+  /// True while any operation is in flight that must block account switching,
+  /// adding, or deleting (§6).
+  bool get isBusyForAccountChange =>
+      refreshRunning ||
+      sendingExcuses.isNotEmpty ||
+      orderRunning ||
+      testing.isNotEmpty ||
+      aiRunning ||
+      earlyRefreshInFlight ||
+      backgroundAccountRunning;
+
+  /// Human display label for [acc] (explicit label -> default/numbered fallback).
+  String accountDisplayLabel(AccountInfo acc) {
+    final trimmed = acc.label.trim();
+    if (trimmed.isNotEmpty) return trimmed;
+    if (acc.id == defaultAccountId) {
+      return Strings.get('account_default_label');
+    }
+    final list = registry?.accounts ?? const <AccountInfo>[];
+    final idx = list.indexWhere((a) => a.id == acc.id);
+    return Strings.format('account_numbered_label', {'n': idx >= 0 ? idx + 1 : 2});
+  }
+
+  /// Display label for the currently active account (empty in single-file mode).
+  String get activeAccountDisplayLabel =>
+      activeAccount != null ? accountDisplayLabel(activeAccount!) : '';
+
+  /// Loads (or reloads on switch) all per-account state from scratch (§10.1).
+  ///
+  /// Both the constructor and [switchAccount] run this single path so a
+  /// switched `AppState` matches a freshly constructed `AppState` field for
+  /// field (except the documented allow-list).
+  void _loadAccount({
+    Map<String, Object?>? seedConfig,
+    Map<String, Object?>? seedData,
+  }) {
+    // 1. Reset every non-allow-listed per-account field to cold-start defaults.
+    orders.clear();
+    pendingOrders.clear();
+    ignoredExcuseKeys = {};
+    lastIgnoreError = '';
+    excuseLog.clear();
+    sendingExcuses.clear();
+    orderRunning = false;
+    aiRunning = false;
+    timetableMondayIso = null;
+    showStableTimetable = false;
+    status = 'idle';
+    currentStep = '';
+    lastError = null;
+    errorDialogPending = false;
+    refreshRunning = false;
+    cancelRequested = false;
+    lastTest = {};
+    testing = '';
+    lunchHidden = {};
+    lunchReasons = {};
+    lunchPrefs = '';
+    blacklistEditError = '';
+    pickedTemplates.clear();
+    lunchesSidebarOpen = true;
+    lunchToolsOpen = false;
+    showPastCalendar = false;
+    showPastLunches = false;
+    expandedDays.clear();
+    drafts.clear();
+    wizardStep = 0;
+    wizardDismissed = false;
+    wizardShown = false;
+    wizardVerified.clear();
+    wizardEarlyRefreshedFp = null;
+    earlyRefreshInFlight = false;
+    pendingFullRefresh = false;
+    marksPredictions = {};
+    marksSelected = null;
+    marksEditing = null;
+    marksCalcStore.clear();
+    plannerTerm = null;
+    plannerShowAllPicks = false;
+    yearPlanCacheKey = null;
+    yearPlanCache = null;
+    monthSlotsCacheKey = null;
+    monthSlotsCache = null;
+    baselineCacheKey = null;
+    baselineCache = null;
+    lastSnackMessage = '';
+    _flights.clear();
+
+    // 2. Bind per-account runs & logLines lists from the allow-listed maps.
+    if (accountsEnabled) {
+      final accId = registry!.activeId;
+      runs = runsByAccount.putIfAbsent(accId, () => <Map<String, Object?>>[]);
+      logLines = logLinesByAccount.putIfAbsent(accId, () => <String>[]);
+      config = ConfigManager.forAccount(rootDir!, accId);
+    } else {
+      runs = <Map<String, Object?>>[];
+      logLines = <String>[];
+      config = ConfigManager();
+    }
+
+    if (seedConfig != null) {
+      for (final e in seedConfig.entries) {
         try {
           config.set(e.key, e.value);
         } catch (_) {
@@ -82,49 +541,27 @@ class AppState {
         }
       }
     }
-    if (data != null) {
-      this.data = Map<String, Object?>.of(data);
+    if (seedData != null) {
+      data = Map<String, Object?>.of(seedData);
     } else {
       try {
-        this.data = loadDataCache();
+        data = loadDataCache(dataDir: activeAccountDir);
       } catch (_) {
-        this.data = {};
+        data = {};
       }
     }
     dataRev = 0;
-    demoMode = !(this.data.containsKey('absence') &&
-        this.data['absence'] is Map &&
-        (this.data['absence'] as Map).isNotEmpty ||
-        this.data.containsKey('timetable') &&
-            this.data['timetable'] is Map &&
-            (this.data['timetable'] as Map).isNotEmpty);
-    final cachedOrders = this.data['strava_ordered'];
+    demoMode = _isDemoCache(data);
+    final cachedOrders = data['strava_ordered'];
     if (cachedOrders is Map) {
       for (final e in cachedOrders.entries) {
         orders[canonicalDayKey(e.key)] = '${e.value}';
       }
     }
     webOrders = Map<String, String>.of(orders);
-    final rawCancelHandled = this.data[cancelHandledKey];
-    final cancelHandled = <String>{
-      if (rawCancelHandled is List)
-        for (final d in rawCancelHandled) canonicalDayKey(d),
-    };
     plannedSkips = loadPlannedSkips(config.data);
-    cancelledLunches = {};
-    for (final entry in plannedSkips) {
-      if (!cancelsLunch(entry)) continue;
-      for (final day in entryDays(entry)) {
-        final key = fmtDay(day);
-        final web = webOrders[key] ?? '';
-        if (cancelHandled.contains(key) &&
-            web.isNotEmpty &&
-            !web.contains('&-1&')) {
-          continue;
-        }
-        cancelledLunches.add(key);
-      }
-    }
+    cancelledLunches =
+        cancelledLunchDaysFor(config.data, data, webOrdersMap: webOrders);
     try {
       final stored = config.get('ignored_excuses', []);
       if (stored is List) {
@@ -150,20 +587,285 @@ class AppState {
           : 0;
     }
     if (savedStep >= 0) _seedSchoolPresetDraft(savedStep);
-    try {
-      final cached = loadCached(updateChannel);
-      if (cached != null &&
-          '${cached['version'] ?? ''}'.isNotEmpty &&
-          updateAvailable(cached)) {
-        updateInfo = cached;
-      }
-    } catch (_) {
-      // Missing or unreadable update cache is non-fatal.
-    }
     refreshTokens();
   }
 
-  final ConfigManager config = ConfigManager();
+  /// Switches the active account to [targetId] (§10.1).
+  ///
+  /// Refuses with [account_switch_busy] while [isBusyForAccountChange] is true.
+  Future<bool> switchAccount(String targetId, {bool force = false}) async {
+    if (!accountsEnabled || rootDir == null) return false;
+    if (!force && isBusyForAccountChange) {
+      lastSnackMessage = Strings.get('account_switch_busy');
+      _emit();
+      return false;
+    }
+    if (registry!.byId(targetId) == null) return false;
+    if (targetId == registry!.activeId) return true;
+    final targetDir = accountDirFor(rootDir!, targetId);
+    await ensureWarmedFn(targetDir);
+    registry = AccountManager.setActiveAccount(rootDir!, targetId);
+    _loadAccount();
+    onAccountChanged?.call();
+    _emit();
+    return true;
+  }
+
+  /// Starts the add-account wizard by creating a provisional `adding: true`
+  /// account and switching to it (§10.3).
+  Future<bool> beginAddAccount() async {
+    if (!accountsEnabled || rootDir == null) return false;
+    if (isBusyForAccountChange) {
+      lastSnackMessage = Strings.get('account_switch_busy');
+      _emit();
+      return false;
+    }
+    final previousId = registry!.activeId;
+    final disclaimerAccepted = config.get('disclaimer_accepted', false) == true;
+    final initialStep = disclaimerAccepted ? 1 : 0; // stepSchool : stepWelcome
+    final created = AccountManager.createProvisionalAccount(
+      rootDir!,
+      initialWizardStep: initialStep,
+    );
+    final newDir = accountDirFor(rootDir!, created.account.id);
+    await ensureWarmedFn(newDir);
+    addingAccountReturnId = previousId;
+    registry = created.registry;
+    _loadAccount();
+    pendingRoute = 'wizard';
+    onAccountChanged?.call();
+    _emit();
+    return true;
+  }
+
+  /// Cancels an active add-account wizard (`adding: true` only, §10.3).
+  Future<bool> cancelAddAccount() async {
+    if (!accountsEnabled || rootDir == null) return false;
+    final current = activeAccount;
+    if (current == null || !current.adding) return false;
+    final cancelId = current.id;
+    final returnTo = addingAccountReturnId;
+    final prevConfig = config;
+    try {
+      final next = AccountManager.cancelAddingAccount(
+        rootDir!,
+        cancelId,
+        returnToId: returnTo,
+      );
+      prevConfig.markDeleted();
+      runsByAccount.remove(cancelId);
+      logLinesByAccount.remove(cancelId);
+      addingAccountReturnId = null;
+      registry = next;
+      await ensureWarmedFn(accountDirFor(rootDir!, next.activeId));
+      _loadAccount();
+      pendingRoute = 'today';
+      onAccountChanged?.call();
+      _emit();
+      return true;
+    } on SessionBusyError {
+      lastSnackMessage = Strings.get('account_delete_busy');
+      _emit();
+      return false;
+    } on Object catch (e) {
+      // ignore: avoid_print
+      print('Warning: cancelAddAccount failed: $e');
+      return false;
+    }
+  }
+
+  /// Renames [accountId] (persisted to `accounts.json`, §2.1 & §10.2).
+  bool renameAccount(String accountId, String newLabel) {
+    if (!accountsEnabled || rootDir == null) return false;
+    try {
+      registry = AccountManager.renameAccount(rootDir!, accountId, newLabel);
+      onAccountChanged?.call();
+      if (accountId == primaryAccountId) {
+        onPrimaryChanged?.call();
+      }
+      _emit();
+      return true;
+    } on Object catch (e) {
+      // ignore: avoid_print
+      print('Warning: renameAccount failed: $e');
+      return false;
+    }
+  }
+
+  /// Sets [accountId] as `primary_id` and immediately re-syncs Android
+  /// status notification, widget, and wake-up alarms (§8).
+  Future<bool> setPrimaryAccount(String accountId) async {
+    if (!accountsEnabled || rootDir == null) return false;
+    if (registry!.byId(accountId) == null) return false;
+    if (registry!.primaryId == accountId) return true;
+    await ensureWarmedFn(accountDirFor(rootDir!, accountId));
+    registry = AccountManager.setPrimaryAccount(rootDir!, accountId);
+    syncAndroidState();
+    onPrimaryChanged?.call();
+    _emit();
+    return true;
+  }
+
+  /// Toggles `background_refresh` for any account without switching to it (§7.1).
+  Future<bool> setAccountBackgroundRefresh(String accountId, bool enabled) async {
+    if (!accountsEnabled || rootDir == null) return false;
+    if (registry!.byId(accountId) == null) return false;
+    if (accountId == activeAccountId) {
+      return save({'background_refresh': enabled});
+    }
+    try {
+      final accDir = accountDirFor(rootDir!, accountId);
+      await ensureWarmedFn(accDir);
+      final mgr = ConfigManager.forAccount(rootDir!, accountId);
+      mgr.setAndSave('background_refresh', enabled);
+      _emit();
+      return true;
+    } on Object catch (e) {
+      // ignore: avoid_print
+      print('Warning: setAccountBackgroundRefresh failed: $e');
+      return false;
+    }
+  }
+
+  /// Reads per-account `background_refresh` (defaults to `true`).
+  bool accountBackgroundRefresh(String accountId) {
+    if (!accountsEnabled || rootDir == null) return true;
+    if (accountId == activeAccountId) {
+      return get('background_refresh', true) != false;
+    }
+    try {
+      final path = resolvePath('config.json', accountDirFor(rootDir!, accountId));
+      if (!File(path).existsSync()) return true;
+      final decoded = jsonDecode(File(path).readAsStringSync(encoding: utf8));
+      if (decoded is Map && decoded.containsKey('background_refresh')) {
+        return decoded['background_refresh'] != false;
+      }
+    } catch (_) {}
+    return true;
+  }
+
+  /// Reads lightweight subtitle info `(username, presetId)` for account list rows.
+  (String username, String presetId) accountSummary(String accountId) {
+    if (!accountsEnabled || rootDir == null) return ('', '');
+    if (accountId == activeAccountId) {
+      return (
+        '${get('bakalari_username', '')}'.trim(),
+        '${get('school_preset_id', '')}'.trim(),
+      );
+    }
+    try {
+      final path = resolvePath('config.json', accountDirFor(rootDir!, accountId));
+      if (!File(path).existsSync()) return ('', '');
+      final decoded = jsonDecode(File(path).readAsStringSync(encoding: utf8));
+      if (decoded is Map) {
+        return (
+          '${decoded['bakalari_username'] ?? ''}'.trim(),
+          '${decoded['school_preset_id'] ?? ''}'.trim(),
+        );
+      }
+    } catch (_) {}
+    return ('', '');
+  }
+
+  /// True when deleting [accountId] leaves a pre-update root backup or files
+  /// outside its folder behind (§9).
+  bool accountDeleteShowsBackupNote(String accountId) {
+    if (!accountsEnabled || rootDir == null) return false;
+    final info = registry!.byId(accountId);
+    if (info == null) return false;
+    if (info.migrated) return true;
+    final accDir = accountDirFor(rootDir!, accountId);
+    if (accountId == activeAccountId) {
+      return accountHasOutsideFiles(accDir, config.data);
+    }
+    try {
+      final path = resolvePath('config.json', accDir);
+      if (!File(path).existsSync()) return false;
+      final decoded = jsonDecode(File(path).readAsStringSync(encoding: utf8));
+      if (decoded is Map) {
+        return accountHasOutsideFiles(accDir, strObjMap(decoded));
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  /// Crash-safe account deletion (§9): switches away first if active, holds
+  /// `session.lock`, writes `accounts.json` first, forgets key, deletes only
+  /// `<rootDir>/accounts/<targetId>/`, and updates primary/Android state.
+  Future<bool> deleteAccount(String targetId) async {
+    if (!accountsEnabled || rootDir == null) return false;
+    if (registry!.accounts.length <= 1) return false;
+    if (isBusyForAccountChange) {
+      lastSnackMessage = Strings.get('account_delete_busy');
+      _emit();
+      return false;
+    }
+    final targetInfo = registry!.byId(targetId);
+    if (targetInfo == null) return false;
+    final deletedLabel = accountDisplayLabel(targetInfo);
+    ConfigManager? oldLiveConfig;
+
+    // Step 1 (§9): switch away BEFORE deleting so blur/dispose saves finish
+    // against the target's own folder.
+    if (targetId == registry!.activeId) {
+      oldLiveConfig = config;
+      final nextId =
+          registry!.accounts.firstWhere((a) => a.id != targetId).id;
+      final switched = await switchAccount(nextId);
+      if (!switched) return false;
+    }
+
+    try {
+      final res = AccountManager.deleteAccount(
+        rootDir!,
+        targetId,
+        liveConfigManager: oldLiveConfig,
+      );
+      registry = res.registry;
+      runsByAccount.remove(targetId);
+      logLinesByAccount.remove(targetId);
+      if (res.wasPrimary) {
+        await ensureWarmedFn(accountDirFor(rootDir!, res.nextPrimaryId));
+        syncAndroidState();
+        onPrimaryChanged?.call();
+      }
+      onAccountChanged?.call();
+      lastSnackMessage =
+          Strings.format('account_deleted', {'name': deletedLabel});
+      _emit();
+      return true;
+    } on SessionBusyError {
+      lastSnackMessage = Strings.get('account_delete_busy');
+      _emit();
+      return false;
+    } on Object catch (e) {
+      // ignore: avoid_print
+      print('Warning: deleteAccount failed: $e');
+      return false;
+    }
+  }
+
+  /// Ensures `primary_id`'s Android Keystore entry is warmed before reading it (§5.3, §8).
+  Future<void> ensurePrimaryWarmed() async {
+    if (!accountsEnabled || rootDir == null) return;
+    await ensureWarmedFn(accountDirFor(rootDir!, registry!.primaryId));
+  }
+
+  /// Degraded-mode guard (§4.2): called under `session.lock` right before
+  /// refresh, excuse send, or lunch order. If another process finished the
+  /// move meanwhile, logs and asks the user to restart instead of running.
+  bool checkDegradedMigratedElsewhere() {
+    if (!migrationDegraded || rootDir == null) return false;
+    if (!hasMultiAccountLayoutOnDisk(rootDir!)) return false;
+    final msg = Strings.get('account_migrated_elsewhere');
+    // ignore: avoid_print
+    print('Warning: $msg');
+    lastSnackMessage = msg;
+    _emit();
+    return true;
+  }
+
+  late ConfigManager config;
   late Map<String, Object?> data;
   late int dataRev;
   late bool demoMode;
@@ -189,8 +891,8 @@ class AppState {
   // -- activity / automation status ----------------------------------------
   String status = 'idle'; // idle | working | error
   String currentStep = '';
-  final List<String> logLines = [];
-  final List<Map<String, Object?>> runs = [];
+  late List<String> logLines;
+  late List<Map<String, Object?>> runs;
   Map<String, Object?>? lastError;
   bool errorDialogPending = false;
   bool refreshRunning = false;
@@ -279,10 +981,50 @@ class AppState {
   /// without touching the network).
   Strakalari Function(
           {void Function(String)? onLog, Map<String, Object?>? configData})
-      createApp = (
-              {void Function(String)? onLog,
-              Map<String, Object?>? configData}) =>
-          Strakalari(onLog: onLog, configData: configData);
+      createApp = _defaultCreateApp;
+
+  static Strakalari _defaultCreateApp(
+          {void Function(String)? onLog, Map<String, Object?>? configData}) =>
+      Strakalari(onLog: onLog, configData: configData);
+
+  /// Multi-account factory seam for tests (receives explicit [dataDir] and
+  /// [rootDir] for both active and background accounts).
+  Strakalari Function({
+    void Function(String)? onLog,
+    Map<String, Object?>? configData,
+    String? dataDir,
+    String? rootDir,
+  })? createAppForAccount;
+
+  /// Builds a [Strakalari] instance scoped to [accountDir] (active or
+  /// background account), honouring both [createAppForAccount] and legacy
+  /// single-account [createApp] overrides in unit tests.
+  Strakalari buildAppForAccount({
+    void Function(String)? onLog,
+    Map<String, Object?>? configData,
+    String? dataDir,
+  }) {
+    final dir = dataDir ?? activeAccountDir;
+    final customMulti = createAppForAccount;
+    if (customMulti != null) {
+      return customMulti(
+        onLog: onLog,
+        configData: configData,
+        dataDir: dir,
+        rootDir: rootDir,
+      );
+    }
+    if (!identical(createApp, _defaultCreateApp) &&
+        (dataDir == null || dataDir == activeAccountDir)) {
+      return createApp(onLog: onLog, configData: configData);
+    }
+    return Strakalari(
+      onLog: onLog,
+      configData: configData,
+      dataDir: dir,
+      rootDir: rootDir,
+    );
+  }
 
   /// AI lunch recommendation seam (defaults to core [recommendLunches];
   /// tests inject fakes without touching the Gemini network API).
@@ -381,14 +1123,14 @@ class AppState {
     };
     if (targets.isEmpty) return;
     try {
-      final raw = loadDataCache()[cancelHandledKey];
+      final raw = loadDataCache(dataDir: activeAccountDir)[cancelHandledKey];
       if (raw is! List || raw.isEmpty) return;
       final kept = <String>[
         for (final item in raw)
           if (!targets.contains(canonicalDayKey(item))) '$item',
       ];
       if (kept.length != raw.length) {
-        saveDataCache({cancelHandledKey: kept});
+        saveDataCache({cancelHandledKey: kept}, dataDir: activeAccountDir);
       }
     } on Object catch (exc) {
       // ignore: avoid_print
@@ -718,72 +1460,54 @@ class AppState {
   }
 
   /// Hands the widget data and the alarm queue to the phone (a no-op
-  /// elsewhere). Port of `sync_android_state()`.
+  /// elsewhere). Always reads from `primary_id` in multi-account mode (§8).
   void syncAndroidState() {
-    try {
-      final tt = <String, Object?>{};
-      for (final e in phoneTimetable().entries) {
-        tt[e.key] = e.value;
+    if (accountsEnabled &&
+        rootDir != null &&
+        primaryAccountId != activeAccountId) {
+      try {
+        final pid = primaryAccountId!;
+        final pDir = accountDirFor(rootDir!, pid);
+        final pCfg = ConfigManager.forAccount(rootDir!, pid);
+        final pCache = loadDataCache(dataDir: pDir);
+        syncAndroidFrom(pCfg, pCache);
+      } catch (_) {
+        // Never break a save or a reload.
       }
-      syncAndroid(
-        tt,
-        config: Map<String, Object?>.of(config.data),
-        stableBaseline: stableBaseline(),
-        stableComplete: stableComplete(),
-      );
-    } catch (_) {
-      // Never break a save or a reload.
+      return;
     }
+    syncAndroidFrom(config, data);
   }
 
   /// What the phone's background notification shows its overview from.
-  /// Port of `background_status_inputs()`.
+  /// Always reads from `primary_id` in multi-account mode (§8, S6).
   StatusInputs backgroundStatusInputs() {
-    final demo = demoMode;
+    final label = isMultiAccount && primaryAccount != null
+        ? accountDisplayLabel(primaryAccount!)
+        : null;
+    if (accountsEnabled &&
+        rootDir != null &&
+        primaryAccountId != activeAccountId) {
+      final pid = primaryAccountId!;
+      final pDir = accountDirFor(rootDir!, pid);
+      final pCfg = ConfigManager.forAccount(rootDir!, pid);
+      final pCache = loadDataCache(dataDir: pDir);
+      return buildStatusInputsFrom(pCfg, pCache, accountLabel: label);
+    }
     var pending = 0;
     try {
-      pending = demo ? 0 : excuseTasks().length;
+      pending = demoMode ? 0 : excuseTasks().length;
     } catch (exc) {
       // ignore: avoid_print
       print('Warning: pending excuses unavailable (${exc.runtimeType}: $exc)');
       pending = 0;
     }
-    DateTime? updated;
-    try {
-      final raw = '${data['last_updated'] ?? ''}';
-      final m = RegExp(r'^(\d{1,2})\.(\d{1,2})\.(\d{4}) (\d{1,2}):(\d{2}):(\d{2})$')
-          .firstMatch(raw);
-      if (m != null) {
-        updated = DateTime(
-          int.parse(m.group(3)!),
-          int.parse(m.group(2)!),
-          int.parse(m.group(1)!),
-          int.parse(m.group(4)!),
-          int.parse(m.group(5)!),
-          int.parse(m.group(6)!),
-        );
-      }
-    } catch (_) {
-      updated = null;
-    }
-    final tt = <String, Object?>{};
-    for (final e in phoneTimetable().entries) {
-      tt[e.key] = e.value;
-    }
-    final menu = <String, Object?>{};
-    for (final e in food().entries) {
-      menu[e.key] = e.value;
-    }
-    return StatusInputs(
-      timetable: tt,
-      food: menu,
-      webOrders: demo ? {} : Map<String, Object?>.of(webOrders),
-      config: Map<String, Object?>.of(config.data),
-      stableBaseline: stableBaseline(),
-      stableComplete: stableComplete(),
-      pendingExcuses: pending,
-      lastUpdated: demo ? null : updated,
-      freeDays: lunchFreeDays(),
+    return buildStatusInputsFrom(
+      config,
+      data,
+      webOrdersOverride: webOrders,
+      pendingExcusesOverride: pending,
+      accountLabel: label,
     );
   }
 
@@ -791,7 +1515,7 @@ class AppState {
   /// Port of `reload_cache()`.
   void reloadCache() {
     try {
-      data = loadDataCache();
+      data = loadDataCache(dataDir: activeAccountDir);
     } catch (_) {
       // Keep the previous snapshot when the cache cannot be read.
     }
@@ -928,12 +1652,33 @@ class AppState {
   }
 
   void wizardFinished() {
+    final wasAdding = addingAccount;
     wizardDismissed = true;
     wizardStep = 0;
     drafts.removeWhere((k, _) => k.startsWith('wiz:'));
     wizardVerified.clear();
     wizardEarlyRefreshedFp = null;
-    tutorialOffer(firstTourId);
+    if (wasAdding && accountsEnabled && rootDir != null && activeAccountId != null) {
+      final n = registry!.accounts.length;
+      final fallback = Strings.format('account_numbered_label', {'n': n});
+      try {
+        registry = AccountManager.finishAddingAccount(
+          rootDir!,
+          activeAccountId!,
+          fallbackLabel: fallback,
+        );
+      } on Object catch (e) {
+        // ignore: avoid_print
+        print('Warning: finishAddingAccount failed: $e');
+      }
+      addingAccountReturnId = null;
+      onAccountChanged?.call();
+      if (isMultiAccount) {
+        tutorialOffer('accounts');
+      }
+    } else {
+      tutorialOffer(firstTourId);
+    }
     _saveWizardStep(-1);
     _emit();
   }
@@ -980,24 +1725,80 @@ class AppState {
     _emit();
   }
 
-  /// Applies a route tapped from an Android notification or widget (O8).
+  /// Applies a route tapped from an Android notification or widget (O8, F4).
   ///
-  /// Drops the route while [setupPending] is true (wizard stays in charge),
-  /// never triggers refreshes/sends/orders, and falls back to `'today'` for
-  /// unknown routes.
+  /// Parses optional `?account=<id>` (§7.2 step 5, §8):
+  /// - If `<id>` no longer exists (deleted), stays on the current account and
+  ///   opens nothing.
+  /// - If `<id>` differs from active (or no `?account=` in multi-account mode
+  ///   and active != primary): switches if idle, else shows `account_tap_busy`
+  ///   and remembers `(targetId, baseRoute)` to apply once idle.
+  /// - Drops the route while [setupPending] is true (wizard stays in charge).
   void applyLaunchRoute(String rawRoute) {
+    unawaited(applyLaunchRouteAsync(rawRoute));
+  }
+
+  Future<void> applyLaunchRouteAsync(String rawRoute) async {
     if (setupPending) return;
     final trimmed = rawRoute.trim();
     if (trimmed.isEmpty) return;
-    if (trimmed == 'alarm') {
+
+    final uri = Uri.tryParse(trimmed);
+    final basePath = trimmed.split('?').first.split('#').first.trim();
+    final queryAccountId = uri?.queryParameters['account']?.trim();
+
+    if (accountsEnabled && registry != null) {
+      String? targetAccountId;
+      if (queryAccountId != null && queryAccountId.isNotEmpty) {
+        if (registry!.byId(queryAccountId) == null) {
+          // Deleted account: stay on the current account and open nothing (§7.2).
+          return;
+        }
+        targetAccountId = queryAccountId;
+      } else if (isMultiAccount && activeAccountId != primaryAccountId) {
+        // Status notification / widget / alarm carry no ?account=: target primary (§8).
+        targetAccountId = primaryAccountId;
+      }
+
+      if (targetAccountId != null && targetAccountId != activeAccountId) {
+        if (isBusyForAccountChange) {
+          // Don't open the target screen on the wrong account; queue & hint (§7.2).
+          final targetInfo = registry!.byId(targetAccountId);
+          final name = targetInfo != null ? accountDisplayLabel(targetInfo) : '';
+          pendingBusyLaunchRoute = (targetAccountId, basePath);
+          lastSnackMessage =
+              Strings.format('account_tap_busy', {'name': name});
+          _emit();
+          return;
+        }
+        final switched = await switchAccount(targetAccountId);
+        if (!switched) return;
+        if (setupPending) return;
+      }
+    }
+
+    _navigateToLaunchBase(basePath, trimmed);
+  }
+
+  void _navigateToLaunchBase(String basePath, String rawRoute) {
+    if (basePath == 'alarm') {
       settingsSection = 'alarm';
       settingsOpen = true;
       pendingRoute = 'settings';
       _emit();
       return;
     }
-    pendingRoute = routeForLocation(trimmed);
+    pendingRoute = routeForLocation(rawRoute);
     _emit();
+  }
+
+  /// Applies a queued notification/widget tap once all busy operations settle.
+  void _maybeApplyPendingLaunchRoute() {
+    final pending = pendingBusyLaunchRoute;
+    if (pending == null || isBusyForAccountChange) return;
+    pendingBusyLaunchRoute = null;
+    final (targetId, basePath) = pending;
+    unawaited(applyLaunchRouteAsync('$basePath?account=$targetId'));
   }
 
   // -- logging (activity mixin backing; richer API in activity.dart) ---------
@@ -1015,7 +1816,11 @@ class AppState {
 class AppStateController extends Notifier<AppState> {
   @override
   AppState build() {
-    final state = AppState();
+    final startup = ref.read(startupLayoutProvider);
+    final state = AppState(
+      layoutResult: startup?.layout,
+      rootDir: startup?.rootDir,
+    );
     state.onChanged = () {
       if (!ref.mounted) return;
       // ignore: avoid_self_assignment

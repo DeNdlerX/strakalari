@@ -18,6 +18,7 @@ import 'package:go_router/go_router.dart';
 
 import '../controllers/app_state.dart';
 import '../l10n/strings.dart';
+import '../widgets/account_switcher.dart';
 import '../widgets/error_boundary.dart';
 import '../widgets/error_dialog.dart';
 import '../widgets/overlays.dart' show appSnack, tutorialLayer, TutorialAnchor;
@@ -271,8 +272,12 @@ class AppScaffold extends ConsumerWidget {
       });
     }
 
-    // Tutorials: suspend a tour of another screen, offer the intro.
+    // Tutorials: suspend a tour of another screen, offer the intro (and the
+    // accounts switcher tour once multiple accounts exist, §10.4).
     appState.tutorialBegin(route);
+    if (appState.isMultiAccount) {
+      appState.tutorialOffer('accounts');
+    }
 
     final lunchCount = appState.pendingLunchCount;
     final lunchLabel = Strings.get('nav_lunches') +
@@ -667,11 +672,24 @@ class AppScaffold extends ConsumerWidget {
           )
         : null;
 
+    final accountPill = appState.isMultiAccount
+        ? AccountSwitcherPill(
+            appState: appState,
+            tok: tok,
+            narrow: narrow,
+            onManageAccounts: () => context.go(routeLocation('settings')),
+          )
+        : null;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
         children: [
           ?backBtn,
+          if (accountPill != null) ...[
+            accountPill,
+            const SizedBox(width: 6),
+          ],
           Expanded(child: statusPill),
           if (updateControl != null) ...[
             const SizedBox(width: 8),

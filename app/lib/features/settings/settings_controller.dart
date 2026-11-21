@@ -2,6 +2,29 @@ import 'dart:async';
 
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
+/// Lightweight account row model displayed by Settings → Účty (F4).
+class SettingsAccountItem {
+  final String id;
+  final String label;
+  final String username;
+  final String presetId;
+  final bool isActive;
+  final bool isPrimary;
+  final bool backgroundRefresh;
+  final bool showBackupNoteOnDelete;
+
+  const SettingsAccountItem({
+    required this.id,
+    required this.label,
+    this.username = '',
+    this.presetId = '',
+    this.isActive = false,
+    this.isPrimary = false,
+    this.backgroundRefresh = true,
+    this.showBackupNoteOnDelete = false,
+  });
+}
+
 /// Settings state. Port of the settings-related AppState surface used by
 /// views/settings/*: navigation, drafts, quiet saves, calendar ops,
 /// automation rules, autostart handling and credential gating.
@@ -55,6 +78,56 @@ class SettingsController {
   String testing = '';
   Map<String, dynamic> lastTest = {};
   String updateChannel = 'stable';
+
+  // -- multi-account metadata & callbacks (F4) ------------------------------
+  bool accountsEnabled = false;
+  bool migrationDegraded = false;
+  List<SettingsAccountItem> accounts = const [];
+  String? activeAccountId;
+  String activeAccountLabel = '';
+  String? primaryAccountId;
+  String primaryAccountLabel = '';
+
+  bool get isMultiAccount => accountsEnabled && accounts.length > 1;
+
+  Future<bool> Function(String accountId)? onSwitchAccount;
+  Future<bool> Function()? onBeginAddAccount;
+  bool Function(String accountId, String newLabel)? onRenameAccount;
+  Future<bool> Function(String accountId)? onSetPrimaryAccount;
+  Future<bool> Function(String accountId)? onDeleteAccount;
+  Future<bool> Function(String accountId, bool enabled)?
+      onSetAccountBackgroundRefresh;
+
+  /// Returns conflicting account's display label if another account already
+  /// uses this Bakaláři or Strava login (§10.2, §10.3).
+  String? Function(String url, String username)? checkDuplicateBakalari;
+  String? Function(String canteenId, String username)? checkDuplicateStrava;
+
+  /// Checks whether saving [newValue] into [configKey] would duplicate another
+  /// account's Bakaláři or Strava login. Returns conflicting label or `null`.
+  String? duplicateLoginLabelForEdit(String configKey, String newValue) {
+    if (configKey == 'bakalari_url' || configKey == 'bakalari_username') {
+      if (checkDuplicateBakalari == null) return null;
+      final url = configKey == 'bakalari_url'
+          ? newValue
+          : draft('acc:bakalari_url', '${get('bakalari_url', '')}');
+      final user = configKey == 'bakalari_username'
+          ? newValue
+          : draft('acc:bakalari_username', '${get('bakalari_username', '')}');
+      return checkDuplicateBakalari!(url, user);
+    }
+    if (configKey == 'strava_canteen_id' || configKey == 'strava_username') {
+      if (checkDuplicateStrava == null) return null;
+      final cid = configKey == 'strava_canteen_id'
+          ? newValue
+          : draft('acc:strava_canteen_id', '${get('strava_canteen_id', '')}');
+      final user = configKey == 'strava_username'
+          ? newValue
+          : draft('acc:strava_username', '${get('strava_username', '')}');
+      return checkDuplicateStrava!(cid, user);
+    }
+    return null;
+  }
 
   SettingsController(
     this.config, {

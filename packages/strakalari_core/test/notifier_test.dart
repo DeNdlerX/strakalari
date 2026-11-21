@@ -128,15 +128,18 @@ void main() {
 
 class _FakeBackend implements NotifierBackend {
   final List<String> calls;
-  _FakeBackend(this.calls);
+  final List<String?> routes;
+  _FakeBackend(this.calls, [List<String?>? routes]) : routes = routes ?? [];
 
   @override
   bool sendNotification({
     required String title,
     required String body,
     required String tag,
+    String? route,
   }) {
     calls.add('$tag:$body');
+    routes.add(route);
     return true;
   }
 }
@@ -147,6 +150,7 @@ class _FailingBackend implements NotifierBackend {
     required String title,
     required String body,
     required String tag,
+    String? route,
   }) => false;
 }
 
@@ -156,5 +160,6 @@ class _ThrowingBackend implements NotifierBackend {
     required String title,
     required String body,
     required String tag,
+    String? route,
   }) => throw StateError('backend exploded');
 }

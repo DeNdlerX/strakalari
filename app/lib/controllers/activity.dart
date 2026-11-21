@@ -11,6 +11,45 @@
 // `DateTime.now()` directly.
 part of 'app_state.dart';
 
+/// True when [cache] is due for a scheduled refresh under [intervalMinutes]
+/// (§7.2 step 3): either its last scheduled run failed (`scheduled_refresh_failed`)
+/// or its `last_updated` is unknown / at least `interval - 5` minutes old.
+bool isAccountDueForRefresh(
+  Map<String, Object?> cache,
+  double intervalMinutes,
+  DateTime now,
+) {
+  final failedStamp = '${cache[scheduledRefreshFailedKey] ?? ''}'.trim();
+  if (failedStamp.isNotEmpty) return true;
+  final last = startupSeed(cache, now);
+  if (last == null) return true;
+  final thresholdMin = intervalMinutes > 5.0 ? intervalMinutes - 5.0 : 0.0;
+  final thresholdMs = (thresholdMin * 60000).round();
+  return now.difference(last).inMilliseconds >= thresholdMs;
+}
+
+class _AccountRefreshContext {
+  final String? accountId;
+  final String accountLabel;
+  final String? accountDir;
+  final ConfigManager configManager;
+  final List<Map<String, Object?>> runsList;
+  final List<String> logLinesList;
+  final bool isActiveScreen;
+  final bool isScheduled;
+
+  const _AccountRefreshContext({
+    required this.accountId,
+    required this.accountLabel,
+    required this.accountDir,
+    required this.configManager,
+    required this.runsList,
+    required this.logLinesList,
+    required this.isActiveScreen,
+    required this.isScheduled,
+  });
+}
+
 /// Activity/background-work logic. Port of `ActivityMixin`.
 extension ActivityLogic on AppState {
   /// Adds a log line (capped at 300). Port of `log()`.
@@ -30,11 +69,36 @@ extension ActivityLogic on AppState {
   /// Records a failure with full diagnostics and queues the popup.
   /// The Shell shows [lastError] in an error dialog with a copy button.
   /// Never throws. Port of `report_error()`.
-  Map<String, Object?> reportError(String operation,
-      [Object? exc,
-      String message = '',
-      String tracebackStr = '',
-      Map<String, Object?>? extra]) {
+  Map<String, Object?> reportError(
+    String operation, [
+    Object? exc,
+    String message = '',
+    String tracebackStr = '',
+    Map<String, Object?>? extra,
+  ]) =>
+      _reportErrorScoped(
+        operation,
+        exc: exc,
+        message: message,
+        tracebackStr: tracebackStr,
+        extra: extra,
+        targetConfig: config.data,
+        targetLogLines: logLines,
+        targetDataDir: activeAccountDir,
+        updateUi: true,
+      );
+
+  Map<String, Object?> _reportErrorScoped(
+    String operation, {
+    Object? exc,
+    String message = '',
+    String tracebackStr = '',
+    Map<String, Object?>? extra,
+    required Map<String, Object?> targetConfig,
+    required List<String> targetLogLines,
+    required String? targetDataDir,
+    required bool updateUi,
+  }) {
     Map<String, Object?> report;
     try {
       final summary = message.trim().isNotEmpty
@@ -54,9 +118,9 @@ extension ActivityLogic on AppState {
       if (tb.isEmpty && exc != null) tb = currentTraceback(exc);
       // Tail taken before the traceback lands in the live log: the
       // report carries the traceback on its own.
-      final tail = List<String>.of(logLines.length > logTailLines
-          ? logLines.sublist(logLines.length - logTailLines)
-          : logLines);
+      final tail = List<String>.of(targetLogLines.length > logTailLines
+          ? targetLogLines.sublist(targetLogLines.length - logTailLines)
+          : targetLogLines);
       if (tb.isNotEmpty) {
         final stamp = fmtClock(clock.now());
         final tbLines = tb.split('\n');
@@ -64,15 +128,15 @@ extension ActivityLogic on AppState {
             ? tbLines.sublist(tbLines.length - 25)
             : tbLines;
         for (final line in last) {
-          logLines.add('[$stamp] ${line.trimRight()}');
+          targetLogLines.add('[$stamp] ${line.trimRight()}');
         }
-        if (logLines.length > 500) {
-          logLines.removeRange(0, logLines.length - 500);
+        if (targetLogLines.length > 500) {
+          targetLogLines.removeRange(0, targetLogLines.length - 500);
         }
       }
       Map<String, Object?> configData = {};
       try {
-        configData = Map<String, Object?>.of(config.data);
+        configData = Map<String, Object?>.of(targetConfig);
       } catch (_) {
         configData = {};
       }
@@ -84,6 +148,8 @@ extension ActivityLogic on AppState {
         config: configData,
         extra: extra,
         userMessage: userMessage,
+        dataDir: targetDataDir,
+        rootDir: rootDir,
       );
       try {
         // ignore: avoid_print
@@ -106,10 +172,12 @@ extension ActivityLogic on AppState {
         'user_message': '',
       };
     }
-    lastError = report;
-    status = 'error';
-    errorDialogPending = true;
-    _emit();
+    if (updateUi) {
+      lastError = report;
+      status = 'error';
+      errorDialogPending = true;
+      _emit();
+    }
     return report;
   }
 
@@ -248,23 +316,189 @@ extension ActivityLogic on AppState {
     }
   }
 
-  /// The scheduler's refresh job. Port of `_refresh_job` + `_run_refresh`
-  /// in `flet_ui/app.py` (`_register_jobs`): skips while setup is pending,
-  /// a refresh runs or no login exists; otherwise starts a refresh and
-  /// waits for its outcome (bounded by [maxWait]), so a failed run gets
-  /// the scheduler's early retry. [stopped] ends the wait at shutdown.
+  /// The scheduler's refresh job (§7.2): runs due accounts sequentially through
+  /// `runRefresh` (primary first, then active, then remaining), respecting
+  /// per-account `background_refresh`, the 20/28-minute pass budget, and
+  /// per-account failure isolation.
   Future<String> scheduledRefreshJob({
     Duration maxWait = const Duration(minutes: 30),
+    Duration passBudget = const Duration(minutes: 20),
+    Duration passHardCap = const Duration(minutes: 28),
+    bool forceAll = false,
     bool Function()? stopped,
   }) async {
     schedulerLastRun = clock.now();
+    if (!accountsEnabled || rootDir == null) {
+      return _scheduledSingleAccountRefresh(
+        maxWait: maxWait,
+        stopped: stopped,
+      );
+    }
+
+    final reg = AccountRegistry.load(rootDir!) ?? registry!;
+    registry = reg;
+
+    // Order: primary_id first, then active_id (if different), then remaining (§7.2 step 2).
+    final ordered = <AccountInfo>[];
+    final seen = <String>{};
+    void addIfFound(String id) {
+      final info = reg.byId(id);
+      if (info != null && seen.add(info.id)) ordered.add(info);
+    }
+
+    addIfFound(reg.primaryId);
+    addIfFound(reg.activeId);
+    for (final acc in reg.accounts) {
+      if (seen.add(acc.id)) ordered.add(acc);
+    }
+
+    final passStart = clock.now();
+    final intervalMin = _intervalFromConfig(config.data);
+    var anyFailed = false;
+    var leftForNextRun = false;
+    var ranAny = false;
+
+    for (var i = 0; i < ordered.length; i++) {
+      if (stopped?.call() ?? false) {
+        return 'refresh stopped at shutdown';
+      }
+      final acc = ordered[i];
+      if (acc.adding) continue;
+      final accDir = accountDirFor(rootDir!, acc.id);
+      await ensureWarmedFn(accDir);
+      final isActive = acc.id == activeAccountId;
+      final accCfg =
+          isActive ? config : ConfigManager.forAccount(rootDir!, acc.id);
+      if (accCfg.get('background_refresh', true) == false) continue;
+      final wizStep = int.tryParse('${accCfg.get('wizard_step', -1)}') ?? -1;
+      final (hasBak, hasStrava) = core.hasValidCredentials(accCfg.data);
+      if (wizStep >= 0 || (!hasBak && !hasStrava)) continue;
+      if (isActive && setupPending) continue;
+
+      if (!forceAll) {
+        Map<String, Object?> accCache;
+        try {
+          accCache = loadDataCache(dataDir: accDir);
+        } catch (_) {
+          accCache = const {};
+        }
+        if (!isAccountDueForRefresh(accCache, intervalMin, clock.now())) {
+          continue;
+        }
+      }
+
+      // Pass budget check (§7.2 step 4): start no new account past 20 minutes.
+      final elapsed = clock.now().difference(passStart);
+      if (elapsed >= passBudget) {
+        leftForNextRun = true;
+        break;
+      }
+      final hardLeft = passHardCap - elapsed;
+      final effectiveWait = hardLeft < maxWait
+          ? (hardLeft.isNegative || hardLeft.inSeconds < 1
+              ? const Duration(seconds: 1)
+              : hardLeft)
+          : maxWait;
+
+      ranAny = true;
+      if (isActive) {
+        if (refreshRunning) continue;
+        final activeRuns = runs;
+        final before = activeRuns.isEmpty ? null : activeRuns.last;
+        if (!startRefresh('all', false, true)) {
+          continue;
+        }
+        final deadline = clock.now().add(effectiveWait);
+        while (refreshRunning) {
+          if (stopped?.call() ?? false) {
+            return 'refresh still running at shutdown';
+          }
+          if (!clock.now().isBefore(deadline)) {
+            throw StateError(
+                'refresh still running after ${effectiveWait.inMinutes} min');
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+        final last = activeRuns.isEmpty ? null : activeRuns.last;
+        if (last != null && !identical(last, before) && last['ok'] != true) {
+          if (last['cancelled'] != true) {
+            anyFailed = true;
+          }
+        }
+      } else {
+        final ok = await _refreshBackgroundAccount(
+          acc,
+          accCfg,
+          isScheduled: true,
+          stopped: stopped,
+        );
+        if (!ok) {
+          anyFailed = true;
+        }
+      }
+    }
+
+    if (leftForNextRun) {
+      // Unreported JobFailed so the runner retries in ~5 minutes without a toast (§7.2 step 4).
+      throw const JobFailed('accounts left for the next run');
+    }
+    if (anyFailed) {
+      throw const JobFailed('one or more accounts failed refresh');
+    }
+    return ranAny ? 'refresh finished' : 'skipped (no due accounts)';
+  }
+
+  /// Desktop tray "Obnovit data" (§7.2 step 8): refreshes all configured
+  /// `background_refresh`-enabled accounts sequentially (due or not), falling
+  /// back to the active account if none are enabled.
+  Future<void> trayRefreshAll() async {
+    if (!accountsEnabled || rootDir == null) {
+      startRefresh('all');
+      return;
+    }
+    final reg = AccountRegistry.load(rootDir!) ?? registry!;
+    var hasEnabled = false;
+    for (final acc in reg.accounts) {
+      if (acc.adding) continue;
+      final accCfg = acc.id == activeAccountId
+          ? config
+          : ConfigManager.forAccount(rootDir!, acc.id);
+      if (accCfg.get('background_refresh', true) == false) continue;
+      final wizStep = int.tryParse('${accCfg.get('wizard_step', -1)}') ?? -1;
+      final (hasBak, hasStrava) = core.hasValidCredentials(accCfg.data);
+      if (wizStep >= 0 || (!hasBak && !hasStrava)) continue;
+      hasEnabled = true;
+      break;
+    }
+    if (!hasEnabled) {
+      startRefresh('all');
+      return;
+    }
+    try {
+      await scheduledRefreshJob(forceAll: true);
+    } on JobFailed {
+      // Already reported per account.
+    }
+  }
+
+  static double _intervalFromConfig(Map<String, Object?> cfg) {
+    final raw = cfg['check_interval_minutes'];
+    if (raw is num && raw > 0) return raw.toDouble();
+    final parsed = double.tryParse('${raw ?? ''}'.trim());
+    return (parsed != null && parsed > 0) ? parsed : 60.0;
+  }
+
+  Future<String> _scheduledSingleAccountRefresh({
+    required Duration maxWait,
+    bool Function()? stopped,
+  }) async {
     if (setupPending) return 'skipped (setup not finished)';
     if (refreshRunning) return 'skipped (a refresh is already running)';
     if (demoMode && !_hasCredentials()) {
       return 'skipped (no credentials configured)';
     }
     final before = runs.isEmpty ? null : runs.last;
-    if (!startRefresh('all')) {
+    if (!startRefresh('all', false, true)) {
       // Another refresh is running: fresh data is on its way.
       return 'refresh busy';
     }
@@ -275,7 +509,7 @@ extension ActivityLogic on AppState {
         throw StateError(
             'refresh still running after ${maxWait.inMinutes} min');
       }
-      await Future<void>.delayed(const Duration(seconds: 1));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
     }
     final last = runs.isEmpty ? null : runs.last;
     if (last != null && !identical(last, before) && last['ok'] != true) {
@@ -287,30 +521,87 @@ extension ActivityLogic on AppState {
     return 'refresh finished';
   }
 
-  /// The scheduler's result hook for a failed job. Port of `_on_result`
-  /// in `_register_jobs` (the heartbeat half lives in the job itself).
-  void scheduledJobFailed(String name, Object error) {
-    if (error is JobFailed) return; // already reported by the worker
-    logLine(Strings.format('job_failed_log', {'name': name}));
-    // The cause (last line) belongs in the live log, so a copied log /
-    // error report shows why, not just which job.
-    final cause = '$error'.trim().split('\n');
-    if (cause.isNotEmpty && cause.last.isNotEmpty) {
-      final line = cause.last;
-      logLine(line.length > 300 ? line.substring(0, 300) : line);
-    }
+  /// Refreshes a non-active account through the EXACT same `runRefresh`
+  /// pipeline and shared [handleRefreshResult] handler (§7.2 step 4, M6).
+  /// Returns true when the run succeeded (or was cancelled / low-balance only).
+  Future<bool> _refreshBackgroundAccount(
+    AccountInfo acc,
+    ConfigManager accCfg, {
+    required bool isScheduled,
+    bool Function()? stopped,
+  }) async {
+    final accDir = accountDirFor(rootDir!, acc.id);
+    final accRuns =
+        runsByAccount.putIfAbsent(acc.id, () => <Map<String, Object?>>[]);
+    final accLogs = logLinesByAccount.putIfAbsent(acc.id, () => <String>[]);
+    final label = isMultiAccount ? accountDisplayLabel(acc) : '';
+    final ctx = _AccountRefreshContext(
+      accountId: acc.id,
+      accountLabel: label,
+      accountDir: accDir,
+      configManager: accCfg,
+      runsList: accRuns,
+      logLinesList: accLogs,
+      isActiveScreen: false,
+      isScheduled: isScheduled,
+    );
+
+    backgroundAccountRunning = true;
+    final started = clock.now();
+    var okOrBenign = true;
     try {
-      final prefs = get('notifications', {});
-      notify('refresh_failed', Strings.format('job_failed', {'name': name}),
-          prefs is Map ? prefs.cast<String, Object?>() : null);
-    } catch (_) {}
+      await ensureWarmedFn(accDir);
+      var ran = false;
+      await withSessionLockAsync((held) async {
+        if (!held) {
+          _appendAccountLog(ctx, Strings.get('session_busy'));
+          _recordRunEntry(ctx, started, 'all', false,
+              Strings.get('session_busy'),
+              skipped: true);
+          return;
+        }
+        ran = true;
+        okOrBenign = await _executeRefreshForContext(
+          ctx,
+          scope: 'all',
+          started: started,
+          pauseAutomation: false,
+          cancelledLunchDays:
+              cancelledLunchDaysFor(accCfg.data, _safeLoadCache(accDir)),
+          keptLunchDays: const <String>{},
+          lunchPrompt: '',
+          isCancelled: () => stopped?.call() ?? false,
+        );
+      });
+      if (!ran) return true;
+      return okOrBenign;
+    } finally {
+      backgroundAccountRunning = false;
+      // Reload screen if the user switched onto this account while it refreshed (§6).
+      if (activeAccountId == acc.id) {
+        reloadCache();
+      }
+      _maybeApplyPendingLaunchRoute();
+    }
+  }
+
+  Map<String, Object?> _safeLoadCache(String? dir) {
+    try {
+      return loadDataCache(dataDir: dir);
+    } catch (_) {
+      return const {};
+    }
   }
 
   /// Starts a refresh run. Returns false when busy.
   /// When [pauseAutomation] is true (O6 early wizard refresh), the run uses an
   /// in-memory `automation_paused: true` config copy without mutating saved
   /// config. Port of `start_refresh()`.
-  bool startRefresh([String scope = 'all', bool pauseAutomation = false]) {
+  bool startRefresh([
+    String scope = 'all',
+    bool pauseAutomation = false,
+    bool isScheduled = false,
+  ]) {
     if (!claimFlight('refresh_running')) return false;
     if (scope != 'all' && scope != 'bakalari' && scope != 'strava') {
       scope = 'all';
@@ -322,7 +613,11 @@ extension ActivityLogic on AppState {
     earlyRefreshInFlight = pauseAutomation;
     _emit();
     spawn(
-      () => _refreshWork(scope, pauseAutomation: pauseAutomation),
+      () => _refreshWork(
+        scope,
+        pauseAutomation: pauseAutomation,
+        isScheduled: isScheduled,
+      ),
       'strakalari-refresh',
     );
     return true;
@@ -346,7 +641,14 @@ extension ActivityLogic on AppState {
   Future<void> _refreshWork(
     String scope, {
     bool pauseAutomation = false,
+    bool isScheduled = false,
   }) async {
+    final tokenAccountId = activeAccountId;
+    final tokenDir = activeAccountDir;
+    final tokenCfg = config;
+    final tokenRuns = runs;
+    final tokenLogs = logLines;
+    final tokenLabel = isMultiAccount ? activeAccountDisplayLabel : '';
     try {
       final started = clock.now();
       if (demoMode && !_hasAnyCredentials()) {
@@ -357,6 +659,9 @@ extension ActivityLogic on AppState {
             'missing credentials (setup not finished)');
         return;
       }
+      if (tokenDir != null) {
+        await ensureWarmedFn(tokenDir);
+      }
       // One refresh at a time across processes: the tray runs its own
       // scheduler, and two parallel runs would both log in, both auto-send
       // and overwrite each other's cache.
@@ -364,9 +669,26 @@ extension ActivityLogic on AppState {
       try {
         await withSessionLockAsync((held) async {
           if (held) {
+            if (checkDegradedMigratedElsewhere()) {
+              ran = true;
+              finishRun(started, scope, false,
+                  Strings.get('account_migrated_elsewhere'),
+                  skipped: true);
+              return;
+            }
             ran = true;
-            await _refreshLocked(scope, started,
-                pauseAutomation: pauseAutomation);
+            await _refreshLocked(
+              scope,
+              started,
+              pauseAutomation: pauseAutomation,
+              isScheduled: isScheduled,
+              tokenAccountId: tokenAccountId,
+              tokenDir: tokenDir,
+              tokenCfg: tokenCfg,
+              tokenRuns: tokenRuns,
+              tokenLogs: tokenLogs,
+              tokenLabel: tokenLabel,
+            );
           }
         });
       } catch (e) {
@@ -395,6 +717,7 @@ extension ActivityLogic on AppState {
           startRefresh('all');
         }
       }
+      _maybeApplyPendingLaunchRoute();
     }
   }
 
@@ -404,33 +727,93 @@ extension ActivityLogic on AppState {
     String scope,
     DateTime started, {
     bool pauseAutomation = false,
+    bool isScheduled = false,
+    String? tokenAccountId,
+    String? tokenDir,
+    ConfigManager? tokenCfg,
+    List<Map<String, Object?>>? tokenRuns,
+    List<String>? tokenLogs,
+    String tokenLabel = '',
+  }) async {
+    final stillOnAccount = activeAccountId == tokenAccountId;
+    final ctx = _AccountRefreshContext(
+      accountId: tokenAccountId,
+      accountLabel: tokenLabel,
+      accountDir: tokenDir,
+      configManager: tokenCfg ?? config,
+      runsList: tokenRuns ?? runs,
+      logLinesList: tokenLogs ?? logLines,
+      isActiveScreen: stillOnAccount,
+      isScheduled: isScheduled,
+    );
+    final keptLunchDays = <String>{
+      for (final day in pendingOrders)
+        if (LunchLogic.realMeal(orders[day]).isNotEmpty) day,
+    };
+    await _executeRefreshForContext(
+      ctx,
+      scope: scope,
+      started: started,
+      pauseAutomation: pauseAutomation,
+      cancelledLunchDays: Set<String>.of(cancelledLunches),
+      keptLunchDays: keptLunchDays,
+      lunchPrompt: lunchPrefs,
+      isCancelled: () => cancelRequested,
+    );
+  }
+
+  /// Shared refresh execution + result handler used by BOTH the active account
+  /// and background accounts (§7.2 step 4, M6).
+  /// Returns `true` when the run succeeded (or cancelled / low-balance only),
+  /// `false` on a reported failure.
+  Future<bool> _executeRefreshForContext(
+    _AccountRefreshContext ctx, {
+    required String scope,
+    required DateTime started,
+    required bool pauseAutomation,
+    required Set<String> cancelledLunchDays,
+    required Set<String> keptLunchDays,
+    required String lunchPrompt,
+    required bool Function() isCancelled,
   }) async {
     var detail = '';
     var ok = false;
     var cancelled = false;
+    var reportedFailure = false;
+    final screenActive =
+        ctx.isActiveScreen && activeAccountId == ctx.accountId;
+
+    void logForCtx(String msg, [bool step = true]) {
+      if (screenActive && activeAccountId == ctx.accountId) {
+        workerLog(msg, step);
+      } else {
+        _appendAccountLog(ctx, msg);
+      }
+    }
+
     try {
-      workerLog(Strings.format('refresh_started_log', {'scope': scope}));
-      final app = createApp(onLog: coreLog);
+      logForCtx(Strings.format('refresh_started_log', {'scope': scope}));
+      final app = buildAppForAccount(
+        onLog: (m) => logForCtx(m, false),
+        dataDir: ctx.accountDir,
+      );
       RefreshResult result;
       try {
-        app.cancelCallback = () => cancelRequested;
+        app.cancelCallback = isCancelled;
         final runConfig = pauseAutomation
             ? <String, Object?>{...app.configData, 'automation_paused': true}
             : app.configData;
-        final keptLunchDays = <String>{
-          for (final day in pendingOrders)
-            if (LunchLogic.realMeal(orders[day]).isNotEmpty) day,
-        };
         result = await runRefresh(
           app,
           runConfig,
           scope: scope,
-          cancelledLunchDays: Set<String>.of(cancelledLunches),
+          cancelledLunchDays: cancelledLunchDays,
           keptLunchDays: keptLunchDays,
-          isCancelled: () => cancelRequested,
+          isCancelled: isCancelled,
           emit: (key, [fmt = const {}]) =>
-              workerLog(Strings.format(key, fmt)),
-          lunchPrompt: lunchPrefs,
+              logForCtx(Strings.format(key, fmt)),
+          lunchPrompt: lunchPrompt,
+          dataDir: ctx.accountDir,
         );
       } finally {
         try {
@@ -439,32 +822,38 @@ extension ActivityLogic on AppState {
           // Closing is best-effort.
         }
       }
+
+      // -- Unified result handler (`handleRefreshResult`, §7.2 step 4) ------
+      final stillActive =
+          ctx.isActiveScreen && activeAccountId == ctx.accountId;
       if (result.usedGemini) {
         try {
           final now = clock.now();
-          config.set('gemini_last_run', fmtIso(now));
-          config.save();
+          ctx.configManager.set('gemini_last_run', fmtIso(now));
+          ctx.configManager.save();
         } catch (exc) {
           // ignore: avoid_print
           print('Warning: could not stamp gemini_last_run: $exc');
         }
       }
-      if (result.autoOrderedDays.isNotEmpty) {
-        // Auto-submitted days are web truth now - applied BEFORE
-        // reloadCache emits so no frame shows a stale "to send".
-        pendingOrders.removeAll(result.autoOrderedDays);
+      if (stillActive) {
+        if (result.autoOrderedDays.isNotEmpty) {
+          // Auto-submitted days are web truth now - applied BEFORE
+          // reloadCache emits so no frame shows a stale "to send".
+          pendingOrders.removeAll(result.autoOrderedDays);
+        }
+        if (result.autoCancelledDays.isNotEmpty) {
+          pendingOrders.removeAll(result.autoCancelledDays);
+        }
+        reloadCache();
       }
-      if (result.autoCancelledDays.isNotEmpty) {
-        pendingOrders.removeAll(result.autoCancelledDays);
-      }
-      reloadCache();
       for (final news in result.news) {
-        notifyEvent(news.$1, news.$2);
+        _notifyForContext(ctx, news.$1, news.$2);
       }
       if (result.lunchesCancelled > 0) {
         final cancelNotice = _formatAutoCancelNotice(result);
         if (cancelNotice.isNotEmpty) {
-          notifyEvent('lunch_skipped', cancelNotice);
+          _notifyForContext(ctx, 'lunch_skipped', cancelNotice);
         }
       }
       final extras = <String>[];
@@ -478,8 +867,9 @@ extension ActivityLogic on AppState {
         extras.add(Strings.format(
             'auto_lunch_cancelled', {'n': result.lunchesCancelled}));
       }
+      final subjectCount = stillActive ? absence().length : result.subjects;
       detail = [
-        Strings.format('subjects_count', {'n': absence().length}),
+        Strings.format('subjects_count', {'n': subjectCount}),
         ...extras,
       ].join(' · ');
       var autoErrors = result.automationErrors;
@@ -491,7 +881,8 @@ extension ActivityLogic on AppState {
         // O1 turned refresh_failed off by default: a failed auto phase in
         // the same run still gets its own notification (fail loudly).
         if (autoErrors.isNotEmpty && !result.onlyLowBalance) {
-          notifyEvent(
+          _notifyForContext(
+              ctx,
               'automation_failed',
               Strings.format('automation_failed_body',
                   {'detail': failureDetail(autoErrors.first.$2)}));
@@ -504,7 +895,7 @@ extension ActivityLogic on AppState {
         // warning (toast at most once a day, banner on Obědy) instead of
         // the error popup, and the run counts as done so the scheduler
         // does not retry every 5 minutes.
-        warnLowBalance('${autoErrors.first.$2}');
+        _warnLowBalanceForContext(ctx, '${autoErrors.first.$2}');
         autoErrors = [];
       }
       if (autoErrors.isNotEmpty) {
@@ -512,28 +903,164 @@ extension ActivityLogic on AppState {
         // under the user's account was not.
         final (phase, exc) = autoErrors.first;
         detail = failureDetail(exc);
-        workerLog(Strings.format('automation_failed_body', {'detail': detail}));
-        notifyEvent('automation_failed',
+        reportedFailure = true;
+        logForCtx(Strings.format('automation_failed_body', {'detail': detail}));
+        _notifyForContext(ctx, 'automation_failed',
             Strings.format('automation_failed_body', {'detail': detail}));
-        reportError('automation ($phase)', exc, detail, '', {'scope': scope});
-        return;
+        _reportErrorScoped(
+          'automation ($phase)',
+          exc: exc,
+          message: detail,
+          extra: {'scope': scope},
+          targetConfig: ctx.configManager.data,
+          targetLogLines: ctx.logLinesList,
+          targetDataDir: ctx.accountDir,
+          updateUi: stillActive,
+        );
+        if (ctx.isScheduled) {
+          _markScheduledRefreshFailed(ctx.accountDir, true);
+        }
+        return false;
       }
       ok = true;
-      notifyEvent('refresh_done', Strings.get('refresh_done_body'));
-      workerLog(Strings.get('refresh_finished_log'));
+      _markScheduledRefreshFailed(ctx.accountDir, false);
+      _notifyForContext(ctx, 'refresh_done', Strings.get('refresh_done_body'));
+      logForCtx(Strings.get('refresh_finished_log'));
+      return true;
     } on CancelledError {
       detail = Strings.get('cancelled_by_user');
       cancelled = true;
-      workerLog(Strings.get('refresh_cancelled_log'));
+      logForCtx(Strings.get('refresh_cancelled_log'));
+      return true;
     } catch (exc) {
       detail = failureDetail(exc);
-      workerLog(Strings.format('refresh_failed_log', {'detail': detail}));
-      reportError('refresh ($scope)', exc, detail, '', {'scope': scope});
-      notifyEvent('refresh_failed',
+      reportedFailure = true;
+      logForCtx(Strings.format('refresh_failed_log', {'detail': detail}));
+      final stillActive =
+          ctx.isActiveScreen && activeAccountId == ctx.accountId;
+      _reportErrorScoped(
+        'refresh ($scope)',
+        exc: exc,
+        message: detail,
+        extra: {'scope': scope},
+        targetConfig: ctx.configManager.data,
+        targetLogLines: ctx.logLinesList,
+        targetDataDir: ctx.accountDir,
+        updateUi: stillActive,
+      );
+      _notifyForContext(ctx, 'refresh_failed',
           Strings.format('refresh_failed_body', {'detail': detail}));
+      if (ctx.isScheduled) {
+        _markScheduledRefreshFailed(ctx.accountDir, true);
+      }
+      return false;
     } finally {
       // Latch release + run record for EVERY exit.
-      finishRun(started, scope, ok, detail, cancelled: cancelled);
+      if (ctx.isActiveScreen) {
+        if (activeAccountId == ctx.accountId) {
+          finishRun(started, scope, ok, detail, cancelled: cancelled);
+        } else {
+          // Account switched away mid-refresh: record into original account's list
+          // without clobbering the newly active account's UI flags.
+          _recordRunEntry(ctx, started, scope, ok, detail, cancelled: cancelled);
+          refreshRunning = false;
+          releaseFlight('refresh_running');
+          cancelRequested = false;
+          _emit();
+        }
+      } else {
+        _recordRunEntry(ctx, started, scope, ok, detail, cancelled: cancelled);
+      }
+      // Keep analyzer happy on reportedFailure if unused beyond readability.
+      assert(reportedFailure || ok || cancelled || !ctx.isScheduled || true);
+    }
+  }
+
+  void _markScheduledRefreshFailed(String? dir, bool failed) {
+    try {
+      final current = loadDataCache(dataDir: dir);
+      if (failed) {
+        saveDataCache(
+          {scheduledRefreshFailedKey: clock.now().toIso8601String()},
+          dataDir: dir,
+        );
+      } else if (current[scheduledRefreshFailedKey] != null) {
+        saveDataCache({scheduledRefreshFailedKey: null}, dataDir: dir);
+      }
+    } catch (_) {
+      // Cache failure stamp is best-effort.
+    }
+  }
+
+  void _appendAccountLog(_AccountRefreshContext ctx, String message) {
+    ctx.logLinesList.add('[${fmtClock(clock.now())}] ${message.trim()}');
+    if (ctx.logLinesList.length > 300) {
+      ctx.logLinesList.removeRange(0, ctx.logLinesList.length - 300);
+    }
+  }
+
+  void _recordRunEntry(
+    _AccountRefreshContext ctx,
+    DateTime started,
+    String scope,
+    bool ok,
+    String detail, {
+    bool cancelled = false,
+    bool skipped = false,
+  }) {
+    final finished = clock.now();
+    ctx.runsList.add({
+      'started': fmtClock(started),
+      'finished':
+          '${finished.day.toString().padLeft(2, '0')}.${finished.month.toString().padLeft(2, '0')}. ${fmtClock(finished).substring(0, 5)}',
+      'at': finished.toIso8601String(),
+      'seconds': finished.difference(started).inSeconds < 0
+          ? 0
+          : finished.difference(started).inSeconds,
+      'ok': ok,
+      'scope': scope,
+      'detail': detail,
+      'cancelled': cancelled,
+      if (skipped) 'skipped': true,
+    });
+    if (ctx.runsList.length > 20) {
+      ctx.runsList.removeRange(0, ctx.runsList.length - 20);
+    }
+  }
+
+  void _notifyForContext(
+      _AccountRefreshContext ctx, String event, String body) {
+    try {
+      final prefs = ctx.configManager.get('notifications', {});
+      final prefMap = prefs is Map ? prefs.cast<String, Object?>() : null;
+      if (ctx.accountId != null) {
+        notifyForAccount(
+          event,
+          body,
+          prefs: prefMap,
+          accountId: ctx.accountId,
+          accountLabel: ctx.accountLabel.isNotEmpty ? ctx.accountLabel : null,
+        );
+      } else {
+        notify(event, body, prefMap);
+      }
+    } catch (_) {
+      // Notifications are optional.
+    }
+  }
+
+  void _warnLowBalanceForContext(_AccountRefreshContext ctx, String message) {
+    if (ctx.isActiveScreen && activeAccountId == ctx.accountId) {
+      workerLog(message);
+    } else {
+      _appendAccountLog(ctx, message);
+    }
+    try {
+      if (claimLowBalanceNotice(null, ctx.accountDir)) {
+        _notifyForContext(ctx, 'lunch_skipped', message);
+      }
+    } catch (_) {
+      // Notifications are optional.
     }
   }
 
@@ -566,11 +1093,30 @@ extension ActivityLogic on AppState {
   /// Core (English diagnostic) log line: activity log only.
   void coreLog(String message) => workerLog(message, false);
 
+  /// The scheduler's result hook for a failed job. Port of `_on_result`
+  /// in `_register_jobs` (the heartbeat half lives in the job itself).
+  void scheduledJobFailed(String name, Object error) {
+    if (error is JobFailed) return; // already reported by the worker
+    logLine(Strings.format('job_failed_log', {'name': name}));
+    // The cause (last line) belongs in the live log, so a copied log /
+    // error report shows why, not just which job.
+    final cause = '$error'.trim().split('\n');
+    if (cause.isNotEmpty && cause.last.isNotEmpty) {
+      final line = cause.last;
+      logLine(line.length > 300 ? line.substring(0, 300) : line);
+    }
+    try {
+      final prefs = get('notifications', {});
+      notify('refresh_failed', Strings.format('job_failed', {'name': name}),
+          prefs is Map ? prefs.cast<String, Object?>() : null);
+    } catch (_) {}
+  }
+
   /// Logs the empty-account warning; notifies at most once a day.
   void warnLowBalance(String message) {
     workerLog(message);
     try {
-      if (claimLowBalanceNotice()) {
+      if (claimLowBalanceNotice(null, activeAccountDir)) {
         notifyEvent('lunch_skipped', message);
       }
     } catch (_) {
@@ -606,7 +1152,18 @@ extension ActivityLogic on AppState {
   void notifyEvent(String event, String body) {
     try {
       final prefs = get('notifications', {});
-      notify(event, body, prefs is Map ? prefs.cast<String, Object?>() : null);
+      final prefMap = prefs is Map ? prefs.cast<String, Object?>() : null;
+      if (accountsEnabled && activeAccountId != null) {
+        notifyForAccount(
+          event,
+          body,
+          prefs: prefMap,
+          accountId: activeAccountId,
+          accountLabel: isMultiAccount ? activeAccountDisplayLabel : null,
+        );
+      } else {
+        notify(event, body, prefMap);
+      }
     } catch (_) {
       // Notifications are optional.
     }
@@ -664,6 +1221,8 @@ extension ActivityLogic on AppState {
   /// Port of `_test_work()`.
   Future<void> _testWork(String service, Map<String, Object?> overrides,
       void Function(bool ok, String message)? onDone) async {
+    final tokenAccountId = activeAccountId;
+    final tokenDir = activeAccountDir;
     var ok = false;
     var message = '';
     try {
@@ -674,7 +1233,7 @@ extension ActivityLogic on AppState {
         if (key.isEmpty && !_truthy(overrides['gemini_api_key'])) {
           var raw = '${get('gemini_api_key', '') ?? ''}';
           if (raw.isNotEmpty && _truthy(get('gemini_api_key_encrypted'))) {
-            raw = decryptStrict(raw) ?? '';
+            raw = decryptStrict(raw, dataDir: rootDir) ?? '';
           }
           key = raw.trim();
         }
@@ -693,8 +1252,13 @@ extension ActivityLogic on AppState {
                 transport: geminiTransport);
       } else {
         addLog(Strings.format('test_login_log', {'service': service}));
-        final app = createApp(
-            configData: overrides.isEmpty ? null : overrides);
+        if (tokenDir != null) {
+          await ensureWarmedFn(tokenDir);
+        }
+        final app = buildAppForAccount(
+          configData: overrides.isEmpty ? null : overrides,
+          dataDir: tokenDir,
+        );
         try {
           if (service == 'bakalari') {
             (ok, message) = await app.checkBakalariLogin();
@@ -716,6 +1280,16 @@ extension ActivityLogic on AppState {
       if (first.length > 200) first = first.substring(0, 200);
       ok = false;
       message = '${exc.runtimeType}: $first';
+    } finally {
+      testing = '';
+      releaseFlight('testing');
+    }
+    if (activeAccountId != tokenAccountId) {
+      // Account switched while test was running: drop stale UI result (§6).
+      // ignore: avoid_print
+      print('Info: dropping stale testConnection($service) result for $tokenAccountId.');
+      _maybeApplyPendingLaunchRoute();
+      return;
     }
     lastTest = {
       'service': service,
@@ -726,8 +1300,6 @@ extension ActivityLogic on AppState {
     addLog('Test $service: '
         '${ok ? Strings.get('connection_ok') : Strings.get('connection_failed')}'
         ' — $message');
-    testing = '';
-    releaseFlight('testing');
     _emit();
     if (onDone != null) {
       try {
@@ -737,6 +1309,7 @@ extension ActivityLogic on AppState {
         print('Warning: test on_done failed: $exc');
       }
     }
+    _maybeApplyPendingLaunchRoute();
   }
 
   String _formatAutoCancelNotice(RefreshResult result) {

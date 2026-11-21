@@ -14,6 +14,7 @@ import '../automation/cancel.dart';
 import '../bakalari/http_session.dart';
 import '../error_report.dart';
 import '../i18n.dart';
+import '../storage/accounts.dart' show requirePerAccountDir;
 import '../storage/config.dart';
 import '../storage/helpers.dart';
 import 'extractors.dart';
@@ -126,8 +127,17 @@ class StravaClientBase {
   String lastNotice = '';
   final List<Map<String, Object?>> pending = [];
 
+  /// Per-account folder for resolving blacklist and decrypting password.
+  final String? dataDir;
+
+  /// Fallback root folder when decrypting a migrated password.
+  final String? fallbackKeyDir;
+
   StravaClientBase(Map<String, Object?>? configData,
-      {this.logger, HttpTransport? transport})
+      {this.logger,
+      HttpTransport? transport,
+      this.dataDir,
+      this.fallbackKeyDir})
       : config = Map<String, Object?>.of(configData ?? {}),
         _transport = transport,
         _ownsTransport = transport == null {
@@ -150,8 +160,9 @@ class StravaClientBase {
     stravaEnable = !(useStrava == false ||
         '${useStrava ?? ''}'.toLowerCase() == 'false');
 
-    stravaBlacklist =
-        resolvePath('${config['strava_blacklist'] ?? './strava_blacklist.json'}');
+    stravaBlacklist = resolvePath(
+        '${config['strava_blacklist'] ?? './strava_blacklist.json'}',
+        requirePerAccountDir(dataDir));
     if (stravaEnable) {
       var blPath = stravaBlacklist;
       if (!File(blPath).existsSync()) {
@@ -340,7 +351,8 @@ class StravaClientBase {
 
   String _plainPassword() {
     if (isEncryptedFlag(stravaPasswordEncrypted)) {
-      final password = decryptStrict(stravaPassword);
+      final password = decryptStrict(stravaPassword,
+          dataDir: dataDir, fallbackKeyDir: fallbackKeyDir);
       if (password == null) {
         throw UserError(t('strava_password_undecryptable'));
       }
@@ -439,5 +451,6 @@ class StravaClientBase {
 ///
 /// Ordering lives in [OrderingMixin].
 class StravaClient extends StravaClientBase with OrderingMixin {
-  StravaClient(super.configData, {super.logger, super.transport});
+  StravaClient(super.configData,
+      {super.logger, super.transport, super.dataDir, super.fallbackKeyDir});
 }

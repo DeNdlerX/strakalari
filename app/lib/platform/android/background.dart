@@ -24,6 +24,7 @@
 // notification + widget + alarm queue → the next wake. Not due (reboot,
 // app update) → only the wake for the due time.
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:ui';
@@ -126,26 +127,58 @@ Future<void> backgroundMain() => androidBackgroundEntry();
 Future<void> _runHeadless(AndroidChannel channel) async {
   final reason = await channel.takeHeadlessReason();
   final dataDir = await _phoneDataDir();
-  // `run_in_background` off: Python stops the service and cancels the
-  // wake (`_setup_phone_background` → `stop_background`). A reboot, an
-  // app update or an old alarm must not start automation behind the
-  // user's back, nor arm a new wake.
-  Map<String, Object?> cfg;
+  // Run the F4 one-time move right after `_phoneDataDir()` and BEFORE the
+  // `run_in_background` gate (§4.1), so an overnight Play Store update moves
+  // safely before the user ever opens the app.
+  final layout = await ensureMultiAccountLayout(
+    dataDir,
+    warmAndroidRootKey: (r) => warmAndroidRootKeyClean(r, channel: channel),
+  );
+  if (layout.isRegistryFailed) {
+    // ignore: avoid_print
+    print('Warning: headless run aborted (account registry failed: '
+        '${layout.error}).');
+    return;
+  }
+  // `run_in_background` off: read from `global.json` once accounts exist
+  // (never from the root backup); read root `config.json` only in degraded mode (§4.1).
+  Object? runInBgValue;
   try {
-    cfg = ConfigManager('$dataDir/config.json').data;
+    runInBgValue = readHeadlessRunInBackground(dataDir, layout);
   } on Object catch (e) {
     // ignore: avoid_print
     print('Warning: headless run could not read the config ($e); not running.');
     return;
   }
-  if (!backgroundSwitchOn(cfg['run_in_background'] ?? true)) {
+  if (!backgroundSwitchOn(runInBgValue ?? true)) {
     await channel.cancelWake();
     // ignore: avoid_print
     print('Info: background running off; headless wake ($reason) ignored.');
     return;
   }
   if (await handOffToUi(reason)) return;
-  await _runInline(channel, reason, dataDir);
+  await _runInline(channel, reason, dataDir, layout);
+}
+
+/// Reads `run_in_background` for the headless gate: `global.json` once
+/// accounts exist, root `config.json` only in degraded mode (§3.4, §4.1).
+@visibleForTesting
+Object? readHeadlessRunInBackground(
+  String rootDir,
+  MultiAccountLayoutResult layout,
+) {
+  if (layout.isReady) {
+    final globalPath = resolvePath(globalConfigFile, rootDir);
+    if (!File(globalPath).existsSync()) return true;
+    final decoded =
+        jsonDecode(File(globalPath).readAsStringSync(encoding: utf8));
+    if (decoded is Map && decoded.containsKey('run_in_background')) {
+      return decoded['run_in_background'];
+    }
+    return true;
+  }
+  final cfg = ConfigManager(resolvePath('config.json', rootDir)).data;
+  return cfg['run_in_background'];
 }
 
 /// The phone's data folder, set as `STRAKALARI_DATA_DIR` for core.
@@ -249,23 +282,40 @@ class _ChannelWakeupBridge implements WakeupPhoneBridge {
   }
 }
 
-Future<void> _runInline(AndroidChannel channel, String reason, String dataDir) async {
+Future<void> _runInline(
+  AndroidChannel channel,
+  String reason,
+  String dataDir,
+  MultiAccountLayoutResult layout,
+) async {
   // ignore: avoid_print
   print('Info: headless background run ($reason).');
-  try {
-    await warmAndroidKeystore(dataDir, channel: channel);
-  } on KeyStoreMissing {
-    // No Keystore (should not happen on Android): the plain file, like
-    // Python without pyjnius.
-  } on Object catch (e) {
-    // ignore: avoid_print
-    print('Warning: Keystore warm-up failed (${e.runtimeType}: $e).');
+  if (layout.isReady && layout.registry != null) {
+    await warmAndroidKeystoreAll(
+      dataDir,
+      layout.registry!.accounts.map((a) => a.id),
+      channel: channel,
+    );
+  } else {
+    try {
+      await warmAndroidKeystore(dataDir, channel: channel);
+    } on KeyStoreMissing {
+      // No Keystore (should not happen on Android): the plain file, like
+      // Python without pyjnius.
+    } on Object catch (e) {
+      // ignore: avoid_print
+      print('Warning: Keystore warm-up failed (${e.runtimeType}: $e).');
+    }
   }
   installAndroidBridges(channel, languageOf: () => Strings.lang);
   // The same state the UI builds: its language (core + strings), the
   // refresh worker with its session lock, notifications and run record,
   // and the UI's job runner (a bare AppState only records intent).
   final state = AppState()..spawn = AppState.liveSpawn;
+  if (layout.isDegraded) {
+    state.rootDir = dataDir;
+    state.migrationDegraded = true;
+  }
   await runHeadlessTick(state, channel);
 }
 
@@ -311,6 +361,7 @@ Future<String> runHeadlessTick(
       while (state.updateCheckRunning && clock.now().isBefore(deadline)) {
         await Future<void>.delayed(const Duration(milliseconds: 200));
       }
+      await state.ensurePrimaryWarmed();
       _postStatus(state, channel, interval);
       // Also after a skipped or failed run: a new day redraws the widget.
       state.syncAndroidState();

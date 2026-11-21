@@ -218,12 +218,18 @@ extension LunchLogic on AppState {
   }
 
   Future<void> _ordersWork(Map<String, String> payload) async {
+    final tokenAccountId = activeAccountId;
+    final tokenDir = activeAccountDir;
     var ok = false;
     var dry = false;
     var placed = <String, String>{};
     var busy = false;
+    var migratedElsewhere = false;
     var unfunded = <String>[];
     try {
+      if (tokenDir != null) {
+        await ensureWarmedFn(tokenDir);
+      }
       // The tray (another process) may be mid-refresh: never order in
       // parallel with it.
       await withSessionLockAsync((held) async {
@@ -232,7 +238,11 @@ extension LunchLogic on AppState {
           workerLog(Strings.get('session_busy'));
           return;
         }
-        final app = createApp(onLog: coreLog);
+        if (checkDegradedMigratedElsewhere()) {
+          migratedElsewhere = true;
+          return;
+        }
+        final app = buildAppForAccount(onLog: coreLog, dataDir: tokenDir);
         try {
           app.cancelRequested = false;
           dry = app.stravaOrderMode == 'dry_run';
@@ -258,7 +268,8 @@ extension LunchLogic on AppState {
         }
       });
       if (placed.isNotEmpty) {
-        recordWebOrders(placed);
+        _recordWebOrdersForDir(placed,
+            dir: tokenDir, updateUi: activeAccountId == tokenAccountId);
       }
     } catch (exc) {
       final line =
@@ -266,20 +277,33 @@ extension LunchLogic on AppState {
               .split('\n')
               .first;
       workerLog(line.length > 200 ? line.substring(0, 200) : line);
-      reportError('orders', exc, '', '', {'days': payload.length});
+      if (activeAccountId == tokenAccountId) {
+        reportError('orders', exc, '', '', {'days': payload.length});
+      }
     } finally {
       orderRunning = false;
       releaseFlight('order_running');
+    }
+    if (migratedElsewhere) {
+      _maybeApplyPendingLaunchRoute();
+      return;
     }
     var lowBalanceMsg = '';
     if (unfunded.isNotEmpty) {
       lowBalanceMsg =
           core.t('strava_low_balance_manual', args: {'n': unfunded.length});
-      recordLowBalance(unfunded);
-      setLowBalanceMemory(unfunded);
+      recordLowBalance(unfunded, tokenDir);
+      if (activeAccountId == tokenAccountId) setLowBalanceMemory(unfunded);
     } else if (ok && !dry) {
-      recordLowBalance(null);
-      setLowBalanceMemory(null);
+      recordLowBalance(null, tokenDir);
+      if (activeAccountId == tokenAccountId) setLowBalanceMemory(null);
+    }
+    if (activeAccountId != tokenAccountId) {
+      // Account switched mid-order: disk cache already updated for tokenDir; drop UI result (§6).
+      // ignore: avoid_print
+      print('Info: dropping stale lunch order UI result for $tokenAccountId.');
+      _maybeApplyPendingLaunchRoute();
+      return;
     }
     if (ok && dry) {
       // Dry run simulates success without ordering — web truth untouched.
@@ -306,6 +330,7 @@ extension LunchLogic on AppState {
       lastSnackMessage = Strings.get('orders_failed');
     }
     _emit();
+    _maybeApplyPendingLaunchRoute();
   }
 
   /// Mirrors the cached low-balance warning into [data] (banner).
@@ -335,7 +360,14 @@ extension LunchLogic on AppState {
   /// Merges into the cached `strava_ordered` map — replacing it with
   /// just this batch would drop every other ordered day.
   /// Port of `_record_web_orders()`.
-  void recordWebOrders(Map<String, String> placed) {
+  void recordWebOrders(Map<String, String> placed) =>
+      _recordWebOrdersForDir(placed, dir: activeAccountDir, updateUi: true);
+
+  void _recordWebOrdersForDir(
+    Map<String, String> placed, {
+    required String? dir,
+    required bool updateUi,
+  }) {
     final canonPlaced = {
       for (final e in placed.entries) canonicalDayKey(e.key): e.value,
     };
@@ -343,13 +375,15 @@ extension LunchLogic on AppState {
       for (final e in canonPlaced.entries)
         if (e.value.isNotEmpty && !e.value.contains('&-1&')) e.key,
     ];
-    for (final e in canonPlaced.entries) {
-      webOrders[e.key] = e.value;
+    if (updateUi) {
+      for (final e in canonPlaced.entries) {
+        webOrders[e.key] = e.value;
+      }
+      cancelledLunches.removeAll(manualRealDays);
+      pendingOrders.removeAll(canonPlaced.keys);
     }
-    cancelledLunches.removeAll(manualRealDays);
-    pendingOrders.removeAll(canonPlaced.keys);
     try {
-      final currentCache = loadDataCache();
+      final currentCache = loadDataCache(dataDir: dir);
       final cached = currentCache['strava_ordered'];
       final merged = <String, Object?>{};
       if (cached is Map) {
@@ -369,7 +403,7 @@ extension LunchLogic on AppState {
         updates[cancelHandledKey] =
             updateCancelHandledDays(prev, manualRealDays);
       }
-      saveDataCache(updates);
+      saveDataCache(updates, dataDir: dir);
     } catch (exc) {
       // ignore: avoid_print
       print('Warning: could not cache placed orders: $exc');
@@ -391,12 +425,13 @@ extension LunchLogic on AppState {
   }
 
   Future<void> _aiRecommendWork() async {
+    final tokenAccountId = activeAccountId;
     var msg = Strings.get('no_changes');
     try {
       var rawKey = '${get('gemini_api_key', '') ?? ''}';
       if (get('gemini_api_key_encrypted') == true ||
           '${get('gemini_api_key_encrypted')}' == 'true') {
-        rawKey = decryptStrict(rawKey) ?? '';
+        rawKey = decryptStrict(rawKey, dataDir: rootDir) ?? '';
       }
       final menu = food();
       final model =
@@ -408,6 +443,12 @@ extension LunchLogic on AppState {
         model: model,
         language: getLanguage(),
       );
+      if (activeAccountId != tokenAccountId) {
+        // Account switched while AI request was in flight: drop stale picks (§6, item 13).
+        // ignore: avoid_print
+        print('Info: dropping stale AI recommendation for $tokenAccountId.');
+        return;
+      }
       var staged = 0;
       var skipped = 0;
       var closed = 0;
@@ -456,6 +497,11 @@ extension LunchLogic on AppState {
       }
       logLine(msg);
     } catch (exc) {
+      if (activeAccountId != tokenAccountId) {
+        // ignore: avoid_print
+        print('Info: dropping stale AI recommendation error for $tokenAccountId.');
+        return;
+      }
       msg = '$exc';
       final line = '${Strings.get('ai_failed')}: $msg'.split('\n').first;
       logLine(line.length > 200 ? line.substring(0, 200) : line);
@@ -463,8 +509,13 @@ extension LunchLogic on AppState {
       aiRunning = false;
       releaseFlight('ai_running');
     }
+    if (activeAccountId != tokenAccountId) {
+      _maybeApplyPendingLaunchRoute();
+      return;
+    }
     lastSnackMessage = msg;
     _emit();
+    _maybeApplyPendingLaunchRoute();
   }
 
   /// Hides banned meals and stages first-allowed picks. Port of
@@ -532,7 +583,7 @@ extension LunchLogic on AppState {
     if (blacklistPathOverride != null) return blacklistPathOverride!();
     var path = '${get('strava_blacklist', './strava_blacklist.json')}';
     try {
-      path = resolvePath(path);
+      path = resolvePath(path, activeAccountDir);
     } catch (_) {
       // Seed value stands.
     }

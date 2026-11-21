@@ -255,7 +255,9 @@ Future<RefreshResult> runRefresh(
   RefreshEmit? emit,
   String lunchPrompt = '',
   DateTime? now,
+  String? dataDir,
 }) async {
+  final effectiveDataDir = dataDir ?? (app is Strakalari ? app.dataDir : null);
   final cfg =
       configData is Map<String, Object?> ? configData : <String, Object?>{};
   final effectiveScope =
@@ -282,17 +284,17 @@ Future<RefreshResult> runRefresh(
   final fresh = <String, Object?>{};
   try {
     await _fetchPhases(app, effectiveScope, hasBak, hasStrava, fresh,
-        result, emitSafe, checkCancel);
+        result, emitSafe, checkCancel, effectiveDataDir);
     checkCancel();
     await _autoPhases(app, cfg, fresh, result, emitSafe, isCancelled,
-        cancelledLunchDays, keptLunchDays, lunchPrompt);
+        cancelledLunchDays, keptLunchDays, lunchPrompt, effectiveDataDir);
   } on CancelledError {
     // Cancelled after (part of) the fetch: keep what already arrived
     // (and any auto order that went through) instead of dropping it.
     // No global stamp — the run was not complete.
     if (fresh.isNotEmpty) {
       emitSafe('saving_cache');
-      _persist(app, cfg, fresh, started);
+      _persist(app, cfg, fresh, started, effectiveDataDir);
     }
     rethrow;
   }
@@ -317,20 +319,20 @@ Future<RefreshResult> runRefresh(
   }
   if (result.bakalariFetched) {
     // Before the save below: the cache still holds the previous state.
-    result.news = _findNews(fresh, started);
+    result.news = _findNews(fresh, started, effectiveDataDir);
   }
-  _persist(app, cfg, fresh, started);
+  _persist(app, cfg, fresh, started, effectiveDataDir);
   result.saved = fresh;
   return result;
 }
 
 /// What this run brought since the cached state. Never raises.
 List<(String, String)> _findNews(
-    Map<String, Object?> fresh, DateTime started) {
+    Map<String, Object?> fresh, DateTime started, String? dataDir) {
   try {
     final today =
         DateTime(started.year, started.month, started.day);
-    return findNewsHook(loadDataCache(), fresh, today);
+    return findNewsHook(loadDataCache(dataDir: dataDir), fresh, today);
   } on Object catch (exc) {
     // News must never fail a refresh.
     print('Warning: could not compare with the previous data: $exc');
@@ -340,11 +342,11 @@ List<(String, String)> _findNews(
 
 /// Merges [fresh] into the data cache (timetables day-granular).
 void _persist(RefreshApp app, Map<String, Object?> cfg,
-    Map<String, Object?> fresh, DateTime started) {
+    Map<String, Object?> fresh, DateTime started, String? dataDir) {
   if (fresh['timetable'] is Map) {
     Map<String, Object?>? previous;
     try {
-      final loaded = loadDataCache()['timetable'];
+      final loaded = loadDataCache(dataDir: dataDir)['timetable'];
       previous = loaded is Map ? _strMap(loaded) : null;
     } on Object {
       previous = null;
@@ -362,7 +364,7 @@ void _persist(RefreshApp app, Map<String, Object?> cfg,
         windowStart: windowStart);
   }
   if (fresh.isNotEmpty) {
-    saveDataCache(fresh);
+    saveDataCache(fresh, dataDir: dataDir);
   }
 }
 
@@ -511,7 +513,8 @@ Future<void> _fetchPhases(
     Map<String, Object?> fresh,
     RefreshResult result,
     RefreshEmit emit,
-    void Function() checkCancel) async {
+    void Function() checkCancel,
+    String? dataDir) async {
   // -- 1. Bakaláři ------------------------------------------------------
   if (scope == 'all' || scope == 'bakalari') {
     if (!hasBak) {
@@ -521,7 +524,7 @@ Future<void> _fetchPhases(
       final now = clock.now();
       final today = DateTime(now.year, now.month, now.day);
       final yearStart = _schoolYearStart(today);
-      final (done, reconciledOn) = _historyState(yearStart);
+      final (done, reconciledOn) = _historyState(yearStart, dataDir);
       final todayIso = _isoDate(today);
       final floorMonday = _semesterFloorMonday(today, yearStart);
       final effectiveDone = reconciledOn == todayIso
@@ -613,10 +616,10 @@ Future<void> _fetchPhases(
 
 /// Mondays already in the timetable history of this school year, plus the
 /// `YYYY-MM-DD` date of the last daily current-semester reconciliation.
-(Set<DateTime>, String) _historyState(DateTime yearStart) {
+(Set<DateTime>, String) _historyState(DateTime yearStart, String? dataDir) {
   Map<String, Object?> stored = const {};
   try {
-    final loaded = loadDataCache()[timetableHistoryKey];
+    final loaded = loadDataCache(dataDir: dataDir)[timetableHistoryKey];
     if (loaded is Map) stored = _strMap(loaded);
   } on Object {
     stored = const {};
@@ -648,7 +651,8 @@ Future<void> _autoPhases(
     bool Function()? isCancelled,
     Iterable<String>? cancelledLunchDays,
     Iterable<String>? keptLunchDays,
-    String lunchPrompt) async {
+    String lunchPrompt,
+    String? dataDir) async {
   // -- 3. Auto modes ----------------------------------------------------
   final paused = automationPaused(cfg);
   var wantsExcuse =
@@ -703,6 +707,7 @@ Future<void> _autoPhases(
       cancelledLunchDays,
       keptLunchDays,
       lunchPrompt,
+      dataDir,
       autoOrder: wantsLunchOrder,
       autoCancel: wantsLunchCancel,
     );
@@ -718,7 +723,8 @@ Future<void> _autoLunch(
     RefreshEmit emit,
     Iterable<String>? cancelledLunchDays,
     Iterable<String>? keptLunchDays,
-    String lunchPrompt, {
+    String lunchPrompt,
+    String? dataDir, {
     required bool autoOrder,
     required bool autoCancel,
 }) async {
@@ -726,7 +732,7 @@ Future<void> _autoLunch(
   if (autoOrder) {
     emit('auto_lunch_log');
     try {
-      final raw = loadDataCache()[handledKey];
+      final raw = loadDataCache(dataDir: dataDir)[handledKey];
       handled = raw is List ? [for (final h in raw) '$h'] : <String>[];
     } on Object catch (e) {
       // ignore: avoid_print
@@ -736,7 +742,7 @@ Future<void> _autoLunch(
   }
   List<String> cancelHandled = <String>[];
   try {
-    final raw = loadDataCache()[cancelHandledKey];
+    final raw = loadDataCache(dataDir: dataDir)[cancelHandledKey];
     cancelHandled = raw is List ? [for (final h in raw) '$h'] : <String>[];
   } on Object catch (e) {
     // ignore: avoid_print
@@ -950,17 +956,17 @@ bool automationPaused(Map<String, Object?>? configData) {
 }
 
 /// Remembers ([days]) or clears (null) the low-balance warning. Never raises.
-void recordLowBalance([Iterable<String>? days]) {
+void recordLowBalance([Iterable<String>? days, String? dataDir]) {
   try {
     if (days == null) {
-      saveDataCache({lowBalanceKey: null});
+      saveDataCache({lowBalanceKey: null}, dataDir: dataDir);
     } else {
       saveDataCache({
         lowBalanceKey: {
           'at': _isoStamp(clock.now()),
           'days': _sortedDays(Set<String>.of(days)),
         }
-      });
+      }, dataDir: dataDir);
     }
   } on Object {
     // The warning is a hint; never fail on it.
@@ -972,17 +978,17 @@ void recordLowBalance([Iterable<String>? days]) {
 /// The scheduler retries every interval, and one toast per run would nag
 /// all day about the same unpaid lunches. Shared by the tray and the
 /// window through the data cache. Never raises.
-bool claimLowBalanceNotice([DateTime? today]) {
+bool claimLowBalanceNotice([DateTime? today, String? dataDir]) {
   final now = today ?? clock.now();
   final stamp =
       '${now.year.toString().padLeft(4, '0')}-'
       '${now.month.toString().padLeft(2, '0')}-'
       '${now.day.toString().padLeft(2, '0')}';
   try {
-    if (loadDataCache()[lowBalanceNotifiedKey] == stamp) {
+    if (loadDataCache(dataDir: dataDir)[lowBalanceNotifiedKey] == stamp) {
       return false;
     }
-    saveDataCache({lowBalanceNotifiedKey: stamp});
+    saveDataCache({lowBalanceNotifiedKey: stamp}, dataDir: dataDir);
   } on Object {
     // Claiming is best-effort.
   }

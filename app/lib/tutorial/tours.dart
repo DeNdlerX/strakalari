@@ -157,6 +157,12 @@ const Map<String, Tour> tours = {
     TourStep('activity_intro',
         place: TourPlace.bottomRight, icon: Icons.history_outlined),
   ]),
+  'accounts': Tour('accounts', null, [
+    TourStep('acc_switch',
+        anchor: 'account_switcher',
+        place: TourPlace.topLeft,
+        icon: Icons.switch_account_outlined),
+  ]),
 };
 
 /// Lookup helpers used by controllers/tutorial.dart (kept here so the

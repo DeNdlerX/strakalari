@@ -199,12 +199,34 @@ class _WizardViewState extends State<WizardView>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              Strings.format('wiz_step_of', {
-                'i': stepPos,
-                'n': shown.length,
-              }),
-              style: TextStyle(color: t.muted, fontSize: t.fsSmall),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    Strings.format('wiz_step_of', {
+                      'i': stepPos,
+                      'n': shown.length,
+                    }),
+                    style: TextStyle(color: t.muted, fontSize: t.fsSmall),
+                  ),
+                ),
+                if (c.addingAccount)
+                  TextButton(
+                    key: const Key('wiz:cancel_add'),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      minimumSize: const Size(0, 32),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    onPressed: () {
+                      FocusManager.instance.primaryFocus?.unfocus();
+                      c.pressCancelAdd();
+                    },
+                    child: Text(Strings.get('wiz_cancel_add'),
+                        maxLines: 1, softWrap: false),
+                  ),
+              ],
             ),
             const SizedBox(height: 8),
             ClipRRect(
@@ -230,7 +252,7 @@ class _WizardViewState extends State<WizardView>
           padding: const EdgeInsets.fromLTRB(12, 10, 16, 10),
           child: Row(
             children: [
-              if (step > 0) ...[
+              if (c.canGoBack) ...[
                 TextButton(
                   key: const Key('wiz:back_btn'),
                   style: TextButton.styleFrom(
@@ -240,6 +262,22 @@ class _WizardViewState extends State<WizardView>
                   ),
                   onPressed: c.pressBack,
                   child: Text(Strings.get('wiz_back'),
+                      maxLines: 1, softWrap: false),
+                ),
+                const SizedBox(width: 4),
+              ] else if (c.addingAccount) ...[
+                TextButton(
+                  key: const Key('wiz:cancel_add_bar'),
+                  style: TextButton.styleFrom(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                    minimumSize: const Size(0, 44),
+                  ),
+                  onPressed: () {
+                    FocusManager.instance.primaryFocus?.unfocus();
+                    c.pressCancelAdd();
+                  },
+                  child: Text(Strings.get('wiz_cancel_add'),
                       maxLines: 1, softWrap: false),
                 ),
                 const SizedBox(width: 4),
@@ -320,11 +358,19 @@ class _WizardViewState extends State<WizardView>
     );
 
     final nav = <Widget>[];
-    if (step > 0) {
+    if (c.canGoBack) {
       nav.add(TextButton(
           key: const Key('wiz:back_btn'),
           onPressed: c.pressBack,
           child: Text(Strings.get('wiz_back'))));
+    } else if (c.addingAccount) {
+      nav.add(TextButton(
+          key: const Key('wiz:cancel_add_bar'),
+          onPressed: () {
+            FocusManager.instance.primaryFocus?.unfocus();
+            c.pressCancelAdd();
+          },
+          child: Text(Strings.get('wiz_cancel_add'))));
     }
     nav.add(const Spacer());
     if (step < WizardController.stepDone && c.canSkip) {
@@ -351,13 +397,28 @@ class _WizardViewState extends State<WizardView>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                    Strings.format('wiz_step_of', {
-                      'i': stepPos,
-                      'n': shown.length,
-                    }),
-                    style:
-                        TextStyle(color: t.muted, fontSize: t.fsSmall)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                          Strings.format('wiz_step_of', {
+                            'i': stepPos,
+                            'n': shown.length,
+                          }),
+                          style:
+                              TextStyle(color: t.muted, fontSize: t.fsSmall)),
+                    ),
+                    if (c.addingAccount)
+                      TextButton(
+                        key: const Key('wiz:cancel_add'),
+                        onPressed: () {
+                          FocusManager.instance.primaryFocus?.unfocus();
+                          c.pressCancelAdd();
+                        },
+                        child: Text(Strings.get('wiz_cancel_add')),
+                      ),
+                  ],
+                ),
                 const SizedBox(height: 8),
                 dots,
                 const Divider(height: 24),
@@ -663,6 +724,7 @@ class _WizardViewState extends State<WizardView>
                   confirmAutoMode(
                     context,
                     'strava_order_mode',
+                    dataDir: c.accountDataDir,
                     onConfirm: () => c.setStravaOrderMode('auto'),
                     onDryRun: () => c.setStravaOrderMode('dry_run'),
                     onCancel: () {},
@@ -730,6 +792,15 @@ if (c.testing == service) {
                     color: t.muted,
                     fontSize: t.fsSmall)),
           ],
+        ),
+      ];
+    }
+    if (c.duplicateError != null && c.duplicateErrorService == service) {
+      return [
+        Text(
+          c.duplicateError!,
+          key: const Key('wiz:duplicate_error'),
+          style: TextStyle(color: t.red, fontSize: t.fsSmall),
         ),
       ];
     }

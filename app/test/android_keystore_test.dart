@@ -168,4 +168,84 @@ void main() {
     expect(File('${data.path}/secret.key.wrapped').readAsBytesSync(),
         wrappedBefore);
   });
+
+  group('F4 multi-key WarmedAndroidKeystore (Item 12)', () {
+    test('warmAndroidKeystoreAllHoldsSeparateKeysForRootAndMultipleAccounts',
+        () async {
+      final acc1 = Directory('${data.path}/accounts/default')
+        ..createSync(recursive: true);
+      final acc2 = Directory('${data.path}/accounts/acc_001122334455')
+        ..createSync(recursive: true);
+
+      await warmAndroidKeystoreAll(
+        data.path,
+        const ['default', 'acc_001122334455'],
+        onAndroid: true,
+      );
+
+      clearKeyCache();
+      final kRoot = getKey(data.path);
+      final k1 = getKey(acc1.path);
+      final k2 = getKey(acc2.path);
+      expect(kRoot, isNot(equals(k1)));
+      expect(k1, isNot(equals(k2)));
+
+      final tRoot = encrypt('gem_secret', dataDir: data.path);
+      final t1 = encrypt('child1_pw', dataDir: acc1.path);
+      final t2 = encrypt('child2_pw', dataDir: acc2.path);
+      clearKeyCache();
+      expect(decryptStrict(tRoot, dataDir: data.path), 'gem_secret');
+      expect(decryptStrict(t1, dataDir: acc1.path), 'child1_pw');
+      expect(decryptStrict(t2, dataDir: acc2.path), 'child2_pw');
+      // Cross-account decryption without fallback must fail.
+      expect(decryptStrict(t1, dataDir: acc2.path), isNull);
+    });
+
+    test('ensureWarmedHandlesAccountAddedAfterIsolateStartWithoutQuarantine',
+        () async {
+      final acc1 = Directory('${data.path}/accounts/default')
+        ..createSync(recursive: true);
+      await warmAndroidKeystoreAll(data.path, const ['default'], onAndroid: true);
+
+      // Simulate another isolate creating a brand-new account and wrapping its key.
+      final accNew = Directory('${data.path}/accounts/acc_abcdef123456')
+        ..createSync(recursive: true);
+      final savedBridge = androidKeystoreBridge;
+      androidKeystoreBridge = null;
+      final createdKey = await warmAndroidKeystore(accNew.path, onAndroid: true);
+      final pwCipher = encrypt('late_added_pw', dataDir: accNew.path);
+      final wrappedBefore =
+          File('${accNew.path}/secret.key.wrapped').readAsBytesSync();
+
+      // Switch back to the earlier isolate's bridge (doesn't know accNew yet).
+      androidKeystoreBridge = savedBridge;
+      clearKeyCache();
+
+      // Calling ensureWarmed warms accNew cleanly without quarantining its blob.
+      await ensureWarmed(accNew.path, onAndroid: true);
+      final wrapsAfterFirst = fake.wraps;
+      expect(getKey(accNew.path), createdKey);
+      expect(decryptStrict(pwCipher, dataDir: accNew.path), 'late_added_pw');
+      expect(
+        File('${accNew.path}/secret.key.wrapped').readAsBytesSync(),
+        wrappedBefore,
+      );
+      expect(
+        accNew
+            .listSync()
+            .where((e) => e.path.contains('.corrupt-')),
+        isEmpty,
+      );
+      // Idempotent second call does nothing.
+      await ensureWarmed(accNew.path, onAndroid: true);
+      expect(fake.wraps, wrapsAfterFirst);
+
+      // forgetKey evicts accNew from WarmedAndroidKeystore while acc1 survives.
+      expect(forgetKey(accNew.path), isTrue);
+      expect((androidKeystoreBridge as WarmedAndroidKeystore).hasEntry(accNew.path),
+          isFalse);
+      expect((androidKeystoreBridge as WarmedAndroidKeystore).hasEntry(acc1.path),
+          isTrue);
+    });
+  });
 }

@@ -68,6 +68,23 @@ bool isEnabled(Map<String, Object?>? prefs, String event) {
   return _truthy(prefs[event]);
 }
 
+/// Default target screen route for every notification event (O8, F4).
+const Map<String, String> eventRoutes = {
+  'excuse_needs_confirm': 'today',
+  'excuse_sent': 'activity',
+  'refresh_done': 'today',
+  'refresh_failed': 'activity',
+  'lunch_ordered': 'lunches',
+  'lunch_skipped': 'lunches',
+  'planner_suggestion': 'absences/plan',
+  'automation_failed': 'activity',
+  'new_mark': 'marks',
+  'new_quarterly_mark': 'marks',
+  'new_absence': 'absences',
+  'timetable_change': 'timetable',
+  'update_available': 'activity',
+};
+
 /// One OS notification backend (implemented by the app per platform).
 abstract interface class NotifierBackend {
   /// Shows the notification; true when a backend accepted it.
@@ -75,6 +92,7 @@ abstract interface class NotifierBackend {
     required String title,
     required String body,
     required String tag,
+    String? route,
   });
 }
 
@@ -85,15 +103,40 @@ NotifierBackend? notifierBackend;
 ///
 /// Throws [ArgumentError] for unknown events (a programmer error, not a
 /// runtime failure); the actual send never raises.
-bool notify(String event, String message, [Map<String, Object?>? prefs]) {
+bool notify(String event, String message, [Map<String, Object?>? prefs]) =>
+    notifyForAccount(event, message, prefs: prefs);
+
+/// Sends a notification scoped to an account (§7.2 step 5).
+///
+/// - When [accountLabel] is non-empty, prefixes [message] with
+///   `"[<accountLabel>] "` (callers pass a label only when `accounts.length > 1`).
+/// - When [accountId] is non-empty and [event] is not `'update_available'`,
+///   encodes the target route as `'$baseRoute?account=$accountId'`.
+bool notifyForAccount(
+  String event,
+  String message, {
+  Map<String, Object?>? prefs,
+  String? accountId,
+  String? accountLabel,
+}) {
   if (!eventTypes.contains(event)) {
     throw ArgumentError('Unknown notification event: $event');
   }
   if (!isEnabled(prefs, event)) return false;
+  final cleanLabel = accountLabel?.trim() ?? '';
+  final body = cleanLabel.isNotEmpty ? '[$cleanLabel] $message' : message;
+  String? route;
+  if (accountId != null &&
+      accountId.isNotEmpty &&
+      event != 'update_available') {
+    final base = eventRoutes[event] ?? 'today';
+    route = '$base?account=$accountId';
+  }
   try {
     final backend = notifierBackend;
     if (backend != null &&
-        backend.sendNotification(title: appName, body: message, tag: event)) {
+        backend.sendNotification(
+            title: appName, body: body, tag: event, route: route)) {
       return true;
     }
   } catch (_) {
@@ -102,6 +145,6 @@ bool notify(String event, String message, [Map<String, Object?>? prefs]) {
   }
   // No toast backend worked — plain stdout fallback, no scary suffix.
   // ignore: avoid_print
-  print('[$appName] $message');
+  print('[$appName] $body');
   return false;
 }

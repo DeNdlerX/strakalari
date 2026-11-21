@@ -46,6 +46,7 @@ class AndroidNotifications implements NotifierBackend {
     required String title,
     required String body,
     required String tag,
+    String? route,
   }) {
     // Core's `notify` calls synchronously; the channel answers async, so
     // the post is fire-and-forget and `true` means "accepted", like the
@@ -55,7 +56,7 @@ class AndroidNotifications implements NotifierBackend {
       title: title,
       text: body,
       channelName: english ? 'Automation' : 'Automatizace',
-      route: routeForNotificationEvent(tag),
+      route: route ?? routeForNotificationEvent(tag),
     );
     return true;
   }

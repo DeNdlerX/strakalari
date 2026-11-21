@@ -482,11 +482,17 @@ extension ExcuseTasksLogic on AppState {
     String operation,
     Map<String, Object?> extra,
   ) async {
+    final tokenAccountId = activeAccountId;
+    final tokenDir = activeAccountDir;
     final outcomes = <String>[];
     var dry = false;
     var crashed = false;
     var busy = false;
+    var migratedElsewhere = false;
     try {
+      if (tokenDir != null) {
+        await ensureWarmedFn(tokenDir);
+      }
       // A refresh (here or in the tray process) may be talking to the
       // school sites right now: never send in parallel with it.
       await withSessionLockAsync((held) async {
@@ -494,7 +500,11 @@ extension ExcuseTasksLogic on AppState {
           busy = true;
           return;
         }
-        final app = createApp(onLog: coreLog);
+        if (checkDegradedMigratedElsewhere()) {
+          migratedElsewhere = true;
+          return;
+        }
+        final app = buildAppForAccount(onLog: coreLog, dataDir: tokenDir);
         try {
           dry = app.excuseMode == 'dry_run';
           for (final (excuse, customText) in jobs) {
@@ -518,9 +528,23 @@ extension ExcuseTasksLogic on AppState {
               .split('\n')
               .first;
       workerLog(line.length > 200 ? line.substring(0, 200) : line);
-      reportError(operation, exc, '', '', extra);
+      if (activeAccountId == tokenAccountId) {
+        reportError(operation, exc, '', '', extra);
+      }
+    } finally {
+      sendingExcuses.remove(key);
     }
-    sendingExcuses.remove(key);
+    if (migratedElsewhere) {
+      _maybeApplyPendingLaunchRoute();
+      return;
+    }
+    if (activeAccountId != tokenAccountId) {
+      // Account switched mid-send: disk history already updated in tokenDir; drop UI result (§6).
+      // ignore: avoid_print
+      print('Info: dropping stale excuse send UI result for $tokenAccountId.');
+      _maybeApplyPendingLaunchRoute();
+      return;
+    }
     final total = jobs.length;
     final done =
         outcomes.where((o) => o == 'sent' || o == 'covered').length;
@@ -560,6 +584,7 @@ extension ExcuseTasksLogic on AppState {
     }
     lastSnackMessage = msg;
     _emit();
+    _maybeApplyPendingLaunchRoute();
   }
 }
 

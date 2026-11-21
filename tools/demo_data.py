@@ -78,7 +78,7 @@ MENUS = [
 ]
 
 TOURS_DONE = ["intro", "excuse", "timetable", "absences_plan", "lunches", "marks",
-              "settings", "activity"]
+              "settings", "activity", "accounts"]
 
 
 def _cz_date(day: date) -> str:

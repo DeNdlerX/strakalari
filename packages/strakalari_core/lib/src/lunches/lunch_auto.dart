@@ -23,6 +23,7 @@ import '../models.dart';
 import '../planning/matching.dart' as matching;
 import '../planning/school_presets.dart'
     show effectiveCalendar, resolveLunchCutoff;
+import '../storage/accounts.dart' show accountsModeRootDir, isAccountsMode;
 import '../storage/helpers.dart';
 import 'gemini.dart';
 import 'lunch_cutoff.dart';
@@ -567,7 +568,11 @@ Future<(Map<String, String>, bool)> planAutoOrders(
     try {
       var key = '${cfg['gemini_api_key'] ?? ''}';
       if (isEncryptedFlag(cfg['gemini_api_key_encrypted'])) {
-        key = decryptStrict(key) ?? '';
+        key = decryptStrict(
+              key,
+              dataDir: isAccountsMode ? accountsModeRootDir : null,
+            ) ??
+            '';
       }
       key = key.trim();
       var model = '${cfg['gemini_model'] ?? ''}'.trim();

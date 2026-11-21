@@ -83,5 +83,8 @@ String? legacyDesktopDataDir() {
   final base = getenvNonEmpty('LOCALAPPDATA') ?? getenvNonEmpty('APPDATA');
   if (base == null) return null;
   final legacy = p.join(base, 'Programs', 'Strakalari');
-  return File(p.join(legacy, 'config.json')).existsSync() ? legacy : null;
+  return (File(p.join(legacy, 'config.json')).existsSync() ||
+          File(p.join(legacy, 'accounts.json')).existsSync())
+      ? legacy
+      : null;
 }

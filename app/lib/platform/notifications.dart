@@ -15,7 +15,8 @@ class SentNotification {
   final String title;
   final String body;
   final String tag;
-  const SentNotification(this.title, this.body, this.tag);
+  final String? route;
+  const SentNotification(this.title, this.body, this.tag, [this.route]);
 }
 
 /// Phase-5 stub backend: records instead of showing. Phase 7 replaces
@@ -29,8 +30,9 @@ class AppNotifierBackend implements NotifierBackend {
     required String title,
     required String body,
     required String tag,
+    String? route,
   }) {
-    sent.add(SentNotification(title, body, tag));
+    sent.add(SentNotification(title, body, tag, route));
     if (sent.length > 50) sent.removeAt(0);
     return true;
   }
