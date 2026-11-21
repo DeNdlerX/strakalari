@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:app/controllers/app_state.dart';
+import 'package:app/features/activity/activity_live.dart';
 import 'package:app/features/common/app_tokens.dart';
 import 'package:app/features/more.dart';
 import 'package:app/features/settings/settings_controller.dart';
@@ -735,5 +736,107 @@ void main() {
       ));
       expect(find.byKey(const Key('more:account_card')), findsNothing);
     });
+  });
+
+  group('F4 Aktivita audit history in accounts mode (R6 M1)', () {
+    testWidgets(
+      'LiveActivityView reads only active account audit history and updates on switchAccount',
+      (tester) async {
+        final root = await _makeTwoAccountRoot();
+        addTearDown(() {
+          if (root.existsSync()) root.deleteSync(recursive: true);
+        });
+
+        final dir1 = core.accountDirFor(root.path, 'default');
+        final dir2 = core.accountDirFor(root.path, 'acc_second');
+        expect(
+          core.record(
+            'excuse',
+            'sent',
+            'manual',
+            '03.11.2026 Matematika (Anička)',
+            dataDir: dir1,
+          ),
+          isTrue,
+        );
+        expect(
+          core.record(
+            'excuse',
+            'dry_run',
+            'auto',
+            '04.11.2026 Fyzika (Tonda)',
+            dataDir: dir2,
+          ),
+          isTrue,
+        );
+
+        // Direct loadAuditItems reads only the requested account's log.
+        final (items1, err1) = loadAuditItems(80, dir1);
+        expect(err1, isEmpty);
+        expect(items1, hasLength(1));
+        expect(items1.single['summary'], '03.11.2026 Matematika (Anička)');
+        final (items2, err2) = loadAuditItems(80, dir2);
+        expect(err2, isEmpty);
+        expect(items2, hasLength(1));
+        expect(items2.single['summary'], '04.11.2026 Fyzika (Tonda)');
+
+        final reg = core.AccountRegistry.load(root.path)!;
+        final state = AppState(
+          layoutResult: core.MultiAccountLayoutResult.ready(reg),
+          rootDir: root.path,
+        );
+        state.ensureWarmedFn = (_) async {};
+
+        tester.view.physicalSize = const Size(1280, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(() => _FixedAppStateController(state)),
+          ],
+          child: MaterialApp(
+            theme: state.tok.toThemeData(),
+            home: const Scaffold(
+              body: LiveActivityView(narrow: false),
+            ),
+          ),
+        ));
+        await tester.pumpAndSettle();
+
+        // Active account ('default' / Anička): sees its own record, no error, KPI = 1.
+        expect(find.textContaining('Bad state'), findsNothing);
+        expect(find.textContaining('3. 11. 2026 Matematika (Anička)'),
+            findsOneWidget);
+        expect(
+            find.textContaining('4. 11. 2026 Fyzika (Tonda)'), findsNothing);
+        final sentCard1 = find.ancestor(
+          of: find.text(Strings.get('stat_sent_week')),
+          matching: find.byType(Container),
+        );
+        expect(
+          find.descendant(of: sentCard1.first, matching: find.text('1')),
+          findsOneWidget,
+        );
+
+        // Switch to second account ('acc_second' / Tonda): sees only Tonda's record, KPI = 0.
+        expect(await state.switchAccount('acc_second'), isTrue);
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('Bad state'), findsNothing);
+        expect(find.textContaining('4. 11. 2026 Fyzika (Tonda)'),
+            findsOneWidget);
+        expect(find.textContaining('3. 11. 2026 Matematika (Anička)'),
+            findsNothing);
+        final sentCard2 = find.ancestor(
+          of: find.text(Strings.get('stat_sent_week')),
+          matching: find.byType(Container),
+        );
+        expect(
+          find.descendant(of: sentCard2.first, matching: find.text('0')),
+          findsOneWidget,
+        );
+      },
+    );
   });
 }

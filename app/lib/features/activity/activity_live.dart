@@ -52,9 +52,12 @@ ActivityController activityControllerFor(AppState s) {
 
 /// Newest audit records + the read error ('' when fine).
 /// Port of `_audit_items()`.
-(List<Map<String, dynamic>>, String) loadAuditItems([int limit = 80]) {
+(List<Map<String, dynamic>>, String) loadAuditItems([
+  int limit = 80,
+  String? dataDir,
+]) {
   try {
-    final items = core.recent(limit: limit);
+    final items = core.recent(limit: limit, dataDir: dataDir);
     return ([for (final i in items) Map<String, dynamic>.of(i)], '');
   } catch (e) {
     return (<Map<String, dynamic>>[], '$e');
@@ -71,7 +74,7 @@ class LiveActivityView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStateProvider);
     s.tutorialOffer('activity');
-    final (audit, auditError) = loadAuditItems();
+    final (audit, auditError) = loadAuditItems(80, s.activeAccountDir);
     String version;
     try {
       version = core.getCurrentVersion();
