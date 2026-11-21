@@ -235,6 +235,61 @@ void main() {
       expect(keychain.items.containsKey('$serviceName\x00${entryName(acc1.path)}'),
           isTrue);
     });
+
+    test('saved passwords stay readable when iOS container path changes on update (R7 M1)',
+        () async {
+      void copyTree(Directory src, Directory dst) {
+        dst.createSync(recursive: true);
+        for (final entity in src.listSync(recursive: false)) {
+          final name = entity.uri.pathSegments.where((s) => s.isNotEmpty).last;
+          if (entity is Directory) {
+            copyTree(entity, Directory('${dst.path}/$name'));
+          } else if (entity is File) {
+            entity.copySync('${dst.path}/$name');
+          }
+        }
+      }
+
+      final containerA = Directory('${tmp.path}/container-UUID-A')
+        ..createSync(recursive: true);
+      final containerB = Directory('${tmp.path}/container-UUID-B')
+        ..createSync(recursive: true);
+
+      final ctxA = await prepareStartup(
+        const [],
+        supportDirProvider: () async => containerA,
+      );
+      expect(ctxA.layoutResult!.isReady, isTrue);
+      final rootA = '${containerA.path}/data';
+      final defaultA = '$rootA/accounts/default';
+      final accCipher = encrypt('bakalari_pw_123', dataDir: defaultA);
+      final rootCipher = encrypt('gemini_key_456', dataDir: rootA);
+      final itemsBefore = Map<String, String>.of(keychain.items);
+      expect(itemsBefore.length, 2);
+
+      // Simulate iOS update / 7-day re-sign: app files move to a new container
+      // UUID while the Keychain keeps the same items.
+      copyTree(containerA, containerB);
+      containerA.deleteSync(recursive: true);
+      clearKeyCache();
+      keyStoreBackend = null;
+      setMobileDataDir(null);
+
+      final ctxB = await prepareStartup(
+        const [],
+        supportDirProvider: () async => containerB,
+      );
+      expect(ctxB.layoutResult!.isReady, isTrue);
+
+      final rootB = '${containerB.path}/data';
+      final defaultB = '$rootB/accounts/default';
+      expect(keychain.items, itemsBefore,
+          reason: 'Container move must reuse existing Keychain entries, not create new ones');
+      expect(File('$rootB/secret.key').existsSync(), isFalse);
+      expect(File('$defaultB/secret.key').existsSync(), isFalse);
+      expect(decryptStrict(accCipher, dataDir: defaultB), 'bakalari_pw_123');
+      expect(decryptStrict(rootCipher, dataDir: rootB), 'gemini_key_456');
+    });
   });
 
   group('F5 iOS startup and platform guards', () {

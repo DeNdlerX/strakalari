@@ -202,4 +202,36 @@ void main() {
         () => throw const FileSystemException('disk unavailable');
     expect(decrypt('whatever-unreadable'), 'whatever-unreadable');
   });
+
+  test('iosEntryNameUsesPathRelativeToMobileDataRoot (R7 M1)', () {
+    addTearDown(() => setMobileDataDir(null));
+    final rootA = '${tmp.path}${Platform.pathSeparator}UUID-A${Platform.pathSeparator}data';
+    final rootB = '${tmp.path}${Platform.pathSeparator}UUID-B${Platform.pathSeparator}data';
+    final defA = '$rootA${Platform.pathSeparator}accounts${Platform.pathSeparator}default';
+    final defB = '$rootB${Platform.pathSeparator}accounts${Platform.pathSeparator}default';
+    final acc1A = '$rootA${Platform.pathSeparator}accounts${Platform.pathSeparator}acc_1';
+
+    // Desktop keeps absolute-path hashing unchanged.
+    expect(entryName(rootA), isNot(entryName(rootB)));
+
+    // Android keeps absolute-path hashing unchanged.
+    setEnvironmentOverride({'FLET_PLATFORM': 'android'});
+    setMobileDataDir(rootA);
+    final androidA = entryName(defA);
+    setMobileDataDir(rootB);
+    expect(entryName(defB), isNot(androidA));
+
+    // iOS hashes relative to setMobileDataDir (`data`, `data/accounts/<id>`).
+    setEnvironmentOverride({'FLET_PLATFORM': 'ios'});
+    setMobileDataDir(rootA);
+    final iosRootA = entryName(rootA);
+    final iosDefA = entryName(defA);
+    final iosAcc1A = entryName(acc1A);
+    expect(iosRootA, isNot(iosDefA));
+    expect(iosDefA, isNot(iosAcc1A));
+
+    setMobileDataDir(rootB);
+    expect(entryName(rootB), iosRootA);
+    expect(entryName(defB), iosDefA);
+  });
 }

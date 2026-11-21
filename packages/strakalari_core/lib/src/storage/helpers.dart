@@ -154,6 +154,9 @@ void setMobileDataDir(String? dir) {
   _mobileDataDirOverride = dir;
 }
 
+/// Returns the registered mobile data root (from [setMobileDataDir]), or null.
+String? mobileDataDirRoot() => _mobileDataDirOverride;
+
 String _mobileDataDir() {
   final dataDir = getenvNonEmpty('FLET_APP_STORAGE_DATA') ??
       _mobileDataDirOverride ??

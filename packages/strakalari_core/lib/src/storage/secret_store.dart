@@ -60,7 +60,35 @@ KeyStore? _desktopBackend() {
 /// Mirrors `secret_store._entry_name`: `normcase(abspath(data_dir))`.
 /// [windows] overrides the host OS for cross-platform parity tests on
 /// already-absolute paths.
+///
+/// On iOS, the sandbox container's absolute path changes its UUID across
+/// updates and 7-day sideload renewals, so when running on iOS with a
+/// registered mobile data root ([setMobileDataDir]), the key name is hashed
+/// from the stable path relative to that root (`data`, `data/accounts/<id>`).
 String entryName(String dataDir, {bool? windows}) {
+  if (windows == null && mobilePlatform() == 'ios') {
+    final root = mobileDataDirRoot();
+    if (root != null && root.isNotEmpty) {
+      final absRoot = p.normalize(p.absolute(root));
+      final absDir = p.normalize(p.absolute(dataDir));
+      String? relKey;
+      if (p.equals(absDir, absRoot)) {
+        relKey = 'data';
+      } else {
+        final rel = p.relative(absDir, from: absRoot);
+        if (!p.isAbsolute(rel) &&
+            rel != '..' &&
+            !rel.startsWith('..${Platform.pathSeparator}') &&
+            !rel.startsWith('../')) {
+          relKey = 'data/${rel.replaceAll('\\', '/')}';
+        }
+      }
+      if (relKey != null) {
+        final digest = sha256.convert(utf8.encode(relKey)).toString();
+        return 'fernet-key:${digest.substring(0, 16)}';
+      }
+    }
+  }
   var path = windows == null
       ? p.normalize(p.absolute(dataDir))
       : (windows ? p.windows : p.posix).normalize(dataDir);
