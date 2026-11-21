@@ -19,7 +19,6 @@ import 'accounts.dart'
         accountsDirName,
         accountsFile,
         globalConfigFile,
-        hasAnyAccountFolder,
         isAccountsMode,
         migratingDirName;
 import 'fernet.dart';
@@ -70,6 +69,10 @@ String? installDirOverride;
 /// Test seam for `secret_store.carry_key` during a data move (Python's
 /// tests patch it to simulate a locked keychain).
 bool Function(String oldDir, String newDir)? carryKeyHook;
+
+/// Test seam invoked right after `_copyMissing` places [dstPath] during a
+/// bundle/Store data move (throwing simulates a crash at that step).
+void Function(String dstPath)? bundleCopyHook;
 
 String get _dataDirPlatform =>
     dataDirPlatformOverride ??
@@ -218,8 +221,7 @@ String _macosAppDataDir() {
 bool _needsBundleMigration(String bundle, String target) {
   if (p.equals(p.absolute(bundle), p.absolute(target))) return false;
   if (File(p.join(bundle, accountsFile)).existsSync()) {
-    return !File(p.join(target, accountsFile)).existsSync() &&
-        !hasAnyAccountFolder(target);
+    return !File(p.join(target, accountsFile)).existsSync();
   }
   return File(p.join(bundle, 'config.json')).existsSync() &&
       !File(p.join(target, 'config.json')).existsSync();
@@ -269,6 +271,7 @@ void _copyMissing(String src, String dst) {
       File(src).copySync(tmp);
       File(tmp).renameSync(dst);
     }
+    bundleCopyHook?.call(dst);
   } finally {
     if (FileSystemEntity.isDirectorySync(tmp)) {
       Directory(tmp).deleteSync(recursive: true);
@@ -318,8 +321,7 @@ bool _migrateBundleData(String bundle, String target) {
       }
       // Carry root and per-account keys BEFORE writing any target
       // `accounts/<id>/config.json` or `accounts.json`, so an interrupted
-      // key carry leaves `hasAnyAccountFolder(target) == false` and retries
-      // cleanly on the next launch (§4.1, §11.2 item 8).
+      // key carry retries cleanly on the next launch (§4.1, §11.2 item 8).
       if (!carry(bundle, target)) return false;
       for (final name in accountNames) {
         final srcAcc = p.join(bundle, accountsDirName, name);
@@ -327,6 +329,8 @@ bool _migrateBundleData(String bundle, String target) {
         Directory(dstAcc).createSync(recursive: true);
         if (!carry(srcAcc, dstAcc)) return false;
       }
+      // Copy every account's non-config files first, then all config.json files,
+      // then accounts.json last (R6 S4).
       for (final name in accountNames) {
         final srcAcc = p.join(bundle, accountsDirName, name);
         final dstAcc = p.join(target, accountsDirName, name);
@@ -335,7 +339,12 @@ bool _migrateBundleData(String bundle, String target) {
           if (itemName == 'config.json' || itemName == keyFile) continue;
           _copyMissing(item.path, p.join(dstAcc, itemName));
         }
-        _copyMissing(p.join(srcAcc, 'config.json'), p.join(dstAcc, 'config.json'));
+      }
+      for (final name in accountNames) {
+        final srcAcc = p.join(bundle, accountsDirName, name);
+        final dstAcc = p.join(target, accountsDirName, name);
+        _copyMissing(
+            p.join(srcAcc, 'config.json'), p.join(dstAcc, 'config.json'));
       }
       // Copy accounts.json LAST as the "move finished" marker (§4.1).
       _copyMissing(

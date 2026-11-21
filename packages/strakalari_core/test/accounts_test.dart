@@ -119,6 +119,7 @@ void main() {
     resetAccountsModeForTesting();
     notifierBackend = null;
     carryKeyHook = null;
+    bundleCopyHook = null;
     dataDirPlatformOverride = null;
     installDirOverride = null;
     setStorePackageProbe(null);
@@ -135,6 +136,7 @@ void main() {
     resetAccountsModeForTesting();
     notifierBackend = null;
     carryKeyHook = null;
+    bundleCopyHook = null;
     dataDirPlatformOverride = null;
     installDirOverride = null;
     setStorePackageProbe(null);
@@ -941,6 +943,115 @@ void main() {
         skip: !Platform.isWindows ? 'legacyDesktopDataDir is Windows-only' : false);
     test('msixNoKeyring', () => runPlatformMove(darwin: false, noKeyring: true),
         skip: !Platform.isWindows ? 'legacyDesktopDataDir is Windows-only' : false);
+
+    test('interruptedAfterFirstAccountConfigCompletesOnNextLaunch (R6 S4)',
+        () async {
+      Future<void> runInterrupted({required bool darwin}) async {
+        final sub = Directory(
+            p.join(tmp.path, 's4_${darwin ? 'mac' : 'msix'}'))
+          ..createSync(recursive: true);
+        final home = p.join(sub.path, 'home');
+        final localAppData = p.join(sub.path, 'local');
+        final srcDir = darwin
+            ? p.join(sub.path, 'App.app', 'Contents', 'MacOS')
+            : p.join(localAppData, 'Programs', 'Strakalari');
+        final dstDir = darwin
+            ? p.join(home, 'Library', 'Application Support', 'Strakalari')
+            : p.join(localAppData, 'Strakalari');
+        Directory(srcDir).createSync(recursive: true);
+
+        setEnvironmentOverride({'STRAKALARI_DATA_DIR': srcDir});
+        clearKeyCache();
+        resetAccountsModeForTesting();
+
+        final init = await ensureMultiAccountLayout(srcDir);
+        expect(init.isReady, isTrue);
+        final c1 = ConfigManager.forAccount(srcDir, 'default');
+        c1.set('bakalari_password', 'S4Pw1');
+        c1.set('gemini_api_key', 'S4Gem');
+        c1.save();
+        saveDataCache({'last_updated': '20.11.2026 08:00:00'},
+            dataDir: accountDirFor(srcDir, 'default'));
+
+        final added = AccountManager.createProvisionalAccount(
+            srcDir, initialWizardStep: 1);
+        final acc2Id = added.account.id;
+        final c2 = ConfigManager.forAccount(srcDir, acc2Id);
+        c2.set('bakalari_password', 'S4Pw2');
+        c2.save();
+        saveDataCache({'last_updated': '20.11.2026 09:00:00'},
+            dataDir: accountDirFor(srcDir, acc2Id));
+        AccountManager.finishAddingAccount(srcDir, acc2Id, fallbackLabel: 'Acc 2');
+
+        // Switch to target platform environment.
+        resetAccountsModeForTesting();
+        clearKeyCache();
+        clearDataDirCaches();
+        setEnvironmentOverride({
+          'HOME': home,
+          'USERPROFILE': home,
+          'LOCALAPPDATA': localAppData,
+        });
+        dataDirPlatformOverride = darwin ? 'darwin' : 'win32';
+        installDirOverride = darwin ? srcDir : p.join(sub.path, 'msix_bin');
+        setStorePackageProbe(darwin ? null : () => true);
+
+        // Crash right after the FIRST account's config.json is copied.
+        bundleCopyHook = (dst) {
+          final rel = p.relative(dst, from: dstDir);
+          if (rel.startsWith('accounts${Platform.pathSeparator}') &&
+              p.basename(dst) == 'config.json') {
+            throw StateError('simulated crash after first account config.json');
+          }
+        };
+        getUserDataDir();
+        bundleCopyHook = null;
+
+        // Every account's non-config data_cache.json must have been copied BEFORE
+        // the first account's config.json was written.
+        expect(
+          File(p.join(accountDirFor(dstDir, 'default'), 'data_cache.json'))
+              .existsSync(),
+          isTrue,
+        );
+        expect(
+          File(p.join(accountDirFor(dstDir, acc2Id), 'data_cache.json'))
+              .existsSync(),
+          isTrue,
+        );
+        // Crash happened with one account's config.json written, no accounts.json yet.
+        expect(hasAnyAccountFolder(dstDir), isTrue);
+        expect(File(p.join(dstDir, accountsFile)).existsSync(), isFalse);
+
+        // Next launch must finish copying BOTH accounts and accounts.json.
+        clearDataDirCaches();
+        clearKeyCache();
+        final resolved = getUserDataDir();
+        expect(p.equals(p.normalize(resolved), p.normalize(dstDir)), isTrue);
+        expect(File(p.join(dstDir, accountsFile)).existsSync(), isTrue);
+
+        final movedRes = await ensureMultiAccountLayout(dstDir);
+        expect(movedRes.isReady, isTrue);
+        expect(movedRes.registry!.accounts.map((a) => a.id).toSet(),
+            {'default', acc2Id});
+
+        final d1 = accountDirFor(dstDir, 'default');
+        final d2 = accountDirFor(dstDir, acc2Id);
+        final t1 = ConfigManager.forAccount(dstDir, 'default');
+        final t2 = ConfigManager.forAccount(dstDir, acc2Id);
+        expect(decryptStrict('${t1.get('bakalari_password')}', dataDir: d1),
+            'S4Pw1');
+        expect(decryptStrict('${t2.get('bakalari_password')}', dataDir: d2),
+            'S4Pw2');
+        expect(decryptStrict('${t1.get('gemini_api_key')}', dataDir: dstDir),
+            'S4Gem');
+      }
+
+      await runInterrupted(darwin: true);
+      if (Platform.isWindows) {
+        await runInterrupted(darwin: false);
+      }
+    });
   });
 
   group('Item 12: Keys, forgetAllKeys, fallback & all-account redaction', () {
