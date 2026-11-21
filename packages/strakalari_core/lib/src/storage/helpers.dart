@@ -560,15 +560,16 @@ const int _lockUn = 8; // LOCK_UN
 const int _oRdwr = 2;
 
 /// Returns the OS-specific `O_CREAT` flag for POSIX `open(2)`.
-int posixOCreatFlag({bool? isDarwin}) =>
-    (isDarwin ?? (Platform.isMacOS || Platform.isIOS)) ? 0x200 : 64;
+int posixOCreatFlag({String? os}) {
+  final target = (os ?? Platform.operatingSystem).toLowerCase();
+  return (target == 'macos' || target == 'ios') ? 0x200 : 64;
+}
 
 /// Returns the libc shared-library name for POSIX `flock`/`open` FFI lookup.
-String posixLibcLibraryName({bool? isDarwin, bool? isAndroid}) {
-  if (isDarwin ?? (Platform.isMacOS || Platform.isIOS)) {
-    return '/usr/lib/libSystem.dylib';
-  }
-  if (isAndroid ?? Platform.isAndroid) return 'libc.so';
+String posixLibcLibraryName({String? os}) {
+  final target = (os ?? Platform.operatingSystem).toLowerCase();
+  if (target == 'macos' || target == 'ios') return '/usr/lib/libSystem.dylib';
+  if (target == 'android') return 'libc.so';
   return 'libc.so.6';
 }
 

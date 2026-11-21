@@ -246,13 +246,14 @@ void main() {
     });
 
     test('darwinAndLinuxPosixFlockConstants', () {
-      expect(posixOCreatFlag(isDarwin: true), 0x200);
-      expect(posixOCreatFlag(isDarwin: false), 64);
-      expect(posixLibcLibraryName(isDarwin: true, isAndroid: false),
-          '/usr/lib/libSystem.dylib');
-      expect(posixLibcLibraryName(isDarwin: false, isAndroid: true), 'libc.so');
-      expect(
-          posixLibcLibraryName(isDarwin: false, isAndroid: false), 'libc.so.6');
+      expect(posixOCreatFlag(os: 'ios'), 0x200);
+      expect(posixOCreatFlag(os: 'macos'), 0x200);
+      expect(posixOCreatFlag(os: 'android'), 64);
+      expect(posixOCreatFlag(os: 'linux'), 64);
+      expect(posixLibcLibraryName(os: 'ios'), '/usr/lib/libSystem.dylib');
+      expect(posixLibcLibraryName(os: 'macos'), '/usr/lib/libSystem.dylib');
+      expect(posixLibcLibraryName(os: 'android'), 'libc.so');
+      expect(posixLibcLibraryName(os: 'linux'), 'libc.so.6');
     });
   });
 }
