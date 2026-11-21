@@ -2,9 +2,9 @@
 
 Strakaláři for iOS is currently for **internal testing only** — it is not on the Apple App Store. Instead, you install an unsigned `.ipa` file built by GitHub Actions onto your iPhone ("sideloading") using your own Apple ID.
 
-> **What works on iOS right now:** Today, Timetable, Absences & Planner, Marks, Lunches, Activity, Settings, the setup wizard, multiple accounts, and iOS Keychain password encryption all work.
+> **Status (not yet tested on an iPhone):** Today, Timetable, Absences & Planner, Marks, Lunches, Activity, Settings, the setup wizard, multiple accounts, and iOS Keychain password encryption are wired up and expected to work on iOS, but this build has not yet been built on a Mac or opened on a real iPhone.
 >
-> **What is Android-only for now:** Running in the background while the app is closed, the morning wake-up alarm, the home-screen schedule widget, and push notifications are not enabled on iOS yet. Data refreshes while the app is open.
+> **What is Android-only for now:** Running in the background while the app is closed, the morning wake-up alarm, the home-screen schedule widget, and notifications are not enabled on iOS yet. Data refreshes while the app is open.
 
 ---
 
@@ -14,6 +14,8 @@ Strakaláři for iOS is currently for **internal testing only** — it is not on
 2. Open the **Dart** workflow and click a release run (a `v*` tag or a manual run started with a `release_tag`).
 3. Scroll down to **Artifacts** and download **`flutter-ios-unsigned`**.
 4. Unzip the downloaded archive to get `Strakalari-<version>-ios-unsigned.ipa`.
+
+> **Note:** GitHub deletes workflow artifacts **14 days** after a run finishes. If you need an older version whose artifact has expired, start a new release run of the **Dart** workflow on GitHub Actions.
 
 ---
 
@@ -45,12 +47,16 @@ If you already use [AltStore](https://altstore.io/) or [SideStore](https://sides
 
 ### Option C: Mac + Xcode (best for testing and reading crash logs)
 
-Use this option if you have access to a Mac with Xcode installed and want live console logs.
+Use this option if you have access to a Mac with Xcode and **Flutter 3.44.8** installed and want live console logs.
 
-1. Clone the repository on the Mac and run at the repository root:
+1. Clone the repository on the Mac, install dependencies at the repository root, and generate the Xcode Flutter config inside `app/`:
    ```bash
    dart pub get --enforce-lockfile
+   cd app
+   flutter pub get
+   flutter build ios --config-only --no-codesign
    ```
+   (This creates `app/ios/Flutter/Generated.xcconfig`, which Xcode needs before it can build.)
 2. Open **`app/ios/Runner.xcworkspace`** in Xcode (open the `.xcworkspace`, not `.xcodeproj`).
 3. Click **Runner** in the left sidebar → **Signing & Capabilities**:
    - Check **Automatically manage signing**.
@@ -72,13 +78,13 @@ The first time you tap Strakaláři, iOS will ask you to trust your developer pr
    - Switch **Developer Mode** on and restart the iPhone when asked.
    - After restarting, tap **Turn On** and enter your iPhone passcode.
 
-Now tap **Strakaláři** on your Home Screen — it will open normally.
+Now tap **Strakaláři** on your Home Screen — it should open normally.
 
 ---
 
 ## Keeping it working & keeping your data
 
-- **7-day renewal (free Apple ID):** Apps sideloaded with a free Apple ID stop opening after 7 days. To renew or update to a newer version, install the `.ipa` again with the **same Apple ID** (and the same Bundle Identifier) **without uninstalling** the app first. All your saved accounts, settings, and Keychain encryption keys stay intact.
+- **7-day renewal (free Apple ID):** Apps sideloaded with a free Apple ID stop opening after 7 days. To renew or update to a newer version, install the `.ipa` again with the **same Apple ID** (and the same Bundle Identifier) **without uninstalling** the app first. Your saved accounts, settings, and Keychain encryption keys are designed to stay intact across that reinstall (Keychain names do not depend on the changing iOS container path), though this is untested until the first renewal on a real iPhone.
 - **Paid Apple Developer account ($99/year):** If signed with a paid Apple Developer account, the app stays valid for a full year instead of 7 days.
 - **Uninstalling wipes local data:** Removing the app from your iPhone deletes its saved data folder on the phone.
 - **Privacy:** Your Bakaláři and Strava.cz credentials stay on your iPhone and are encrypted with a key stored in the iOS Keychain; nothing is sent anywhere except your school's Bakaláři server and Strava.cz.

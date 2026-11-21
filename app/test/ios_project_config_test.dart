@@ -122,7 +122,11 @@ void main() {
       expect(doc, contains('Xcode'));
       expect(doc, contains('Developer Mode'));
       expect(doc, contains('7 days'));
+      expect(doc, contains('14 days'));
+      expect(doc, contains('Flutter 3.44.8'));
+      expect(doc, contains('Generated.xcconfig'));
       expect(doc, contains('io.github.dendlerx.strakalari'));
+      expect(doc, isNot(contains('push notifications')));
     });
   });
 }
