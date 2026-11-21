@@ -244,5 +244,15 @@ void main() {
       expect(second.acquire(), isTrue);
       second.release();
     });
+
+    test('darwinAndLinuxPosixFlockConstants', () {
+      expect(posixOCreatFlag(isDarwin: true), 0x200);
+      expect(posixOCreatFlag(isDarwin: false), 64);
+      expect(posixLibcLibraryName(isDarwin: true, isAndroid: false),
+          '/usr/lib/libSystem.dylib');
+      expect(posixLibcLibraryName(isDarwin: false, isAndroid: true), 'libc.so');
+      expect(
+          posixLibcLibraryName(isDarwin: false, isAndroid: false), 'libc.so.6');
+    });
   });
 }

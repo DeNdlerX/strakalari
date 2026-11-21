@@ -227,9 +227,9 @@ void _writeFile(String path, Uint8List key) {
 }
 
 /// Best-effort `chmod 600` (mirrors the `os.chmod` try/except: Windows
-/// ACLs make it unnecessary there, and the data dir is per user anyway).
+/// ACLs and the iOS app sandbox make spawning `chmod` unnecessary/forbidden).
 void _restrictPermissions(String path) {
-  if (Platform.isWindows) return;
+  if (Platform.isWindows || Platform.isIOS) return;
   try {
     Process.runSync('chmod', ['600', path]);
   } catch (_) {

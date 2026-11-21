@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -90,6 +88,7 @@ WizardController wizardControllerFor(AppState s) {
     onFinishRefresh: () => s.finishWizardRefresh(),
     onRequestNotificationPermission: () async {
       s.notificationPermissionAsked = true;
+      if (core.mobilePlatform() == 'ios') return;
       await const AndroidChannel().requestNotificationPermission();
     },
     onSetLanguage: (l) => s.setLanguage(l),
@@ -142,7 +141,7 @@ WizardController wizardControllerFor(AppState s) {
   );
   c.step = s.wizardStep;
   c.dismissed = s.wizardDismissed;
-  c.isAndroid = Platform.isAndroid;
+  c.isAndroid = core.mobilePlatform() == 'android';
   c.accountDataDir = s.activeAccountDir;
   // Add-account mode reads ONLY the active account's `adding` flag (§10.3).
   c.addingAccount = s.addingAccount;
@@ -206,8 +205,9 @@ class _LiveWizardViewState extends ConsumerState<LiveWizardView>
 
   Future<void> _loadPermissions() async {
     if (widget.wakeupPhone != null) return;
+    if (core.mobilePlatform() == 'ios') return;
     final s = ref.read(appStateProvider);
-    if (!Platform.isAndroid && !s.wakeupAvailable) return;
+    if (core.mobilePlatform() != 'android' && !s.wakeupAvailable) return;
     const channel = AndroidChannel();
     final notif = await channel.notificationsEnabled();
     final exact = await channel.exactAlarmsAllowed();
@@ -248,12 +248,14 @@ class _LiveWizardViewState extends ConsumerState<LiveWizardView>
     final controller = wizardControllerFor(s);
     final phone = widget.wakeupPhone != null
         ? _wrapInjectedPhone(s, widget.wakeupPhone!)
-        : channelWakeupPhone(
-            s,
-            notif: _notifOn,
-            exact: _exactOn,
-            onPermissionChecked: _loadPermissions,
-          );
+        : (core.mobilePlatform() == 'ios'
+            ? null
+            : channelWakeupPhone(
+                s,
+                notif: _notifOn,
+                exact: _exactOn,
+                onPermissionChecked: _loadPermissions,
+              ));
     final wakeupController = settingsControllerFor(s, wakeupPhone: phone);
     return WizardView(
       controller: controller,
