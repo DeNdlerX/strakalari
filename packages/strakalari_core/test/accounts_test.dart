@@ -989,6 +989,54 @@ void main() {
       expect(File(absLog).existsSync(), isTrue);
     });
 
+    test('cancelAddingAccountRefusesNonAddingAccountEvenWithTwoAccounts (R6 M2)',
+        () async {
+      final init = await ensureMultiAccountLayout(tmp.path);
+      expect(init.isReady, isTrue);
+
+      final prov = AccountManager.createProvisionalAccount(
+        tmp.path,
+        initialWizardStep: 1,
+      );
+      final acc2Id = prov.account.id;
+      final acc2Dir = accountDirFor(tmp.path, acc2Id);
+      final c2 = ConfigManager.forAccount(tmp.path, acc2Id);
+      c2.set('bakalari_url', 'https://school2.cz');
+      c2.set('bakalari_username', 'child2');
+      c2.set('your_signature', 'Tonda');
+      c2.save();
+      final reg = AccountManager.finishAddingAccount(
+        tmp.path,
+        acc2Id,
+        fallbackLabel: 'Účet',
+      );
+      expect(reg.accounts.length, 2);
+      expect(reg.byId(acc2Id)!.adding, isFalse);
+
+      final regBytesBefore =
+          File(p.join(tmp.path, accountsFile)).readAsBytesSync();
+      final cfgBytesBefore =
+          File(p.join(acc2Dir, 'config.json')).readAsBytesSync();
+
+      expect(
+        () => AccountManager.cancelAddingAccount(tmp.path, acc2Id),
+        throwsStateError,
+      );
+
+      // Registry file and account folder must be completely untouched.
+      expect(
+        File(p.join(tmp.path, accountsFile)).readAsBytesSync(),
+        regBytesBefore,
+      );
+      expect(Directory(acc2Dir).existsSync(), isTrue);
+      expect(
+        File(p.join(acc2Dir, 'config.json')).readAsBytesSync(),
+        cfgBytesBefore,
+      );
+      final regAfter = AccountRegistry.load(tmp.path)!;
+      expect(regAfter.accounts.map((a) => a.id).toList(), ['default', acc2Id]);
+    });
+
     test('notifyForAccountPrefixesLabelAndEncodesRouteExceptUpdate', () {
       final rec = _RecordingNotifier();
       notifierBackend = rec;

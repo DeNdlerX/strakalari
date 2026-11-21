@@ -701,4 +701,53 @@ void main() {
       expect(schedulerStartupSeed(state), DateTime(2026, 11, 20, 9, 0, 0));
     });
   });
+
+  test('cancelAddAccountRefusesNonAddingAccountWithClearedCredentials (R6 M2)',
+      () async {
+    final (root, acc2Id) = await _setupTwoAccounts(tmp);
+    final acc2Dir = accountDirFor(root, acc2Id);
+
+    final state = AppState(rootDir: root);
+    expect(await state.switchAccount(acc2Id), isTrue);
+    expect(state.activeAccountId, acc2Id);
+    expect(state.addingAccount, isFalse);
+
+    // Simulate an existing finished account whose credentials were cleared
+    // (setupPending == true, but adding == false).
+    state.save({
+      'bakalari_username': '',
+      'bakalari_password': '',
+      'bakalari_password_encrypted': false,
+    });
+    expect(state.setupPending, isTrue);
+    expect(state.addingAccount, isFalse);
+
+    final regBytesBefore =
+        File('$root${Platform.pathSeparator}$accountsFile').readAsBytesSync();
+    final cfgBytesBefore =
+        File('$acc2Dir${Platform.pathSeparator}config.json').readAsBytesSync();
+
+    final printed = <String>[];
+    final cancelled = await runZoned(
+      () => state.cancelAddAccount(),
+      zoneSpecification: ZoneSpecification(
+        print: (_, _, _, line) => printed.add(line),
+      ),
+    );
+
+    expect(cancelled, isFalse);
+    expect(printed, isEmpty);
+    expect(state.activeAccountId, acc2Id);
+    expect(Directory(acc2Dir).existsSync(), isTrue);
+    expect(
+      File('$acc2Dir${Platform.pathSeparator}config.json').readAsBytesSync(),
+      cfgBytesBefore,
+    );
+    expect(
+      File('$root${Platform.pathSeparator}$accountsFile').readAsBytesSync(),
+      regBytesBefore,
+    );
+    final regAfter = AccountRegistry.load(root)!;
+    expect(regAfter.accounts.map((a) => a.id).toList(), ['default', acc2Id]);
+  });
 }
