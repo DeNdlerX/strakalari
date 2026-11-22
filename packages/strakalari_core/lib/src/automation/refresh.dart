@@ -885,12 +885,10 @@ Future<void> _fetchPhases(
             for (var o = 0; o <= forward; o++) addDays(thisMonday, o * 7),
           ];
           final loadedSet = app.timetableLoadedWeeks;
-          final targetMondays = loadedSet.isEmpty
-              ? watchMondays
-              : [
-                  for (final m in watchMondays)
-                    if (loadedSet.contains(m)) m,
-                ];
+          final targetMondays = [
+            for (final m in watchMondays)
+              if (loadedSet.contains(m)) m,
+          ];
           if (targetMondays.isNotEmpty) {
             final prevHashes = <String, String>{};
             if (previousCache[substitutionsWeekHashesKey] is Map) {
@@ -904,11 +902,9 @@ Future<void> _fetchPhases(
           }
         }
 
-        // Record past-weeks snapshot when all regular past weeks were loaded (R8a S1).
+        // Record past-weeks snapshot when all regular past weeks were loaded (R8a S1, R8 S2).
         final fetchedAllRegularPast = !skippedPastWeeks &&
-            (regularPastMondays.isEmpty ||
-                app.timetableLoadedWeeks.isEmpty ||
-                regularPastMondays.every(app.timetableLoadedWeeks.contains));
+            regularPastMondays.every(app.timetableLoadedWeeks.contains);
         var nextPastFetched = pastWeeksFetchedOn;
         if (fetchedAllRegularPast && app.absenceError == '') {
           fresh[absenceCountsAtPastFetchKey] =

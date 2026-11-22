@@ -978,5 +978,77 @@ void main() {
         (scope: 'all', quickOutbox: false),
       );
     });
+
+    test(
+        'scheduledFullRunWhereNoWeekLoadsWritesNoNewHashesNoPastWeeksFetchedAndNoSnapshot (R8 S2)',
+        () async {
+      final tFull = DateTime(2026, 9, 21, 8, 0); // Monday
+      final cfg = {...baseCfg(), 'go_back_weeks': 3};
+
+      // Every non-perm GetContentData request returns a lesson from a completely
+      // different week (2025-01-06), so timetableLoadedWeeks stays empty.
+      final wrongMonday = DateTime(2025, 1, 6);
+      final server = FakeBakalari({
+        'GET /Marks/Widget': marksWidgetHtml([]),
+        'GET /next/prubzna.aspx': gradesPage([]),
+        'POST /Timetable/substitutions/dates': {
+          'success': true,
+          'data': [
+            {
+              'Changes': [
+                {
+                  'Day': 'pondělí 21.9.2026',
+                  'HourLabel': '1. hod',
+                  'TimeLabel': '8:00 - 8:45',
+                  'ChangeType': 'Canceled',
+                  'Description': 'Odpadá',
+                  'ChangeLessonInfo': {'SubjectAbbrev': 'M'},
+                }
+              ],
+            }
+          ],
+        },
+        'GET /Absence/Continuous/GetAbsenceBySubjects': {
+          'data': [
+            {'Name': 'Matematika', 'LessonCount': 10, 'Count': 2, 'Percent': 0.2}
+          ],
+        },
+        'POST /Timetable/GetContentData': (FakeRequest req) {
+          final body = jsonDecode(utf8.decode(req.body)) as Map;
+          if (body['term'] == 'perm') return weekContent([permLesson()]);
+          return weekContent([lessonOn(wrongMonday)]);
+        },
+        'POST /Teaching/Subjects': {
+          'data': [
+            {'SubjectName': 'Matematika', 'TeacherName': 'Mgr. Novák'}
+          ],
+        },
+        'GET /next/komens.aspx': outboxPageHtml(),
+        'POST /next/komens.aspx': (_) =>
+            dxReply('<div class="komens-messages-wrapper"></div>'),
+      });
+
+      await withClock(Clock.fixed(tFull), () async {
+        final app = Strakalari(configData: cfg, dataDir: tmp.path)
+          ..bakalariClient =
+              BakalariClient(cfg, transport: server, dataDir: tmp.path);
+        final res = await runRefresh(
+          app,
+          cfg,
+          scope: 'all',
+          scheduled: true,
+          now: tFull,
+          dataDir: tmp.path,
+        );
+        expect(res.ok, isTrue);
+        expect(app.timetableLoadedWeeks, isEmpty);
+      });
+
+      final saved = loadDataCache(dataDir: tmp.path);
+      expect(saved.containsKey(substitutionsWeekHashesKey), isFalse);
+      expect(saved.containsKey(absenceCountsAtPastFetchKey), isFalse);
+      final hist = saved[timetableHistoryKey] as Map?;
+      expect(hist?['past_weeks_fetched'], isNull);
+    });
   });
 }
