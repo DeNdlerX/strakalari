@@ -17,9 +17,10 @@ Cut routine Bakaláři bandwidth by ~75–85% so Strakaláři can check for **ne
   3. `GET /Absence/Continuous/GetAbsenceBySubjects` (1.2–3 KB) → updates absence numbers immediately (**within 5 minutes**, D6 A3) and fetches this week's `GetContentData` if any subject's missed-lesson `Count` grew.
   - Full runs (`scope: 'all'`) run on cold start, first run of the day, every 6 hours (~3×/day), when an unconfirmed excuse needs settlement, and on every manual *Obnovit data*. **Auto-excuse runs ONLY in full runs after a fresh Komens outbox read in the same run** — never in a quick tick.
 - **Step 3 — Session reuse (3a in-memory + 3b encrypted cookie file, D6 A5):** keep live `BakalariSession` + `HttpClient` (`idleTimeout: 6 min`) in a per-account in-memory pool (desktop & live Android UI isolate), and persist encrypted session cookies to `<accountDir>/bakalari_session.enc` using the account's existing Fernet key so Android headless wakes reuse the 15-minute sliding session without re-logging in on every 5–10 min tick.
-- **Dynamic network-aware schedule & Settings data predictor (D6 A2, A4, A6):**
-  - **On Wi-Fi / unmetered** (and desktop): **5 min 24/7** by default (`refresh_wifi_always_fast: true`), configurable.
-  - **On mobile data (Android metered):** **10 min** (configurable to 5, 10, 15, …) during active school hours (**1 hour before first lesson → 17:00**, or end of last lesson if later), and **60 min** hourly overnight & on days off by default (`check_interval_off_hours_minutes: 60`; `0` = pause off-hours with one quick tick 30 min before the Wake-up alarm).
+- **Dynamic network-aware schedule & Settings data predictor (D6 A2, A4, A6 + Q1–Q2):**
+  - **On Wi-Fi / unmetered** (and desktop): **5 min 24/7** by default (`check_interval_minutes: 5`, `refresh_wifi_always_fast: true`), configurable.
+  - **On mobile data (Android metered):** **5 min** by default (`check_interval_mobile_minutes: 5`, configurable to 5, 10, 15, …) during active school hours (**1 hour before first lesson → 17:00**, or end of last lesson if later), and **60 min** hourly overnight & on days off by default (`check_interval_off_hours_minutes: 60`; `0` = pause off-hours with one quick tick 30 min before the Wake-up alarm).
+  - **One-time upgrade to the new defaults (owner Q1, 2026-11-22):** on first launch after updating from a pre-F6 install (when none of the 3 new F6 schedule keys exist in `global.json` / `config.json` yet), `applyF6ScheduleDefaultsOnce` overwrites the schedule keys once to the new defaults (`5` / `5` / `60` / `true`); after that, every user change is preserved forever.
   - **Settings → Rules** gets clean, plain-language refresh schedule controls with a **live estimated data usage readout** (MB/school day on mobile & Wi-Fi, typical MB/month, honest Android Doze note).
 - **Honest per-part freshness:** `data_cache.json` records `part_updated` timestamps per subsystem (`quick`, `full`, `timetable`, `stable_timetable`, `subject_directory`, `marks`, `absence`, `outbox`, `strava`) so every screen displays the true freshness of its own data and a failed tier never makes stale data look fresh.
 - **Safety rules preserved (`CONTRIBUTING.md` §5):** one pipeline (`runRefresh`), one session lock (`<rootDir>/session.lock`), one send path (`Strakalari.sendExcuse` + `excuse_history.dart` + `HistoryLock`), everything audited (`audit.dart`, dry run included), `automation_paused` stops every tier's auto phase, Bakaláři web only (never `/api/3`), fail loudly.
@@ -44,8 +45,8 @@ All sizes are taken directly from the real GEKOM measurements in [`research-F6-b
 | Scenario (1 account, 10h school day: 1h before 8:00 = 07:00 → 17:00) | Quick ticks / day | Total / school day | Typical mobile / month* | 100% mobile / month | School requests / day |
 |---|---|---|---|---|---|
 | **Today (hourly full refresh)** | 24 full | **~25 MB** | ~250 MB | ~750 MB | ~672 (heavy) |
-| **Mobile 5 min daytime + 60 min off-hours** | 120 + 14 | **~5.4 MB** | **~75 MB** | ~130 MB | ~460 (tiny) |
-| **Mobile 10 min daytime + 60 min off-hours** *(default mobile)* | 60 + 14 | **~4.4 MB** | **~55 MB** | ~105 MB | ~280 (tiny) |
+| **Mobile 5 min daytime + 60 min off-hours** *(default mobile)* | 120 + 14 | **~5.4 MB** | **~75 MB** | ~130 MB | ~460 (tiny) |
+| **Mobile 10 min daytime + 60 min off-hours** | 60 + 14 | **~4.4 MB** | **~55 MB** | ~105 MB | ~280 (tiny) |
 | **Wi-Fi 5 min 24/7** *(default Wi-Fi)* | 288 | **~8.1 MB** (~6.1 MB kept-alive) | **0 MB** | — | ~920 (tiny) |
 | **Wi-Fi 5 min daytime + 60 min off-hours** (`refresh_wifi_always_fast: false`) | 120 + 14 | **~5.4 MB** (~4.5 MB kept-alive) | **0 MB** | — | ~460 (tiny) |
 
@@ -63,10 +64,10 @@ All schedule keys live in `<rootDir>/global.json` (`globalConfigKeys` in `packag
 
 | Key | Type | Default | Validation (`config.dart`) | Meaning |
 |---|---|---|---|---|
-| `check_interval_minutes` *(existing)* | `num` | **`5`** *(was `60`)* | `>= 1` | Fast check interval in minutes (Wi-Fi / desktop; also the lower bound for mobile). Existing installs with `60` saved on disk keep `60` untouched (see §12 Q1). |
-| `check_interval_mobile_minutes` *(new)* | `num` | **`10`** | `>= 1` | Daytime check interval in minutes on mobile data (Android metered). Runtime uses `max(check_interval_minutes, check_interval_mobile_minutes)` so mobile never polls faster than Wi-Fi (protects upgraded installs with `check_interval_minutes: 60`). |
+| `check_interval_minutes` *(existing)* | `num` | **`5`** *(was `60`)* | `>= 1` | Fast check interval in minutes (Wi-Fi / desktop; also the lower bound for mobile). Upgraded pre-F6 installs are overwritten once to `5` at startup via `applyF6ScheduleDefaultsOnce` (owner Q1, §3.3). |
+| `check_interval_mobile_minutes` *(new)* | `num` | **`5`** | `>= 1` | Daytime check interval in minutes on mobile data (Android metered; owner Q1: 5 min default, configurable to 10/15/60). Runtime uses `max(check_interval_minutes, check_interval_mobile_minutes)` so mobile never polls faster than Wi-Fi. |
 | `check_interval_off_hours_minutes` *(new)* | `num` | **`60`** | `== 0 || >= 1` (i.e. `>= 0` and not in `(0, 1)`) | Off-hours / overnight & day-off check interval in minutes. `0` = pause off-hours (with one quick tick 30 min before the Wake-up alarm if enabled); `>= 1` = check every N minutes (default `60` per D6 A4). |
-| `refresh_wifi_always_fast` *(new)* | `bool` | **`true`** | `is bool` | When `true`, Wi-Fi / unmetered connections keep using `check_interval_minutes` 24/7 including nights and weekends (D6 A6). When `false`, Wi-Fi also slows to `check_interval_off_hours_minutes` outside school daytime hours and on days off. |
+| `refresh_wifi_always_fast` *(new)* | `bool` | **`true`** | `is bool` | When `true`, Wi-Fi / unmetered connections keep using `check_interval_minutes` 24/7 including nights and weekends (D6 A6, owner Q2). When `false`, Wi-Fi also slows to `check_interval_off_hours_minutes` outside school daytime hours and on days off. |
 
 ### 3.2 Files updated in the same commit (PLAN Rule 4)
 1. `config.example.json` (add the 3 new keys; update `check_interval_minutes` to `5`).
@@ -74,6 +75,16 @@ All schedule keys live in `<rootDir>/global.json` (`globalConfigKeys` in `packag
 3. `packages/strakalari_core/lib/src/storage/accounts.dart` (add the 3 new keys to `globalConfigKeys`).
 4. `packages/strakalari_core/test/parity/helpers.json` (`roundTripFiles` — add the 3 new keys to the two full canonical config snapshots only; keep `check_interval_minutes: 60` unchanged inside those two snapshots since they are saved-config round-trips).
 5. `packages/strakalari_core/test/config_test.dart` and `packages/strakalari_core/test/accounts_test.dart`.
+
+### 3.3 One-time startup upgrade of pre-F6 schedule defaults (`applyF6ScheduleDefaultsOnce`)
+Per owner Q1 (2026-11-22: *"It should get overwritten to the new default settings. And wifi should be 5 minutes 24/7. And we should make the 5 minutes default anyway."*):
+- Implemented as an explicit, idempotent helper `bool applyF6ScheduleDefaultsOnce(String rootDir, {bool degraded = false})` in `packages/strakalari_core/lib/src/automation/refresh_schedule.dart` (NOT inside `ConfigManager.load()`, so `ConfigManager.load()` remains pure and never mutates files on read).
+- Called once at startup in `prepareStartup` (`app/lib/platform/startup.dart`) and `_runHeadless` (`app/lib/platform/android/background.dart`) immediately after `ensureMultiAccountLayout(rootDir)`.
+- Inspects the raw JSON of `<rootDir>/global.json` (or `<rootDir>/config.json` in degraded mode):
+  - If the file does **not** exist: no-op (fresh installs already start with `canonicalDefaults`: `5` / `5` / `60` / `true`).
+  - If the file **already contains any** of `check_interval_mobile_minutes`, `check_interval_off_hours_minutes`, or `refresh_wifi_always_fast`: no-op (already on F6; any user choice — including setting `60` back later — is preserved forever).
+  - Otherwise (pre-F6 file lacking all 3 new keys): atomically writes the 4 F6 schedule defaults (`check_interval_minutes: 5`, `check_interval_mobile_minutes: 5`, `check_interval_off_hours_minutes: 60`, `refresh_wifi_always_fast: true`) under the file's lock, leaving every other key untouched, and logs one info line.
+- Tested directly in `refresh_schedule_test.dart` (pre-F6 `global.json` with `check_interval_minutes: 60` → upgraded once to `5`/`5`/`60`/`true`; subsequent user edit to `60` → second call is a no-op; degraded root `config.json` case).
 
 ---
 
@@ -285,7 +296,7 @@ New pure-Dart module: `packages/strakalari_core/lib/src/automation/refresh_sched
 ### 7.3 Effective interval & next wake time
 - `double effectiveCheckIntervalMinutes(Map<String, Object?> cfg, Map<String, Object?> cache, NetworkKind network, DateTime now)`:
   - `wifiFast = max(1.0, check_interval_minutes)` (default `5.0`)
-  - `mobileDay = max(wifiFast, max(1.0, check_interval_mobile_minutes))` (default `10.0`)
+  - `mobileDay = max(wifiFast, max(1.0, check_interval_mobile_minutes))` (default `5.0`)
   - `offHours = check_interval_off_hours_minutes` (`0.0` = paused, else `max(1.0, v)`, default `60.0`)
   - `wifiAlwaysFast = cfg['refresh_wifi_always_fast'] != false` (default `true`)
   - On `NetworkKind.unmetered`: returns `wifiFast` if `wifiAlwaysFast`, else (`inWindow ? wifiFast : offHours`).
@@ -367,8 +378,8 @@ Before handover for R8 code review:
 Each commit lands with its own unit/widget tests (failing before the fix, passing after) and keeps `dart analyze`, `dart test`, `flutter analyze`, and `flutter test` 100% green:
 
 1. **`F6: add low-data refresh config keys, schedule math, and data-usage estimator`**
-   - Config keys, validation, `globalConfigKeys`, `config.example.json`, `parity/helpers.json` `roundTripFiles`, `refresh_schedule.dart`.
-   - Tests: `config_test.dart`, `accounts_test.dart`, `refresh_schedule_test.dart` (school-day window 1h before first lesson → 17:00, free days, Wi-Fi 24/7 vs off-hours, mobile clamping `max(wifi, mobile)`, off-hours pause `0` + pre-alarm tick, multi-account window union, tier selector including unconfirmed-excuse promotion, data-usage estimator values).
+   - Config keys (`check_interval_minutes: 5`, `check_interval_mobile_minutes: 5`, `check_interval_off_hours_minutes: 60`, `refresh_wifi_always_fast: true`), validation, `globalConfigKeys`, `config.example.json`, `parity/helpers.json` `roundTripFiles`, `refresh_schedule.dart` (including `applyF6ScheduleDefaultsOnce`).
+   - Tests: `config_test.dart`, `accounts_test.dart`, `refresh_schedule_test.dart` (school-day window 1h before first lesson → 17:00, free days, Wi-Fi 24/7 vs off-hours, mobile clamping `max(wifi, mobile)`, off-hours pause `0` + pre-alarm tick, multi-account window union, tier selector including unconfirmed-excuse promotion, `applyF6ScheduleDefaultsOnce` one-time upgrade + preservation of later edits, data-usage estimator values).
 2. **`F6: implement Step 1 HTTP & Bakaláři free wins and Marks widget extractor`**
    - `http_session.dart` (no `/dashboard` redirect, `idleTimeout`), `extractors.dart` (`extractMarksWidget`, `substitutionsByWeekHashes`, `absenceCountsIncreased`), `data.dart` (direct `GetAbsenceBySubjects` + fallback, 3-field Komens callback + page fallback, `fetchMarksWidget`), `timetable.dart` (`weekOffsetsOverride`).
    - Tests: `http_session_test.dart`, `extractors_test.dart`, `bakalari_data_test.dart`.
@@ -404,7 +415,7 @@ Each commit lands with its own unit/widget tests (failing before the fix, passin
 | Risk | Mitigation |
 |---|---|
 | Auto-excuse firing without a fresh outbox read | Double lock: `effectiveScope != 'quick'` AND `app.lastOutboxSyncOk == true` in `_autoPhases`; every existing send/history test stays unchanged and green. |
-| Upgraded install (`check_interval_minutes: 60`) unexpectedly polling mobile every 10 min | Runtime clamps `mobileDay = max(check_interval_minutes, check_interval_mobile_minutes)`. |
+| Upgraded install re-overwriting a later manual change to `60` min | `applyF6ScheduleDefaultsOnce` runs **only** when none of the 3 new F6 keys exist yet in `global.json` / `config.json`; once written, it is a permanent no-op, and runtime also clamps `mobileDay = max(check_interval_minutes, check_interval_mobile_minutes)`. |
 | School Bakaláři lacking `/Marks/Widget` or changing its HTML | First broken tick logs loudly and falls back to `prubzna.aspx`; consecutive broken ticks throttle fallback to hourly so marks are never hidden and bandwidth never explodes. |
 | Leaking stored session cookies in logs or error reports | Never written to logs; encrypted with account Fernet key (`0600`, no plaintext fallback); deleted on password/URL/user change, login rejection, account delete, and `--forget-secrets`; scrubbed in `error_report.dart`. |
 | `ConnectivityManager` reporting offline during loopback/VPN | `networkKind` only selects schedule cadence, never blocks or skips a refresh. |
@@ -414,8 +425,8 @@ Each commit lands with its own unit/widget tests (failing before the fix, passin
 
 ---
 
-## 12. Open Questions for Owner / Reviewer
+## 12. Owner Decisions on Q1–Q3 (Answered 2026-11-22)
 
-- **Q1 (Upgraded installs' saved `check_interval_minutes: 60`):** New installs default to `5` min Wi-Fi / `10` min daytime mobile / `60` min off-hours. Per `CONTRIBUTING.md` §6 ("no silent migration"), upgraded installs keep their saved `check_interval_minutes: 60` on disk (they still get all Step 1–3 bandwidth savings immediately and can switch to 5/10 min in Settings → Rules with one tap on the preset chips). Confirm keeping saved `60` untouched is what you want? *(Recommended: yes, keep saved value untouched.)*
-- **Q2 (24/7 5-min Wi-Fi request count):** At 5 min 24/7 on Wi-Fi (`refresh_wifi_always_fast: true`), the app sends ~920 small requests/day (~8 MB/day on Wi-Fi, 0 mobile data) vs. ~460 small requests/day if Wi-Fi also slows to hourly overnight (`refresh_wifi_always_fast: false`). Confirm keeping `refresh_wifi_always_fast: true` as the default (toggleable in Settings) as requested in D6? *(Recommended: yes.)*
-- **Q3 (Real-server measurement after implementation):** Automated tests and Pixel `.test` verification use fakes and `bakalari_demo_server.py` (never real credentials/servers). After F6 passes code review, do you want to run a standalone measuring check against your real GEKOM account (like on 2026-11-17) to confirm the real MB/day numbers?
+- **Q1 (Upgraded installs & 5-min default — answered):** *"It should get overwritten to the new default settings. And wifi should be 5 minutes 24/7. And we should make the 5 minutes default anyway."* → Defaults are `check_interval_minutes: 5`, `check_interval_mobile_minutes: 5`, `check_interval_off_hours_minutes: 60`, `refresh_wifi_always_fast: true`, applied once to pre-F6 installs via `applyF6ScheduleDefaultsOnce` (§3.3; recorded as an explicit owner-approved deviation from CONTRIBUTING §6's no-migration rule).
+- **Q2 (24/7 5-min Wi-Fi — answered):** Confirmed `refresh_wifi_always_fast: true` default (5 min 24/7 on Wi-Fi, toggleable in Settings).
+- **Q3 (Real-server measurement afterwards — answered):** *"We can do real account measurement afterwards as well, sure."* → Automated tests and Pixel `.test` verification use fakes and `bakalari_demo_server.py`; a standalone real-account measurement check will follow after F6 code review passes.
