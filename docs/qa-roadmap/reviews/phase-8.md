@@ -396,3 +396,194 @@ an assertion (`Expected: contains '22.11.2026 10:28:00'`, `Actual:
     the folder (Windows long paths); the leftover folder has no links.
     All 338 packages in the pub cache still have their `pubspec.yaml`.
     The main checkout wasn't touched. The phone wasn't touched.
+
+---
+
+## Re-review 2026-11-22
+
+Re-reviewed at `qa-roadmap` @ `c5a78e9` (base `main` @ `617eb92`; `main`
+still has no commits the branch lacks; the branch has no upstream).
+Commits since the R8 review (`da55839`), one per finding, blocker first:
+
+- `a8efcfe` M1: tests for pending-excuse quick outbox sync, unconfirmed
+  full-run trigger, and failed outbox stamps;
+- `bacb0cc` S1: Aktivita hero and *Poslední běh* card show latest
+  quick-check time (from memory or saved `part_updated['quick']`);
+- `6051968` S2: require loaded weeks for substitution hashes and
+  past-weeks snapshot on full runs;
+- `8953b91` S3: Settings *Pozadí* notification preview uses the current
+  network's interval;
+- `f794b10` S4: test manual vs scheduled full refresh cached Komens form;
+- `0d7df9e` S5: test `checkBakalariLogin` pool bypass with `Strakalari`'s
+  own pooled client;
+- `19827c2` S6: test quick check advancing week hash only for loaded
+  weeks;
+- `788b534` S7: tests deleting saved session on rejected login and on
+  credential save;
+- `0e61b49` S8: test `applyF6ScheduleDefaultsOnce` under-lock re-check on
+  racing start;
+- `c5a78e9` STATUS handover.
+
+### Verdict: PASS
+
+Every R8 finding (M1 and S1–S8) is fixed in the code and tests, and
+every one of the 15 parent-commit and undo checks run by the reviewer
+failed with a real assertion when its guard or fix was removed and
+passed at `c5a78e9`. The rules that prevent double-sending excuses (re-reading
+the sent-excuse list at least hourly while excuses wait, retrying a
+failed outbox read as a full run, forcing a full run while an
+unconfirmed submit exists) are now all locked down by tests on both
+multi-account and single-account paths. Aktivita no longer claims "no
+run yet" after a restart while 5-minute checks are running, a full run
+where no timetable week loaded no longer stamps hashes or skips past
+weeks, and Settings' background-notification preview matches the active
+network's interval. Nothing else broke: both suites are green and grew
+(core 936 → 942, app 839 → 843), with zero analyzer issues and no config
+keys, parity fixtures, strings or safety invariants changed.
+
+No open findings. No owner decision is needed.
+
+### R8 findings, checked
+
+- **M1 ✔ (`a8efcfe`).** `app/test/app_state_accounts_test.dart` adds
+  `F6 scheduledRefreshJob passes pending excuses and unconfirmed submit to
+  chooseScheduledScope (R8 M1)` covering both the multi-account path and
+  `_scheduledSingleAccountRefresh` (accounts off): a 70-min-old outbox
+  with a pending task triggers 1 `syncWebExcusesToHistory` call vs 0
+  without a task; an `already_excused_lessons.unconfirmed.json` entry
+  with a 40-min-old outbox triggers `'all'` vs `'quick'` without it.
+  `packages/strakalari_core/test/f6_quick_refresh_test.dart` adds
+  `failedQuickOutboxLeavesOutboxStampWindowAndDetailsUnchangedAndRetriesNextTick`
+  and
+  `failedFullRunOutboxMovesFullStampLeavesOutboxStampAndForcesNextScheduledFullRun`
+  (500 on both POST and GET `/next/komens.aspx`). Every one of the six
+  undo checks below fails with an assertion.
+- **S1 ✔ (`bacb0cc`).** `AppState.lastQuickCheck` (`app_state.dart:556`)
+  returns the newer of the in-memory timestamp and saved
+  `partUpdatedTime(data, 'quick')` (null in `demoMode`), so it survives
+  restarts. `ActivityView._hero` and `_stats` (`activity_view.dart:460–555`,
+  `:650–666`) promote idle → `'ok'` with `activity_last_ok` and show the
+  quick-check clock in *Poslední běh* (`kind: 'ok'`) whenever there are
+  no run rows or `quickAt` is newer than the newest row, without hiding
+  an active `'working'` or `'error'` hero. No new strings. Test fails on
+  parent `bacb0cc~1` (`Expected: DateTime:<2026-11-20 10:10:00.000>`,
+  `Actual: <null>`). All 8 screenshots in `build/qa-evidence/F6/S1/`
+  (390/1280 px, cs/en, dark/light, captured after `bacb0cc`) opened and
+  verified clean.
+- **S2 ✔ (`6051968`).** `refresh.dart:888–891` and `:906–907` no longer
+  treat an empty `app.timetableLoadedWeeks` set as "all weeks loaded":
+  substitution hashes are saved only for loaded watched Mondays, and
+  `absence_counts_at_past_fetch` / `past_weeks_fetched` only when every
+  regular past Monday is in `app.timetableLoadedWeeks`. Test fails on
+  parent `6051968~1` and passes at `6051968`.
+- **S3 ✔ (`8953b91`).** `SettingsController.backgroundNotificationInterval`
+  is wired in `settingsControllerFor` to
+  `s.schoolHoursIntervalForCurrentNetwork` and read in
+  `_BackgroundOverviewState._content()` (`settings_view.dart:619`). Test
+  checks Wi-Fi 5 / mobile 10 on metered vs unmetered network, fails on
+  parent `8953b91~1` (`Found 0 widgets with text "Kontroluje omluvenky a
+  obědy každých 10..."`), passes at `8953b91`.
+- **S4 ✔ (`f794b10`).** `manualFullRefreshAlwaysLoadsFullKomensPageWhileScheduledReusesCachedForm`
+  verifies `scheduled: false` makes 1 `GET /next/komens.aspx?s=rok&l=o`
+  and `scheduled: true` makes 0 `GET` / 1 `POST`. Fails when
+  `nextUseCachedOutboxForm` is forced to `true`.
+- **S5 ✔ (`0d7df9e`).** `BakalariClient.bakalariSession()` falls back to
+  `BakalariSessionPool.instance.transportFactory?.call()` when
+  `_transportOverride == null` (a test-only seam, null in production;
+  `@visibleForTesting` removed on `transportFactory` to keep analyzer
+  clean). `connectionTestNeverUsesPoolAndRejectsWrongPasswordWhilePooledIsLive`
+  now uses `Strakalari`'s own pooled client (`useSessionPool: true`) and
+  checks right password, edited wrong password, and fresh wrong-password
+  `Strakalari` all post `/Login`. Fails when `checkBakalariLogin` calls
+  `client.login()`.
+- **S6 ✔ (`19827c2`).** `quickTickAdvancesWeekHashOnlyForLoadedWeekAndRetriesFailedWeekNextQuickTick`
+  verifies a failed next-week load keeps the old hash and retries on the
+  next quick tick. Fails when `automation.dart:1046` is replaced with
+  `if (true)`.
+- **S7 ✔ (`788b534`).** `session_store_test.dart` exercises the real
+  `BakalariClient.login()` rejection path with an expired stored session
+  on disk (leaving checkout intact so `onLoginRejected` is what deletes
+  `bakalari_session.enc`) plus direct `onLoginRejected` on a live pooled
+  session; `app_state_accounts_test.dart` verifies `AppState.save` of
+  `bakalari_password` (same and changed), `bakalari_url` and
+  `bakalari_username` each delete `bakalari_session.enc` and force a new
+  `POST /Login`. Both fail when their respective delete/evict calls are
+  removed.
+- **S8 ✔ (`0e61b49`).** `rechecksUnderLockWhenAnotherStartWritesNewKeyWhileWaiting`
+  holds `global.json.lock` in a helper isolate while
+  `applyF6ScheduleDefaultsOnce` waits on the lock, writes new F6 keys
+  before releasing, and verifies the call returns `false` and keeps the
+  edit. Fails when the under-lock re-check is removed.
+
+### Parent runs and undo checks (re-review, at `c5a78e9`)
+
+| Check (one at a time, in throwaway worktree) | Result |
+|---|---|
+| Parent S1 (`bacb0cc~1`) with `activity_view_test.dart` from `bacb0cc` | fails with assertion |
+| Parent S2 (`6051968~1`) with `f6_quick_refresh_test.dart` from `6051968` | fails with assertion |
+| Parent S3 (`8953b91~1`) with `settings_sections_test.dart` from `8953b91` | fails with assertion |
+| Undo M1a: multi-account `hasPendingExcuses` → `false` (`activity.dart:447`) | fails with assertion (`1` vs `0`) |
+| Undo M1b: single-account `hasPendingExcuses` → `false` (`activity.dart:561`) | fails with assertion (`1` vs `0`) |
+| Undo M1c: multi-account `hasUnconfirmed` → `false` (`activity.dart:448`) | fails with assertion (`1` vs `0`) |
+| Undo M1d: single-account `hasUnconfirmed` → `false` (`activity.dart:562`) | fails with assertion (`1` vs `0`) |
+| Undo M1e: quick-check outbox stamp `if (app.lastOutboxSyncOk)` → `if (true)` (`refresh.dart:690`) | fails with assertion |
+| Undo M1f: full-run outbox stamp `if (app.lastOutboxSyncOk)` → `if (true)` (`refresh.dart:938`) | fails with assertion |
+| Undo S4: `app.nextUseCachedOutboxForm = true` (`refresh.dart:929`) | fails with assertion |
+| Undo S5: `checkBakalariLogin` calling `client.login()` (`automation.dart:2165`) | fails with assertion |
+| Undo S6: quick hash advance guard → `if (true)` (`automation.dart:1046`) | fails with assertion |
+| Undo S7a: remove `deleteStoredSession(dataDir)` in `onLoginRejected` (`session_store.dart:408`) | fails with assertion |
+| Undo S7b: remove `BakalariSessionPool.instance.evict(...)` (`app_state.dart:1358`) | fails with assertion (`false` vs `true`) |
+| Undo S8: remove under-lock F6 key re-check (`refresh_schedule.dart:403`) | fails with assertion |
+
+### Notes (no action needed)
+
+- **N16 (top bar pill after restart):** in the S1 screenshots, after a
+  restart with only quick checks and no full-run rows yet, the Aktivita
+  hero and *Poslední běh* card show *V pořádku / Healthy* and `13:25`,
+  while the small top-bar dot still reads *Nečinné / Idle*
+  (`scaffold.dart:456`, which checks `state.runs`). S1 scoped the fix to
+  the Aktivita hero and card, so leaving `scaffold.dart` untouched is in
+  scope.
+- **N17 (unverified items, unchanged from R8 N7–N8):** full 60-minute
+  off-charger Doze soak (stopped at ~14 min at the owner's word), macOS
+  and iOS native builds, and the Q3 real-account measurement (whether the
+  3-field Komens callback lists the whole school year on the real server,
+  whether session renewal sends a new `Set-Cookie`, real MB/day, and a
+  new mark visible within one 5-min check).
+
+### What the reviewer verified, and how (re-review)
+
+1. **Suites** at `c5a78e9` after `dart pub get --enforce-lockfile`: core
+   `dart analyze` no issues, `dart test` **942 passed, 2 skipped** (+6
+   over R8 baseline of 936); app `flutter analyze` no issues,
+   `flutter test` **843 passed, 1 skipped** (+4 over R8 baseline of 839).
+   Both match STATUS. The `qa-roadmap` worktree stayed clean.
+2. **Parent runs and undo checks:** all 15 checks above run in one
+   throwaway worktree in the reviewer's scratch space (after confirming
+   baseline tests pass there at `c5a78e9`). All 15 failed with real
+   assertions when undone/reverted.
+3. **Code and safety rules:** every diff in `da55839..HEAD` read in full;
+   no `catch` added; `refresh.dart` only tightened `timetableLoadedWeeks`
+   checks (S2); `client.dart` / `session_store.dart` only wired the
+   test-only `transportFactory` seam (null in production, S5); send path,
+   excuse history, session lock, audit and `automation_paused` untouched.
+4. **Test integrity:** `git diff da55839..HEAD` on test files deletes
+   only the weak `useSessionPool: false` setup in `session_store_test.dart`
+   replaced by S5's pooled-client test; no `skip:`, `anything`, or
+   `try`/`catch` around assertions.
+5. **Config, fixtures, strings, lockfile:** `git diff --stat
+   da55839..HEAD` on `config.example.json`, `config.dart`,
+   `test/parity/`, `app/lib/l10n/`, `packages/strakalari_core/lib/src/i18n.dart`
+   and `pubspec.lock` is empty.
+6. **Screens:** all 8 PNGs in `build/qa-evidence/F6/S1/` (captured at
+   14:39, after the last UI commit `8953b91` at 14:20) opened and
+   verified at 390 and 1280 px, cs and en, light and dark.
+7. **Hygiene:** no upstream; `git rev-list qa-roadmap..main` empty; all
+   10 commits by DeNdlerX with plain messages (no `Co-Authored-By`,
+   `Claude-Session`, or `Generated with`); no personal data committed;
+   only fake host (`school1.cz` behind fake transport) in new tests.
+8. **Throwaway worktree & environment:** junctions removed before `git
+   worktree remove --force`, worktree folder completely gone and
+   unregistered from `git worktree list`; all 270 packages in
+   `Pub/Cache/hosted/pub.dev` keep their `pubspec.yaml`. Main checkout
+   and Pixel 7 Pro untouched.
