@@ -17,7 +17,7 @@ import 'absences_view.dart';
 AbsencesController absencesControllerFor(AppState s, [DateTime? now]) {
   final c = AbsencesController();
   c.demoMode = s.demoMode;
-  c.updatedLabel = s.updatedLabel;
+  c.updatedLabel = s.updatedLabelFor('absence');
   final rawLimits = s.get('subject_limits', {});
   c.hasSubjectLimits = rawLimits is Map && rawLimits.isNotEmpty;
   final rawDefaultLimit = s.get('absence_critical_pct', 25.0);

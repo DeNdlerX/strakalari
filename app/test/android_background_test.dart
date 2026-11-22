@@ -87,7 +87,7 @@ void main() {
     final out = await withClock(Clock.fixed(now), () => runHeadlessTick(state, const AndroidChannel()));
     expect(out, 'ran');
     expect(spawned.where((n) => n == 'strakalari-refresh'), isEmpty);
-    expect(armed(), now.add(const Duration(minutes: 60, seconds: 10)));
+    expect(armed(), now.add(const Duration(minutes: 5, seconds: 10)));
   });
 
   test('noLoginSkipsTheRefresh', () async {
@@ -102,8 +102,10 @@ void main() {
 
   test('notDueAfterARebootOnlyArmsTheDueTime', () async {
     final spawned = <String>[];
-    // Refreshed successfully 10 minutes ago.
-    final state = ready(spawned, data: {'last_updated': '12.11.2026 09:50:00'});
+    // Refreshed successfully 10 minutes ago (with a 60-minute interval).
+    final state = ready(spawned,
+        config: {'check_interval_minutes': 60},
+        data: {'last_updated': '12.11.2026 09:50:00'});
     final out = await withClock(Clock.fixed(now), () => runHeadlessTick(state, const AndroidChannel()));
     expect(out, 'not due');
     expect(spawned, isEmpty);
@@ -199,6 +201,81 @@ void main() {
     for (final chip in ['strakalari_status_chip_wrap.xml', 'strakalari_status_chip_fill.xml']) {
       final xml = File('android/app/src/main/res/layout/$chip').readAsStringSync();
       expect(xml, contains('android:includeFontPadding="false"'));
+    }
+  });
+
+  test('F6 offHoursPauseZeroArmsNextWindowStartAndNoOneMinuteLoop', () async {
+    // Thursday evening 21:00, mobile data, off-hours paused (0) -> must NOT
+    // run, and must arm wake for Friday's window start (07:00), never 1 min!
+    final evening = DateTime(2026, 11, 12, 21, 0);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(AndroidChannel.channel, (call) async {
+      calls.add(call);
+      if (call.method == 'networkKind') return 'metered';
+      if (call.method == 'keepAwake') return 1;
+      return true;
+    });
+    var ran = 0;
+    final spawned = <String>[];
+    final outcome = await withClock(Clock.fixed(evening), () {
+      return runHeadlessTick(
+        ready(
+          spawned,
+          config: {
+            'check_interval_minutes': 5,
+            'check_interval_mobile_minutes': 10,
+            'check_interval_off_hours_minutes': 0,
+            'refresh_wifi_always_fast': false,
+          },
+          data: {'last_updated': '12.11.2026 16:55:00'},
+        ),
+        const AndroidChannel(),
+        refreshJob: () async {
+          ran += 1;
+          return 'ok';
+        },
+      );
+    });
+    expect(outcome, 'not due');
+    expect(ran, 0);
+    expect(armed(), DateTime(2026, 11, 13, 7, 0, 10));
+  });
+
+  test('F6 networkKindSwitchChangesNextHeadlessWakeAndClampsToWindowStart',
+      () async {
+    // 06:20 on Thursday (outside default 07:00–17:00 window), last run 06:20:
+    // - On metered (mobile data), off-hours 60 min would land 07:20 -> clamped to 07:00!
+    // - On unmetered (Wi-Fi 24/7), next wake is 06:25!
+    final morning = DateTime(2026, 11, 12, 6, 20);
+    for (final (net, expectedWake) in [
+      ('metered', DateTime(2026, 11, 12, 7, 0, 10)),
+      ('unmetered', DateTime(2026, 11, 12, 6, 25, 10)),
+    ]) {
+      calls.clear();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(AndroidChannel.channel, (call) async {
+        calls.add(call);
+        if (call.method == 'networkKind') return net;
+        if (call.method == 'keepAwake') return 1;
+        return true;
+      });
+      final outcome = await withClock(Clock.fixed(morning), () {
+        return runHeadlessTick(
+          ready(
+            <String>[],
+            config: {
+              'check_interval_minutes': 5,
+              'check_interval_mobile_minutes': 10,
+              'check_interval_off_hours_minutes': 60,
+              'refresh_wifi_always_fast': true,
+            },
+            data: {'last_updated': '12.11.2026 06:20:00'},
+          ),
+          const AndroidChannel(),
+        );
+      });
+      expect(outcome, 'not due', reason: net);
+      expect(armed(), expectedWake, reason: net);
     }
   });
 }

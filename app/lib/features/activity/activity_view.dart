@@ -457,10 +457,15 @@ class ActivityView extends StatelessWidget {
 
   Widget _hero(BuildContext context, Tokens tok, DateTime now, bool wide) {
     final c = controller;
-    final kind = c.statusKind();
+    final last = c.runs.isEmpty ? null : c.runs.last;
+    final lastAt = last == null ? null : runTime(last);
+    final quickAt = c.lastQuickCheck;
+    final quickIsNewest = quickAt != null &&
+        (last == null || (lastAt != null && quickAt.isAfter(lastAt)));
+    final baseKind = c.statusKind();
+    final kind = (baseKind == 'idle' && quickIsNewest) ? 'ok' : baseKind;
     final sending =
         c.sendingLabel.isEmpty ? '' : Strings.get(c.sendingLabel);
-    final last = c.runs.isEmpty ? null : c.runs.last;
     final lines = <Widget>[];
     final String headline;
     final Color color;
@@ -507,12 +512,15 @@ class ActivityView extends StatelessWidget {
       color = tok.green;
       disc = _iconDisc(Icons.check_circle_outline_rounded, color, tok,
           size: 52, iconSize: 28);
-      lines.add(_small(
-          tok,
-          Strings.format(
-              'activity_last_ok', {'when': runWhen(last ?? const {}, now)})));
-      final detail = '${(last ?? const {})['detail'] ?? ''}';
-      if (detail.isNotEmpty) lines.add(_small(tok, detail, color: tok.faint));
+      final whenText = quickIsNewest
+          ? clockText(quickAt, now)
+          : runWhen(last ?? const {}, now);
+      lines.add(
+          _small(tok, Strings.format('activity_last_ok', {'when': whenText})));
+      if (!quickIsNewest) {
+        final detail = '${(last ?? const {})['detail'] ?? ''}';
+        if (detail.isNotEmpty) lines.add(_small(tok, detail, color: tok.faint));
+      }
     } else {
       headline = Strings.get('status_idle');
       color = tok.muted;
@@ -642,9 +650,16 @@ class ActivityView extends StatelessWidget {
   Widget _stats(Tokens tok, DateTime now) {
     final c = controller;
     final last = c.runs.isEmpty ? null : c.runs.last;
+    final lastAt = last == null ? null : runTime(last);
+    final quickAt = c.lastQuickCheck;
+    final quickIsNewest = quickAt != null &&
+        (last == null || (lastAt != null && quickAt.isAfter(lastAt)));
     var lastValue = '—';
     var lastKind = 'info';
-    if (last != null) {
+    if (quickIsNewest) {
+      lastValue = clockText(quickAt, now);
+      lastKind = 'ok';
+    } else if (last != null) {
       lastValue = runWhen(last, now);
       lastKind = const {'ok': 'ok', 'cancelled': 'cancelled'}[runKind(last)] ??
           'failed';
@@ -703,6 +718,7 @@ class ActivityView extends StatelessWidget {
   // -- run timeline ------------------------------------------------------------------
 
   String _scopeLabel(String scope) {
+    if (scope == 'quick') return Strings.get('scope_quick');
     for (final (key, label) in _scopes) {
       if (key == scope) return Strings.get(label);
     }
@@ -711,9 +727,22 @@ class ActivityView extends StatelessWidget {
 
   Widget _historyCard(Tokens tok, DateTime now) {
     final c = controller;
+    final hasQuick = c.quickChecksToday > 0 && c.lastQuickCheck != null;
     final rows = <Widget>[
       _panelHead(Strings.get('run_history'), tok, Icons.history),
-      if (c.runs.isEmpty)
+      if (hasQuick)
+        Padding(
+          padding: const EdgeInsets.only(top: 2, bottom: 2),
+          child: Text(
+            Strings.format('activity_quick_checks', {
+              'n': c.quickChecksToday,
+              'time': clockText(c.lastQuickCheck!, now),
+            }),
+            key: const ValueKey('activity:quick_checks'),
+            style: TextStyle(color: tok.muted, fontSize: tok.fsSmall),
+          ),
+        ),
+      if (c.runs.isEmpty && !hasQuick)
         Text(Strings.get('no_runs_yet'),
             style: TextStyle(color: tok.faint, fontSize: tok.fsSmall)),
     ];

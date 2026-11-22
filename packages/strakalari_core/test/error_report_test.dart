@@ -11,8 +11,10 @@ import 'dart:io';
 import 'package:test/test.dart';
 
 import 'package:strakalari_core/src/bakalari/client.dart';
+import 'package:strakalari_core/src/bakalari/session_store.dart';
 import 'package:strakalari_core/src/error_report.dart';
 import 'package:strakalari_core/src/i18n.dart';
+import 'package:strakalari_core/src/platform/keystore.dart';
 import 'package:strakalari_core/src/platform/packaging.dart';
 import 'package:strakalari_core/src/storage/helpers.dart';
 import 'package:strakalari_core/src/storage/secret_store.dart';
@@ -279,6 +281,40 @@ void main() {
       final text = formatReport(report);
       expect(text, isNot(contains('hunter2-hunter2')));
       expect(text, contains('boom'));
+    });
+
+    test('redactsStoredAndHeaderCookies (F6 §6.2)', () {
+      final tmp = Directory.systemTemp.createTempSync('err_cookie_test_');
+      final prevStore = keyStoreBackend;
+      setEnvironmentOverride({'STRAKALARI_DATA_DIR': tmp.path});
+      allowMissingKeyStoreForTesting = true;
+      clearKeyCache();
+      try {
+        saveStoredSession(
+          dataDir: tmp.path,
+          root: 'https://bakaweb.school.cz',
+          username: 'student',
+          passwordDigest: passwordSha256('pw'),
+          cookies: {'BakaAuth': 'secretCookieValue98765'},
+          renewedAt: DateTime.utc(2026, 11, 22, 9, 0),
+        );
+        const raw = 'GET /Marks/Widget failed\n'
+            'Cookie: BakaAuth=secretCookieValue98765; ASP.NET_SessionId=abc123456\n'
+            'Set-Cookie: BakaAuth=freshCookieVal999; Path=/; HttpOnly\n'
+            'echoed token secretCookieValue98765 in body';
+        final scrubbed = redactText(raw, const {}, tmp.path);
+        expect(scrubbed, isNot(contains('secretCookieValue98765')));
+        expect(scrubbed, isNot(contains('freshCookieVal999')));
+        expect(scrubbed, isNot(contains('abc123456')));
+        expect(scrubbed, contains('Cookie: $redacted'));
+        expect(scrubbed, contains('Set-Cookie: $redacted'));
+      } finally {
+        keyStoreBackend = prevStore;
+        allowMissingKeyStoreForTesting = false;
+        setEnvironmentOverride(null);
+        clearKeyCache();
+        if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+      }
     });
   });
 

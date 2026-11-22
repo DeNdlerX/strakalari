@@ -750,5 +750,27 @@ void main() {
       expect(enBody, contains('Lunches on free days'));
       expect(enBody, contains('Settings → Rules'));
     });
+
+    test('F6 settings and activity intro tours mention check frequency, data estimate, and quick checks in cs and en',
+        () {
+      final prev = Strings.lang;
+      addTearDown(() => Strings.lang = prev);
+
+      Strings.lang = 'cs';
+      for (final key in ['tut_settings_intro_body', 'tut_settings_intro_body_narrow']) {
+        final body = Strings.get(key);
+        expect(body, contains('odhad dat'), reason: key);
+        expect(body, contains('Pravidla'), reason: key);
+      }
+      expect(Strings.get('tut_activity_intro_body'), contains('rychlé kontroly'));
+
+      Strings.lang = 'en';
+      for (final key in ['tut_settings_intro_body', 'tut_settings_intro_body_narrow']) {
+        final body = Strings.get(key);
+        expect(body, contains('data estimate'), reason: key);
+        expect(body, contains('Rules'), reason: key);
+      }
+      expect(Strings.get('tut_activity_intro_body'), contains('quick checks'));
+    });
   });
 }

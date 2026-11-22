@@ -59,7 +59,7 @@ MarksController marksControllerFor(AppState s, {DateTime? todayOverride}) {
   final preset = core.getPreset(presetId);
   c.presetTitle = preset != null ? core.presetTitle(preset, lang) : '';
   c.demoMode = s.demoMode;
-  c.updatedLabel = s.updatedLabel;
+  c.updatedLabel = s.updatedLabelFor('marks');
   c.selectedSubject = s.marksSelected;
   c.editingKey = s.marksEditing;
   c.predictions.addAll(_clonePredictions(s.marksPredictions));

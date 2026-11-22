@@ -140,6 +140,7 @@ Future<void> _runHeadless(AndroidChannel channel) async {
         '${layout.error}).');
     return;
   }
+  applyF6ScheduleDefaultsOnce(dataDir, degraded: layout.isDegraded);
   // `run_in_background` off: read from `global.json` once accounts exist
   // (never from the root backup); read root `config.json` only in degraded mode (§4.1).
   Object? runInBgValue;
@@ -341,18 +342,19 @@ Future<String> runHeadlessTick(
     await channel.cancelWake();
     return 'off';
   }
+  await state.refreshNetworkKind(channel);
   final runner = registerJobs(state,
       keepAwake: <T>(body) => androidKeepAwake<T>(body, channel: channel));
   if (refreshJob != null) runner.addJob('refresh', refreshJob);
-  final interval = runner.intervalMinutes;
 
   final now = clock.now();
   var outcome = 'not due';
   try {
-    if (!now.isBefore(nextDue(runner.lastRun, runner.intervalMinutes, now))) {
+    if (!now.isBefore(runner.nextDueAt(now))) {
       // Fallback wake before the job starts: if the process is killed
       // mid-run, the schedule still comes back.
-      await _scheduleWakeAt(channel, nextDue(now, interval, now), quiet: true);
+      await _scheduleWakeAt(channel, state.nextScheduledWakeAt(now, now),
+          quiet: true);
       await runner.runAllOnce();
       outcome = 'ran';
       // The update check runs on its own; let it finish before the
@@ -362,7 +364,8 @@ Future<String> runHeadlessTick(
         await Future<void>.delayed(const Duration(milliseconds: 200));
       }
       await state.ensurePrimaryWarmed();
-      _postStatus(state, channel, interval);
+      _postStatus(
+          state, channel, state.schoolHoursIntervalForCurrentNetwork().toDouble());
       // Also after a skipped or failed run: a new day redraws the widget.
       state.syncAndroidState();
     }
@@ -400,8 +403,7 @@ void _postStatus(AppState state, AndroidChannel channel, double interval) {
 
 /// `_schedule_phone_wake`: the alarm for the runner's next due run.
 Future<void> _scheduleWake(AndroidChannel channel, PeriodicRunner runner) =>
-    _scheduleWakeAt(
-        channel, nextDue(runner.lastRun, runner.intervalMinutes, clock.now()));
+    _scheduleWakeAt(channel, runner.nextDueAt(clock.now()));
 
 Future<void> _scheduleWakeAt(AndroidChannel channel, DateTime due,
     {bool quiet = false}) async {

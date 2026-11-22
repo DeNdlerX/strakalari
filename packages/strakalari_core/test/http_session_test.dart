@@ -189,6 +189,92 @@ void main() {
       await bak.login();
       expect(server.logins, 1);
       expect(bak.loggedIn, isTrue);
+      // F6 §4.1: neither login nor the cookie re-check downloads /dashboard.
+      expect(server.calls('GET', '/dashboard'), isEmpty);
+    });
+
+    test('f6LoginSkipsDashboardAndRejectsForeignOrRootRedirects (R8a S8)',
+        () async {
+      // 1. Normal login makes zero GET /dashboard requests.
+      final normalServer = FakeBakalari();
+      final normalBak = session(normalServer);
+      await normalBak.login();
+      expect(normalBak.loggedIn, isTrue);
+      expect(normalServer.calls('GET', '/dashboard'), isEmpty);
+
+      // 2. GET /login -> 302 to another host is rejected (bak_no_login_page).
+      final foreignGet = _ScriptedTransport([
+        HttpResponseData(
+          statusCode: 302,
+          url: Uri.parse('$fakeRoot/login'),
+          headers: {
+            'location': ['https://evil.other.test/dashboard']
+          },
+        ),
+      ]);
+      await expectLater(
+        session(foreignGet).login(),
+        throwsA(isA<UserError>()),
+      );
+
+      // 3. GET /login -> 302 to `/` is rejected (bak_no_login_page).
+      final rootGet = _ScriptedTransport([
+        HttpResponseData(
+          statusCode: 302,
+          url: Uri.parse('$fakeRoot/login'),
+          headers: {
+            'location': ['$fakeRoot/']
+          },
+        ),
+      ]);
+      await expectLater(
+        session(rootGet).login(),
+        throwsA(isA<UserError>()),
+      );
+
+      // 4. POST /Login -> 302 to /login follows once and rejects with error text.
+      final postToLogin = _ScriptedTransport([
+        fakeReply(fakeLoginPage(), url: Uri.parse('$fakeRoot/login')),
+        HttpResponseData(
+          statusCode: 302,
+          url: Uri.parse('$fakeRoot/Login'),
+          headers: {
+            'location': ['$fakeRoot/login?err=1']
+          },
+        ),
+        fakeReply(
+          fakeLoginPage('<div class="login-error">Špatné heslo</div>'),
+          url: Uri.parse('$fakeRoot/login?err=1'),
+        ),
+      ]);
+      await expectLater(
+        session(postToLogin).login(),
+        throwsA(isA<UserError>()
+            .having((e) => e.message, 'message', contains('Špatné heslo'))),
+      );
+      expect(postToLogin.seen, hasLength(3));
+
+      // 5. POST /Login -> 302 to another host follows and checks isLoginPage.
+      final postToForeign = _ScriptedTransport([
+        fakeReply(fakeLoginPage(), url: Uri.parse('$fakeRoot/login')),
+        HttpResponseData(
+          statusCode: 302,
+          url: Uri.parse('$fakeRoot/Login'),
+          headers: {
+            'location': ['https://sso.other.test/check']
+          },
+        ),
+        fakeReply(
+          fakeLoginPage('<div class="login-error">SSO denied</div>'),
+          url: Uri.parse('https://sso.other.test/check'),
+        ),
+      ]);
+      await expectLater(
+        session(postToForeign).login(),
+        throwsA(isA<UserError>()
+            .having((e) => e.message, 'message', contains('SSO denied'))),
+      );
+      expect(postToForeign.seen, hasLength(3));
     });
 
     test('droppedConnectionIsRetriedOnceForReads', () async {
@@ -197,15 +283,15 @@ void main() {
           'data': <Object?>[]
         },
       });
-      // Drop the subjects POST (call 4: login GET, login POST, dashboard
-      // GET, then the read) — the retry must succeed.
-      final flaky = _FlakyTransport(server, 4);
+      // Drop the subjects POST (call 3: login GET, login POST — no dashboard
+      // GET after F6 §4.1 — then the read) — the retry must succeed.
+      final flaky = _FlakyTransport(server, 3);
       final bak = session(flaky);
       await bak.login();
       final resp =
           await bak.request('POST', '/Teaching/Subjects');
       expect(resp.statusCode, 200);
-      expect(flaky.calls, 5);
+      expect(flaky.calls, 4);
       expect(server.logins, 1);
     });
 
@@ -332,4 +418,24 @@ class _FlakyTransport implements HttpTransport {
 
   @override
   void close() => inner.close();
+}
+
+class _ScriptedTransport implements HttpTransport {
+  final List<HttpResponseData> replies;
+  final List<(String, Uri)> seen = [];
+  int _idx = 0;
+
+  _ScriptedTransport(this.replies);
+
+  @override
+  Future<HttpResponseData> send(String method, Uri url,
+      {Map<String, String>? headers,
+      List<int>? body,
+      Duration timeout = const Duration(seconds: 60)}) async {
+    seen.add((method, url));
+    return replies[_idx++];
+  }
+
+  @override
+  void close() {}
 }

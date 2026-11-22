@@ -210,6 +210,7 @@ begin
       DeleteFile(AppDir + '\accounts.json');
       DeleteFile(AppDir + '\global.json');
       DeleteFile(AppDir + '\secret.key');
+      DeleteFile(AppDir + '\bakalari_session.enc');
       DeleteFile(AppDir + '\data_cache.json');
       DeleteFile(AppDir + '\log.txt');
       DeleteFile(AppDir + '\log.txt.lock');

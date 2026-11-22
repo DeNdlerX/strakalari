@@ -468,4 +468,108 @@ void main() {
       expect(storeRows(null), isNull);
     });
   });
+
+  group('f6Extractors', () {
+    test('extractMarksWidgetTriStateAndEntities', () {
+      // Missing container -> null (parse failure).
+      expect(extractMarksWidget(null), isNull);
+      expect(extractMarksWidget('<html><body>Error 500</body></html>'), isNull);
+
+      // Valid empty container -> [].
+      expect(extractMarksWidget('<div class="bk-widget-marks"></div>'), isEmpty);
+
+      // Valid items with isNew + HTML entities + whitespace normalization.
+      const html = '''
+<div class="bk-widget-marks">
+  <div class="mark-line" onclick="window.location.href = appRoot + 'next/prubzna.aspx'">
+    <span class="mark-displayGrade isNew"> 1- </span>
+    <span class="mark-subjectName">Matematika &amp; Fyzika</span>
+    <span class="mark-note">Písemka:   zlomky</span>
+    <span class="mark-date">5.11.</span>
+  </div>
+  <div class="mark-line">
+    <span class="mark-displayGrade">2</span>
+    <span class="mark-subjectName">Český jazyk</span>
+    <span class="mark-note"></span>
+    <span class="mark-date">3.11.</span>
+  </div>
+</div>
+''';
+      expect(extractMarksWidget(html), [
+        {
+          'grade': '1-',
+          'subject': 'Matematika & Fyzika',
+          'note': 'Písemka: zlomky',
+          'date': '5.11.',
+          'is_new': true,
+        },
+        {
+          'grade': '2',
+          'subject': 'Český jazyk',
+          'note': '',
+          'date': '3.11.',
+          'is_new': false,
+        },
+      ]);
+    });
+
+    test('substitutionsByWeekHashesBucketsDeterministicallyAndHandlesEmpty', () {
+      final mon1 = DateTime(2026, 9, 7);
+      final mon2 = DateTime(2026, 9, 14);
+      final feedA = [
+        {'day': '08.09.2026', 'hour': '2', 'type': 'Canceled', 'subject': 'M'},
+        {'day': '07.09.2026', 'hour': '1', 'type': 'RoomChanged', 'subject': 'F'},
+      ];
+      // Same entries in opposite order with reversed key insertion order.
+      final feedB = [
+        {'subject': 'F', 'type': 'RoomChanged', 'hour': '1', 'day': '07.09.2026'},
+        {'subject': 'M', 'type': 'Canceled', 'hour': '2', 'day': '08.09.2026'},
+      ];
+      final hA = substitutionsByWeekHashes(feedA, [mon1, mon2]);
+      final hB = substitutionsByWeekHashes(feedB, [mon1, mon2]);
+      expect(hA['2026-09-07'], hB['2026-09-07']);
+      expect(hA['2026-09-14'], hB['2026-09-14']);
+      expect(hA['2026-09-07'], isNot(hA['2026-09-14']));
+
+      // Modifying a week-2 entry changes only week 2's hash.
+      final feedC = [
+        ...feedA,
+        {'day': '15.09.2026', 'hour': '3', 'type': 'Substitution', 'subject': 'ČJ'},
+      ];
+      final hC = substitutionsByWeekHashes(feedC, [mon1, mon2]);
+      expect(hC['2026-09-07'], hA['2026-09-07']);
+      expect(hC['2026-09-14'], isNot(hA['2026-09-14']));
+    });
+
+    test('absenceCountsIncreasedIgnoresLessonCountGrowth', () {
+      final prev = {
+        'Matematika': {'missed_hours': 2, 'total_hours': 10},
+        'Fyzika': {'missed_hours': 0, 'total_hours': 8},
+      };
+      // Only total_hours grew -> false.
+      expect(
+        absenceCountsIncreased(prev, {
+          'Matematika': {'missed_hours': 2, 'total_hours': 12},
+          'Fyzika': {'missed_hours': 0, 'total_hours': 9},
+        }),
+        isFalse,
+      );
+      // missed_hours grew -> true.
+      expect(
+        absenceCountsIncreased(prev, {
+          'Matematika': {'missed_hours': 3, 'total_hours': 12},
+          'Fyzika': {'missed_hours': 0, 'total_hours': 9},
+        }),
+        isTrue,
+      );
+      // Brand new subject with missed_hours > 0 -> true.
+      expect(
+        absenceCountsIncreased(prev, {
+          ...prev,
+          'Chemie': {'missed_hours': 1, 'total_hours': 4},
+        }),
+        isTrue,
+      );
+    });
+  });
 }

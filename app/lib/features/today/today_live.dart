@@ -98,7 +98,7 @@ TodayController todayControllerFor(AppState s, {DateTime? now}) {
   } catch (_) {
     c.hasCredentials = false;
   }
-  c.updatedLabel = s.updatedLabel;
+  c.updatedLabel = s.updatedLabelFor('quick');
 
   final alarm = s.nextWakeupAlarm(now);
   if (alarm != null) {

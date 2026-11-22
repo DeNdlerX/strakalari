@@ -477,7 +477,7 @@ class AppScaffold extends ConsumerWidget {
 
     final statusText = _statusText(appState);
     final tooltipText =
-        '$statusText\n${Strings.get('last_updated')}: ${appState.updatedLabel}   ·   ${Strings.get('next_run')}: ${appState.nextRunLabel}';
+        '$statusText\n${appState.tooltipUpdatedLabel}   ·   ${Strings.get('next_run')}: ${appState.nextRunLabel}';
 
     void refreshClicked() {
       if (appState.refreshRunning) {

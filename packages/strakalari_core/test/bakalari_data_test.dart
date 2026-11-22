@@ -768,29 +768,92 @@ void main() {
     ];
 
     test('parsesTheSubjectRows', () async {
-      for (final reply in [
-        {'data': rows, 'totalCount': 3},
-        rows,
-      ]) {
+      await withClock(Clock.fixed(DateTime(2026, 11, 20, 10, 0)), () async {
+        for (final reply in [
+          {'data': rows, 'totalCount': 3},
+          rows,
+        ]) {
+          final server = FakeBakalari({
+            'GET /Absence/Continuous': absencePage,
+            'GET /Absence/Continuous/GetAbsenceBySubjects': reply,
+          });
+          final bak = BakalariClient(
+              Map.of(fakeConfig), transport: server);
+          await bak.obtainAbsenceInfo();
+          expect(bak.absenceError, '');
+          expect(bak.absencePercentages,
+              {'Matematika': 25.0, 'Fyzika': 0.0});
+          expect(
+              (bak.absenceDetails['Matematika'] as Map)['missed_hours'], 2);
+          final calls = server.calls(
+              'GET', '/Absence/Continuous/GetAbsenceBySubjects');
+          expect(calls, hasLength(1));
+          expect(calls.single.url.queryParameters['dateFrom'], '2026-09-01');
+          expect(calls.single.url.queryParameters['dateTo'], '2026-11-20');
+          // F6 §4.2: zero GET /Absence/Continuous page loads on the direct path.
+          expect(server.calls('GET', '/Absence/Continuous'), isEmpty);
+        }
+      });
+    });
+
+    test('directAbsenceDateFromBoundaryAug31VsSep1AndFallbacks (R8a S7)',
+        () async {
+      // 31 August 2026 -> 2025-09-01 (previous school year).
+      await withClock(Clock.fixed(DateTime(2026, 8, 31, 10, 0)), () async {
+        final server = FakeBakalari({
+          'GET /Absence/Continuous/GetAbsenceBySubjects': {'data': rows},
+        });
+        final bak = BakalariClient(Map.of(fakeConfig), transport: server);
+        await bak.obtainAbsenceInfo();
+        final req =
+            server.calls('GET', '/Absence/Continuous/GetAbsenceBySubjects').single;
+        expect(req.url.queryParameters['dateFrom'], '2025-09-01');
+        expect(req.url.queryParameters['dateTo'], '2026-08-31');
+      });
+
+      // 1 September 2026 -> 2026-09-01 (new school year).
+      await withClock(Clock.fixed(DateTime(2026, 9, 1, 10, 0)), () async {
+        final server = FakeBakalari({
+          'GET /Absence/Continuous/GetAbsenceBySubjects': {'data': rows},
+        });
+        final bak = BakalariClient(Map.of(fakeConfig), transport: server);
+        await bak.obtainAbsenceInfo();
+        final req =
+            server.calls('GET', '/Absence/Continuous/GetAbsenceBySubjects').single;
+        expect(req.url.queryParameters['dateFrom'], '2026-09-01');
+        expect(req.url.queryParameters['dateTo'], '2026-09-01');
+      });
+
+      // Empty direct reply while cache had subjects -> falls back to /Absence/Continuous.
+      await withClock(Clock.fixed(DateTime(2026, 11, 20, 10, 0)), () async {
+        var jsonCalls = 0;
         final server = FakeBakalari({
           'GET /Absence/Continuous': absencePage,
-          'GET /Absence/Continuous/GetAbsenceBySubjects': reply,
+          'GET /Absence/Continuous/GetAbsenceBySubjects': (_) {
+            jsonCalls++;
+            return jsonCalls == 1 ? {'data': <Object?>[]} : {'data': rows};
+          },
         });
-        final bak = BakalariClient(
-            Map.of(fakeConfig), transport: server);
-        await bak.obtainAbsenceInfo();
-        expect(bak.absenceError, '');
-        expect(bak.absencePercentages,
-            {'Matematika': 25.0, 'Fyzika': 0.0});
-        expect(
-            (bak.absenceDetails['Matematika'] as Map)['missed_hours'], 2);
-        final calls = server.calls(
-            'GET', '/Absence/Continuous/GetAbsenceBySubjects');
-        expect(calls, hasLength(1));
-        expect(
-            calls.single.url.queryParameters['dateFrom'],
-            '2026-09-01T00:00:00+02:00');
-      }
+        final bak = BakalariClient(Map.of(fakeConfig), transport: server);
+        await bak.obtainAbsenceInfo(cachedHasSubjects: true);
+        expect(bak.absenceDirectFailed, isTrue);
+        expect(server.calls('GET', '/Absence/Continuous'), hasLength(1));
+        expect(bak.absencePercentages, {'Matematika': 25.0, 'Fyzika': 0.0});
+      });
+
+      // With allowPageFallback: false (throttled quick tick), skips page load.
+      await withClock(Clock.fixed(DateTime(2026, 11, 20, 10, 0)), () async {
+        final server = FakeBakalari({
+          'GET /Absence/Continuous': absencePage,
+          'GET /Absence/Continuous/GetAbsenceBySubjects':
+              HttpResponseData(statusCode: 500, url: Uri.parse(fakeRoot)),
+        });
+        final bak = BakalariClient(Map.of(fakeConfig), transport: server);
+        await bak.obtainAbsenceInfo(allowPageFallback: false);
+        expect(bak.absenceDirectFailed, isTrue);
+        expect(bak.absenceError, isNotEmpty);
+        expect(server.calls('GET', '/Absence/Continuous'), isEmpty);
+      });
     });
 
     test('replyWithoutRowsIsFlagged', () async {
@@ -955,6 +1018,272 @@ void main() {
       expect(await bak.fetchSubjectDirectory(),
           {'Matematika': 'Mgr. Jan Novák'});
       expect(server.logins, 2);
+    });
+  });
+
+  group('f6Step1FreeWins', () {
+    test('cachedOutboxFieldsSkipPageWhenCompleteAndReloadWhenShort (R8a M1, S6)',
+        () async {
+      final now = DateTime(2026, 11, 20, 10, 0);
+      await withClock(Clock.fixed(now), () async {
+        // Simulate server where a 3-field callback (missing hfListType) returns
+        // only the recent 30-day excuse 202, dropping older excuse 101 (Sep 10).
+        final server = FakeBakalari({
+          'GET /next/komens.aspx': outboxPageHtml(
+            periodLabel: '20.8.2026 - 31.8.2027',
+          ),
+          'POST /next/komens.aspx': (FakeRequest req) {
+            final form = Uri.splitQueryString(utf8.decode(req.body));
+            final isFullForm = form.containsKey('ctl00\$cphmain\$hfListType');
+            final rows = isFullForm
+                ? '<table data-idmsg="202" data-sortdate="0:2026-11-10T08:00:00" data-msgtype="OMLUVENKA"></table>'
+                  '<table data-idmsg="101" data-sortdate="0:2026-09-10T08:00:00" data-msgtype="OMLUVENKA"></table>'
+                : '<table data-idmsg="202" data-sortdate="0:2026-11-10T08:00:00" data-msgtype="OMLUVENKA"></table>';
+            return dxReply('<div class="komens-messages-wrapper">$rows</div>');
+          },
+          'POST /Komens/GetMessageDataAsync': (FakeRequest req) {
+            final body = jsonDecode(utf8.decode(req.body)) as Map;
+            final id = '${body['idmsg']}';
+            final day = id == '101' ? '10.09.2026' : '10.11.2026';
+            return {
+              'Kind': 'OMLUVENKA',
+              'DateFrom': day,
+              'DateTo': day,
+            };
+          },
+        });
+
+        // 1. First read (manual or cold cache) loads the full page and caches 3 fields.
+        final bak = BakalariClient(Map.of(fakeConfig), transport: server);
+        final first = await bak.fetchSentExcuses(useCachedForm: true);
+        expect(first, hasLength(2));
+        expect(server.calls('GET', '/next/komens.aspx'), hasLength(1));
+        expect(bak.outboxFormUpdated, isTrue);
+        expect(bak.knownOutboxForm?['period_start'], '2026-08-20');
+        expect(bak.knownOutboxForm?['period_end'], '2027-08-31');
+
+        // 2. Second scheduled read uses cached 3 fields -> server drops older 101 ->
+        //    completeness check rejects it, logs loudly, and reloads the full page!
+        final logs = <String>[];
+        final bak2 = BakalariClient(
+          Map.of(fakeConfig),
+          transport: server,
+          logger: logs.add,
+        )
+          ..knownOutboxForm = Map<String, Object?>.of(bak.knownOutboxForm!)
+          ..knownOutboxDetails = Map.of(bak.knownOutboxDetails);
+        final second = await bak2.fetchSentExcuses(useCachedForm: true);
+        expect(second, hasLength(2));
+        expect(server.calls('GET', '/next/komens.aspx'), hasLength(2));
+        expect(
+          logs.any((l) => l.contains('Komens cached form fields rejected')),
+          isTrue,
+        );
+        expect(bak2.sentExcusesFrom, DateTime(2026, 8, 20));
+
+        // 3. Manual refresh (useCachedForm: false) ALWAYS loads the full page.
+        final bak3 = BakalariClient(Map.of(fakeConfig), transport: server)
+          ..knownOutboxForm = Map<String, Object?>.of(bak2.knownOutboxForm!)
+          ..knownOutboxDetails = Map.of(bak2.knownOutboxDetails);
+        await bak3.fetchSentExcuses(useCachedForm: false);
+        expect(server.calls('GET', '/next/komens.aspx'), hasLength(3));
+      });
+    });
+
+    test('cachedOutboxFieldsSucceedWithoutPageLoadWhenComplete', () async {
+      final now = DateTime(2026, 11, 20, 10, 0);
+      await withClock(Clock.fixed(now), () async {
+        final server = FakeBakalari({
+          'GET /next/komens.aspx': outboxPageHtml(
+            periodLabel: '20.8.2026 - 31.8.2027',
+          ),
+          'POST /next/komens.aspx': (_) => dxReply(
+                '<div class="komens-messages-wrapper">'
+                '<table data-idmsg="202" data-sortdate="0:2026-11-10T08:00:00" data-msgtype="OMLUVENKA"></table>'
+                '<table data-idmsg="101" data-sortdate="0:2026-09-10T08:00:00" data-msgtype="OMLUVENKA"></table>'
+                '</div>',
+              ),
+          'POST /Komens/GetMessageDataAsync': (FakeRequest req) {
+            final body = jsonDecode(utf8.decode(req.body)) as Map;
+            final day = body['idmsg'] == '101' ? '10.09.2026' : '10.11.2026';
+            return {'Kind': 'OMLUVENKA', 'DateFrom': day, 'DateTo': day};
+          },
+        });
+        final bak = BakalariClient(Map.of(fakeConfig), transport: server)
+          ..knownOutboxForm = {
+            'path': '/next/komens.aspx?s=rok&l=o',
+            'viewstate': 'vs-year',
+            'viewstate_generator': 'VSG12345',
+            'event_validation': 'ev-year',
+            'period_start': '2026-08-20',
+            'period_end': '2027-08-31',
+            'fetched_at': now.subtract(const Duration(hours: 6)).toIso8601String(),
+          }
+          ..knownOutboxDetails = {
+            '101|0:2026-09-10T08:00:00': [
+              {
+                'type': 'pure days',
+                'starting_day': '10.09.2026',
+                'ending_day': '10.09.2026',
+              }
+            ],
+          };
+        final entries = await bak.fetchSentExcuses(useCachedForm: true);
+        expect(entries, hasLength(2));
+        expect(server.calls('GET', '/next/komens.aspx'), isEmpty);
+        expect(bak.sentExcusesFrom, DateTime(2026, 8, 20));
+      });
+    });
+
+    test('rejectedCachedOutboxWithFailedReloadNeverReleasesUnconfirmed (R8a M1)',
+        () async {
+      final now = DateTime(2026, 11, 20, 10, 0);
+      await withClock(Clock.fixed(now), () async {
+        final server = FakeBakalari({
+          'GET /next/komens.aspx':
+              HttpResponseData(statusCode: 500, url: Uri.parse(fakeRoot)),
+          // 3-field callback returns only recent 202 (missing known 101).
+          'POST /next/komens.aspx': (_) => dxReply(
+                '<div class="komens-messages-wrapper">'
+                '<table data-idmsg="202" data-sortdate="0:2026-11-10T08:00:00" data-msgtype="OMLUVENKA"></table>'
+                '</div>',
+              ),
+        });
+        final bak = BakalariClient(Map.of(fakeConfig), transport: server)
+          ..knownOutboxForm = {
+            'path': '/next/komens.aspx?s=rok&l=o',
+            'viewstate': 'vs-year',
+            'viewstate_generator': 'VSG12345',
+            'event_validation': 'ev-year',
+            'period_start': '2026-08-20',
+            'period_end': '2027-08-31',
+            'fetched_at': now.subtract(const Duration(hours: 1)).toIso8601String(),
+          }
+          ..knownOutboxDetails = {
+            '101|0:2026-09-10T08:00:00': [
+              {
+                'type': 'pure days',
+                'starting_day': '10.09.2026',
+                'ending_day': '10.09.2026',
+              }
+            ],
+          };
+        final result = await bak.fetchSentExcuses(useCachedForm: true);
+        expect(result, isNull);
+        expect(bak.sentExcuses, isNull);
+        expect(bak.sentExcusesFrom, isNull);
+        expect(bak.outboxDetailsUpdated, isFalse);
+        expect(bak.outboxFormUpdated, isFalse);
+      });
+    });
+
+    test('fetchDataOrderAndCachedStableBaselineMatchesFullRun (R8a S1, S3, S4, S5)',
+        () async {
+      final now = DateTime(2026, 9, 7, 10, 0); // Monday
+      await withClock(Clock.fixed(now), () async {
+        final permLesson = {
+          'IdentCode': '1       003T2RD',
+          'day': 'Pondělí',
+          'time': '1 (8:00 - 8:45)',
+          'subjecttext': 'Matematika',
+          'teacher': 'Mgr. Novák',
+          'room': '104',
+        };
+        final cancelledActual = {
+          'IdentCode': '12026090703T2RD',
+          'day': '7.9.2026',
+          'time': '1 (8:00 - 8:45)',
+          'subjecttext': '',
+          'teacher': '',
+          'room': '',
+          'type': 'removed',
+          'removedinfo': 'Odpadá',
+        };
+
+        FakeBakalari makeServer() => FakeBakalari({
+              'GET /Absence/Continuous/GetAbsenceBySubjects': {
+                'data': [
+                  {
+                    'Name': 'Matematika',
+                    'LessonCount': 10,
+                    'Count': 1,
+                    'Percent': 0.1,
+                  }
+                ],
+              },
+              'POST /Timetable/substitutions/dates': {
+                'success': true,
+                'data': <Object?>[],
+              },
+              'POST /Timetable/GetContentData': (FakeRequest req) {
+                final payload = jsonDecode(utf8.decode(req.body)) as Map;
+                if (payload['term'] == 'perm') {
+                  return weekContent([permLesson]);
+                }
+                return weekContent([cancelledActual]);
+              },
+              'GET /Marks/Widget': marksWidgetHtml([
+                {
+                  'grade': '1',
+                  'subject': 'Matematika',
+                  'note': 'Test',
+                  'date': '7.9.',
+                  'is_new': true,
+                }
+              ]),
+              'GET /next/prubzna.aspx': '<html>prubzna.aspx</html>',
+              'POST /Teaching/Subjects': {
+                'data': [
+                  {'SubjectName': 'Matematika', 'TeacherName': 'Mgr. Novák'}
+                ],
+              },
+            });
+
+        // 1. Full run: check fetch order (absence -> feed -> weeks -> perm -> widget -> grades -> subjects).
+        final fullServer = makeServer();
+        final fullClient = BakalariClient(
+          {...fakeConfig, 'go_back_weeks': 0, 'go_forward_weeks': 0},
+          transport: fullServer,
+        );
+        final fullData = await fullClient.fetchData(
+          weekOffsetsOverride: [0],
+          fetchMarksWidget: true,
+        );
+        final paths = fullServer.requests.map((r) => '${r.method} ${r.url.path}').toList();
+        final iAbs = paths.indexOf('GET /Absence/Continuous/GetAbsenceBySubjects');
+        final iFeed = paths.indexOf('POST /Timetable/substitutions/dates');
+        final iWeek = paths.indexOf('POST /Timetable/GetContentData');
+        final iWidget = paths.indexOf('GET /Marks/Widget');
+        final iGrades = paths.indexOf('GET /next/prubzna.aspx');
+        expect(iAbs, lessThan(iFeed));
+        expect(iFeed, lessThan(iWeek));
+        expect(iWidget, lessThan(iGrades));
+        expect(fullClient.marksWidget, hasLength(1));
+        expect((fullData['stable_baseline'] as Map).isNotEmpty, isTrue);
+        expect((fullData['timetable'] as Map).isNotEmpty, isTrue);
+
+        // 2. Run skipping perm with cached stable_baseline produces identical timetable days!
+        final cachedServer = makeServer();
+        final cachedClient = BakalariClient(
+          {...fakeConfig, 'go_back_weeks': 0, 'go_forward_weeks': 0},
+          transport: cachedServer,
+        );
+        final cachedData = await cachedClient.fetchData(
+          weekOffsetsOverride: [0],
+          fetchStable: false,
+          cachedStableBaseline:
+              (fullData['stable_baseline'] as Map).cast<String, Object?>(),
+        );
+        expect(cachedClient.stableComplete, isTrue);
+        expect(cachedData.containsKey('stable_baseline'), isFalse);
+        expect(cachedData['timetable'], fullData['timetable']);
+        expect(jsonEncode(cachedData['timetable']), contains('Matematika'));
+        // Only 1 GetContentData call (cal), 0 perm calls.
+        expect(
+          cachedServer.calls('POST', '/Timetable/GetContentData'),
+          hasLength(1),
+        );
+      });
     });
   });
 }

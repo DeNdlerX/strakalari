@@ -103,6 +103,11 @@ class PeriodicRunner {
   /// without a restart.
   double? Function()? intervalProvider;
 
+  /// Optional custom schedule provider returning when the next run is due
+  /// given `(lastRun, now)`. When set, [nextDueAt] delegates here (honouring
+  /// early failure retries via [_retryAt]) instead of fixed [nextDue].
+  DateTime Function(DateTime? lastRun, DateTime now)? nextDueProvider;
+
   /// True = hold due runs (the phone app in the background, where the
   /// OS freezes it mid-run). A held run fires on the first tick after.
   bool Function()? paused;
@@ -115,6 +120,9 @@ class PeriodicRunner {
   /// first tick.
   DateTime? lastRun;
 
+  /// Early-retry target set after a failed run when [nextDueProvider] is active.
+  DateTime? _retryAt;
+
   final List<JobResult> _history = [];
   Timer? _timer;
   Completer<bool>? _stopSignal;
@@ -125,6 +133,7 @@ class PeriodicRunner {
     this.onResult,
     this.lastRun,
     this.intervalProvider,
+    this.nextDueProvider,
     this.paused,
   }) : intervalMinutes = _normalizeInterval(intervalMinutes);
 
@@ -175,6 +184,12 @@ class PeriodicRunner {
     if (advanceTimer) {
       if (results.isEmpty || results.every((r) => r.ok)) {
         lastRun = now;
+        _retryAt = null;
+      } else if (nextDueProvider != null) {
+        // With a custom schedule provider, record an explicit 5-minute retry
+        // target instead of rewriting lastRun (which would break window/pause
+        // math).
+        _retryAt = now.add(const Duration(minutes: 5));
       } else {
         // A failed run must not delay the retry a full interval:
         // come back in ~5 minutes instead (manual runs never
@@ -231,6 +246,32 @@ class PeriodicRunner {
     _timer = Timer.periodic(const Duration(seconds: 5), (_) => tick());
   }
 
+  /// When the next scheduled run is due.
+  ///
+  /// Uses [nextDueProvider] when set (honouring an earlier [_retryAt] after a
+  /// failure), else falls back to [nextDue].
+  DateTime nextDueAt(DateTime now) {
+    DateTime scheduled;
+    final provider = nextDueProvider;
+    if (provider != null) {
+      try {
+        scheduled = provider(lastRun, now);
+      } catch (_) {
+        scheduled = nextDue(lastRun, intervalMinutes, now);
+      }
+    } else {
+      scheduled = nextDue(lastRun, intervalMinutes, now);
+    }
+    final retry = _retryAt;
+    if (retry != null) {
+      if (scheduled.isAfter(now) && scheduled.isBefore(retry)) {
+        return scheduled;
+      }
+      return retry;
+    }
+    return scheduled;
+  }
+
   /// One pass of the loop (`_loop`'s body; the timer calls it every 5 s,
   /// tests call it directly): held while [paused], otherwise the jobs run
   /// once they are due.
@@ -238,7 +279,7 @@ class PeriodicRunner {
     if (_inFlight || _isPaused()) return;
     pollInterval();
     final now = clock.now();
-    if (!now.isBefore(nextDue(lastRun, intervalMinutes, now))) {
+    if (!now.isBefore(nextDueAt(now))) {
       _inFlight = true;
       try {
         await _runAllOnce();

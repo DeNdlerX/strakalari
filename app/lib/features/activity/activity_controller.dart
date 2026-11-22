@@ -11,6 +11,9 @@ class ActivityController {
 
   List<String> logLines = [];
   List<Map<String, dynamic>> runs = [];
+  int quickChecksToday = 0;
+  DateTime? lastQuickCheck;
+  String Function()? nextRunLabelHook;
   String status = 'idle';
   bool refreshRunning = false;
   bool cancelRequested = false;
@@ -174,6 +177,7 @@ class ActivityController {
   }
 
   String nextRunLabel({DateTime? now}) {
+    if (nextRunLabelHook != null) return nextRunLabelHook!();
     if (schedulerLastRun == null) return '—';
     try {
       final interval =

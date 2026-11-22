@@ -65,25 +65,36 @@ mixin TimetableMixin on BakalariClientBase {
 
   /// Loads the regular week window plus the history weeks into
   /// [timetableSources] (one detail list per loaded week).
-  Future<void> fetchTimetableWeeks() async {
+  ///
+  /// When [weekOffsetsOverride] is provided, fetches ONLY those exact week
+  /// offsets (relative to this week's Monday), without appending [historyWeeks].
+  Future<void> fetchTimetableWeeks({List<int>? weekOffsetsOverride}) async {
     await login();
     final today = clock.now();
     final currentWeek = DateTime(today.year, today.month, today.day);
-    final offsets = weekOffsets(goBackWeeks, goForwardWeeks);
-    // Timetable history: older school-year weeks the cache still lacks
-    // (all of them on the first run, none afterwards). Fetched after
-    // the regular window so a slow backfill never delays fresh data.
-    final thisMonday = addDays(currentWeek, -(currentWeek.weekday - 1));
-    final extra = historyWeeks.toList()
-      ..sort((a, b) => b.compareTo(a));
-    for (final monday in extra) {
-      final off = (daysBetween(thisMonday, monday) / 7).floor();
-      if (off < 0 && !offsets.contains(off)) offsets.add(off);
+    late final List<int> offsets;
+    if (weekOffsetsOverride != null) {
+      offsets = List<int>.of(weekOffsetsOverride);
+    } else {
+      offsets = weekOffsets(goBackWeeks, goForwardWeeks);
+      // Timetable history: older school-year weeks the cache still lacks
+      // (all of them on the first run, none afterwards). Fetched after
+      // the regular window so a slow backfill never delays fresh data.
+      final thisMonday = addDays(currentWeek, -(currentWeek.weekday - 1));
+      final extra = historyWeeks.toList()
+        ..sort((a, b) => b.compareTo(a));
+      for (final monday in extra) {
+        final off = (daysBetween(thisMonday, monday) / 7).floor();
+        if (off < 0 && !offsets.contains(off)) offsets.add(off);
+      }
     }
     timetableLoadedWeeks = {};
     if (offsets.isEmpty) {
-      log('Warning: no timetable weeks to fetch '
-          '(go_back_weeks=0, go_forward_weeks=0).');
+      if (weekOffsetsOverride == null) {
+        log('Warning: no timetable weeks to fetch '
+            '(go_back_weeks=0, go_forward_weeks=0).');
+      }
+      return;
     }
     for (final off in offsets) {
       raiseIfCancelledNow();

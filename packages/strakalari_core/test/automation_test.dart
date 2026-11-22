@@ -90,7 +90,7 @@ class FakeBak extends BakalariClient {
 
   @override
   Future<List<Map<String, Object?>>?> fetchSentExcuses(
-      {int limit = 100}) async {
+      {int limit = 100, bool useCachedForm = false}) async {
     return sentExcusesResult;
   }
 }

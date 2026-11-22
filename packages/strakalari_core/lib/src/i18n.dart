@@ -278,6 +278,7 @@ const Map<String, Map<String, String>> messages = {
   'status_wakeup': {'cs': 'Budík', 'en': 'Alarm'},
   'status_wakeup_value': {'cs': '{when} v {time}', 'en': '{when} at {time}'},
   'status_updated': {'cs': 'Aktualizováno {time}', 'en': 'Updated {time}'},
+  'status_checked': {'cs': 'Zkontrolováno {time}', 'en': 'Checked {time}'},
 };
 
 /// Sets the active language; unknown codes are ignored.

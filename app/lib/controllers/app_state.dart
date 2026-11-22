@@ -24,6 +24,7 @@ import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import '../features/planner/planner_view.dart' show PickerSlot;
 import '../l10n/strings.dart';
+import '../platform/android/android_channel.dart' show AndroidChannel;
 import '../platform/android/android_keystore.dart' show ensureWarmed;
 import '../platform/ios/ios_keystore.dart' show ensureIosWarmed;
 import '../shell/router.dart' show routeForLocation;
@@ -259,25 +260,8 @@ StatusInputs buildStatusInputsFrom(
       pending = 0;
     }
   }
-  DateTime? updated;
-  try {
-    final raw = '${cacheData['last_updated'] ?? ''}';
-    final m =
-        RegExp(r'^(\d{1,2})\.(\d{1,2})\.(\d{4}) (\d{1,2}):(\d{2}):(\d{2})$')
-            .firstMatch(raw);
-    if (m != null) {
-      updated = DateTime(
-        int.parse(m.group(3)!),
-        int.parse(m.group(2)!),
-        int.parse(m.group(1)!),
-        int.parse(m.group(4)!),
-        int.parse(m.group(5)!),
-        int.parse(m.group(6)!),
-      );
-    }
-  } catch (_) {
-    updated = null;
-  }
+  final updated = lastUpdatedTime(cacheData);
+  final checked = lastCheckedTime(cacheData);
   final tt = <String, Object?>{
     for (final e in _timetableFromCache(cacheData, demo).entries)
       e.key: e.value,
@@ -295,6 +279,7 @@ StatusInputs buildStatusInputsFrom(
     stableComplete: _stableCompleteFromCache(cacheData),
     pendingExcuses: pending,
     lastUpdated: demo ? null : updated,
+    lastChecked: demo ? null : checked,
     freeDays: _lunchFreeDaysFromConfig(cfg.data),
     accountLabel: accountLabel,
   );
@@ -400,6 +385,194 @@ class AppState {
   (String accountId, String route)? pendingBusyLaunchRoute;
   final Map<String, List<Map<String, Object?>>> runsByAccount = {};
   final Map<String, List<String>> logLinesByAccount = {};
+
+  /// Per-account silent quick-check counters for Aktivita (F6 §5.5).
+  final Map<String, int> quickChecksTodayByAccount = {};
+  final Map<String, DateTime> lastQuickCheckByAccount = {};
+  final Map<String, DateTime> quickChecksDayByAccount = {};
+
+  /// Cached network classification for dynamic scheduling (F6 §7.1, R8a M3).
+  /// Desktop and iOS stay `unmetered`; Android refreshes on resume, headless
+  /// start, and before each scheduled job run (never blocks a refresh).
+  NetworkKind networkKind = core.mobilePlatform() == 'android'
+      ? NetworkKind.unknown
+      : NetworkKind.unmetered;
+
+  /// Bound by [registerJobs] so `nextRunLabel` reads the active runner's
+  /// `nextDueAt(now)` (including 5-minute retry stamps).
+  DateTime Function(DateTime now)? activeSchedulerNextDue;
+
+  static NetworkKind parseNetworkKind(String raw) => switch (raw) {
+        'unmetered' => NetworkKind.unmetered,
+        'metered' => NetworkKind.metered,
+        _ => NetworkKind.unknown,
+      };
+
+  /// Refreshes [networkKind] from Android `ConnectivityManager`.
+  /// On desktop/iOS keeps `unmetered` unless an explicit test [channel]
+  /// reports `'metered'` or `'unmetered'`.
+  Future<NetworkKind> refreshNetworkKind([AndroidChannel? channel]) async {
+    final isAndroid = core.mobilePlatform() == 'android';
+    if (!isAndroid && channel == null) {
+      networkKind = NetworkKind.unmetered;
+      return networkKind;
+    }
+    try {
+      final raw = await (channel ?? const AndroidChannel()).networkKind();
+      if (!isAndroid && raw == 'unknown') {
+        networkKind = NetworkKind.unmetered;
+      } else {
+        networkKind = parseNetworkKind(raw);
+      }
+    } catch (_) {
+      networkKind = isAndroid ? NetworkKind.unknown : NetworkKind.unmetered;
+    }
+    return networkKind;
+  }
+
+  /// Union active school-day window across all configured accounts with
+  /// `background_refresh == true` (F6 §7.2, R8a N11).
+  ActiveDayWindow? deviceActiveDayWindow(DateTime day) {
+    if (accountsEnabled && rootDir != null && registry != null) {
+      final pairs = <({Map<String, Object?>? cache, Map<String, Object?> cfg})>[];
+      for (final acc in registry!.accounts) {
+        if (acc.adding) continue;
+        final accCfg = acc.id == activeAccountId
+            ? config
+            : ConfigManager.forAccount(rootDir!, acc.id);
+        if (accCfg.get('background_refresh', true) == false) continue;
+        final wizStep = int.tryParse('${accCfg.get('wizard_step', -1)}') ?? -1;
+        final (hasBak, hasStrava) = core.hasValidCredentials(accCfg.data);
+        if (wizStep >= 0 || (!hasBak && !hasStrava)) continue;
+        final accCache = acc.id == activeAccountId
+            ? data
+            : _safeLoadAccountCache(accountDirFor(rootDir!, acc.id));
+        pairs.add((cache: accCache, cfg: accCfg.data));
+      }
+      if (pairs.isNotEmpty) {
+        return combinedActiveDayWindow(pairs, day);
+      }
+    }
+    return activeDayWindow(data, config.data, day);
+  }
+
+  Map<String, Object?> _safeLoadAccountCache(String dir) {
+    try {
+      return loadDataCache(dataDir: dir);
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  /// Next wake-up alarm for one account's config/cache, or null when disabled.
+  DateTime? nextWakeupAlarmForAccount(
+    Map<String, Object?> cfgData,
+    Map<String, Object?> cacheData,
+    DateTime now,
+  ) {
+    if (cfgData['wakeup_enabled'] != true) return null;
+    try {
+      final demo = _isDemoCache(cacheData);
+      if (demo) return null;
+      final tt = <String, Object?>{
+        for (final e in _timetableFromCache(cacheData, false).entries)
+          e.key: e.value,
+      };
+      return core.nextWakeupAlarm(
+        tt,
+        config: cfgData,
+        now: now,
+        stableBaseline: _stableBaselineFromCache(cacheData),
+      )?.alarmDt;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Primary account's next wake-up alarm (for off-hours pre-alarm wake, §7.3).
+  DateTime? primaryNextAlarm(DateTime now) {
+    if (accountsEnabled && rootDir != null && registry != null) {
+      final pid = registry!.primaryId;
+      if (pid != activeAccountId) {
+        try {
+          final pCfg = ConfigManager.forAccount(rootDir!, pid);
+          final pCache = _safeLoadAccountCache(accountDirFor(rootDir!, pid));
+          return nextWakeupAlarmForAccount(pCfg.data, pCache, now);
+        } catch (_) {
+          return null;
+        }
+      }
+    }
+    return nextWakeupAlarmForAccount(config.data, data, now);
+  }
+
+  /// Device-level next scheduled check time (F6 §7.3, §7.4).
+  DateTime nextScheduledWakeAt(DateTime? lastRun, DateTime now) =>
+      nextScheduledWake(
+        lastRun,
+        config.data,
+        deviceActiveDayWindow,
+        networkKind,
+        now,
+        nextAlarm: primaryNextAlarm(now),
+      );
+
+  /// Device-level effective check interval at [now] (0 = paused off-hours).
+  double effectiveDeviceIntervalMinutes(DateTime now) =>
+      effectiveCheckIntervalMinutes(
+        config.data,
+        deviceActiveDayWindow(now),
+        networkKind,
+        now,
+      );
+
+  /// School-hours interval for the current network (never 0, for `bg_notif_text`, §8.2).
+  int schoolHoursIntervalForCurrentNetwork() {
+    final fast = effectiveCheckIntervalMinutes(
+      config.data,
+      (start: DateTime(2000, 1, 1, 0, 0), end: DateTime(2000, 1, 2, 0, 0)),
+      networkKind,
+      DateTime(2000, 1, 1, 12, 0),
+    );
+    final n = fast.round();
+    return n < 1 ? 1 : n;
+  }
+
+  String get _quickCounterKey => activeAccountId ?? '__single__';
+
+  int get quickChecksToday {
+    final key = _quickCounterKey;
+    final day = quickChecksDayByAccount[key];
+    final now = clock.now();
+    if (day == null ||
+        day.year != now.year ||
+        day.month != now.month ||
+        day.day != now.day) {
+      return 0;
+    }
+    return quickChecksTodayByAccount[key] ?? 0;
+  }
+
+  DateTime? get lastQuickCheck {
+    final mem =
+        quickChecksToday > 0 ? lastQuickCheckByAccount[_quickCounterKey] : null;
+    final saved = demoMode ? null : partUpdatedTime(data, 'quick');
+    if (saved != null && (mem == null || saved.isAfter(mem))) return saved;
+    return mem;
+  }
+
+  void recordSilentQuickCheck(String? accountId, DateTime at) {
+    final key = accountId ?? '__single__';
+    final prevDay = quickChecksDayByAccount[key];
+    final sameDay = prevDay != null &&
+        prevDay.year == at.year &&
+        prevDay.month == at.month &&
+        prevDay.day == at.day;
+    quickChecksTodayByAccount[key] =
+        sameDay ? (quickChecksTodayByAccount[key] ?? 0) + 1 : 1;
+    quickChecksDayByAccount[key] = DateTime(at.year, at.month, at.day);
+    lastQuickCheckByAccount[key] = at;
+  }
 
   /// Fired when `primary_id` changes so `PhoneBackground` can poke status
   /// immediately (§8).
@@ -831,6 +1004,9 @@ class AppState {
       registry = res.registry;
       runsByAccount.remove(targetId);
       logLinesByAccount.remove(targetId);
+      quickChecksTodayByAccount.remove(targetId);
+      lastQuickCheckByAccount.remove(targetId);
+      quickChecksDayByAccount.remove(targetId);
       if (res.wasPrimary) {
         await ensureWarmedFn(accountDirFor(rootDir!, res.nextPrimaryId));
         syncAndroidState();
@@ -1176,6 +1352,11 @@ class AppState {
       final added = freeLunchDays(config.data).difference(freeBefore);
       if (added.isNotEmpty) clearCancelHandledDays(added);
     }
+    if (updates.containsKey('bakalari_url') ||
+        updates.containsKey('bakalari_username') ||
+        updates.containsKey('bakalari_password')) {
+      core.BakalariSessionPool.instance.evict(activeAccountDir ?? rootDir);
+    }
     refreshTokens();
     for (final cb in List.of(configListeners)) {
       try {
@@ -1245,6 +1426,60 @@ class AppState {
     } catch (_) {
       return '${data['last_updated'] ?? ''}';
     }
+  }
+
+  /// Per-part freshness label for screens (F6 §5.4).
+  String updatedLabelFor(String part) {
+    if (demoMode) return Strings.get('no_data');
+    try {
+      return describeCacheForPart(
+        data,
+        part,
+        num.tryParse('${get('cache_ttl_hours', 24)}') ?? 24,
+      );
+    } catch (_) {
+      return updatedLabel;
+    }
+  }
+
+  static String _shortFreshnessStamp(DateTime when, DateTime now) {
+    final hm =
+        '${when.hour.toString().padLeft(2, '0')}:${when.minute.toString().padLeft(2, '0')}';
+    final sameDay =
+        when.year == now.year && when.month == now.month && when.day == now.day;
+    if (sameDay) return hm;
+    return '${when.day.toString().padLeft(2, '0')}.${when.month.toString().padLeft(2, '0')}. $hm';
+  }
+
+  /// Activity & Settings → Diagnostika freshness label (F6 §5.4):
+  /// shows `Kontrola: HH:MM · Úplná: DD.MM. HH:MM` when quick is newer than full.
+  String get activityUpdatedLabel {
+    if (demoMode) return Strings.get('no_data');
+    final quick = partUpdatedTime(data, 'quick');
+    final full = partUpdatedTime(data, 'full') ?? lastUpdatedTime(data);
+    if (quick != null && full != null && quick.isAfter(full)) {
+      final now = clock.now();
+      return Strings.format('refresh_checked_full', {
+        'checked': _shortFreshnessStamp(quick, now),
+        'full': _shortFreshnessStamp(full, now),
+      });
+    }
+    return updatedLabel;
+  }
+
+  /// Desktop TopBar status tooltip freshness prefix (F6 §5.4, R8a S11).
+  String get tooltipUpdatedLabel {
+    if (demoMode) return '${Strings.get('last_updated')}: $updatedLabel';
+    final checked = lastCheckedTime(data);
+    if (checked != null) {
+      final now = clock.now();
+      return core.t(
+        'status_checked',
+        lang: Strings.lang,
+        args: {'time': _shortFreshnessStamp(checked, now)},
+      );
+    }
+    return '${Strings.get('last_updated')}: $updatedLabel';
   }
 
   Map<String, double> absence() {

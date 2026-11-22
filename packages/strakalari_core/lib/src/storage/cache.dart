@@ -26,6 +26,16 @@ const int cacheVersion = 2;
 /// stamped before an auto-phase error.
 const String scheduledRefreshFailedKey = 'scheduled_refresh_failed';
 
+/// Data-cache key: scope (`'all'`, `'quick'`, …) of the failed scheduled
+/// refresh recorded in [scheduledRefreshFailedKey], so a failed full run
+/// retries as a full run instead of being downgraded to a quick tick (F6).
+const String scheduledRefreshFailedScopeKey = 'scheduled_refresh_failed_scope';
+
+/// Data-cache key: per-subsystem freshness timestamps (`quick`, `full`,
+/// `timetable`, `stable_timetable`, `subject_directory`, `marks`, `absence`,
+/// `outbox`, `strava`).
+const String partUpdatedKey = 'part_updated';
+
 /// Data-cache key: parsed sent-excuse entries keyed by Komens message key
 /// (`id` or `id|sortDate`), so routine refreshes skip `GetMessageDataAsync`
 /// for messages already read.
@@ -33,6 +43,30 @@ const String scheduledRefreshFailedKey = 'scheduled_refresh_failed';
 /// Versioned (`_v1`): any change to what `sentExcuseEntries` returns must
 /// bump this version so previously cached entries are re-read.
 const String outboxDetailsKey = 'komens_outbox_details_v1';
+
+/// Data-cache key: cached Komens outbox hidden fields (`__VIEWSTATE`,
+/// `__VIEWSTATEGENERATOR`, `__EVENTVALIDATION`) + period bounds (F6 §4.4).
+const String outboxFormKey = 'komens_outbox_form_v1';
+
+/// Data-cache key: last parsed `/Marks/Widget` entries (F6 §5.1).
+const String marksWidgetKey = 'marks_widget_v1';
+
+/// Data-cache key: ISO timestamp recorded while `/Marks/Widget` is broken.
+const String marksWidgetFailedKey = 'marks_widget_failed_at';
+
+/// Data-cache key: ISO timestamp recorded while `prubzna.aspx` is failing.
+const String gradesFailedKey = 'grades_failed_at';
+
+/// Data-cache key: per-Monday SHA-256 hashes of substitution feed entries.
+const String substitutionsWeekHashesKey = 'substitutions_week_hashes_v1';
+
+/// Data-cache key: ISO timestamp recorded while direct `GetAbsenceBySubjects`
+/// is failing so quick ticks throttle page fallback to hourly.
+const String absenceDirectFailedKey = 'absence_direct_failed_at';
+
+/// Data-cache key: per-subject missed-hour counts at the last run that loaded
+/// all regular past weeks (F6 §4.3, R8a S1).
+const String absenceCountsAtPastFetchKey = 'absence_counts_at_past_fetch';
 
 /// Parses a `last_updated` stamp; null when missing or unparsable.
 ///
@@ -147,7 +181,7 @@ String _stampNow() {
 /// when [replace] is true. A busy cache file is left untouched: merging
 /// against an unreadable file would drop every other key.
 Map<String, Object?> saveDataCache(Map<String, Object?>? data,
-    {bool replace = false, String? dataDir}) {
+    {bool replace = false, String? dataDir, bool preserveLastUpdated = false}) {
   final dir = requirePerAccountDir(dataDir);
   if (isAccountDirDeleted(dir)) {
     throw StateError("Account folder '$dir' was deleted; refusing cache write.");
@@ -163,11 +197,19 @@ Map<String, Object?> saveDataCache(Map<String, Object?>? data,
   }
   current.addAll(data ?? <String, Object?>{});
   current['_cache_version'] = cacheVersion;
-  if (!current.containsKey('last_updated') ||
-      ((data ?? <String, Object?>{}).containsKey('last_updated'))) {
+  if (!preserveLastUpdated &&
+      (!current.containsKey('last_updated') ||
+          ((data ?? <String, Object?>{}).containsKey('last_updated')))) {
     current['last_updated'] = (data ?? <String, Object?>{})['last_updated'] ??
         current['last_updated'] ??
         _stampNow();
+  }
+  if (data != null &&
+      data.containsKey('last_updated') &&
+      !data.containsKey(partUpdatedKey)) {
+    // Explicit last_updated overwrite without part_updated: clear stale
+    // per-part stamps so lastCheckedTime/partUpdatedTime follow last_updated.
+    current.remove(partUpdatedKey);
   }
   try {
     atomicWriteJson(path, current);
@@ -221,7 +263,40 @@ DateTime? lastUpdatedTime([Map<String, Object?>? cache]) {
   return _parseTs(data['last_updated']);
 }
 
-/// Scheduler seed: when the cached data was last refreshed.
+/// Parsed timestamp of one subsystem in `part_updated` (null when missing).
+///
+/// For pre-F6 caches without a `part_updated` map, falls back to
+/// [lastUpdatedTime]. Once `part_updated` is present, a missing part returns
+/// null so a failed subsystem never inherits `last_updated`.
+DateTime? partUpdatedTime(Map<String, Object?>? cache, String part) {
+  if (cache == null) return null;
+  final rawParts = cache[partUpdatedKey];
+  if (rawParts is Map) {
+    return _parseTs(rawParts[part]);
+  }
+  return lastUpdatedTime(cache);
+}
+
+/// Newest of `part_updated['quick']`, `part_updated['full']`, and
+/// `last_updated` (null when none is valid).
+DateTime? lastCheckedTime([Map<String, Object?>? cache]) {
+  final data = cache ?? loadDataCache();
+  DateTime? newest;
+  void consider(DateTime? dt) {
+    if (dt == null) return;
+    if (newest == null || dt.isAfter(newest!)) newest = dt;
+  }
+
+  final rawParts = data[partUpdatedKey];
+  if (rawParts is Map) {
+    consider(_parseTs(rawParts['quick']));
+    consider(_parseTs(rawParts['full']));
+  }
+  consider(_parseTs(data['last_updated']));
+  return newest;
+}
+
+/// Scheduler seed: when the cached data was last checked (full or quick).
 ///
 /// Returns null when the stamp is missing, unparsable, or in the future
 /// (clock skew / bogus stamp) — callers then refresh on start, exactly
@@ -229,7 +304,7 @@ DateTime? lastUpdatedTime([Map<String, Object?>? cache]) {
 DateTime? startupSeed([Map<String, Object?>? cache, DateTime? now]) {
   late final DateTime? seed;
   try {
-    seed = lastUpdatedTime(cache);
+    seed = lastCheckedTime(cache);
   } on Object {
     return null;
   }
@@ -277,4 +352,43 @@ String describeCache([Map<String, Object?>? cache, num ttlHours = 24]) {
   }
   final stale = isCacheStale(data, ttlHours) ? " (${t('cache_stale')})" : '';
   return '$last · $ageS$stale';
+}
+
+/// Short human label for one subsystem's freshness (`part_updated[part]`),
+/// falling back to [describeCache] on pre-F6 caches without `part_updated`.
+String describeCacheForPart(
+  Map<String, Object?>? cache,
+  String part, [
+  num ttlHours = 24,
+]) {
+  final data = cache ?? loadDataCache();
+  if (data[partUpdatedKey] is! Map) {
+    return describeCache(data, ttlHours);
+  }
+  final ts = part == 'quick'
+      ? lastCheckedTime(data)
+      : partUpdatedTime(data, part);
+  if (ts == null) return '—';
+  String two(int n) => n.toString().padLeft(2, '0');
+  final stamp = '${two(ts.day)}.${two(ts.month)}.${ts.year} '
+      '${two(ts.hour)}:${two(ts.minute)}:${two(ts.second)}';
+  final age = clock.now().difference(ts);
+  final hours = age.inMicroseconds / 3600000000;
+  late final String ageS;
+  if (hours < 1) {
+    final mins = age.inSeconds ~/ 60;
+    ageS = mins >= 1 ? t('cache_age_min', args: {'n': mins}) : t('cache_age_now');
+  } else if (hours < 48) {
+    ageS = t('cache_age_hours', args: {'n': hours.toStringAsFixed(1)});
+  } else {
+    ageS = t('cache_age_days', args: {'n': hours ~/ 24});
+  }
+  bool stale;
+  try {
+    stale = age > Duration(microseconds: (ttlHours * 3600 * 1000000).round());
+  } on UnsupportedError {
+    stale = age > const Duration(hours: 24);
+  }
+  final staleLabel = stale ? " (${t('cache_stale')})" : '';
+  return '$stamp · $ageS$staleLabel';
 }

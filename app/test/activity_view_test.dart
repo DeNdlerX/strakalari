@@ -370,5 +370,167 @@ void main() {
         expect(plannedSubs, contains(Strings.get('audit_reason_planned')));
       }
     });
+
+    testWidgets('F6 Aktivita shows quick-check rollup line, scope_quick badge, and keeps quick out of manual chips',
+        (tester) async {
+      final savedLang = Strings.lang;
+      addTearDown(() => Strings.lang = savedLang);
+      Strings.lang = 'cs';
+      final now = DateTime(2026, 11, 20, 10, 15);
+      final c = ActivityController({'check_interval_minutes': 5})
+        ..quickChecksToday = 14
+        ..lastQuickCheck = DateTime(2026, 11, 20, 10, 10)
+        ..runs = [
+          {
+            'started': '10:05:00',
+            'finished': '20.11. 10:05',
+            'at': '2026-11-20T10:05:00',
+            'seconds': 1,
+            'ok': true,
+            'scope': 'quick',
+            'detail': '1 nová známka',
+            'cancelled': false,
+          },
+        ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ActivityView(
+              controller: c,
+              nowFor: () => now,
+              updatedLabel: 'Kontrola: 10:10 · Úplná: 07:00',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('activity:quick_checks')), findsOneWidget);
+      expect(find.textContaining('14×'), findsOneWidget);
+      expect(find.textContaining('10:10'), findsWidgets);
+      expect(find.textContaining(Strings.get('scope_quick')), findsOneWidget);
+      // Manual refresh SegmentedButton must NOT include 'quick' (only all / bakalari / strava).
+      final seg = tester.widget<SegmentedButton<String>>(
+        find.byType(SegmentedButton<String>),
+      );
+      expect(seg.segments.map((s) => s.value).toList(),
+          ['all', 'bakalari', 'strava']);
+    });
+
+    testWidgets(
+        'F6 Aktivita hero and Posledni beh card show quick check time when no run rows or quick is newer (R8 S1)',
+        (tester) async {
+      final savedLang = Strings.lang;
+      addTearDown(() => Strings.lang = savedLang);
+      Strings.lang = 'cs';
+      final now = DateTime(2026, 11, 20, 10, 15);
+
+      // 1. After restart: no in-memory run rows and quickChecksToday == 0,
+      //    but saved cache has part_updated['quick'] at 10:10.
+      final dir = Directory.systemTemp.createTempSync('strakalari_s1_');
+      setEnvironmentOverride({
+        'STRAKALARI_DATA_DIR': dir.path,
+        'STRAKALARI_NO_KEYRING': '1',
+      });
+      addTearDown(() {
+        setEnvironmentOverride(null);
+        if (dir.existsSync()) dir.deleteSync(recursive: true);
+      });
+      final s = AppState(
+        data: {
+          'absence': {'Matematika': 5.0},
+          partUpdatedKey: {'quick': '2026-11-20T10:10:00'},
+        },
+      );
+      expect(s.runs, isEmpty);
+      expect(s.quickChecksToday, 0);
+      final cFromState = activityControllerFor(s);
+      expect(cFromState.lastQuickCheck, DateTime(2026, 11, 20, 10, 10));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ActivityView(
+              controller: cFromState,
+              nowFor: () => now,
+              updatedLabel: 'Kontrola: 10:10 · Úplná: 07:00',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Hero shows ok state with 10:10, never status_idle or no_runs_yet in the hero.
+      expect(find.text(Strings.get('status_ok')), findsOneWidget);
+      expect(find.text(Strings.get('status_idle')), findsNothing);
+      expect(
+        find.text(Strings.format('activity_last_ok', {'when': '10:10'})),
+        findsOneWidget,
+      );
+      // With quickChecksToday > 0 and no run rows, no_runs_yet is absent from the entire screen.
+      cFromState.quickChecksToday = 2;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ActivityView(
+              controller: cFromState,
+              nowFor: () => now,
+              updatedLabel: 'Kontrola: 10:10 · Úplná: 07:00',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(Strings.get('no_runs_yet')), findsNothing);
+
+      // Poslední běh card shows '10:10' with kind 'ok'.
+      final lastRunCard = find.ancestor(
+        of: find.text(Strings.get('last_run')),
+        matching: find.byWidgetPredicate(
+          (w) => w.runtimeType.toString() == 'StatCard',
+        ),
+      );
+      expect(lastRunCard, findsOneWidget);
+      expect(
+        find.descendant(of: lastRunCard, matching: find.text('10:10')),
+        findsOneWidget,
+      );
+
+      // 2. When a run row exists from 09:30 and lastQuickCheck is 10:10 (newer),
+      //    hero and Poslední běh still show 10:10.
+      cFromState.runs = [
+        {
+          'started': '09:30:00',
+          'finished': '20.11. 09:30',
+          'at': '2026-11-20T09:30:00',
+          'seconds': 2,
+          'ok': true,
+          'scope': 'all',
+          'detail': '10 předmětů',
+          'cancelled': false,
+        },
+      ];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ActivityView(
+              controller: cFromState,
+              nowFor: () => now,
+              updatedLabel: 'Kontrola: 10:10 · Úplná: 09:30',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text(Strings.format('activity_last_ok', {'when': '10:10'})),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: lastRunCard, matching: find.text('10:10')),
+        findsOneWidget,
+      );
+    });
   });
 }

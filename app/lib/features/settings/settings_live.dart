@@ -29,7 +29,7 @@ SettingsController settingsControllerFor(
     for (final subj in (allowed ?? abs.keys)) subj: abs[subj] ?? 0.0,
   };
   cfg['app_version'] = core.getCurrentVersion();
-  cfg['cache_info'] = s.updatedLabel;
+  cfg['cache_info'] = s.activityUpdatedLabel;
 
   bool storeManaged = false;
   try {
@@ -77,6 +77,7 @@ SettingsController settingsControllerFor(
     setAutostart: liveSetAutostart,
     storeManaged: storeManaged,
     isAndroid: core.mobilePlatform() == 'android',
+    isIos: core.mobilePlatform() == 'ios',
     wakeupAvailable: s.wakeupAvailable,
   );
   if (wakeupPhone != null) {
@@ -85,6 +86,7 @@ SettingsController settingsControllerFor(
     c.wakeupPhone = channelWakeupPhone(s);
   }
   c.backgroundStatusInputs = s.backgroundStatusInputs;
+  c.backgroundNotificationInterval = s.schoolHoursIntervalForCurrentNetwork;
   c.drafts.addAll(s.drafts);
   c.settingsSection = s.settingsSection;
   c.settingsOpen = s.settingsOpen;

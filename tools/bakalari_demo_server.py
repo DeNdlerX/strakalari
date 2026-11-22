@@ -21,9 +21,10 @@ import json
 import re
 import secrets
 import threading
+import time
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 DAYS_CS = ["pondělí", "úterý", "středa", "čtvrtek", "pátek", "sobota", "neděle"]
 
@@ -262,6 +263,28 @@ def grades_page(today: date) -> str:
     return shell("Klasifikace - průběžná (prubzna.aspx)", cells)
 
 
+def marks_widget_html(today: date) -> str:
+    """Dashboard `/Marks/Widget` fragment listing the 5 newest marks."""
+    items = []
+    for key, rows in GRADES.items():
+        for days_ago, mark, _weight, caption in rows:
+            given = today - timedelta(days=days_ago)
+            items.append((given, mark, SUBJECTS[key][0], caption, days_ago <= 7))
+    items.sort(key=lambda r: r[0], reverse=True)
+    lines = []
+    for given, mark, subject, caption, is_new in items[:5]:
+        cls = "mark-displayGrade isNew" if is_new else "mark-displayGrade"
+        lines.append(
+            '<div class="mark-line">'
+            f'<span class="{cls}">{html.escape(mark)}</span>'
+            f'<span class="mark-subjectName">{html.escape(subject)}</span>'
+            f'<span class="mark-note">{html.escape(caption)}</span>'
+            f'<span class="mark-date">{given.day}.{given.month}.</span>'
+            '</div>'
+        )
+    return '<div class="bk-widget-marks">' + "".join(lines) + "</div>"
+
+
 def absence_page(today: date) -> str:
     info = {"DefaultDateFrom": {"DefaultValue": f"{school_year_start(today).isoformat()}T00:00:00+02:00"},
             "DefaultDateTo": {"DefaultValue": f"{today.isoformat()}T00:00:00+02:00"}}
@@ -431,6 +454,8 @@ def outbox_page(period_start: date | None = None, period_end: date | None = None
     action = f"komens.aspx?{query_string}" if query_string else "komens.aspx?l=o"
     return shell("Komens - odeslané", f"""<form id="formbaka" method="post" action="{html.escape(action, quote=True)}">
 <input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="demo:{period_start.isoformat()}:{period_end.isoformat()}">
+<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="DEMO1234">
+<input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="demo-ev">
 <input type="hidden" name="ctl00$cphmain$hfListType" id="hfListType" value="odeslane">
 <span id="cphmain_obdobiLabel">{cz_date(period_start)} - {cz_date(period_end)}</span>
 </form>""")
@@ -473,10 +498,21 @@ MAX_BODY = 1_000_000
 class Server(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, user: str, password: str):
+    def __init__(
+        self,
+        address,
+        user: str,
+        password: str,
+        *,
+        short_cached_outbox: bool = False,
+        session_minutes: float = 0.0,
+    ):
         super().__init__(address, Handler)
         self.user, self.password = user, password
-        self.sessions: set = set()
+        self.short_cached_outbox = short_cached_outbox
+        self.session_minutes = max(0.0, float(session_minutes))
+        self.sessions: dict[str, float] = {}
+        self.sessions_lock = threading.Lock()
         self.outbox = Outbox(date.today())
 
 
@@ -495,7 +531,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
-        for key, value in (headers or {}).items():
+        merged = dict(getattr(self, "_renewed_headers", None) or {})
+        merged.update(headers or {})
+        self._renewed_headers = None
+        for key, value in merged.items():
             self.send_header(key, value)
         self.end_headers()
         if self.command != "HEAD":
@@ -529,7 +568,34 @@ class Handler(BaseHTTPRequestHandler):
         return ""
 
     def logged_in(self) -> bool:
-        return self.cookie_token() in self.server.sessions
+        self._renewed_headers = None
+        token = self.cookie_token()
+        if not token:
+            return False
+        with self.server.sessions_lock:
+            renewed_at = self.server.sessions.get(token)
+            if renewed_at is None:
+                return False
+            mins = self.server.session_minutes
+            if mins > 0:
+                now_mono = time.monotonic()
+                age = now_mono - renewed_at
+                if age >= mins * 60.0:
+                    self.server.sessions.pop(token, None)
+                    return False
+                if age >= mins * 30.0:
+                    new_token = secrets.token_hex(16)
+                    self.server.sessions[new_token] = now_mono
+                    self.server.sessions.pop(token, None)
+                    self._renewed_headers = {
+                        "Set-Cookie": f"BakaAuth={new_token}; Path=/; HttpOnly; SameSite=Lax"
+                    }
+            return True
+
+    def _login_redirect(self, path: str) -> str:
+        if self.server.session_minutes > 0:
+            return f"/login?ReturnUrl={quote(path, safe='')}"
+        return "/login"
 
     # -- routing
 
@@ -547,12 +613,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self.redirect("/dashboard")
             return self.html(LOGIN_PAGE.format(error=""))
         if not self.logged_in():
-            return self.redirect("/login")
+            return self.redirect(self._login_redirect(path))
         today = date.today()
         if lower == "/dashboard":
             return self.html(shell("Přehled", "<p>Demo student, " + CLASS_NAME + "</p>"))
         if lower == "/next/prubzna.aspx":
             return self.html(grades_page(today))
+        if lower == "/marks/widget":
+            return self.html(marks_widget_html(today))
         if lower == "/absence/continuous":
             return self.html(absence_page(today))
         if lower == "/absence/continuous/getabsencebysubjects":
@@ -574,7 +642,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.login()
         if not self.logged_in():
             self.body()
-            return self.redirect("/login")
+            return self.redirect(self._login_redirect(url.path or "/"))
         today = date.today()
         if lower == "/timetable/getcontentdata":
             payload = _json_body(self.body())
@@ -592,7 +660,20 @@ class Handler(BaseHTTPRequestHandler):
         if lower == "/next/komens.aspx":
             fields = self.form()
             viewstate = (fields.get("__VIEWSTATE") or [""])[0]
-            period = _viewstate_period(viewstate) or outbox_period(parse_qs(url.query), today)
+            if not viewstate or not (fields.get("__VIEWSTATEGENERATOR") or [""])[0] or not (fields.get("__EVENTVALIDATION") or [""])[0]:
+                return self._send(
+                    200,
+                    "0|/*DX*/({'redirect':'/dashboard?e='})",
+                    "text/plain; charset=utf-8",
+                )
+            is_short_cached = (
+                self.server.short_cached_outbox
+                and "ctl00$cphmain$hfListType" not in fields
+            )
+            if is_short_cached:
+                period = (today - timedelta(days=30), today)
+            else:
+                period = _viewstate_period(viewstate) or outbox_period(parse_qs(url.query), today)
             raw_param = (fields.get("__CALLBACKPARAM") or [""])[0]
             if raw_param.startswith("c0:"):
                 raw_param = raw_param[3:]
@@ -635,9 +716,11 @@ class Handler(BaseHTTPRequestHandler):
             error = '<div class="login-error">Nesprávné jméno nebo heslo</div>'
             return self.html(LOGIN_PAGE.format(error=error))
         token = secrets.token_hex(16)
-        self.server.sessions.add(token)
-        if len(self.server.sessions) > 500:  # a demo, not a bank: keep memory bounded
-            self.server.sessions.pop()
+        with self.server.sessions_lock:
+            self.server.sessions[token] = time.monotonic()
+            if len(self.server.sessions) > 500:  # a demo, not a bank: keep memory bounded
+                oldest = next(iter(self.server.sessions))
+                self.server.sessions.pop(oldest, None)
         self.redirect("/dashboard", {"Set-Cookie": f"BakaAuth={token}; Path=/; HttpOnly; SameSite=Lax"})
 
     def send_excuse(self):
@@ -711,8 +794,25 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--user", default="demo")
     parser.add_argument("--password", default="demo")
+    parser.add_argument(
+        "--short-cached-outbox",
+        action="store_true",
+        help="simulate 3-field Komens callback returning only the last 30 days (F6 §4.4)",
+    )
+    parser.add_argument(
+        "--session-minutes",
+        type=float,
+        default=0.0,
+        help="sliding session lifetime in minutes (0 = never expires; e.g. 15 for F6 §6.3)",
+    )
     args = parser.parse_args()
-    server = Server((args.host, args.port), args.user, args.password)
+    server = Server(
+        (args.host, args.port),
+        args.user,
+        args.password,
+        short_cached_outbox=args.short_cached_outbox,
+        session_minutes=args.session_minutes,
+    )
     print(f"Bakaláři demo on http://{args.host}:{args.port}  login: {args.user} / {args.password}", flush=True)
     try:
         server.serve_forever()
