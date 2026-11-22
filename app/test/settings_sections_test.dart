@@ -836,6 +836,106 @@ void main() {
       );
       expect(find.byType(LimitsPage), findsOneWidget);
     });
+
+    group('F6 refresh schedule & live data-usage estimator (§8.1)', () {
+      testWidgets('Android shows all 5 controls, chips update live estimate, and Doze note shows',
+          (t) async {
+        t.view.physicalSize = const Size(420, 2200);
+        t.view.devicePixelRatio = 1.0;
+        addTearDown(t.view.resetPhysicalSize);
+
+        final c = SettingsController(
+          {
+            'check_interval_minutes': 5,
+            'check_interval_mobile_minutes': 5,
+            'check_interval_off_hours_minutes': 60,
+            'refresh_wifi_always_fast': true,
+            'use_strava': true,
+          },
+          isAndroid: true,
+        );
+        await _openSection(t, c, 'rules');
+
+        expect(find.byKey(const Key('rule:interval')), findsOneWidget);
+        expect(find.byKey(const Key('rule:interval_mobile')), findsOneWidget);
+        expect(find.byKey(const Key('rule:wifi_always_fast')), findsOneWidget);
+        expect(find.byKey(const Key('rule:interval_off_hours')), findsOneWidget);
+        expect(find.byKey(const Key('rule:data_estimate')), findsOneWidget);
+        expect(find.text(Strings.get('data_estimate_doze')), findsOneWidget);
+
+        // Tap 15 min mobile chip -> saves 15 and updates data estimate live!
+        final beforeText = (t.widget<Text>(find
+                .descendant(
+                    of: find.byKey(const Key('rule:data_estimate')),
+                    matching: find.byType(Text))
+                .first))
+            .data!;
+        await t.tap(find.byKey(const Key('rule:interval_mobile:chip:15')));
+        await t.pumpAndSettle();
+        expect(c.get('check_interval_mobile_minutes'), 15);
+        final afterText = (t.widget<Text>(find
+                .descendant(
+                    of: find.byKey(const Key('rule:data_estimate')),
+                    matching: find.byType(Text))
+                .first))
+            .data!;
+        expect(afterText, isNot(beforeText));
+      });
+
+      testWidgets('Desktop hides mobile field and Doze note, toggles off-hours dropdown with switch',
+          (t) async {
+        t.view.physicalSize = const Size(800, 2200);
+        t.view.devicePixelRatio = 1.0;
+        addTearDown(t.view.resetPhysicalSize);
+
+        final c = SettingsController(
+          {
+            'check_interval_minutes': 5,
+            'refresh_wifi_always_fast': true,
+            'check_interval_off_hours_minutes': 60,
+          },
+          isAndroid: false,
+          isIos: false,
+        );
+        await _openSection(t, c, 'rules');
+
+        expect(find.byKey(const Key('rule:interval')), findsOneWidget);
+        expect(find.byKey(const Key('rule:interval_mobile')), findsNothing);
+        expect(find.byKey(const Key('rule:wifi_always_fast')), findsOneWidget);
+        expect(find.byKey(const Key('rule:interval_off_hours')), findsNothing);
+        expect(find.byKey(const Key('rule:data_estimate')), findsOneWidget);
+        expect(find.text(Strings.get('data_estimate_doze')), findsNothing);
+
+        // Turn switch off -> off-hours dropdown appears!
+        await t.tap(find.byKey(const Key('rule:wifi_always_fast')));
+        await t.pumpAndSettle();
+        expect(c.get('refresh_wifi_always_fast'), isFalse);
+        expect(find.byKey(const Key('rule:interval_off_hours')), findsOneWidget);
+      });
+
+      testWidgets('iOS shows only control 1 and no estimate panel even when Strings.isMobile is true (R8a N2)',
+          (t) async {
+        final prevMobile = Strings.isMobile;
+        Strings.isMobile = true;
+        addTearDown(() => Strings.isMobile = prevMobile);
+        t.view.physicalSize = const Size(420, 2000);
+        t.view.devicePixelRatio = 1.0;
+        addTearDown(t.view.resetPhysicalSize);
+
+        final c = SettingsController(
+          {'check_interval_minutes': 5},
+          isAndroid: false,
+          isIos: true,
+        );
+        await _openSection(t, c, 'rules');
+
+        expect(find.byKey(const Key('rule:interval')), findsOneWidget);
+        expect(find.byKey(const Key('rule:interval_mobile')), findsNothing);
+        expect(find.byKey(const Key('rule:wifi_always_fast')), findsNothing);
+        expect(find.byKey(const Key('rule:interval_off_hours')), findsNothing);
+        expect(find.byKey(const Key('rule:data_estimate')), findsNothing);
+      });
+    });
   });
 }
 

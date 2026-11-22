@@ -77,6 +77,7 @@ SettingsController settingsControllerFor(
     setAutostart: liveSetAutostart,
     storeManaged: storeManaged,
     isAndroid: core.mobilePlatform() == 'android',
+    isIos: core.mobilePlatform() == 'ios',
     wakeupAvailable: s.wakeupAvailable,
   );
   if (wakeupPhone != null) {

@@ -47,6 +47,7 @@ class AutosaveField extends StatefulWidget {
   final String hint;
   final Object? Function(String raw)? parse;
   final void Function(Object? value)? onSaved;
+  final ValueChanged<String>? onChanged;
 
   /// Draft-only field (no save on blur): the commit keeps the draft
   /// for an explicit button handler (port of `_text`).
@@ -72,6 +73,7 @@ class AutosaveField extends StatefulWidget {
     this.hint = '',
     this.parse,
     this.onSaved,
+    this.onChanged,
     this.draftOnly = false,
     this.saveOnDispose = false,
     this.rejectMessage,
@@ -242,7 +244,10 @@ class _AutosaveFieldState extends State<AutosaveField> {
           obscureText: widget.password && _hidden,
           minLines: widget.multiline ? 3 : 1,
           maxLines: widget.multiline ? null : 1,
-          onChanged: (v) => widget.controller.setDraft(widget.draftKey, v),
+          onChanged: (v) {
+            widget.controller.setDraft(widget.draftKey, v);
+            widget.onChanged?.call(v);
+          },
           onSubmitted: (_) => _commit(),
         ),
       ],
@@ -1786,25 +1791,11 @@ class SettingsView extends StatelessWidget {
                 },
               ),
               _Hint(Strings.get('auto_cancel_lunches_hint')),
-              AutosaveField(
-                key: const Key('rule:interval'),
+              _RefreshScheduleSection(
                 controller: c,
-                label: Strings.get('check_interval'),
-                draftKey: 'rule:interval',
-                configKey: 'check_interval_minutes',
-                fallback: '${c.get('check_interval_minutes', 60)}',
-                parse: (raw) {
-                  try {
-                    return (double.parse(raw.replaceAll(',', '.')))
-                        .toInt()
-                        .clamp(1, 1 << 30);
-                  } catch (_) {
-                    throw FormatException('bad number');
-                  }
-                },
+                sharedScopeCaption: _sharedScopeCaption(),
+                onChanged: onChanged,
               ),
-              if (c.isMultiAccount)
-                _Hint(Strings.get('settings_interval_shared_hint')),
               AutosaveField(
                 controller: c,
                 label: Strings.get('excuse_delay'),
@@ -2392,5 +2383,273 @@ class SettingsView extends StatelessWidget {
         ),
       ),
     ];
+  }
+}
+
+/// F6 §8.1: "Kontroly a data / Checks and data" subsection inside Rules.
+///
+/// Platform rules (R8a N2): uses [SettingsController.isAndroid] /
+/// [SettingsController.isIos], NEVER `Strings.isMobile`:
+/// - Android: Wi-Fi interval + chips, Mobile interval + chips, Wi-Fi 24/7
+///   switch, Off-hours dropdown (always shown), Live Data Estimate (+ Doze).
+/// - Desktop: Interval + chips, Night/weekend switch, Off-hours dropdown
+///   (shown only when switch is off), Live Data Estimate.
+/// - iOS: Interval + chips only, no estimate panel.
+class _RefreshScheduleSection extends StatefulWidget {
+  final SettingsController controller;
+  final Widget? sharedScopeCaption;
+  final VoidCallback? onChanged;
+
+  const _RefreshScheduleSection({
+    required this.controller,
+    this.sharedScopeCaption,
+    this.onChanged,
+  });
+
+  @override
+  State<_RefreshScheduleSection> createState() =>
+      _RefreshScheduleSectionState();
+}
+
+class _RefreshScheduleSectionState extends State<_RefreshScheduleSection> {
+  static const List<int> _quickPicks = [5, 10, 15, 60];
+  static const List<int> _offHoursChoices = [60, 30, 120, 0];
+
+  SettingsController get c => widget.controller;
+
+  int _parsePositiveInt(Object? raw, int fallback) {
+    if (raw is num && raw >= 1) return raw.toInt();
+    final parsed = double.tryParse('${raw ?? ''}'.trim().replaceAll(',', '.'));
+    if (parsed != null && parsed >= 1) return parsed.toInt();
+    return fallback;
+  }
+
+  int _parseOffHoursInt(Object? raw) {
+    if (raw is num && raw >= 0) return raw.toInt();
+    final parsed = double.tryParse('${raw ?? ''}'.trim().replaceAll(',', '.'));
+    if (parsed != null && parsed >= 0) return parsed.toInt();
+    return 60;
+  }
+
+  Object _parseIntervalField(String raw) {
+    try {
+      return (double.parse(raw.replaceAll(',', '.')))
+          .toInt()
+          .clamp(1, 1 << 30);
+    } catch (_) {
+      throw const FormatException('bad number');
+    }
+  }
+
+  String _fmtMb(double mb) {
+    if (mb < 10.0) {
+      return mb.toStringAsFixed(1);
+    }
+    return mb.round().toString();
+  }
+
+  void _pickChip(String draftKey, String configKey, int value) {
+    FocusScope.of(context).unfocus();
+    c.clearDrafts(draftKey);
+    c.save({configKey: value});
+    setState(() {});
+    widget.onChanged?.call();
+  }
+
+  Widget _chips(Tokens tok, String draftKey, String configKey, int selected) {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        for (final v in _quickPicks)
+          ChoiceChip(
+            key: Key('$draftKey:chip:$v'),
+            label: Text(Strings.format('rule_interval_chip', {'n': v})),
+            selected: selected == v,
+            visualDensity: VisualDensity.compact,
+            labelStyle: TextStyle(fontSize: tok.fsTiny),
+            onSelected: (_) => _pickChip(draftKey, configKey, v),
+          ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tok = tokensOf(context);
+    final wifiSaved = _parsePositiveInt(c.get('check_interval_minutes', 5), 5);
+    final mobileSaved =
+        _parsePositiveInt(c.get('check_interval_mobile_minutes', 5), 5);
+    final wifiLive = _parsePositiveInt(
+        c.draft('rule:interval', '$wifiSaved'), wifiSaved);
+    final mobileLive = _parsePositiveInt(
+        c.draft('rule:interval_mobile', '$mobileSaved'), mobileSaved);
+    final wifiAlwaysFast = c.get('refresh_wifi_always_fast', true) != false;
+    final offHours =
+        _parseOffHoursInt(c.get('check_interval_off_hours_minutes', 60));
+    final offItems = <int>[
+      ..._offHoursChoices,
+      if (!_offHoursChoices.contains(offHours)) offHours,
+    ];
+    final showOffHours = c.isAndroid || (!c.isIos && !wifiAlwaysFast);
+
+    final liveCfg = <String, Object?>{
+      ...c.config.map((k, v) => MapEntry(k, v as Object?)),
+      'check_interval_minutes': wifiLive,
+      'check_interval_mobile_minutes': c.isAndroid ? mobileLive : wifiLive,
+      'check_interval_off_hours_minutes': offHours,
+      'refresh_wifi_always_fast': wifiAlwaysFast,
+    };
+    final bgAccounts = c.backgroundRefreshAccountCount;
+    final estimate = core.estimateDataUsage(
+      liveCfg,
+      accountCount: bgAccounts,
+      persistentTls: !c.isAndroid,
+      useStrava: c.get('use_strava', true) != false,
+    );
+    final desktopMonthMb = wifiAlwaysFast
+        ? estimate.wifiSchoolDayMb * 30.0
+        : estimate.allMobileMonthlyMb;
+    final freshnessMin =
+        (c.isAndroid ? estimate.effectiveMobileDayMin : estimate.effectiveWifiMin)
+            .round();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: 10,
+      children: [
+        const Divider(height: 16),
+        w.SectionHeader(Strings.get('rule_refresh_title'), tok: tok),
+        ?widget.sharedScopeCaption,
+        AutosaveField(
+          key: const Key('rule:interval'),
+          controller: c,
+          label: Strings.get(
+              c.isAndroid ? 'check_interval_wifi' : 'check_interval'),
+          draftKey: 'rule:interval',
+          configKey: 'check_interval_minutes',
+          fallback: '$wifiSaved',
+          parse: _parseIntervalField,
+          onChanged: (_) => setState(() {}),
+          onSaved: (_) {
+            setState(() {});
+            widget.onChanged?.call();
+          },
+        ),
+        _chips(tok, 'rule:interval', 'check_interval_minutes', wifiLive),
+        if (c.isAndroid) ...[
+          AutosaveField(
+            key: const Key('rule:interval_mobile'),
+            controller: c,
+            label: Strings.get('rule_interval_mobile'),
+            draftKey: 'rule:interval_mobile',
+            configKey: 'check_interval_mobile_minutes',
+            fallback: '$mobileSaved',
+            parse: _parseIntervalField,
+            onChanged: (_) => setState(() {}),
+            onSaved: (_) {
+              setState(() {});
+              widget.onChanged?.call();
+            },
+          ),
+          _chips(tok, 'rule:interval_mobile', 'check_interval_mobile_minutes',
+              mobileLive),
+          _Hint(Strings.get('rule_interval_mobile_hint')),
+        ],
+        if (!c.isIos)
+          SwitchListTile(
+            key: const Key('rule:wifi_always_fast'),
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+            title: Text(Strings.get(c.isAndroid
+                ? 'rule_wifi_always_fast'
+                : 'rule_wifi_always_fast_desktop')),
+            value: wifiAlwaysFast,
+            onChanged: (v) {
+              c.save({'refresh_wifi_always_fast': v});
+              setState(() {});
+              widget.onChanged?.call();
+            },
+          ),
+        if (showOffHours)
+          KeyedSubtree(
+            key: ValueKey('tree:rule:off_hours:$offHours'),
+            child: DropdownButtonFormField<int>(
+              key: const Key('rule:interval_off_hours'),
+              decoration: InputDecoration(
+                labelText: Strings.get('rule_interval_off_hours'),
+              ),
+              initialValue: offHours,
+              items: [
+                for (final v in offItems)
+                  DropdownMenuItem(
+                    value: v,
+                    child: Text(v == 0
+                        ? Strings.get('rule_off_hours_pause')
+                        : Strings.format('rule_off_hours_every', {'n': v})),
+                  ),
+              ],
+              onChanged: (v) {
+                if (v == null) return;
+                c.save({'check_interval_off_hours_minutes': v});
+                setState(() {});
+                widget.onChanged?.call();
+              },
+            ),
+          ),
+        if (!c.isIos)
+          Container(
+            key: const Key('rule:data_estimate'),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: tok.overlay,
+              borderRadius: BorderRadius.circular(tok.radiusSm),
+              border: Border.all(color: tok.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 4,
+              children: [
+                Text(
+                  [
+                    if (c.isAndroid)
+                      Strings.format('data_estimate_mobile', {
+                        'day': _fmtMb(estimate.mobileSchoolDayMb),
+                        'month': _fmtMb(estimate.typicalMonthlyMobileMb),
+                        'wifi': _fmtMb(estimate.wifiSchoolDayMb),
+                      })
+                    else
+                      Strings.format('data_estimate_desktop', {
+                        'day': _fmtMb(estimate.wifiSchoolDayMb),
+                        'month': _fmtMb(desktopMonthMb),
+                      }),
+                    if (bgAccounts > 1)
+                      Strings.format(
+                          'data_estimate_accounts', {'n': bgAccounts}),
+                  ].join(' '),
+                  style: TextStyle(
+                    color: tok.text,
+                    fontSize: tok.fsSmall,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  Strings.format(
+                      'data_estimate_freshness', {'n': freshnessMin}),
+                  style: TextStyle(color: tok.muted, fontSize: tok.fsTiny),
+                ),
+                if (c.isAndroid)
+                  Text(
+                    Strings.get('data_estimate_doze'),
+                    style: TextStyle(color: tok.faint, fontSize: tok.fsTiny),
+                  ),
+              ],
+            ),
+          ),
+        if (c.isMultiAccount)
+          _Hint(Strings.get('settings_interval_shared_hint')),
+        const Divider(height: 16),
+      ],
+    );
   }
 }

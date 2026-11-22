@@ -64,6 +64,7 @@ class SettingsController {
 
   /// Phone-only flags.
   final bool isAndroid;
+  final bool isIos;
   final bool wakeupAvailable;
 
   /// Phone-side facts and actions the wake-up card needs (Android only).
@@ -89,6 +90,13 @@ class SettingsController {
   String primaryAccountLabel = '';
 
   bool get isMultiAccount => accountsEnabled && accounts.length > 1;
+
+  /// Number of accounts participating in background refresh (at least 1).
+  int get backgroundRefreshAccountCount {
+    if (!accountsEnabled || accounts.isEmpty) return 1;
+    final n = accounts.where((a) => a.backgroundRefresh).length;
+    return n < 1 ? 1 : n;
+  }
 
   Future<bool> Function(String accountId)? onSwitchAccount;
   Future<bool> Function()? onBeginAddAccount;
@@ -146,6 +154,7 @@ class SettingsController {
     this.setAutostart,
     this.storeManaged = false,
     this.isAndroid = false,
+    this.isIos = false,
     this.wakeupAvailable = false,
   });
 
