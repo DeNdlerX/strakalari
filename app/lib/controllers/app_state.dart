@@ -554,8 +554,11 @@ class AppState {
   }
 
   DateTime? get lastQuickCheck {
-    if (quickChecksToday <= 0) return null;
-    return lastQuickCheckByAccount[_quickCounterKey];
+    final mem =
+        quickChecksToday > 0 ? lastQuickCheckByAccount[_quickCounterKey] : null;
+    final saved = demoMode ? null : partUpdatedTime(data, 'quick');
+    if (saved != null && (mem == null || saved.isAfter(mem))) return saved;
+    return mem;
   }
 
   void recordSilentQuickCheck(String? accountId, DateTime at) {
