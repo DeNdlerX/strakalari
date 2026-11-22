@@ -533,3 +533,120 @@ decision is needed for any of them.
    `StrakalariChannel.java:462`), `FakeBakalari` and the demo server's login.
 6. No throwaway worktree was needed (no code to test against a parent), so
    the shared pub cache wasn't touched. The main checkout wasn't touched.
+
+---
+
+## Re-review 2026-11-22
+
+At the owner's word ("Can you fix the plan yourself?", recorded in STATUS
+*Owner decisions*), the reviewer fixed the note itself, as with the F4
+note at R6a: `73d3aa2` changes only `design-F6.md` (and adds the STATUS
+owner line). No code. Each fixed rule in the note carries its finding's
+tag, e.g. *(R8a M1)*.
+
+### Verdict: PASS
+
+Every must-fix and should-fix finding is fixed in the note, checked
+below, and so are the notes that asked for a change (N1, N2, N3, N7, N8,
+N11). Because the same reviewer wrote the fixes and checked them, this
+check is less independent than usual: at R8 the code review must look
+hardest at the parts written here: §4.4 (completeness check), §5.3 1(e)
+and §7.5 (outbox reads while excuses are pending, scope rules), §7.3–7.4
+(the runner's next-due provider and every call site), §4.3 (fetch order,
+past-week snapshot, cached baseline) and §6.1 (exclusive lending).
+
+### Findings, checked
+
+- **M1:** §4.4 accepts a read through the 3 cached fields only when every
+  excuse already known in `komens_outbox_details_v1` inside the period is
+  in the reply; otherwise the same run reloads the full page. Only a
+  complete or full-page read sets `lastOutboxSyncOk`, `sentExcusesFrom`
+  or settles unconfirmed submits. First read, manual refresh and the
+  7-day reload always use the page. "The 3 fields keep the year period"
+  is marked unverified and on the Q3 list (§12). The test servers get the
+  one-month failure mode with its tests.
+- **M2:** while excuses are pending (`pendingExcuseTasksFor`), a quick
+  tick also reads the outbox when it is 60 minutes old or more (§5.3
+  1(e), §7.5 `quickOutbox`), so an excuse sent elsewhere is known within
+  an hour, as today. Quick ticks still never send (scope lock, also with
+  `quickOutbox`). Cost in §2 (≤ 0.12 MB a day), risk row in §11, tests in
+  §7.5.
+- **M3:** §7.3 keeps `0` away from `nextDue` and the runner's interval;
+  §7.4 adds `nextDueProvider` / `nextDueAt` / `_retryAt` to the core
+  `PeriodicRunner` (commit 1, runners without a provider unchanged),
+  lists every call site, makes `scheduledRefreshJob` pick the scope per
+  account and `startRefresh` accept `'quick'`; §7.1 caches the network
+  kind for the synchronous providers. Tests for the pause on the desktop
+  runner and the headless wake, the window-start clamp, the quick request
+  list, and manual/tray staying full.
+- **S1:** §4.3 states the new fetch order (absence and feed before the
+  weeks) and replaces the "count grew" rule with the
+  `absence_counts_at_past_fetch` snapshot; `_recordHistoryWeeks` keeps
+  `past_weeks_fetched`; quick ticks never write `timetable_history` or the
+  snapshot. §4.3 also says why fewer weeks never change an excuse (chains
+  break at weekends, the delay cutoff moves only at midnight).
+- **S2:** §7.5 rule 5 (outbox read failed in the last full run, or
+  `scheduled_refresh_failed_scope == 'all'`), with the Strava-only case;
+  §5.4 defines when `full` and `outbox` are stamped (same `started` time).
+- **S3:** widget before `prubzna.aspx` in every run (§4.3, §5.1);
+  `grades_failed_at` limits a broken marks page to hourly retries (§5.3).
+- **S4:** full runs store the week hashes from a feed read before the
+  weeks (§4.3, §5.2); §2 no longer needs the extra week loads.
+- **S5:** a run that skipped `perm` on purpose uses
+  `baselineFromDict(cached)` with `stableComplete = true`, never writes it
+  back; a failed `perm` keeps today's behaviour; test that the saved days
+  equal a full run's.
+- **S6:** cache valid only with `period_start <= today <= period_end`
+  from the label; manual refresh always loads the page; the unfinished
+  sentence is gone.
+- **S7:** the `dateFrom` rule is written out (September, not August),
+  an empty reply with a non-empty cache falls back to the page, quick
+  ticks use the page at most hourly after a failure; tests on 31 August
+  and 1 September.
+- **S8:** §4.1 keeps today's rules (only `/dashboard` on the same host
+  counts as logged in; anything else is `bak_no_login_page` or today's
+  `isLoginPage` check) and only stops downloading the dashboard.
+- **S9:** §6.1: exclusive lending, connection tests and wizard login
+  checks never use the pool or the stored cookie, `passwordDigest` of the
+  decrypted password.
+- **S10:** §6.3: opt-in 15-minute sliding sessions in the demo server
+  (`--session-minutes 15`) and `FakeBakalari`, used for the Pixel run.
+- **S11:** §5.4 adds the status notification and widget inputs
+  (`status_checked`), the desktop tooltip and Settings → Diagnostika.
+- **S12:** §3.3 handles the fresh install's `{}`, re-checks under the
+  save lock, postpones when busy, logs the old value; five test cases.
+- **S13:** §5.5: a silent quick tick adds no row but updates one
+  quick-check line; failed or eventful ticks and full runs add rows;
+  `'quick'` is not a manual refresh chip; §5.3 cuts a silent tick's log to
+  one line and keeps the per-subject absence lines to full runs.
+- **N1:** §2 recomputed with 4 full runs a day: ~5.8 MB a school day at
+  5 minutes on mobile data, ~4.7 MB at 10, ~8.5 MB on Wi-Fi day and night;
+  ~85 / ~60 MB a typical month on mobile data; the Settings text says
+  "about 4×". **N2:** §8.1 uses the Android check, iOS shows only the
+  interval. **N3:** §6.2 counts from the last renewal (`renewed_at`).
+  **N7:** §8.3 lists 20 string keys with cs and en text. **N8:** §9 step 6
+  asks the owner above 1 % battery per hour. **N11:** §7.2.
+
+### What the reviewer verified, and how (re-review)
+
+1. `git diff 6a7d457..73d3aa2 --stat`: only `design-F6.md` and one STATUS
+   line.
+2. A search of the note for the wording the findings replaced ("— wait",
+   `>= schoolYearStart(today)`, "today.month < 9", "~3×/day", "non-login
+   path", `lastActivityAt`, "ciphertext/plaintext", "primed right after",
+   the "does not exist: no-op" case, the claim that the absence read
+   already runs before the weeks): none left. Every finding M1–M3,
+   S1–S13 and the notes above has its tag in the note.
+3. A script over §8.3: 20 new string keys, all unique, none already in
+   `app_cs.arb` / `app_en.arb`, `status_checked` not yet in core
+   `i18n.dart`.
+4. The code facts the fixes rely on, read again: the runner's `tick`,
+   `pollInterval` and failure retry (`scheduler.dart:23–26`, `:146–200`,
+   `:212–245`); `registerJobs` (`scheduler_jobs.dart:79–119`); the scope
+   chips come from `_scopes` (`activity_view.dart:241–245`, `:575`);
+   `_markScheduledRefreshFailed` and its callers (`activity.dart:920–993`);
+   `pendingExcuseTasksFor` (`app_state.dart:171`); the config save lock
+   (`config.dart:799–823`, `:850–935`); no existing test depends on the
+   order of requests inside `fetchData` (grep of the core tests).
+5. Suites not re-run: no code changed since the R8a run (core 881 passed
+   / 2 skipped, app 829 passed / 1 skipped).
