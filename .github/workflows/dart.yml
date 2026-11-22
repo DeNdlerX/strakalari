@@ -44,13 +44,20 @@ jobs:
       - name: Analyze
         run: dart analyze
 
+      # Windows can't read IANA names in TZ (Dart there takes
+      # 'Europe/Prague' as UTC), so it gets the zone system-wide and an
+      # empty TZ instead.
+      - name: Set Prague time zone (Windows)
+        if: runner.os == 'Windows'
+        run: tzutil /s "Central Europe Standard Time"
+
       - name: Test core
         run: dart test
         working-directory: packages/strakalari_core
         env:
           # DST day-arithmetic regressions (A-B1) only fail in a zone with
           # DST switches; UTC would hide them.
-          TZ: Europe/Prague
+          TZ: ${{ runner.os != 'Windows' && 'Europe/Prague' || '' }}
 
       - name: Test app
         run: flutter test
