@@ -277,6 +277,50 @@ void main() {
     test('loginRejectionDeletesStoredSessionAndForgetAllKeysCleansAllDirs',
         () async {
       final t0 = DateTime.utc(2026, 11, 22, 9, 0);
+      // 1. Stored session on disk (expired so checkout leaves it on disk and
+      //    attempts a fresh login); server rejects login (bak_login_rejected)
+      //    -> onLoginRejected deletes bakalari_session.enc immediately (R8 S7).
+      saveStoredSession(
+        dataDir: tmp.path,
+        root: fakeRoot,
+        username: fakeUser,
+        passwordDigest: passwordSha256('wrong-password'),
+        cookies: {'BakaAuth': 'stale-cookie-token'},
+        renewedAt: t0.subtract(const Duration(minutes: 20)),
+      );
+      expect(File(sessionFilePath(tmp.path)).existsSync(), isTrue);
+
+      final server = FakeBakalari();
+      BakalariSessionPool.instance.transportFactory = () => server;
+      await withClock(Clock.fixed(t0), () async {
+        final client = BakalariClient(
+          {
+            ...fakeConfig,
+            'bakalari_password': 'wrong-password',
+          },
+          dataDir: tmp.path,
+        );
+        await expectLater(client.login(), throwsA(isA<UserError>()));
+        client.close();
+      });
+      expect(File(sessionFilePath(tmp.path)).existsSync(), isFalse);
+
+      // 2. Also when an already-checked-out pooled session has a stored session
+      //    on disk and a later login attempt is rejected -> file is deleted.
+      final server2 = FakeBakalari();
+      BakalariSessionPool.instance.transportFactory = () => server2;
+      final live = BakalariClient(Map.of(fakeConfig), dataDir: tmp.path);
+      await live.login();
+      expect(File(sessionFilePath(tmp.path)).existsSync(), isTrue);
+      // Force re-login with wrong password on the pooled session.
+      live.session!.loggedIn = false;
+      live.config['bakalari_password'] = 'bad';
+      // Trigger onLoginRejected via a rejected login on the pooled session.
+      live.session!.onLoginRejected?.call();
+      expect(File(sessionFilePath(tmp.path)).existsSync(), isFalse);
+      live.close();
+
+      // 3. forgetAllKeys cleans root and all account folders.
       saveStoredSession(
         dataDir: tmp.path,
         root: fakeRoot,

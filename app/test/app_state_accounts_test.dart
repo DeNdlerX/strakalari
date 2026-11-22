@@ -1212,6 +1212,118 @@ void main() {
       expect(outboxCalls, 0);
     });
   });
+
+  test(
+      'F6 AppState.save of bakalari_password, bakalari_url, or bakalari_username evicts pooled and stored session (R8 S7)',
+      () async {
+    allowMissingKeyStoreForTesting = true;
+    BakalariSessionPool.instance.resetForTesting();
+    addTearDown(() {
+      allowMissingKeyStoreForTesting = false;
+      BakalariSessionPool.instance.resetForTesting();
+    });
+
+    final (root, _) = await _setupTwoAccounts(tmp);
+    final defDir = accountDirFor(root, 'default');
+    final state = AppState(rootDir: root);
+
+    var loginPosts = 0;
+    BakalariSessionPool.instance.transportFactory =
+        () => _AcceptAllLoginTransport(onLoginPost: () => loginPosts++);
+
+    Future<void> seedLiveSession() async {
+      final c = BakalariClient(
+        state.config.data,
+        dataDir: defDir,
+        fallbackKeyDir: root,
+      );
+      await c.login();
+      c.close();
+      expect(File(sessionFilePath(defDir)).existsSync(), isTrue);
+    }
+
+    // 1. Initial login seeds pool and writes bakalari_session.enc.
+    await seedLiveSession();
+    expect(loginPosts, 1);
+    // Sanity check: another checkout without save reuses the pooled session (0 logins).
+    await seedLiveSession();
+    expect(loginPosts, 1);
+
+    // 2. Saving bakalari_password (even the same value or a new value) deletes
+    //    bakalari_session.enc immediately and forces the next checkout to log in.
+    expect(state.save({'bakalari_password': 'pw1'}), isTrue);
+    expect(File(sessionFilePath(defDir)).existsSync(), isFalse);
+    await seedLiveSession();
+    expect(loginPosts, 2);
+
+    expect(state.save({'bakalari_password': 'pw1_changed'}), isTrue);
+    expect(File(sessionFilePath(defDir)).existsSync(), isFalse);
+    await seedLiveSession();
+    expect(loginPosts, 3);
+
+    // 3. Saving bakalari_url deletes bakalari_session.enc and forces re-login.
+    expect(state.save({'bakalari_url': 'https://school1.cz/login'}), isTrue);
+    expect(File(sessionFilePath(defDir)).existsSync(), isFalse);
+    await seedLiveSession();
+    expect(loginPosts, 4);
+
+    // 4. Saving bakalari_username deletes bakalari_session.enc and forces re-login.
+    expect(state.save({'bakalari_username': 'anna'}), isTrue);
+    expect(File(sessionFilePath(defDir)).existsSync(), isFalse);
+    await seedLiveSession();
+    expect(loginPosts, 5);
+  });
+}
+
+class _AcceptAllLoginTransport implements HttpTransport {
+  final void Function() onLoginPost;
+  int _tok = 0;
+
+  _AcceptAllLoginTransport({required this.onLoginPost});
+
+  @override
+  Future<HttpResponseData> send(
+    String method,
+    Uri url, {
+    Map<String, String>? headers,
+    List<int>? body,
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
+    if (method == 'GET' &&
+        (url.path == '/login' || url.path.isEmpty || url.path == '/')) {
+      return HttpResponseData(
+        statusCode: 200,
+        url: url,
+        headers: const {
+          'content-type': ['text/html; charset=utf-8'],
+        },
+        bodyBytes: utf8.encode(
+          '<html><body>\n<form id="formlogin" method="post" action="/login">\n'
+          '<input type="hidden" name="returnUrl" value="">\n'
+          '<input id="username" name="username" type="text" value="">\n'
+          '<input id="password" name="password" type="password">\n'
+          '<button id="loginButton" type="submit" name="login" formaction="/Login">'
+          'Přihlásit</button>\n</form></body></html>',
+        ),
+      );
+    }
+    if (method == 'POST' && url.path.toLowerCase() == '/login') {
+      onLoginPost();
+      _tok++;
+      return HttpResponseData(
+        statusCode: 302,
+        url: url,
+        headers: {
+          'location': ['${url.origin}/dashboard'],
+          'set-cookie': ['BakaAuth=tok_$_tok; Path=/'],
+        },
+      );
+    }
+    return HttpResponseData(statusCode: 200, url: url);
+  }
+
+  @override
+  void close() {}
 }
 
 class _QuickTrackingApp extends _ScriptedRefreshApp {
