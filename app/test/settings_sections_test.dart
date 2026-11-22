@@ -935,6 +935,69 @@ void main() {
         expect(find.byKey(const Key('rule:interval_off_hours')), findsNothing);
         expect(find.byKey(const Key('rule:data_estimate')), findsNothing);
       });
+
+      testWidgets(
+          'BackgroundOverview preview uses current network interval (Wi-Fi 5 vs mobile 10 on metered, R8 S3)',
+          (t) async {
+        final dir = Directory.systemTemp.createTempSync('strakalari_s3_');
+        core.setEnvironmentOverride({
+          'STRAKALARI_DATA_DIR': dir.path,
+          'STRAKALARI_NO_KEYRING': '1',
+        });
+        addTearDown(() {
+          core.setEnvironmentOverride(null);
+          if (dir.existsSync()) dir.deleteSync(recursive: true);
+        });
+
+        final s = AppState(
+          configData: {
+            'check_interval_minutes': 5,
+            'check_interval_mobile_minutes': 10,
+            'background_notification_items': const <String>[],
+          },
+          data: const {},
+        );
+        s.networkKind = core.NetworkKind.metered;
+
+        final cMetered = settingsControllerFor(s);
+        await t.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: BackgroundOverview(controller: cMetered),
+              ),
+            ),
+          ),
+        );
+        await t.pumpAndSettle();
+
+        expect(
+          find.text(Strings.format('bg_notif_text', {'n': 10})),
+          findsOneWidget,
+        );
+        expect(
+          find.text(Strings.format('bg_notif_text', {'n': 5})),
+          findsNothing,
+        );
+
+        s.networkKind = core.NetworkKind.unmetered;
+        final cUnmetered = settingsControllerFor(s);
+        await t.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: BackgroundOverview(controller: cUnmetered),
+              ),
+            ),
+          ),
+        );
+        await t.pumpAndSettle();
+
+        expect(
+          find.text(Strings.format('bg_notif_text', {'n': 5})),
+          findsOneWidget,
+        );
+      });
     });
   });
 }

@@ -86,6 +86,7 @@ SettingsController settingsControllerFor(
     c.wakeupPhone = channelWakeupPhone(s);
   }
   c.backgroundStatusInputs = s.backgroundStatusInputs;
+  c.backgroundNotificationInterval = s.schoolHoursIntervalForCurrentNetwork;
   c.drafts.addAll(s.drafts);
   c.settingsSection = s.settingsSection;
   c.settingsOpen = s.settingsOpen;

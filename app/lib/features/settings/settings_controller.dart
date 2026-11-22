@@ -74,6 +74,10 @@ class SettingsController {
   /// only; `AppState.backgroundStatusInputs`).
   core.StatusInputs Function()? backgroundStatusInputs;
 
+  /// School-hours interval for the current network (Android background
+  /// notification fallback text, F6 §7.4, R8 S3).
+  int Function()? backgroundNotificationInterval;
+
   String settingsSection = 'accounts';
   bool settingsOpen = false;
   String testing = '';
