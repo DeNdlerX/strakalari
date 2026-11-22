@@ -287,9 +287,8 @@ class BakalariSessionPool {
   final Map<_PoolKey, _PoolEntry> _entries = {};
   final Set<_PoolEntry> _evictedWhileLent = {};
 
-  /// Test seam: overrides the transport created for new pooled sessions so
-  /// tests can exercise 3a + 3b with `FakeBakalari`.
-  @visibleForTesting
+  /// Test seam: overrides the transport created for new sessions so tests can
+  /// exercise 3a + 3b and pool-bypass checks with `FakeBakalari`.
   HttpTransport Function()? transportFactory;
 
   HttpTransport _makeTransport() =>

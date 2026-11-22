@@ -283,7 +283,8 @@ abstract class BakalariClientBase {
           userAgent: userAgent,
           isCancelled: _isCancelled,
           logger: log,
-          transport: _transportOverride,
+          transport: _transportOverride ??
+              BakalariSessionPool.instance.transportFactory?.call(),
         );
         _sessionFromPool = false;
       }

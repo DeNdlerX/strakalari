@@ -82,29 +82,46 @@ void main() {
       });
       BakalariSessionPool.instance.transportFactory = () => server;
 
-      // Pool has a live logged-in session for student/heslo.
-      final live = BakalariClient(Map.of(fakeConfig), dataDir: tmp.path);
-      await live.login();
-      live.close();
+      // Let Strakalari build its own client (useSessionPool: true) and log in
+      // once with the right password through the pool.
+      final app = Strakalari(
+        configData: Map.of(fakeConfig),
+        dataDir: tmp.path,
+      );
+      expect(app.bakalariClient!.useSessionPool, isTrue);
+      await app.bakalariClient!.login();
+      app.bakalariClient!.close();
       expect(server.logins, 1);
 
-      // Connection test with wrong typed password MUST fail even though pool is logged in!
-      final app = Strakalari(
+      // Connection test with the right password still bypasses the pool and
+      // posts /Login again (fails if checkBakalariLogin calls client.login()).
+      final (okRight, _) = await app.checkBakalariLogin();
+      expect(okRight, isTrue);
+      expect(server.logins, 2);
+
+      // Connection test with a wrong password in configManager rejects the login
+      // and posts /Login even while app.bakalariClient and the pool have the
+      // right password logged in.
+      app.configManager.set('bakalari_password', 'wrong-password');
+      final (okEdited, _) = await app.checkBakalariLogin();
+      expect(okEdited, isFalse);
+      expect(server.calls('POST', '/Login'), hasLength(3));
+      app.close();
+
+      // Fresh Strakalari building its own pooled client with a wrong password
+      // also rejects and posts /Login.
+      final appWrong = Strakalari(
         configData: {
           ...fakeConfig,
           'bakalari_password': 'wrong-password',
         },
         dataDir: tmp.path,
       );
-      app.bakalariClient = BakalariClient(
-        app.configData,
-        transport: server,
-        dataDir: tmp.path,
-        useSessionPool: false,
-      );
-      final (ok, _) = await app.checkBakalariLogin();
-      expect(ok, isFalse);
-      app.close();
+      expect(appWrong.bakalariClient!.useSessionPool, isTrue);
+      final (okWrong, _) = await appWrong.checkBakalariLogin();
+      expect(okWrong, isFalse);
+      expect(server.calls('POST', '/Login'), hasLength(4));
+      appWrong.close();
     });
 
     test('reEncryptedEqualPasswordKeepsSessionWhileChangedPasswordEvictsIt',
