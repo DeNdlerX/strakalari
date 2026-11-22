@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
@@ -591,6 +592,56 @@ void main() {
       expect(applyF6ScheduleDefaultsOnce(tmp.path), isTrue);
       final updated = jsonDecode(File(gPath).readAsStringSync()) as Map;
       expect(updated['check_interval_minutes'], 5);
+    });
+
+    test('rechecksUnderLockWhenAnotherStartWritesNewKeyWhileWaiting (R8 S8)',
+        () async {
+      final gPath = p.join(tmp.path, globalConfigFile);
+      File(gPath).writeAsStringSync(jsonEncode({'check_interval_minutes': 60}));
+
+      final ready = ReceivePort();
+      final done = ReceivePort();
+      await Isolate.spawn<(String, SendPort, SendPort)>(
+        (msg) {
+          final (path, readyPort, donePort) = msg;
+          final lock = InterProcessLock('$path.lock');
+          if (!lock.acquire(timeoutS: 2.0)) {
+            readyPort.send(false);
+            donePort.send(false);
+            return;
+          }
+          try {
+            readyPort.send(true);
+            // Wait long enough for the main isolate to read `initial` (before
+            // any F6 key exists) and enter `lock.acquire`'s 250 ms wait loop.
+            sleep(const Duration(milliseconds: 120));
+            atomicWriteJson(path, {
+              'check_interval_minutes': 15,
+              'check_interval_mobile_minutes': 10,
+            });
+          } finally {
+            lock.release();
+            donePort.send(true);
+          }
+        },
+        (gPath, ready.sendPort, done.sendPort),
+      );
+
+      expect(await ready.first, isTrue);
+      ready.close();
+
+      // At this moment `global.json` still lacks F6 keys, so `initial` passes
+      // the pre-lock check and waits on `global.json.lock`. Once the helper
+      // isolate writes the new key and releases the lock, the under-lock
+      // re-check must see it, return false, and keep the edit.
+      final applied = applyF6ScheduleDefaultsOnce(tmp.path, lockTimeoutS: 3.0);
+      expect(await done.first, isTrue);
+      done.close();
+
+      expect(applied, isFalse);
+      final after = jsonDecode(File(gPath).readAsStringSync()) as Map;
+      expect(after['check_interval_minutes'], 15);
+      expect(after['check_interval_mobile_minutes'], 10);
     });
   });
 
