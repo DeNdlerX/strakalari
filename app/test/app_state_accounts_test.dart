@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:clock/clock.dart';
@@ -956,11 +957,267 @@ void main() {
       expect(state.runs.single['scope'], 'all');
     });
   });
+
+  test(
+      'F6 scheduledRefreshJob passes pending excuses and unconfirmed submit to chooseScheduledScope (R8 M1)',
+      () async {
+    final now = DateTime(2026, 11, 20, 10, 0, 0);
+    final (root, acc2Id) = await _setupTwoAccounts(tmp);
+    final defDir = accountDirFor(root, 'default');
+
+    Map<String, Object?> cacheWithTask({
+      required bool pending,
+      required String fullIso,
+      required String outboxIso,
+    }) =>
+        {
+          'last_updated': '20.11.2026 08:50:00',
+          'absence': {'Matematika': 10.0},
+          'timetable': {
+            '19.11.2026': [
+              {
+                'time': '1. (8:00 - 8:45)',
+                'subject': 'Matematika',
+                'status': pending ? 'absent' : 'present',
+              }
+            ],
+          },
+          partUpdatedKey: {
+            'full': fullIso,
+            'outbox': outboxIso,
+            'quick': '2026-11-20T09:50:00',
+          },
+        };
+
+    await withClock(Clock.fixed(now), () async {
+      // 1a. Multi-account path: pending task + 70-min-old outbox -> quick tick reads outbox once.
+      saveDataCache(
+        cacheWithTask(
+          pending: true,
+          fullIso: '2026-11-20T08:50:00',
+          outboxIso: '2026-11-20T08:50:00',
+        ),
+        dataDir: defDir,
+      );
+      final state = AppState(rootDir: root)..spawn = AppState.liveSpawn;
+      await state.setAccountBackgroundRefresh(acc2Id, false);
+      expect(
+        pendingExcuseTasksFor(state.config, loadDataCache(dataDir: defDir)),
+        isNotEmpty,
+      );
+
+      var fullCalls = 0;
+      var quickCalls = 0;
+      var outboxCalls = 0;
+      state.createAppForAccount = ({onLog, configData, dataDir, rootDir}) =>
+          _QuickTrackingApp(
+            dataDir: dataDir,
+            rootDir: rootDir,
+            onLog: onLog,
+            configData: configData,
+            onFull: () => fullCalls++,
+            onQuick: () => quickCalls++,
+            onOutbox: () => outboxCalls++,
+          );
+
+      await state.scheduledRefreshJob();
+      expect(quickCalls, 1);
+      expect(fullCalls, 0);
+      expect(outboxCalls, 1);
+
+      // Same cache without a pending task -> quick tick does NOT read outbox.
+      saveDataCache(
+        cacheWithTask(
+          pending: false,
+          fullIso: '2026-11-20T08:50:00',
+          outboxIso: '2026-11-20T08:50:00',
+        ),
+        dataDir: defDir,
+      );
+      state.reloadCache();
+      expect(
+        pendingExcuseTasksFor(state.config, loadDataCache(dataDir: defDir)),
+        isEmpty,
+      );
+      fullCalls = 0;
+      quickCalls = 0;
+      outboxCalls = 0;
+      await state.scheduledRefreshJob();
+      expect(quickCalls, 1);
+      expect(fullCalls, 0);
+      expect(outboxCalls, 0);
+
+      // 2a. Multi-account path: unconfirmed file + 40-min-old outbox -> forces 'all' (rule 4).
+      final unconfHistPath = resolvePath('./already_excused_lessons.json', defDir);
+      saveUnconfirmed(
+        unconfHistPath,
+        [
+          {
+            'type': 'days',
+            'starting_day': '19.11.2026',
+            'ending_day': '19.11.2026',
+          }
+        ],
+        utf8,
+      );
+      saveDataCache(
+        cacheWithTask(
+          pending: false,
+          fullIso: '2026-11-20T09:20:00',
+          outboxIso: '2026-11-20T09:20:00',
+        ),
+        dataDir: defDir,
+      );
+      state.reloadCache();
+      fullCalls = 0;
+      quickCalls = 0;
+      outboxCalls = 0;
+      await state.scheduledRefreshJob();
+      expect(fullCalls, 1);
+      expect(quickCalls, 0);
+
+      // Without the unconfirmed file -> quick tick.
+      saveUnconfirmed(unconfHistPath, const [], utf8);
+      saveDataCache(
+        cacheWithTask(
+          pending: false,
+          fullIso: '2026-11-20T09:20:00',
+          outboxIso: '2026-11-20T09:20:00',
+        ),
+        dataDir: defDir,
+      );
+      state.reloadCache();
+      fullCalls = 0;
+      quickCalls = 0;
+      outboxCalls = 0;
+      await state.scheduledRefreshJob();
+      expect(quickCalls, 1);
+      expect(fullCalls, 0);
+      expect(outboxCalls, 0);
+
+      // 1b & 2b. Single-account path (_scheduledSingleAccountRefresh, accounts off).
+      final singleDir =
+          Directory('${tmp.path}${Platform.pathSeparator}single_mode')
+            ..createSync(recursive: true);
+      resetAccountsModeForTesting();
+      setEnvironmentOverride({
+        'STRAKALARI_DATA_DIR': singleDir.path,
+        'STRAKALARI_NO_KEYRING': '1',
+      });
+      clearDataDirCaches();
+
+      final singleCfg = ConfigManager(resolvePath('config.json', singleDir.path));
+      singleCfg.set('bakalari_url', 'https://school1.cz');
+      singleCfg.set('bakalari_username', 'anna');
+      singleCfg.set('bakalari_password', 'pw1');
+      singleCfg.set('your_signature', 'Anna');
+      singleCfg.set('use_strava', false);
+      singleCfg.set('wizard_step', -1);
+      singleCfg.save();
+
+      saveDataCache(
+        cacheWithTask(
+          pending: true,
+          fullIso: '2026-11-20T08:50:00',
+          outboxIso: '2026-11-20T08:50:00',
+        ),
+        dataDir: singleDir.path,
+      );
+      final singleState = AppState()..spawn = AppState.liveSpawn;
+      expect(singleState.accountsEnabled, isFalse);
+      singleState.createAppForAccount = ({onLog, configData, dataDir, rootDir}) =>
+          _QuickTrackingApp(
+            dataDir: dataDir,
+            rootDir: rootDir,
+            onLog: onLog,
+            configData: configData,
+            onFull: () => fullCalls++,
+            onQuick: () => quickCalls++,
+            onOutbox: () => outboxCalls++,
+          );
+
+      fullCalls = 0;
+      quickCalls = 0;
+      outboxCalls = 0;
+      await singleState.scheduledRefreshJob();
+      expect(quickCalls, 1);
+      expect(fullCalls, 0);
+      expect(outboxCalls, 1);
+
+      // Without pending task in single-account mode -> no outbox call.
+      saveDataCache(
+        cacheWithTask(
+          pending: false,
+          fullIso: '2026-11-20T08:50:00',
+          outboxIso: '2026-11-20T08:50:00',
+        ),
+        dataDir: singleDir.path,
+      );
+      singleState.reloadCache();
+      fullCalls = 0;
+      quickCalls = 0;
+      outboxCalls = 0;
+      await singleState.scheduledRefreshJob();
+      expect(quickCalls, 1);
+      expect(fullCalls, 0);
+      expect(outboxCalls, 0);
+
+      // With unconfirmed file in single-account mode + 40-min-old outbox -> 'all'.
+      final singleUnconfPath =
+          resolvePath('./already_excused_lessons.json', singleDir.path);
+      saveUnconfirmed(
+        singleUnconfPath,
+        [
+          {
+            'type': 'days',
+            'starting_day': '19.11.2026',
+            'ending_day': '19.11.2026',
+          }
+        ],
+        utf8,
+      );
+      saveDataCache(
+        cacheWithTask(
+          pending: false,
+          fullIso: '2026-11-20T09:20:00',
+          outboxIso: '2026-11-20T09:20:00',
+        ),
+        dataDir: singleDir.path,
+      );
+      singleState.reloadCache();
+      fullCalls = 0;
+      quickCalls = 0;
+      outboxCalls = 0;
+      await singleState.scheduledRefreshJob();
+      expect(fullCalls, 1);
+      expect(quickCalls, 0);
+
+      // Without unconfirmed file in single-account mode -> 'quick'.
+      saveUnconfirmed(singleUnconfPath, const [], utf8);
+      saveDataCache(
+        cacheWithTask(
+          pending: false,
+          fullIso: '2026-11-20T09:20:00',
+          outboxIso: '2026-11-20T09:20:00',
+        ),
+        dataDir: singleDir.path,
+      );
+      singleState.reloadCache();
+      fullCalls = 0;
+      quickCalls = 0;
+      outboxCalls = 0;
+      await singleState.scheduledRefreshJob();
+      expect(quickCalls, 1);
+      expect(fullCalls, 0);
+      expect(outboxCalls, 0);
+    });
+  });
 }
 
 class _QuickTrackingApp extends _ScriptedRefreshApp {
   final void Function() onFull;
   final void Function() onQuick;
+  final void Function()? onOutbox;
 
   _QuickTrackingApp({
     super.dataDir,
@@ -969,6 +1226,7 @@ class _QuickTrackingApp extends _ScriptedRefreshApp {
     super.configData,
     required this.onFull,
     required this.onQuick,
+    this.onOutbox,
   });
 
   @override
@@ -986,5 +1244,12 @@ class _QuickTrackingApp extends _ScriptedRefreshApp {
       feedOk: true,
       absenceOk: true,
     );
+  }
+
+  @override
+  Future<int> syncWebExcusesToHistory({int? limit}) async {
+    onOutbox?.call();
+    lastOutboxSyncOk = true;
+    return 0;
   }
 }

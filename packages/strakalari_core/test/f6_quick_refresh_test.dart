@@ -809,5 +809,174 @@ void main() {
         expect(app.stravaFetchCalls, 0);
       });
     });
+
+    test(
+        'failedQuickOutboxLeavesOutboxStampWindowAndDetailsUnchangedAndRetriesNextTick (R8 M1)',
+        () async {
+      final tQuick = DateTime(2026, 9, 21, 9, 10);
+      final cfg = baseCfg();
+      final initialDetails = <String, Object?>{
+        '500|0:2026-09-10T08:00:00': [
+          {
+            'type': 'days',
+            'starting_day': '10.09.2026',
+            'ending_day': '10.09.2026',
+          }
+        ],
+      };
+
+      saveDataCache({
+        'last_updated': '21.09.2026 08:00:00',
+        marksWidgetKey: <Object?>[],
+        substitutionsWeekHashesKey: substitutionsByWeekHashes(
+          const [],
+          [DateTime(2026, 9, 21), DateTime(2026, 9, 28)],
+        ),
+        'absence': {'Matematika': 10.0},
+        'absence_details': {
+          'Matematika': {'missed_hours': 1, 'total_hours': 10}
+        },
+        sentExcusesFromKey: '01.09.2026',
+        outboxDetailsKey: initialDetails,
+        outboxFormKey: {
+          'path': '/next/komens.aspx?s=rok&l=o',
+          'viewstate': 'vs-year',
+          'viewstate_generator': 'VSG12345',
+          'event_validation': 'ev-year',
+          'period_start': '2026-08-20',
+          'period_end': '2027-08-31',
+          'fetched_at': '2026-09-21T08:00:00',
+        },
+        partUpdatedKey: {
+          'full': '2026-09-21T08:00:00',
+          'outbox': '2026-09-21T08:00:00',
+          'timetable': '2026-09-21T08:50:00',
+        },
+      }, dataDir: tmp.path);
+
+      final server = FakeBakalari({
+        'GET /Marks/Widget': marksWidgetHtml([]),
+        'POST /Timetable/substitutions/dates': {
+          'success': true,
+          'data': <Object?>[],
+        },
+        'GET /Absence/Continuous/GetAbsenceBySubjects': {
+          'data': [
+            {'Name': 'Matematika', 'LessonCount': 10, 'Count': 1, 'Percent': 0.1}
+          ],
+        },
+        'POST /next/komens.aspx':
+            HttpResponseData(statusCode: 500, url: Uri.parse(_testBakRoot)),
+        'GET /next/komens.aspx':
+            HttpResponseData(statusCode: 500, url: Uri.parse(_testBakRoot)),
+      });
+
+      await withClock(Clock.fixed(tQuick), () async {
+        final app = Strakalari(configData: cfg, dataDir: tmp.path)
+          ..bakalariClient =
+              BakalariClient(cfg, transport: server, dataDir: tmp.path);
+        final res = await runRefresh(
+          app,
+          cfg,
+          scope: 'quick',
+          scheduled: true,
+          quickOutbox: true,
+          now: tQuick,
+          dataDir: tmp.path,
+        );
+        expect(res.quickEventful, isTrue);
+      });
+
+      final saved = loadDataCache(dataDir: tmp.path);
+      expect(
+        partUpdatedTime(saved, 'outbox'),
+        DateTime(2026, 9, 21, 8, 0),
+      );
+      expect(saved[sentExcusesFromKey], '01.09.2026');
+      expect(saved[outboxDetailsKey], initialDetails);
+      expect(
+        chooseScheduledScope(
+          cfg,
+          saved,
+          DateTime(2026, 9, 21, 9, 15),
+          hasPendingExcuses: true,
+          hasUnconfirmed: false,
+        ),
+        (scope: 'quick', quickOutbox: true),
+      );
+    });
+
+    test(
+        'failedFullRunOutboxMovesFullStampLeavesOutboxStampAndForcesNextScheduledFullRun (R8 M1)',
+        () async {
+      final tFull1 = DateTime(2026, 9, 21, 8, 0);
+      final tFull2 = DateTime(2026, 9, 21, 14, 0);
+      final cfg = baseCfg();
+
+      saveDataCache({
+        'last_updated': '21.09.2026 08:00:00',
+        partUpdatedKey: {
+          'full': '2026-09-21T08:00:00',
+          'outbox': '2026-09-21T08:00:00',
+        },
+      }, dataDir: tmp.path);
+
+      final server = FakeBakalari({
+        'GET /Marks/Widget': marksWidgetHtml([]),
+        'GET /next/prubzna.aspx': gradesPage([]),
+        'POST /Timetable/substitutions/dates': {
+          'success': true,
+          'data': <Object?>[],
+        },
+        'GET /Absence/Continuous/GetAbsenceBySubjects': {
+          'data': [
+            {'Name': 'Matematika', 'LessonCount': 10, 'Count': 1, 'Percent': 0.1}
+          ],
+        },
+        'POST /Timetable/GetContentData': (FakeRequest req) {
+          final body = jsonDecode(utf8.decode(req.body)) as Map;
+          if (body['term'] == 'perm') return weekContent([permLesson()]);
+          final d = DateTime.parse('${body['date']}');
+          return weekContent([lessonOn(d)]);
+        },
+        'POST /Teaching/Subjects': {
+          'data': [
+            {'SubjectName': 'Matematika', 'TeacherName': 'Mgr. Novák'}
+          ],
+        },
+        'GET /next/komens.aspx':
+            HttpResponseData(statusCode: 500, url: Uri.parse(_testBakRoot)),
+        'POST /next/komens.aspx':
+            HttpResponseData(statusCode: 500, url: Uri.parse(_testBakRoot)),
+      });
+
+      await withClock(Clock.fixed(tFull2), () async {
+        final app = Strakalari(configData: cfg, dataDir: tmp.path)
+          ..bakalariClient =
+              BakalariClient(cfg, transport: server, dataDir: tmp.path);
+        await runRefresh(
+          app,
+          cfg,
+          scope: 'all',
+          scheduled: true,
+          now: tFull2,
+          dataDir: tmp.path,
+        );
+      });
+
+      final saved = loadDataCache(dataDir: tmp.path);
+      expect(partUpdatedTime(saved, 'full'), tFull2);
+      expect(partUpdatedTime(saved, 'outbox'), tFull1);
+      expect(
+        chooseScheduledScope(
+          cfg,
+          saved,
+          DateTime(2026, 9, 21, 14, 5),
+          hasPendingExcuses: false,
+          hasUnconfirmed: false,
+        ),
+        (scope: 'all', quickOutbox: false),
+      );
+    });
   });
 }
