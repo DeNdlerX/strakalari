@@ -1,7 +1,7 @@
 # QA & roadmap status
 
 Branch: qa-roadmap · Base: main @ 617eb92 · Current phase: 8 (F6 complete, ⛔ R8)
-Next step: Phase 8 is done — stop for ⛔ R8 code review before continuing.
+Next step: Fix every finding in `reviews/phase-8.md` (blockers first), one commit per finding, then stop for re-review.
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -165,6 +165,7 @@ Next step: Phase 8 is done — stop for ⛔ R8 code review before continuing.
 
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
 ### Phase 8 (`F6` complete, checkpoint ⛔ R8 — verified on Pixel 7 Pro `.test`; 60-min off-charger soak cut short by owner & macOS/iOS unverified)
+- **2026-11-22 R8 review: FAIL**: the code follows `design-F6.md`: every 5-minute check makes exactly 3 small requests and never sends an excuse; the short sent-excuse read is accepted only when it holds every known excuse, else the page is loaded in the same run; the night pause never becomes a check every minute and one schedule function drives every timer; the saved login is encrypted, lent to one user at a time, expires after 14 minutes; send path, history, lock, audit and `automation_paused` untouched; nothing removed, skipped or weakened. One must-fix: the rules that stop an excuse being sent twice (re-read the sent list at least hourly while excuses wait, a failed read never counts as fresh, an unconfirmed excuse forces a full run) have no test; the reviewer switched each off and all tests stayed green (M1). Eight should-fix: Aktivita says "Zatím žádný běh" while checks run (S1); a full run where no week loaded is treated as if all loaded (S2); the Settings notification preview uses the Wi-Fi interval (S3); five missing or weak tests (S4–S8). No owner decision needed. Baseline: core 936 passed / 2 skipped, app 839 passed / 1 skipped. See [`reviews/phase-8.md`](reviews/phase-8.md).
 - **What was done (2026-11-22, 6 commits matching `design-F6.md` §10 + 1 phone-found bugfix `ec5e180`):**
   1. **Commit 1 (`47da220`) — `F6: add low-data refresh config keys, schedule math, runner next-due provider, and data-usage estimator`:**
      - Updated `config.example.json`, `packages/strakalari_core/lib/src/storage/config.dart`, `accounts.dart` (22 `globalConfigKeys`, 77 canonical keys total), `cache.dart` (F6 cache key constants), and `test/parity/helpers.json` (`roundTripFiles`).
