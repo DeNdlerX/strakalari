@@ -145,7 +145,10 @@ const Map<String, Object> canonicalDefaults = {
   'sem2_close': '',
   'holidays': [],
   'school_year_end': '',
-  'check_interval_minutes': 60,
+  'check_interval_minutes': 5,
+  'check_interval_mobile_minutes': 5,
+  'check_interval_off_hours_minutes': 60,
+  'refresh_wifi_always_fast': true,
   'notifications': {},
   'planned_skips': [],
   'planner_target_days': 0,
@@ -485,11 +488,31 @@ List<String> validateConfig(Map<String, Object?> data) {
         "'default_excuse_selection' must be 'first' or 'random', "
         'got ${_repr(data['default_excuse_selection'])}.');
   }
-  final interval = _toDouble(data['check_interval_minutes'] ?? 60);
+  final interval = _toDouble(data['check_interval_minutes'] ?? 5);
   if (interval == null) {
     problems.add("'check_interval_minutes' must be a number.");
   } else if (interval < 1) {
     problems.add("'check_interval_minutes' must be >= 1.");
+  }
+  final mobileInterval =
+      _toDouble(data['check_interval_mobile_minutes'] ?? 5);
+  if (mobileInterval == null) {
+    problems.add("'check_interval_mobile_minutes' must be a number.");
+  } else if (mobileInterval < 1) {
+    problems.add("'check_interval_mobile_minutes' must be >= 1.");
+  }
+  final offHoursInterval =
+      _toDouble(data['check_interval_off_hours_minutes'] ?? 60);
+  if (offHoursInterval == null) {
+    problems.add("'check_interval_off_hours_minutes' must be a number.");
+  } else if (offHoursInterval < 0 ||
+      (offHoursInterval > 0 && offHoursInterval < 1)) {
+    problems.add(
+        "'check_interval_off_hours_minutes' must be 0 (paused) or >= 1.");
+  }
+  final wifiAlwaysFast = data['refresh_wifi_always_fast'];
+  if (wifiAlwaysFast != null && wifiAlwaysFast is! bool) {
+    problems.add("'refresh_wifi_always_fast' must be a boolean.");
   }
   final wakeupMin = _toIntViaFloat(data['wakeup_minutes_before'] ?? 60);
   if (wakeupMin == null) {

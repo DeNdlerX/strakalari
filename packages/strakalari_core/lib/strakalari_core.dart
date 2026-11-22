@@ -54,6 +54,7 @@ export 'src/wakeup.dart' hide periodOf;
 export 'src/platform/desktop_notify.dart';
 export 'src/platform/notifier.dart';
 export 'src/automation/scheduler.dart';
+export 'src/automation/refresh_schedule.dart';
 export 'src/automation/session_lock.dart';
 export 'src/automation/automation.dart';
 export 'src/automation/refresh.dart';

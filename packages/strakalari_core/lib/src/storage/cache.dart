@@ -26,6 +26,16 @@ const int cacheVersion = 2;
 /// stamped before an auto-phase error.
 const String scheduledRefreshFailedKey = 'scheduled_refresh_failed';
 
+/// Data-cache key: scope (`'all'`, `'quick'`, …) of the failed scheduled
+/// refresh recorded in [scheduledRefreshFailedKey], so a failed full run
+/// retries as a full run instead of being downgraded to a quick tick (F6).
+const String scheduledRefreshFailedScopeKey = 'scheduled_refresh_failed_scope';
+
+/// Data-cache key: per-subsystem freshness timestamps (`quick`, `full`,
+/// `timetable`, `stable_timetable`, `subject_directory`, `marks`, `absence`,
+/// `outbox`, `strava`).
+const String partUpdatedKey = 'part_updated';
+
 /// Data-cache key: parsed sent-excuse entries keyed by Komens message key
 /// (`id` or `id|sortDate`), so routine refreshes skip `GetMessageDataAsync`
 /// for messages already read.
@@ -219,6 +229,39 @@ Duration? cacheAge([Map<String, Object?>? cache]) {
 DateTime? lastUpdatedTime([Map<String, Object?>? cache]) {
   final data = cache ?? loadDataCache();
   return _parseTs(data['last_updated']);
+}
+
+/// Parsed timestamp of one subsystem in `part_updated` (null when missing).
+///
+/// For pre-F6 caches without a `part_updated` map, falls back to
+/// [lastUpdatedTime]. Once `part_updated` is present, a missing part returns
+/// null so a failed subsystem never inherits `last_updated`.
+DateTime? partUpdatedTime(Map<String, Object?>? cache, String part) {
+  if (cache == null) return null;
+  final rawParts = cache[partUpdatedKey];
+  if (rawParts is Map) {
+    return _parseTs(rawParts[part]);
+  }
+  return lastUpdatedTime(cache);
+}
+
+/// Newest of `part_updated['quick']`, `part_updated['full']`, and
+/// `last_updated` (null when none is valid).
+DateTime? lastCheckedTime([Map<String, Object?>? cache]) {
+  final data = cache ?? loadDataCache();
+  DateTime? newest;
+  void consider(DateTime? dt) {
+    if (dt == null) return;
+    if (newest == null || dt.isAfter(newest!)) newest = dt;
+  }
+
+  final rawParts = data[partUpdatedKey];
+  if (rawParts is Map) {
+    consider(_parseTs(rawParts['quick']));
+    consider(_parseTs(rawParts['full']));
+  }
+  consider(_parseTs(data['last_updated']));
+  return newest;
 }
 
 /// Scheduler seed: when the cached data was last refreshed.

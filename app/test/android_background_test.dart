@@ -87,7 +87,7 @@ void main() {
     final out = await withClock(Clock.fixed(now), () => runHeadlessTick(state, const AndroidChannel()));
     expect(out, 'ran');
     expect(spawned.where((n) => n == 'strakalari-refresh'), isEmpty);
-    expect(armed(), now.add(const Duration(minutes: 60, seconds: 10)));
+    expect(armed(), now.add(const Duration(minutes: 5, seconds: 10)));
   });
 
   test('noLoginSkipsTheRefresh', () async {
@@ -102,8 +102,10 @@ void main() {
 
   test('notDueAfterARebootOnlyArmsTheDueTime', () async {
     final spawned = <String>[];
-    // Refreshed successfully 10 minutes ago.
-    final state = ready(spawned, data: {'last_updated': '12.11.2026 09:50:00'});
+    // Refreshed successfully 10 minutes ago (with a 60-minute interval).
+    final state = ready(spawned,
+        config: {'check_interval_minutes': 60},
+        data: {'last_updated': '12.11.2026 09:50:00'});
     final out = await withClock(Clock.fixed(now), () => runHeadlessTick(state, const AndroidChannel()));
     expect(out, 'not due');
     expect(spawned, isEmpty);

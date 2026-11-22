@@ -55,7 +55,7 @@ const int maxAccountLabelLength = 60;
 /// Valid account ID format: lowercase alphanumeric, `_` or `-`, 1–40 chars.
 final RegExp validAccountIdPattern = RegExp(r'^[a-z0-9][a-z0-9_-]{0,39}$');
 
-/// Shared settings stored once in `<rootDir>/global.json` (19 keys).
+/// Shared settings stored once in `<rootDir>/global.json` (22 keys).
 ///
 /// Every other canonical key in [canonicalDefaults] lives in
 /// `<rootDir>/accounts/<id>/config.json` (55 keys).
@@ -70,11 +70,14 @@ const Set<String> globalConfigKeys = {
   'disclaimer_accepted',
   'tutorials_enabled',
   'tutorials_done',
-  // Device & background shell (4)
+  // Device & background shell (7)
   'minimize_to_tray',
   'run_in_background',
   'background_notification_items',
   'check_interval_minutes',
+  'check_interval_mobile_minutes',
+  'check_interval_off_hours_minutes',
+  'refresh_wifi_always_fast',
   // Notifications & updates (2)
   'notifications',
   'update_channel',

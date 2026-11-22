@@ -148,11 +148,14 @@ void main() {
   });
 
   test('configKeyClassificationMatchesDesignSpec', () {
-    expect(globalConfigKeys.length, 19);
-    expect(canonicalDefaults.length, 74);
+    expect(globalConfigKeys.length, 22);
+    expect(canonicalDefaults.length, 77);
     for (final k in globalConfigKeys) {
       expect(canonicalDefaults.containsKey(k), isTrue, reason: 'Missing $k');
     }
+    expect(globalConfigKeys, contains('check_interval_mobile_minutes'));
+    expect(globalConfigKeys, contains('check_interval_off_hours_minutes'));
+    expect(globalConfigKeys, contains('refresh_wifi_always_fast'));
     final perAccount =
         canonicalDefaults.keys.where((k) => !globalConfigKeys.contains(k));
     expect(perAccount.length, 55);

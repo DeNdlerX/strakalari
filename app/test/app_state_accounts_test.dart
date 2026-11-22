@@ -285,17 +285,20 @@ void main() {
     final fixedNow = DateTime(2026, 11, 20, 10, 0, 0);
 
     await withClock(Clock.fixed(fixedNow), () async {
-      final state = AppState(rootDir: root)..spawn = AppState.liveSpawn;
       final refreshed = <String>[];
       var failAcc2Auto = true;
 
       // Enable Strava + auto cancel/order on acc2 to test auto-phase failure after last_updated.
+      // Pin a 60-min interval so the 5-min failure retry below refreshes only B.
       final c2 = ConfigManager.forAccount(root, acc2Id);
+      c2.set('check_interval_minutes', 60);
       c2.set('use_strava', true);
       c2.set('strava_canteen_id', '1950');
       c2.set('strava_username', 'klara');
       c2.set('strava_order_mode', 'auto');
       c2.save();
+
+      final state = AppState(rootDir: root)..spawn = AppState.liveSpawn;
 
       state.createAppForAccount = ({onLog, configData, dataDir, rootDir}) {
         final isAcc2 = dataDir == accountDirFor(root, acc2Id);

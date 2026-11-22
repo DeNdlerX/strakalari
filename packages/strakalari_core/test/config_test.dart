@@ -497,4 +497,56 @@ void main() {
           isTrue);
     });
   });
+
+  group('f6ScheduleConfigKeys', () {
+    test('defaultsAndValidationMatchDesignF6', () {
+      expect(canonicalDefaults['check_interval_minutes'], 5);
+      expect(canonicalDefaults['check_interval_mobile_minutes'], 5);
+      expect(canonicalDefaults['check_interval_off_hours_minutes'], 60);
+      expect(canonicalDefaults['refresh_wifi_always_fast'], isTrue);
+      expect(validateConfig(validationBase()), isEmpty);
+
+      // check_interval_mobile_minutes: >= 1
+      for (final ok in [1, 5, 10, 60]) {
+        final d = validationBase()..['check_interval_mobile_minutes'] = ok;
+        expect(validateConfig(d), isEmpty, reason: 'mobile $ok');
+      }
+      for (final bad in <Object>[0, -5, 0.5, 'abc']) {
+        final d = validationBase()..['check_interval_mobile_minutes'] = bad;
+        expect(
+          validateConfig(d)
+              .any((p) => p.contains('check_interval_mobile_minutes')),
+          isTrue,
+          reason: 'mobile $bad',
+        );
+      }
+
+      // check_interval_off_hours_minutes: 0 (paused) or >= 1
+      for (final ok in [0, 1, 30, 60, 120]) {
+        final d = validationBase()..['check_interval_off_hours_minutes'] = ok;
+        expect(validateConfig(d), isEmpty, reason: 'off_hours $ok');
+      }
+      for (final bad in <Object>[-1, 0.5, 'never']) {
+        final d = validationBase()..['check_interval_off_hours_minutes'] = bad;
+        expect(
+          validateConfig(d)
+              .any((p) => p.contains('check_interval_off_hours_minutes')),
+          isTrue,
+          reason: 'off_hours $bad',
+        );
+      }
+
+      // refresh_wifi_always_fast: bool
+      for (final ok in [true, false]) {
+        final d = validationBase()..['refresh_wifi_always_fast'] = ok;
+        expect(validateConfig(d), isEmpty);
+      }
+      final badBool = validationBase()..['refresh_wifi_always_fast'] = 'yes';
+      expect(
+        validateConfig(badBool)
+            .any((p) => p.contains('refresh_wifi_always_fast')),
+        isTrue,
+      );
+    });
+  });
 }

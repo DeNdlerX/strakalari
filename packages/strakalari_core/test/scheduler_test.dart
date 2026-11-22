@@ -6,6 +6,7 @@
 // this package has no AppState or tray yet.
 import 'dart:io';
 
+import 'package:clock/clock.dart';
 import 'package:test/test.dart';
 
 import 'package:strakalari_core/src/automation/scheduler.dart';
@@ -227,5 +228,86 @@ void main() {
     await runner.tick();
     await runner.tick(); // not due again
     expect(ran, [1]);
+  });
+
+  group('PeriodicRunner nextDueProvider (F6)', () {
+    test('usesProviderAndRespectsOffHoursPauseWithoutOneMinuteLoop', () async {
+      final ran = <DateTime>[];
+      final targetWake = DateTime(2026, 9, 8, 7, 0);
+      final runner = PeriodicRunner(
+        intervalMinutes: 5,
+        lastRun: DateTime(2026, 9, 7, 17, 0),
+        nextDueProvider: (lastRun, now) =>
+            now.isBefore(targetWake) ? targetWake : now,
+      );
+      runner.addJob('refresh', () => ran.add(clock.now()));
+
+      // Throughout the night (even hours later), tick does not fire.
+      for (final t in [
+        DateTime(2026, 9, 7, 17, 5),
+        DateTime(2026, 9, 7, 22, 0),
+        DateTime(2026, 9, 8, 6, 59),
+      ]) {
+        await withClock(Clock.fixed(t), () async {
+          expect(runner.nextDueAt(t), targetWake);
+          await runner.tick();
+        });
+      }
+      expect(ran, isEmpty);
+
+      // Right at 07:00 it fires once.
+      await withClock(Clock.fixed(targetWake), () async {
+        await runner.tick();
+      });
+      expect(ran, [targetWake]);
+      expect(runner.lastRun, targetWake);
+    });
+
+    test('failedRunWithProviderSetsRetryAtWithoutRewritingLastRun', () async {
+      var shouldFail = true;
+      final start = DateTime(2026, 9, 7, 20, 0);
+      final initialLastRun = DateTime(2026, 9, 7, 17, 0);
+      final morning = DateTime(2026, 9, 8, 7, 0);
+      final runner = PeriodicRunner(
+        intervalMinutes: 60,
+        lastRun: initialLastRun,
+        nextDueProvider: (lastRun, now) => morning,
+      );
+      runner.addJob('refresh', () {
+        if (shouldFail) throw const JobFailed('net down');
+        return 'ok';
+      });
+
+      await withClock(Clock.fixed(start), () async {
+        await runner.runAllOnce();
+        // lastRun was NOT rewritten backwards; retryAt schedules +5 min.
+        expect(runner.lastRun, initialLastRun);
+        expect(runner.nextDueAt(start), start.add(const Duration(minutes: 5)));
+      });
+
+      // 4 minutes later: not due yet.
+      await withClock(Clock.fixed(start.add(const Duration(minutes: 4))),
+          () async {
+        await runner.tick();
+        expect(runner.history.length, 1);
+      });
+
+      // 5 minutes later: retry runs and succeeds -> retryAt cleared, lastRun updated.
+      shouldFail = false;
+      final retryTime = start.add(const Duration(minutes: 5));
+      await withClock(Clock.fixed(retryTime), () async {
+        await runner.tick();
+        expect(runner.history.length, 2);
+        expect(runner.history.last.ok, isTrue);
+        expect(runner.lastRun, retryTime);
+        expect(runner.nextDueAt(retryTime), morning);
+      });
+    });
+
+    test('runnerWithoutProviderKeepsLegacyBehavior', () async {
+      final t0 = DateTime(2026, 9, 7, 10, 0);
+      final runner = PeriodicRunner(intervalMinutes: 60, lastRun: t0);
+      expect(runner.nextDueAt(t0), DateTime(2026, 9, 7, 11, 0));
+    });
   });
 }
