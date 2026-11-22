@@ -104,6 +104,20 @@ class _ScriptedRefreshApp extends Strakalari {
   }
 
   @override
+  Future<QuickBakalariOutcome> fetchBakalariQuick(
+    Map<String, Object?> previousCache,
+    DateTime started, {
+    required bool inDayWindow,
+  }) async {
+    if (onFetchBak != null) await onFetchBak!();
+    return const QuickBakalariOutcome(
+      marksOk: true,
+      feedOk: true,
+      absenceOk: true,
+    );
+  }
+
+  @override
   Future<int> syncWebExcusesToHistory({int? limit}) async {
     lastOutboxSyncOk = true;
     return 0;
@@ -802,4 +816,175 @@ void main() {
     });
     expect(refreshedDirs, unorderedEquals([defDir, acc2Dir]));
   });
+
+  test('F6 isAccountDueForRefresh tolerances, pause, quick rollup, manual all, and per-part freshness',
+      () async {
+    final now = DateTime(2026, 11, 20, 10, 0, 0);
+    // 5-min interval uses 4.5-min threshold (not 0!):
+    expect(
+      isAccountDueForRefresh(
+        {'part_updated': {'quick': '2026-11-20T09:57:00'}},
+        5.0,
+        now,
+      ),
+      isFalse,
+    );
+    expect(
+      isAccountDueForRefresh(
+        {'part_updated': {'quick': '2026-11-20T09:55:20'}},
+        5.0,
+        now,
+      ),
+      isTrue,
+    );
+    // 10-min interval uses 9-min threshold:
+    expect(
+      isAccountDueForRefresh(
+        {'part_updated': {'quick': '2026-11-20T09:52:00'}},
+        10.0,
+        now,
+      ),
+      isFalse,
+    );
+    expect(
+      isAccountDueForRefresh(
+        {'part_updated': {'quick': '2026-11-20T09:51:00'}},
+        10.0,
+        now,
+      ),
+      isTrue,
+    );
+    // Off-hours pause (0): not due without alarm, due at pre-alarm (alarm - 30m), due on failure:
+    expect(
+      isAccountDueForRefresh(
+        {'part_updated': {'quick': '2026-11-20T08:00:00'}},
+        0.0,
+        now,
+      ),
+      isFalse,
+    );
+    expect(
+      isAccountDueForRefresh(
+        {'part_updated': {'quick': '2026-11-20T08:00:00'}},
+        0.0,
+        now,
+        nextAlarm: DateTime(2026, 11, 20, 10, 20),
+      ),
+      isTrue,
+    );
+    expect(
+      isAccountDueForRefresh(
+        {
+          'part_updated': {'quick': '2026-11-20T09:59:00'},
+          scheduledRefreshFailedKey: '2026-11-20T09:59:00',
+        },
+        0.0,
+        now,
+      ),
+      isTrue,
+    );
+
+    // Scheduled tick shortly after a full run runs 'quick' silently (no run row, increments counter);
+    // manual refresh & trayRefreshAll stay 'all'.
+    final (root, _) = await _setupTwoAccounts(tmp);
+    final defDir = accountDirFor(root, 'default');
+    saveDataCache({
+      'last_updated': '20.11.2026 09:00:00',
+      'absence': {'Matematika': 5.0},
+      partUpdatedKey: {
+        'full': '2026-11-20T09:00:00',
+        'outbox': '2026-11-20T09:00:00',
+        'marks': '2026-11-20T09:50:00',
+        'strava': '2026-11-20T08:30:00',
+        'quick': '2026-11-20T09:50:00',
+      },
+    }, dataDir: defDir);
+
+    await withClock(Clock.fixed(now), () async {
+      final state = AppState(rootDir: root)..spawn = AppState.liveSpawn;
+      // Per-part freshness & status_checked verification:
+      expect(state.updatedLabelFor('marks'), contains('09:50'));
+      expect(state.updatedLabelFor('strava'), contains('08:30'));
+      expect(state.activityUpdatedLabel, contains('09:50'));
+      expect(state.activityUpdatedLabel, contains('09:00'));
+      state.save({
+        'background_notification_items': ['next_lesson', 'updated'],
+      });
+      final statusContent = buildStatus(
+        state.backgroundStatusInputs(),
+        now: now,
+        lang: 'cs',
+      );
+      expect(statusContent.sub, contains('Zkontrolováno'));
+      expect(state.tooltipUpdatedLabel, contains('Zkontrolováno'));
+
+      var quickCalls = 0;
+      var fullCalls = 0;
+      state.createAppForAccount = ({onLog, configData, dataDir, rootDir}) {
+        return _ScriptedRefreshApp(
+          dataDir: dataDir,
+          rootDir: rootDir,
+          onLog: onLog,
+          configData: configData,
+          onFetchBak: () async => fullCalls++,
+        );
+      };
+      // Override quick via a custom subclass so we distinguish full vs quick!
+      state.createAppForAccount = ({onLog, configData, dataDir, rootDir}) {
+        return _QuickTrackingApp(
+          dataDir: dataDir,
+          rootDir: rootDir,
+          onLog: onLog,
+          configData: configData,
+          onFull: () => fullCalls++,
+          onQuick: () => quickCalls++,
+        );
+      };
+      await state.setAccountBackgroundRefresh(
+          state.registry!.accounts.last.id, false);
+      await state.scheduledRefreshJob();
+      expect(quickCalls, 1);
+      expect(fullCalls, 0);
+      expect(state.runs, isEmpty); // Silent quick check added NO row!
+      expect(state.quickChecksToday, 1);
+      expect(state.lastQuickCheck, now);
+
+      // Tray refresh forces 'all' (full run)!
+      await state.trayRefreshAll();
+      expect(fullCalls, 1);
+      expect(state.runs, hasLength(1));
+      expect(state.runs.single['scope'], 'all');
+    });
+  });
+}
+
+class _QuickTrackingApp extends _ScriptedRefreshApp {
+  final void Function() onFull;
+  final void Function() onQuick;
+
+  _QuickTrackingApp({
+    super.dataDir,
+    super.rootDir,
+    super.onLog,
+    super.configData,
+    required this.onFull,
+    required this.onQuick,
+  });
+
+  @override
+  Future<void> fetchBakalariData() async => onFull();
+
+  @override
+  Future<QuickBakalariOutcome> fetchBakalariQuick(
+    Map<String, Object?> previousCache,
+    DateTime started, {
+    required bool inDayWindow,
+  }) async {
+    onQuick();
+    return const QuickBakalariOutcome(
+      marksOk: true,
+      feedOk: true,
+      absenceOk: true,
+    );
+  }
 }

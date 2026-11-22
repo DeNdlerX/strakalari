@@ -29,7 +29,7 @@ SettingsController settingsControllerFor(
     for (final subj in (allowed ?? abs.keys)) subj: abs[subj] ?? 0.0,
   };
   cfg['app_version'] = core.getCurrentVersion();
-  cfg['cache_info'] = s.updatedLabel;
+  cfg['cache_info'] = s.activityUpdatedLabel;
 
   bool storeManaged = false;
   try {

@@ -370,5 +370,52 @@ void main() {
         expect(plannedSubs, contains(Strings.get('audit_reason_planned')));
       }
     });
+
+    testWidgets('F6 Aktivita shows quick-check rollup line, scope_quick badge, and keeps quick out of manual chips',
+        (tester) async {
+      final savedLang = Strings.lang;
+      addTearDown(() => Strings.lang = savedLang);
+      Strings.lang = 'cs';
+      final now = DateTime(2026, 11, 20, 10, 15);
+      final c = ActivityController({'check_interval_minutes': 5})
+        ..quickChecksToday = 14
+        ..lastQuickCheck = DateTime(2026, 11, 20, 10, 10)
+        ..runs = [
+          {
+            'started': '10:05:00',
+            'finished': '20.11. 10:05',
+            'at': '2026-11-20T10:05:00',
+            'seconds': 1,
+            'ok': true,
+            'scope': 'quick',
+            'detail': '1 nová známka',
+            'cancelled': false,
+          },
+        ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ActivityView(
+              controller: c,
+              nowFor: () => now,
+              updatedLabel: 'Kontrola: 10:10 · Úplná: 07:00',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('activity:quick_checks')), findsOneWidget);
+      expect(find.textContaining('14×'), findsOneWidget);
+      expect(find.textContaining('10:10'), findsWidgets);
+      expect(find.textContaining(Strings.get('scope_quick')), findsOneWidget);
+      // Manual refresh SegmentedButton must NOT include 'quick' (only all / bakalari / strava).
+      final seg = tester.widget<SegmentedButton<String>>(
+        find.byType(SegmentedButton<String>),
+      );
+      expect(seg.segments.map((s) => s.value).toList(),
+          ['all', 'bakalari', 'strava']);
+    });
   });
 }

@@ -263,7 +263,10 @@ class PeriodicRunner {
       scheduled = nextDue(lastRun, intervalMinutes, now);
     }
     final retry = _retryAt;
-    if (retry != null && retry.isBefore(scheduled)) {
+    if (retry != null) {
+      if (scheduled.isAfter(now) && scheduled.isBefore(retry)) {
+        return scheduled;
+      }
       return retry;
     }
     return scheduled;

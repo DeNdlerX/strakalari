@@ -850,5 +850,9 @@
   "wiz_test_continue": "Test & continue",
   "wiz_test_key": "Test key",
   "wiz_welcome_h": "Welcome to Strakaláři!",
-  "wiz_welcome_p": "In a few steps we'll set up your school, Bakaláři, Strava canteen and excuses."
+  "wiz_welcome_p": "In a few steps we'll set up your school, Bakaláři, Strava canteen and excuses.",
+  "activity_quick_checks": "Quick checks: {n} today, last at {time}",
+  "quick_check_log": "Quick check: no changes.",
+  "refresh_checked_full": "Checked: {checked} · Full: {full}",
+  "scope_quick": "Quick check"
 }

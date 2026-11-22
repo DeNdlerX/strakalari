@@ -5,6 +5,9 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -192,6 +195,9 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
                     return;
                 case "sdkInt":
                     result.success(Build.VERSION.SDK_INT);
+                    return;
+                case "networkKind":
+                    result.success(networkKind());
                     return;
                 case "notify":
                     result.success(notify(
@@ -651,5 +657,38 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
         cipher.init(Cipher.DECRYPT_MODE, keystoreKey(),
                 new GCMParameterSpec(128, iv));
         return cipher.doFinal(cipherText);
+    }
+
+    /**
+     * Classifies the active network as {@code "unmetered"} (Wi-Fi / unmetered
+     * Ethernet), {@code "metered"} (mobile data / metered hotspot), or
+     * {@code "unknown"} (F6 §7.1). Used only for polling cadence, never to
+     * block a refresh.
+     */
+    private String networkKind() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) requireContext()
+                    .getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm == null) {
+                return "unknown";
+            }
+            Network net = cm.getActiveNetwork();
+            if (net == null) {
+                return "unknown";
+            }
+            NetworkCapabilities caps = cm.getNetworkCapabilities(net);
+            if (caps == null) {
+                return "unknown";
+            }
+            if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                return "unknown";
+            }
+            if (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)) {
+                return "unmetered";
+            }
+            return "metered";
+        } catch (Exception e) {
+            return "unknown";
+        }
     }
 }

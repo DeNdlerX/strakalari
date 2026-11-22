@@ -871,6 +871,10 @@ class Strings {
     "tut_acc_switch_body": "Zde přepínáte mezi účty. Každý účet má vlastní rozvrh, omluvenky, obědy i pravidla automatizace. Hlavní účet (pro widget, budík a stavové oznámení) a obnovu na pozadí pro jednotlivé účty nastavíte v Nastavení → Účty.",
     "tut_acc_switch_title": "Přepínání účtů",
     "wiz_cancel_add": "Zrušit",
+    "activity_quick_checks": "Rychlé kontroly: {n}× dnes, poslední {time}",
+    "quick_check_log": "Rychlá kontrola: beze změn.",
+    "refresh_checked_full": "Kontrola: {checked} · Úplná: {full}",
+    "scope_quick": "Rychlá kontrola",
   };
 
   static const Map<String, String> _en = {
@@ -1725,6 +1729,10 @@ class Strings {
     "tut_acc_switch_body": "Switch between accounts here. Each account keeps its own timetable, excuses, lunches and automation rules. Set the primary account (for widget, alarm and status notification) and per-account background refresh in Settings → Accounts.",
     "tut_acc_switch_title": "Switching accounts",
     "wiz_cancel_add": "Cancel",
+    "activity_quick_checks": "Quick checks: {n} today, last at {time}",
+    "quick_check_log": "Quick check: no changes.",
+    "refresh_checked_full": "Checked: {checked} · Full: {full}",
+    "scope_quick": "Quick check",
   };
 
   static const Map<String, String> _mobileCs = {

@@ -611,7 +611,7 @@ class _BackgroundOverviewState extends State<BackgroundOverview> {
     final inputs = c.backgroundStatusInputs;
     if (inputs == null) return null;
     try {
-      final n = checkIntervalMinutes(c.get('check_interval_minutes', 60)).toInt();
+      final n = checkIntervalMinutes(c.get('check_interval_minutes', 5)).toInt();
       return core.buildStatus(inputs(),
           fallback: (
             Strings.get('bg_notif_title'),

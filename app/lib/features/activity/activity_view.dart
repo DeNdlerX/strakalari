@@ -703,6 +703,7 @@ class ActivityView extends StatelessWidget {
   // -- run timeline ------------------------------------------------------------------
 
   String _scopeLabel(String scope) {
+    if (scope == 'quick') return Strings.get('scope_quick');
     for (final (key, label) in _scopes) {
       if (key == scope) return Strings.get(label);
     }
@@ -711,9 +712,22 @@ class ActivityView extends StatelessWidget {
 
   Widget _historyCard(Tokens tok, DateTime now) {
     final c = controller;
+    final hasQuick = c.quickChecksToday > 0 && c.lastQuickCheck != null;
     final rows = <Widget>[
       _panelHead(Strings.get('run_history'), tok, Icons.history),
-      if (c.runs.isEmpty)
+      if (hasQuick)
+        Padding(
+          padding: const EdgeInsets.only(top: 2, bottom: 2),
+          child: Text(
+            Strings.format('activity_quick_checks', {
+              'n': c.quickChecksToday,
+              'time': clockText(c.lastQuickCheck!, now),
+            }),
+            key: const ValueKey('activity:quick_checks'),
+            style: TextStyle(color: tok.muted, fontSize: tok.fsSmall),
+          ),
+        ),
+      if (c.runs.isEmpty && !hasQuick)
         Text(Strings.get('no_runs_yet'),
             style: TextStyle(color: tok.faint, fontSize: tok.fsSmall)),
     ];

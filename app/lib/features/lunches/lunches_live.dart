@@ -89,7 +89,7 @@ class LiveLunchesView extends ConsumerWidget {
     return LunchesView(
       controller: lunchControllerFor(s),
       narrow: narrow,
-      updatedLabel: s.updatedLabel,
+      updatedLabel: s.updatedLabelFor('strava'),
       onOpenSettings: () => s.go('settings'),
       onRecommend: () async {
         if (!s.startAiRecommend()) {

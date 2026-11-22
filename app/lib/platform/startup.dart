@@ -81,6 +81,9 @@ Future<StartupContext> prepareStartup(
       dataDir,
       warmAndroidRootKey: (r) => warmAndroidRootKeyClean(r),
     );
+    if (!layout.isRegistryFailed) {
+      applyF6ScheduleDefaultsOnce(dataDir, degraded: layout.isDegraded);
+    }
     if (layout.isReady && layout.registry != null) {
       await warmAndroidKeystoreAll(
         dataDir,
@@ -108,6 +111,9 @@ Future<StartupContext> prepareStartup(
     await Directory(dataDir).create(recursive: true);
     setMobileDataDir(dataDir);
     final layout = await ensureMultiAccountLayout(dataDir);
+    if (!layout.isRegistryFailed) {
+      applyF6ScheduleDefaultsOnce(dataDir, degraded: layout.isDegraded);
+    }
     if (layout.isReady && layout.registry != null) {
       await warmIosKeystoreAll(
         dataDir,
@@ -149,6 +155,9 @@ Future<StartupContext> prepareStartup(
   }
   // Run the one-time F4 move AFTER single-instance guard and BEFORE AppState (§4.1).
   final layout = await ensureMultiAccountLayout(rootDir);
+  if (!layout.isRegistryFailed) {
+    applyF6ScheduleDefaultsOnce(rootDir, degraded: layout.isDegraded);
+  }
   return StartupContext(
     minimized: minimized,
     guard: guard,
@@ -182,6 +191,10 @@ Future<void> startPlatformServices(
   var stopping = false;
   var visible = true;
 
+  if (_isAndroid) {
+    await state.refreshNetworkKind(const AndroidChannel());
+  }
+
   // `_register_jobs`: core's runner with the window's jobs; the first
   // auto-run is anchored to the last successful refresh.
   final loop = registerJobs(
@@ -192,7 +205,7 @@ Future<void> startPlatformServices(
     stopped: () => stopping,
     keepAwake: _isAndroid ? androidKeepAwake : null,
     intervalProvider: () =>
-        checkIntervalMinutes(state.get('check_interval_minutes', 60)),
+        state.schoolHoursIntervalForCurrentNetwork().toDouble(),
   );
   onLoopCreated?.call(loop);
   // Non-blocking release check (silent when offline).
@@ -218,7 +231,7 @@ Future<void> startPlatformServices(
       if (s == AppLifecycleState.resumed) {
         // Back from the system's settings or after a while away.
         state.syncAndroidState();
-        unawaited(phone.sync());
+        unawaited(state.refreshNetworkKind(channel).then((_) => phone.sync()));
         state.onChanged();
       }
     });
@@ -229,8 +242,9 @@ Future<void> startPlatformServices(
       // running scheduler). Keep the CPU up for that tick; the job then
       // holds its own lock. Not due: arm the wake for the due time.
       await registerUiRefreshPort(ReceivePort(), onHandOff: () async {
+        await state.refreshNetworkKind(channel);
         final now = clock.now();
-        if (now.isBefore(nextDue(loop.lastRun, loop.intervalMinutes, now))) {
+        if (now.isBefore(loop.nextDueAt(now))) {
           await phone.scheduleWake();
         }
         await androidKeepAwake(
@@ -340,15 +354,18 @@ class PhoneBackground {
   late final StatusNotifier notifier;
   bool _asked = false;
   bool? _on;
-  int? _interval;
+  String? _scheduleSig;
   bool? _allowed;
 
-  int _intervalMinutes() {
-    // `max(1, int(float(get(...) or 60)))`.
-    final n =
-        checkIntervalMinutes(state.get('check_interval_minutes', 60)).toInt();
-    return n < 1 ? 1 : n;
-  }
+  int _intervalMinutes() => state.schoolHoursIntervalForCurrentNetwork();
+
+  String _currentScheduleSignature() => [
+        '${state.get('check_interval_minutes', 5)}',
+        '${state.get('check_interval_mobile_minutes', 5)}',
+        '${state.get('check_interval_off_hours_minutes', 60)}',
+        '${state.get('refresh_wifi_always_fast', true)}',
+        state.networkKind.name,
+      ].join('|');
 
   (String, String) _fallback() => (
         Strings.get('bg_notif_title'),
@@ -378,7 +395,7 @@ class PhoneBackground {
 
   Future<void> scheduleWake() async {
     try {
-      final due = nextDue(loop.lastRun, loop.intervalMinutes, clock.now());
+      final due = loop.nextDueAt(clock.now());
       // A little after due: the loop's tick (5 s) must see it as due.
       if (await channel.scheduleWake(due.add(const Duration(seconds: 10)))) {
         // ignore: avoid_print
@@ -408,14 +425,15 @@ class PhoneBackground {
       }
       final allowed = on ? await channel.notificationsEnabled() : false;
       final interval = _intervalMinutes();
+      final sig = _currentScheduleSignature();
       notifier.poke(); // the overview's items, the language, …
       if (_on == on &&
-          _interval == interval &&
+          _scheduleSig == sig &&
           (!on || _allowed == allowed)) {
         return;
       }
       _on = on;
-      _interval = interval;
+      _scheduleSig = sig;
       _allowed = allowed;
       if (!on) {
         await channel.stopBackground();

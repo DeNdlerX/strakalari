@@ -57,7 +57,7 @@ class LiveTimetableView extends ConsumerWidget {
       tokens: tok,
       narrow: narrow,
       now: now,
-      updatedLabel: s.updatedLabel,
+      updatedLabel: s.updatedLabelFor('timetable'),
     );
   }
 }

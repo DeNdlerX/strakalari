@@ -80,6 +80,7 @@ PeriodicRunner registerJobs(
   bool Function()? stopped,
   Future<T> Function<T>(Future<T> Function() body)? keepAwake,
   double? Function()? intervalProvider,
+  DateTime Function(DateTime? lastRun, DateTime now)? nextDueProvider,
 }) {
   void onResult(JobResult result) {
     // Scheduler heartbeat: track it for the "next run" label.
@@ -91,21 +92,27 @@ PeriodicRunner registerJobs(
 
   final runner = PeriodicRunner(
     intervalMinutes:
-        checkIntervalMinutes(state.get('check_interval_minutes', 60)),
+        checkIntervalMinutes(state.get('check_interval_minutes', 5)),
     onResult: onResult,
     // Anchor the first auto-run to the last successful refresh; with no
     // or an overdue cache (null) the app refreshes on start.
     lastRun: schedulerStartupSeed(state),
     paused: paused,
     intervalProvider: intervalProvider,
+    nextDueProvider: nextDueProvider ?? state.nextScheduledWakeAt,
   );
+  state.activeSchedulerNextDue = runner.nextDueAt;
   if (runner.lastRun != null) {
     // The "next run" label derives from this; seed it so it is right
     // from launch instead of showing "—" until the first tick.
     state.schedulerLastRun = runner.lastRun;
   }
   runner.addJob('refresh', () {
-    Future<String> job() => state.scheduledRefreshJob(stopped: stopped);
+    Future<String> job() async {
+      await state.refreshNetworkKind();
+      return state.scheduledRefreshJob(stopped: stopped);
+    }
+
     final hold = keepAwake;
     return hold == null ? job() : hold<String>(job);
   });

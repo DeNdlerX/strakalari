@@ -204,6 +204,13 @@ Map<String, Object?> saveDataCache(Map<String, Object?>? data,
         current['last_updated'] ??
         _stampNow();
   }
+  if (data != null &&
+      data.containsKey('last_updated') &&
+      !data.containsKey(partUpdatedKey)) {
+    // Explicit last_updated overwrite without part_updated: clear stale
+    // per-part stamps so lastCheckedTime/partUpdatedTime follow last_updated.
+    current.remove(partUpdatedKey);
+  }
   try {
     atomicWriteJson(path, current);
   } on Object catch (e) {

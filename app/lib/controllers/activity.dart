@@ -12,18 +12,33 @@
 part of 'app_state.dart';
 
 /// True when [cache] is due for a scheduled refresh under [intervalMinutes]
-/// (§7.2 step 3): either its last scheduled run failed (`scheduled_refresh_failed`)
-/// or its `last_updated` is unknown / at least `interval - 5` minutes old.
+/// (F6 §7.6):
+/// - Always true if `scheduled_refresh_failed` is set.
+/// - When [intervalMinutes] <= 0 (paused off-hours): true only if [nextAlarm]
+///   is within 30 min (pre-alarm tick) and hasn't run since `nextAlarm - 30 min`.
+/// - Otherwise compares [startupSeed] (`lastCheckedTime`) against
+///   `intervalMinutes - tolerance`, where `tolerance` is 5 min for >=30 min
+///   intervals and `(interval * 0.1).clamp(0.25, 2.0)` for faster intervals.
 bool isAccountDueForRefresh(
   Map<String, Object?> cache,
   double intervalMinutes,
-  DateTime now,
-) {
+  DateTime now, {
+  DateTime? nextAlarm,
+}) {
   final failedStamp = '${cache[scheduledRefreshFailedKey] ?? ''}'.trim();
   if (failedStamp.isNotEmpty) return true;
   final last = startupSeed(cache, now);
+  if (intervalMinutes <= 0) {
+    if (nextAlarm == null) return false;
+    final preAlarm = nextAlarm.subtract(const Duration(minutes: 30));
+    if (now.isBefore(preAlarm)) return false;
+    return last == null || last.isBefore(preAlarm);
+  }
   if (last == null) return true;
-  final thresholdMin = intervalMinutes > 5.0 ? intervalMinutes - 5.0 : 0.0;
+  final tolerance = intervalMinutes >= 30.0
+      ? 5.0
+      : (intervalMinutes * 0.1).clamp(0.25, 2.0);
+  final thresholdMin = (intervalMinutes - tolerance).clamp(0.0, double.infinity);
   final thresholdMs = (thresholdMin * 60000).round();
   return now.difference(last).inMilliseconds >= thresholdMs;
 }
@@ -224,10 +239,9 @@ extension ActivityLogic on AppState {
   String get nextRunLabel {
     if (schedulerLastRun == null) return '—';
     try {
-      final interval =
-          double.tryParse('${get('check_interval_minutes', 60) ?? 60}') ??
-              60.0;
-      final due = nextDue(schedulerLastRun, interval, clock.now());
+      final now = clock.now();
+      final due = activeSchedulerNextDue?.call(now) ??
+          nextScheduledWakeAt(schedulerLastRun, now);
       final dd = due.day.toString().padLeft(2, '0');
       final mm = due.month.toString().padLeft(2, '0');
       final hh = due.hour.toString().padLeft(2, '0');
@@ -316,6 +330,18 @@ extension ActivityLogic on AppState {
     }
   }
 
+  bool _hasUnconfirmedForAccount(ConfigManager accCfg, String? accDir) {
+    try {
+      final histPath = resolvePath(
+        '${accCfg.get('already_excused_file', './already_excused_lessons.json')}',
+        accDir,
+      );
+      return loadUnconfirmed(histPath, utf8).isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// The scheduler's refresh job (§7.2): runs due accounts sequentially through
   /// `runRefresh` (primary first, then active, then remaining), respecting
   /// per-account `background_refresh`, the 20/28-minute pass budget, and
@@ -331,6 +357,7 @@ extension ActivityLogic on AppState {
     if (!accountsEnabled || rootDir == null) {
       return _scheduledSingleAccountRefresh(
         maxWait: maxWait,
+        forceAll: forceAll,
         stopped: stopped,
       );
     }
@@ -353,7 +380,6 @@ extension ActivityLogic on AppState {
     }
 
     final passStart = clock.now();
-    final intervalMin = _intervalFromConfig(config.data);
     var anyFailed = false;
     var leftForNextRun = false;
     var ranAny = false;
@@ -375,14 +401,20 @@ extension ActivityLogic on AppState {
       if (wizStep >= 0 || (!hasBak && !hasStrava)) continue;
       if (isActive && setupPending) continue;
 
+      final now = clock.now();
+      Map<String, Object?> accCache;
+      try {
+        accCache = loadDataCache(dataDir: accDir);
+      } catch (_) {
+        accCache = const {};
+      }
       if (!forceAll) {
-        Map<String, Object?> accCache;
-        try {
-          accCache = loadDataCache(dataDir: accDir);
-        } catch (_) {
-          accCache = const {};
-        }
-        if (!isAccountDueForRefresh(accCache, intervalMin, clock.now())) {
+        final accWindow = activeDayWindow(accCache, accCfg.data, now);
+        final accInterval = effectiveCheckIntervalMinutes(
+            accCfg.data, accWindow, networkKind, now);
+        final accAlarm = nextWakeupAlarmForAccount(accCfg.data, accCache, now);
+        if (!isAccountDueForRefresh(
+            accCache, accInterval, now, nextAlarm: accAlarm)) {
           continue;
         }
       }
@@ -400,12 +432,32 @@ extension ActivityLogic on AppState {
               : hardLeft)
           : maxWait;
 
+      final String runScope;
+      final bool quickOutbox;
+      final bool isScheduledRun;
+      if (forceAll) {
+        runScope = 'all';
+        quickOutbox = false;
+        isScheduledRun = false;
+      } else {
+        final choice = chooseScheduledScope(
+          accCfg.data,
+          accCache,
+          now,
+          hasPendingExcuses: pendingExcuseTasksFor(accCfg, accCache).isNotEmpty,
+          hasUnconfirmed: _hasUnconfirmedForAccount(accCfg, accDir),
+        );
+        runScope = choice.scope;
+        quickOutbox = choice.quickOutbox;
+        isScheduledRun = true;
+      }
+
       ranAny = true;
       if (isActive) {
         if (refreshRunning) continue;
         final activeRuns = runs;
         final before = activeRuns.isEmpty ? null : activeRuns.last;
-        if (!startRefresh('all', false, true)) {
+        if (!startRefresh(runScope, false, isScheduledRun, quickOutbox)) {
           continue;
         }
         final deadline = clock.now().add(effectiveWait);
@@ -429,7 +481,9 @@ extension ActivityLogic on AppState {
         final ok = await _refreshBackgroundAccount(
           acc,
           accCfg,
-          isScheduled: true,
+          scope: runScope,
+          isScheduled: isScheduledRun,
+          quickOutbox: quickOutbox,
           stopped: stopped,
         );
         if (!ok) {
@@ -481,15 +535,9 @@ extension ActivityLogic on AppState {
     }
   }
 
-  static double _intervalFromConfig(Map<String, Object?> cfg) {
-    final raw = cfg['check_interval_minutes'];
-    if (raw is num && raw > 0) return raw.toDouble();
-    final parsed = double.tryParse('${raw ?? ''}'.trim());
-    return (parsed != null && parsed > 0) ? parsed : 60.0;
-  }
-
   Future<String> _scheduledSingleAccountRefresh({
     required Duration maxWait,
+    bool forceAll = false,
     bool Function()? stopped,
   }) async {
     if (setupPending) return 'skipped (setup not finished)';
@@ -497,8 +545,28 @@ extension ActivityLogic on AppState {
     if (demoMode && !_hasCredentials()) {
       return 'skipped (no credentials configured)';
     }
+    final now = clock.now();
+    final String runScope;
+    final bool quickOutbox;
+    final bool isScheduledRun;
+    if (forceAll) {
+      runScope = 'all';
+      quickOutbox = false;
+      isScheduledRun = false;
+    } else {
+      final choice = chooseScheduledScope(
+        config.data,
+        data,
+        now,
+        hasPendingExcuses: pendingExcuseTasksFor(config, data).isNotEmpty,
+        hasUnconfirmed: _hasUnconfirmedForAccount(config, activeAccountDir),
+      );
+      runScope = choice.scope;
+      quickOutbox = choice.quickOutbox;
+      isScheduledRun = true;
+    }
     final before = runs.isEmpty ? null : runs.last;
-    if (!startRefresh('all', false, true)) {
+    if (!startRefresh(runScope, false, isScheduledRun, quickOutbox)) {
       // Another refresh is running: fresh data is on its way.
       return 'refresh busy';
     }
@@ -527,7 +595,9 @@ extension ActivityLogic on AppState {
   Future<bool> _refreshBackgroundAccount(
     AccountInfo acc,
     ConfigManager accCfg, {
+    String scope = 'all',
     required bool isScheduled,
+    bool quickOutbox = false,
     bool Function()? stopped,
   }) async {
     final accDir = accountDirFor(rootDir!, acc.id);
@@ -555,7 +625,7 @@ extension ActivityLogic on AppState {
       await withSessionLockAsync((held) async {
         if (!held) {
           _appendAccountLog(ctx, Strings.get('session_busy'));
-          _recordRunEntry(ctx, started, 'all', false,
+          _recordRunEntry(ctx, started, scope, false,
               Strings.get('session_busy'),
               skipped: true);
           return;
@@ -563,9 +633,10 @@ extension ActivityLogic on AppState {
         ran = true;
         okOrBenign = await _executeRefreshForContext(
           ctx,
-          scope: 'all',
+          scope: scope,
           started: started,
           pauseAutomation: false,
+          quickOutbox: quickOutbox,
           cancelledLunchDays:
               cancelledLunchDaysFor(accCfg.data, _safeLoadCache(accDir)),
           keptLunchDays: const <String>{},
@@ -601,9 +672,10 @@ extension ActivityLogic on AppState {
     String scope = 'all',
     bool pauseAutomation = false,
     bool isScheduled = false,
+    bool quickOutbox = false,
   ]) {
     if (!claimFlight('refresh_running')) return false;
-    if (scope != 'all' && scope != 'bakalari' && scope != 'strava') {
+    if (!refreshScopes.contains(scope)) {
       scope = 'all';
     }
     cancelRequested = false;
@@ -617,6 +689,7 @@ extension ActivityLogic on AppState {
         scope,
         pauseAutomation: pauseAutomation,
         isScheduled: isScheduled,
+        quickOutbox: quickOutbox,
       ),
       'strakalari-refresh',
     );
@@ -642,6 +715,7 @@ extension ActivityLogic on AppState {
     String scope, {
     bool pauseAutomation = false,
     bool isScheduled = false,
+    bool quickOutbox = false,
   }) async {
     final tokenAccountId = activeAccountId;
     final tokenDir = activeAccountDir;
@@ -682,6 +756,7 @@ extension ActivityLogic on AppState {
               started,
               pauseAutomation: pauseAutomation,
               isScheduled: isScheduled,
+              quickOutbox: quickOutbox,
               tokenAccountId: tokenAccountId,
               tokenDir: tokenDir,
               tokenCfg: tokenCfg,
@@ -728,6 +803,7 @@ extension ActivityLogic on AppState {
     DateTime started, {
     bool pauseAutomation = false,
     bool isScheduled = false,
+    bool quickOutbox = false,
     String? tokenAccountId,
     String? tokenDir,
     ConfigManager? tokenCfg,
@@ -755,6 +831,7 @@ extension ActivityLogic on AppState {
       scope: scope,
       started: started,
       pauseAutomation: pauseAutomation,
+      quickOutbox: quickOutbox,
       cancelledLunchDays: Set<String>.of(cancelledLunches),
       keptLunchDays: keptLunchDays,
       lunchPrompt: lunchPrefs,
@@ -771,6 +848,7 @@ extension ActivityLogic on AppState {
     required String scope,
     required DateTime started,
     required bool pauseAutomation,
+    bool quickOutbox = false,
     required Set<String> cancelledLunchDays,
     required Set<String> keptLunchDays,
     required String lunchPrompt,
@@ -780,6 +858,7 @@ extension ActivityLogic on AppState {
     var ok = false;
     var cancelled = false;
     var reportedFailure = false;
+    var quickEventful = false;
     final screenActive =
         ctx.isActiveScreen && activeAccountId == ctx.accountId;
 
@@ -792,7 +871,9 @@ extension ActivityLogic on AppState {
     }
 
     try {
-      logForCtx(Strings.format('refresh_started_log', {'scope': scope}));
+      if (scope != 'quick') {
+        logForCtx(Strings.format('refresh_started_log', {'scope': scope}));
+      }
       final app = buildAppForAccount(
         onLog: (m) => logForCtx(m, false),
         dataDir: ctx.accountDir,
@@ -807,6 +888,8 @@ extension ActivityLogic on AppState {
           app,
           runConfig,
           scope: scope,
+          scheduled: ctx.isScheduled,
+          quickOutbox: quickOutbox,
           cancelledLunchDays: cancelledLunchDays,
           keptLunchDays: keptLunchDays,
           isCancelled: isCancelled,
@@ -822,6 +905,7 @@ extension ActivityLogic on AppState {
           // Closing is best-effort.
         }
       }
+      quickEventful = result.quickEventful;
 
       // -- Unified result handler (`handleRefreshResult`, §7.2 step 4) ------
       final stillActive =
@@ -918,14 +1002,18 @@ extension ActivityLogic on AppState {
           updateUi: stillActive,
         );
         if (ctx.isScheduled) {
-          _markScheduledRefreshFailed(ctx.accountDir, true);
+          _markScheduledRefreshFailed(ctx.accountDir, true, scope: scope);
         }
         return false;
       }
       ok = true;
       _markScheduledRefreshFailed(ctx.accountDir, false);
-      _notifyForContext(ctx, 'refresh_done', Strings.get('refresh_done_body'));
-      logForCtx(Strings.get('refresh_finished_log'));
+      if (scope != 'quick' || quickEventful) {
+        _notifyForContext(ctx, 'refresh_done', Strings.get('refresh_done_body'));
+      }
+      if (scope != 'quick') {
+        logForCtx(Strings.get('refresh_finished_log'));
+      }
       return true;
     } on CancelledError {
       detail = Strings.get('cancelled_by_user');
@@ -951,24 +1039,43 @@ extension ActivityLogic on AppState {
       _notifyForContext(ctx, 'refresh_failed',
           Strings.format('refresh_failed_body', {'detail': detail}));
       if (ctx.isScheduled) {
-        _markScheduledRefreshFailed(ctx.accountDir, true);
+        _markScheduledRefreshFailed(ctx.accountDir, true, scope: scope);
       }
       return false;
     } finally {
+      // Silent quick checks (ok, no news, no week/outbox/strava change) roll
+      // into the per-account counter instead of pushing full runs out of the
+      // 20-row Aktivita history (F6 §5.5, R8a S13).
+      final silentQuick = scope == 'quick' && ok && !cancelled && !quickEventful;
+      if (silentQuick) {
+        recordSilentQuickCheck(ctx.accountId, clock.now());
+      }
       // Latch release + run record for EVERY exit.
       if (ctx.isActiveScreen) {
         if (activeAccountId == ctx.accountId) {
-          finishRun(started, scope, ok, detail, cancelled: cancelled);
+          if (silentQuick) {
+            status = 'idle';
+            currentStep = '';
+            refreshRunning = false;
+            releaseFlight('refresh_running');
+            cancelRequested = false;
+            _emit();
+          } else {
+            finishRun(started, scope, ok, detail, cancelled: cancelled);
+          }
         } else {
           // Account switched away mid-refresh: record into original account's list
           // without clobbering the newly active account's UI flags.
-          _recordRunEntry(ctx, started, scope, ok, detail, cancelled: cancelled);
+          if (!silentQuick) {
+            _recordRunEntry(ctx, started, scope, ok, detail,
+                cancelled: cancelled);
+          }
           refreshRunning = false;
           releaseFlight('refresh_running');
           cancelRequested = false;
           _emit();
         }
-      } else {
+      } else if (!silentQuick) {
         _recordRunEntry(ctx, started, scope, ok, detail, cancelled: cancelled);
       }
       // Keep analyzer happy on reportedFailure if unused beyond readability.
@@ -976,16 +1083,32 @@ extension ActivityLogic on AppState {
     }
   }
 
-  void _markScheduledRefreshFailed(String? dir, bool failed) {
+  void _markScheduledRefreshFailed(
+    String? dir,
+    bool failed, {
+    String scope = 'all',
+  }) {
     try {
       final current = loadDataCache(dataDir: dir);
       if (failed) {
         saveDataCache(
-          {scheduledRefreshFailedKey: clock.now().toIso8601String()},
+          {
+            scheduledRefreshFailedKey: clock.now().toIso8601String(),
+            scheduledRefreshFailedScopeKey: scope,
+          },
           dataDir: dir,
+          preserveLastUpdated: true,
         );
-      } else if (current[scheduledRefreshFailedKey] != null) {
-        saveDataCache({scheduledRefreshFailedKey: null}, dataDir: dir);
+      } else if (current[scheduledRefreshFailedKey] != null ||
+          current[scheduledRefreshFailedScopeKey] != null) {
+        saveDataCache(
+          {
+            scheduledRefreshFailedKey: null,
+            scheduledRefreshFailedScopeKey: null,
+          },
+          dataDir: dir,
+          preserveLastUpdated: true,
+        );
       }
     } catch (_) {
       // Cache failure stamp is best-effort.

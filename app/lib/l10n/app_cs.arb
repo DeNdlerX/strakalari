@@ -850,5 +850,9 @@
   "wiz_test_continue": "Otestovat a pokračovat",
   "wiz_test_key": "Otestovat klíč",
   "wiz_welcome_h": "Vítejte ve Strakalářích!",
-  "wiz_welcome_p": "V několika krocích nastavíme školu, Bakaláře, jídelnu Strava a omluvenky."
+  "wiz_welcome_p": "V několika krocích nastavíme školu, Bakaláře, jídelnu Strava a omluvenky.",
+  "activity_quick_checks": "Rychlé kontroly: {n}× dnes, poslední {time}",
+  "quick_check_log": "Rychlá kontrola: beze změn.",
+  "refresh_checked_full": "Kontrola: {checked} · Úplná: {full}",
+  "scope_quick": "Rychlá kontrola"
 }

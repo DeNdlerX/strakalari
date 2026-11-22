@@ -18,6 +18,9 @@ ActivityController activityControllerFor(AppState s) {
       startRefreshHook: (scope) => s.startRefresh(scope));
   c.logLines = List.of(s.logLines);
   c.runs = [for (final r in s.runs) Map<String, dynamic>.of(r)];
+  c.quickChecksToday = s.quickChecksToday;
+  c.lastQuickCheck = s.lastQuickCheck;
+  c.nextRunLabelHook = () => s.nextRunLabel;
   c.status = s.status;
   c.refreshRunning = s.refreshRunning;
   c.cancelRequested = s.cancelRequested;
@@ -90,7 +93,7 @@ class LiveActivityView extends ConsumerWidget {
       audit: audit,
       auditError: auditError,
       narrow: narrow,
-      updatedLabel: s.updatedLabel,
+      updatedLabel: s.activityUpdatedLabel,
       appVersion: version,
       foodNames: meals,
     );

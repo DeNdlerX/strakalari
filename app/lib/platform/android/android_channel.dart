@@ -55,6 +55,20 @@ class AndroidChannel {
     }
   }
 
+  /// Active network classification (`'unmetered'`, `'metered'`, or `'unknown'`).
+  /// Used only for polling cadence (F6 §7.1); never blocks a refresh.
+  Future<String> networkKind() async {
+    try {
+      final raw = await _channel.invokeMethod<String>('networkKind');
+      if (raw == 'unmetered' || raw == 'metered') return raw!;
+      return 'unknown';
+    } on MissingPluginException {
+      return 'unknown';
+    } on PlatformException {
+      return 'unknown';
+    }
+  }
+
   /// Shows a notification (a tap opens the app on [route]). True when posted.
   Future<bool> notify({
     required String title,

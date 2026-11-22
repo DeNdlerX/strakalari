@@ -9,6 +9,7 @@ import 'package:app/controllers/app_state.dart';
 import 'package:app/l10n/strings.dart';
 import 'package:app/platform/android/android_channel.dart';
 import 'package:app/platform/android/android_notifications.dart';
+import 'package:app/platform/scheduler_jobs.dart';
 import 'package:app/platform/startup.dart';
 import 'package:app/shell/router.dart';
 import 'package:app/tutorial/tours.dart';
@@ -589,6 +590,58 @@ void main() {
       expect(activity, contains('attached.handleIntent(intent)'));
       expect(activity, contains('onNewIntent'));
       expect(activity, contains('channel?.handleIntent(intent)'));
+    });
+
+    test('F6 manifest and Java channel wire ACCESS_NETWORK_STATE and networkKind',
+        () {
+      final manifest =
+          File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+      expect(manifest, contains('android.permission.ACCESS_NETWORK_STATE'));
+      final channel = File('$java/StrakalariChannel.java').readAsStringSync();
+      expect(channel, contains('case "networkKind":'));
+      expect(channel, contains('NET_CAPABILITY_NOT_METERED'));
+    });
+
+    test('F6 PhoneBackground sync re-arms on schedule key or networkKind change and never formats 0 min',
+        () async {
+      final state = AppState(
+        configData: {
+          'run_in_background': true,
+          'wizard_step': -1,
+          'check_interval_minutes': 5,
+          'check_interval_mobile_minutes': 15,
+          'check_interval_off_hours_minutes': 0,
+          'refresh_wifi_always_fast': true,
+        },
+        data: {},
+      )..wizardDismissed = true;
+      state.networkKind = NetworkKind.unmetered;
+      final loop = registerJobs(state);
+      final phone = PhoneBackground(
+        state,
+        loop,
+        const AndroidChannel(),
+        onAndroid: () => true,
+        startNotifier: false,
+      );
+      await phone.sync();
+      final wakesAfterWifi =
+          calls.where((c) => c.method == 'scheduleWake').length;
+      final startWifi =
+          calls.lastWhere((c) => c.method == 'startBackground').arguments as Map;
+      expect('${(startWifi['texts'] as Map)['text']}', contains('5'));
+
+      // Switching networkKind to metered triggers re-sync & fallback text uses 15 min (never 0)!
+      state.networkKind = NetworkKind.metered;
+      await phone.sync();
+      expect(
+        calls.where((c) => c.method == 'scheduleWake').length,
+        greaterThan(wakesAfterWifi),
+      );
+      final startMob =
+          calls.lastWhere((c) => c.method == 'startBackground').arguments as Map;
+      expect('${(startMob['texts'] as Map)['text']}', contains('15'));
+      expect('${(startMob['texts'] as Map)['text']}', isNot(contains(' 0 ')));
     });
   });
 }

@@ -173,6 +173,7 @@ class StatusInputs {
   final bool stableComplete;
   final int pendingExcuses;
   final DateTime? lastUpdated;
+  final DateTime? lastChecked;
 
   /// The school calendar's days off (null: worked out from [config],
   /// which reads the school presets from disk).
@@ -190,6 +191,7 @@ class StatusInputs {
     this.stableComplete = false,
     int? pendingExcuses,
     this.lastUpdated,
+    this.lastChecked,
     this.freeDays,
     this.accountLabel,
   }) : timetable = timetable ?? {},
@@ -623,13 +625,15 @@ StatusRow? _wakeupRow(StatusInputs inputs, DateTime now, String lang) {
 }
 
 String _updatedText(StatusInputs inputs, DateTime now, String lang) {
-  final stamp = inputs.lastUpdated;
+  final checked = inputs.lastChecked;
+  final stamp = checked ?? inputs.lastUpdated;
   if (stamp == null) return '';
   var when = _clock(stamp.hour * 60 + stamp.minute);
   if (_dayOnly(stamp) != _dayOnly(now)) {
     when = '${_date(_dayOnly(stamp))} $when';
   }
-  return t('status_updated', lang: lang, args: {'time': when});
+  final key = checked != null ? 'status_checked' : 'status_updated';
+  return t(key, lang: lang, args: {'time': when});
 }
 
 /// Row builders consulted by [buildStatus], in no fixed order.
