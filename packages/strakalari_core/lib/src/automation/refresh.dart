@@ -27,6 +27,8 @@
 import 'package:clock/clock.dart';
 
 import '../bakalari/common.dart';
+import '../bakalari/extractors.dart'
+    show absenceCountsIncreased, substitutionsByWeekHashes;
 import '../error_report.dart';
 import '../storage/config.dart';
 import '../i18n.dart';
@@ -52,12 +54,13 @@ import '../planning/schedule.dart' show baselineToDict;
 import 'automation.dart';
 import 'cancel.dart';
 import 'excuse_history.dart' show currentSemesterStart, excuseWindowDays;
+import 'refresh_schedule.dart' show activeDayWindow, stravaQuickFetchDue;
 
 /// Emitted progress events: `emit(key, fmt)`.
 typedef RefreshEmit = void Function(String key, [Map<String, Object?> fmt]);
 
-/// `scope` values (`all`, `bakalari`, `strava`).
-const List<String> refreshScopes = ['all', 'bakalari', 'strava'];
+/// `scope` values (`all`, `bakalari`, `strava`, `quick`).
+const List<String> refreshScopes = ['all', 'bakalari', 'strava', 'quick'];
 
 /// First day of the running school year (`planner.school_year_terms`,
 /// like refresh.py's `_school_year_start`).
@@ -159,6 +162,11 @@ class RefreshResult {
   /// changes since the previous refresh.
   List<(String, String)> news;
 
+  /// True for a `quick` tick that loaded a week, loaded grades, read the
+  /// outbox, brought news, ordered/cancelled lunches, or encountered an error
+  /// (drives Aktivita's silent-check rollup, F6 §5.5, R8a S13).
+  bool quickEventful;
+
   RefreshResult({
     this.scope = 'all',
     Map<String, Object?>? saved,
@@ -179,6 +187,7 @@ class RefreshResult {
     List<String>? unfundedDays,
     List<(String, Object)>? errors,
     List<(String, String)>? news,
+    this.quickEventful = false,
   })  : saved = saved ?? <String, Object?>{},
         autoOrderedDays = autoOrderedDays ?? <String>{},
         autoCancelledDays = autoCancelledDays ?? <String>{},
@@ -249,6 +258,8 @@ Future<RefreshResult> runRefresh(
   RefreshApp app,
   Map<String, Object?>? configData, {
   String scope = 'all',
+  bool scheduled = false,
+  bool quickOutbox = false,
   Iterable<String>? cancelledLunchDays,
   Iterable<String>? keptLunchDays,
   bool Function()? isCancelled,
@@ -263,6 +274,7 @@ Future<RefreshResult> runRefresh(
   final effectiveScope =
       refreshScopes.contains(scope) ? scope : 'all';
   final started = now ?? clock.now();
+  final startedIso = _isoDateTime(started);
   final result = RefreshResult(scope: effectiveScope);
 
   void emitSafe(String key, [Map<String, Object?> fmt = const {}]) {
@@ -280,27 +292,74 @@ Future<RefreshResult> runRefresh(
     }
   }
 
+  final previousCache = loadDataCache(dataDir: effectiveDataDir);
+  final partUpdated = <String, Object?>{};
+  if (previousCache[partUpdatedKey] is Map) {
+    partUpdated.addAll(_strMap(previousCache[partUpdatedKey] as Map));
+  }
+  var partUpdatedChanged = false;
+  void stampPart(String part) {
+    partUpdated[part] = startedIso;
+    partUpdatedChanged = true;
+  }
+
   final (hasBak, hasStrava) = hasValidCredentials(cfg);
   final fresh = <String, Object?>{};
   try {
-    await _fetchPhases(app, effectiveScope, hasBak, hasStrava, fresh,
-        result, emitSafe, checkCancel, effectiveDataDir);
+    await _fetchPhases(
+      app,
+      cfg,
+      effectiveScope,
+      hasBak,
+      hasStrava,
+      fresh,
+      result,
+      emitSafe,
+      checkCancel,
+      effectiveDataDir,
+      started: started,
+      scheduled: scheduled,
+      quickOutbox: quickOutbox,
+      previousCache: previousCache,
+      stampPart: stampPart,
+    );
     checkCancel();
-    await _autoPhases(app, cfg, fresh, result, emitSafe, isCancelled,
-        cancelledLunchDays, keptLunchDays, lunchPrompt, effectiveDataDir);
+    await _autoPhases(
+      app,
+      cfg,
+      effectiveScope,
+      fresh,
+      result,
+      emitSafe,
+      isCancelled,
+      cancelledLunchDays,
+      keptLunchDays,
+      lunchPrompt,
+      effectiveDataDir,
+    );
   } on CancelledError {
     // Cancelled after (part of) the fetch: keep what already arrived
     // (and any auto order that went through) instead of dropping it.
     // No global stamp — the run was not complete.
+    if (partUpdatedChanged) {
+      fresh[partUpdatedKey] = Map<String, Object?>.of(partUpdated);
+    }
     if (fresh.isNotEmpty) {
-      emitSafe('saving_cache');
-      _persist(app, cfg, fresh, started, effectiveDataDir);
+      if (effectiveScope != 'quick') emitSafe('saving_cache');
+      _persist(
+        app,
+        cfg,
+        fresh,
+        started,
+        effectiveDataDir,
+        preserveLastUpdated: effectiveScope == 'quick',
+      );
     }
     rethrow;
   }
 
   // -- 4. Persist -------------------------------------------------------
-  emitSafe('saving_cache');
+  if (effectiveScope != 'quick') emitSafe('saving_cache');
   final fetchedAny = result.bakalariFetched || result.stravaFetched;
   final fetchErrors = [
     for (final e in result.errors)
@@ -316,12 +375,34 @@ Future<RefreshResult> runRefresh(
     fresh['last_updated'] =
         '${two(s.day)}.${two(s.month)}.${s.year} '
         '${two(s.hour)}:${two(s.minute)}:${two(s.second)}';
+    stampPart('full');
   }
   if (result.bakalariFetched) {
     // Before the save below: the cache still holds the previous state.
     result.news = _findNews(fresh, started, effectiveDataDir);
   }
-  _persist(app, cfg, fresh, started, effectiveDataDir);
+  if (effectiveScope == 'quick') {
+    if (result.news.isNotEmpty ||
+        result.errors.isNotEmpty ||
+        result.lunchesOrdered > 0 ||
+        result.lunchesCancelled > 0) {
+      result.quickEventful = true;
+    }
+    if (!result.quickEventful) {
+      emitSafe('quick_check_log');
+    }
+  }
+  if (partUpdatedChanged) {
+    fresh[partUpdatedKey] = Map<String, Object?>.of(partUpdated);
+  }
+  _persist(
+    app,
+    cfg,
+    fresh,
+    started,
+    effectiveDataDir,
+    preserveLastUpdated: effectiveScope == 'quick',
+  );
   result.saved = fresh;
   return result;
 }
@@ -341,8 +422,14 @@ List<(String, String)> _findNews(
 }
 
 /// Merges [fresh] into the data cache (timetables day-granular).
-void _persist(RefreshApp app, Map<String, Object?> cfg,
-    Map<String, Object?> fresh, DateTime started, String? dataDir) {
+void _persist(
+  RefreshApp app,
+  Map<String, Object?> cfg,
+  Map<String, Object?> fresh,
+  DateTime started,
+  String? dataDir, {
+  bool preserveLastUpdated = false,
+}) {
   if (fresh['timetable'] is Map) {
     Map<String, Object?>? previous;
     try {
@@ -364,7 +451,11 @@ void _persist(RefreshApp app, Map<String, Object?> cfg,
         windowStart: windowStart);
   }
   if (fresh.isNotEmpty) {
-    saveDataCache(fresh, dataDir: dataDir);
+    saveDataCache(
+      fresh,
+      dataDir: dataDir,
+      preserveLastUpdated: preserveLastUpdated,
+    );
   }
 }
 
@@ -421,6 +512,24 @@ String _isoDate(DateTime d) =>
     '${d.month.toString().padLeft(2, '0')}-'
     '${d.day.toString().padLeft(2, '0')}';
 
+String _isoDateTime(DateTime d) {
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${d.year.toString().padLeft(4, '0')}-${two(d.month)}-${two(d.day)}T'
+      '${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
+}
+
+bool _sameCalendarDay(DateTime a, DateTime b) =>
+    a.year == b.year && a.month == b.month && a.day == b.day;
+
+int _goForwardWeeks(RefreshApp app, Map<String, Object?> cfg) {
+  var forward = app.goForwardWeeks;
+  if (forward == 0) {
+    final raw = cfg['go_forward_weeks'];
+    forward = raw is int ? raw : int.tryParse('${raw ?? 1}'.trim()) ?? 1;
+  }
+  return forward < 0 ? 0 : forward;
+}
+
 DateTime _semesterFloorMonday(DateTime today, DateTime yearStart) {
   final sem = currentSemesterStart(today);
   final rolling = addDays(today, -excuseWindowDays);
@@ -429,13 +538,15 @@ DateTime _semesterFloorMonday(DateTime today, DateTime yearStart) {
   return addDays(floor, -(floor.weekday - 1));
 }
 
-/// Adds the past weeks this run loaded to the stored timetable history.
+/// Adds the past weeks this run loaded to the stored timetable history,
+/// preserving `past_weeks_fetched` across rewrites (F6 §4.3, R8a S1).
 void _recordHistoryWeeks(
   RefreshApp app,
   Map<String, Object?> fresh,
   DateTime today,
-  Set<DateTime> done,
-) {
+  Set<DateTime> done, {
+  String? pastWeeksFetched,
+}) {
   final yearStart = _schoolYearStart(today);
   final firstMonday = addDays(yearStart, -(yearStart.weekday - 1));
   final thisMonday = addDays(today, -(today.weekday - 1));
@@ -444,17 +555,26 @@ void _recordHistoryWeeks(
       if (!m.isBefore(firstMonday) && m.isBefore(thisMonday))
         DateTime(m.year, m.month, m.day)
   };
-  fresh[timetableHistoryKey] = <String, Object?>{
+  final map = <String, Object?>{
     'school_year_start': _isoDate(yearStart),
     'weeks': [
       for (final m in {...done, ...loaded}) _isoDate(m)
     ]..sort(),
     'semester_reconciled': _isoDate(today),
   };
+  if (pastWeeksFetched != null && pastWeeksFetched.isNotEmpty) {
+    map['past_weeks_fetched'] = pastWeeksFetched;
+  }
+  fresh[timetableHistoryKey] = map;
 }
 
-/// Good fresh Bakaláři values only; failed parts are left out.
-Map<String, Object?> _bakalariPayload(RefreshApp app) {
+/// Good fresh Bakaláři values only; failed or intentionally skipped parts are
+/// left out so cached values survive untouched (F6 §4.3, R8a S5).
+Map<String, Object?> _bakalariPayload(
+  RefreshApp app, {
+  bool fetchedStable = true,
+  bool fetchedSubjects = true,
+}) {
   final payload = <String, Object?>{
     'timetable': Map<String, Object?>.of(app.timetableData),
   };
@@ -479,21 +599,25 @@ Map<String, Object?> _bakalariPayload(RefreshApp app) {
   if (details.isNotEmpty) {
     payload['absence_details'] = Map<String, Object?>.of(details);
   }
-  final directory = app.subjectDirectory;
-  if (directory.isNotEmpty) {
-    payload['subject_directory'] = Map<String, String>.of(directory);
+  if (fetchedSubjects) {
+    final directory = app.subjectDirectory;
+    if (directory.isNotEmpty) {
+      payload['subject_directory'] = Map<String, String>.of(directory);
+    }
   }
-  Map<String, Object?> baseline = const {};
-  try {
-    baseline = baselineToDictHook(app.stableBaseline);
-  } on Object {
-    baseline = const {};
-  }
-  // Only a scraped "Stálý" view is ever stored; a failed scrape keeps
-  // the last scraped baseline in the cache.
-  if (baseline.isNotEmpty && app.stableComplete) {
-    payload['stable_baseline'] = baseline;
-    payload['stable_baseline_source'] = 'scraped';
+  if (fetchedStable) {
+    Map<String, Object?> baseline = const {};
+    try {
+      baseline = baselineToDictHook(app.stableBaseline);
+    } on Object {
+      baseline = const {};
+    }
+    // Only a scraped "Stálý" view is ever stored; a failed scrape keeps
+    // the last scraped baseline in the cache.
+    if (baseline.isNotEmpty && app.stableComplete) {
+      payload['stable_baseline'] = baseline;
+      payload['stable_baseline_source'] = 'scraped';
+    }
   }
   return payload;
 }
@@ -506,25 +630,121 @@ String _firstLine(Object exc) {
 }
 
 Future<void> _fetchPhases(
-    RefreshApp app,
-    String scope,
-    bool hasBak,
-    bool hasStrava,
-    Map<String, Object?> fresh,
-    RefreshResult result,
-    RefreshEmit emit,
-    void Function() checkCancel,
-    String? dataDir) async {
-  // -- 1. Bakaláři ------------------------------------------------------
+  RefreshApp app,
+  Map<String, Object?> cfg,
+  String scope,
+  bool hasBak,
+  bool hasStrava,
+  Map<String, Object?> fresh,
+  RefreshResult result,
+  RefreshEmit emit,
+  void Function() checkCancel,
+  String? dataDir, {
+  required DateTime started,
+  required bool scheduled,
+  required bool quickOutbox,
+  required Map<String, Object?> previousCache,
+  required void Function(String part) stampPart,
+}) async {
+  // -- 0. Quick tier (F6 §5.3) -----------------------------------------
+  if (scope == 'quick') {
+    if (hasBak) {
+      checkCancel();
+      final inDayWindow = activeDayWindow(previousCache, cfg, started) != null;
+      final quick = await app.fetchBakalariQuick(
+        previousCache,
+        started,
+        inDayWindow: inDayWindow,
+      );
+      fresh.addAll(quick.fresh);
+      for (final part in quick.updatedParts) {
+        stampPart(part);
+      }
+      if (quick.allSignalsOk) {
+        stampPart('quick');
+      }
+      if (quick.marksOk || quick.feedOk || quick.absenceOk) {
+        result.bakalariFetched = true;
+        result.subjects =
+            (quick.fresh['absence'] as Map?)?.length ??
+            (previousCache['absence'] as Map?)?.length ??
+            0;
+      }
+      if (quick.gradesLoaded || quick.weeksLoaded) {
+        result.quickEventful = true;
+      }
+      // Step 1(e) (R8a M2): while excuses are pending, keep outbox <= 60 min
+      // old so excuses sent elsewhere stop showing as "to excuse" promptly.
+      if (quickOutbox) {
+        result.quickEventful = true;
+        if (app is Strakalari) {
+          app.nextUseCachedOutboxForm = true;
+        }
+        try {
+          await app.syncWebExcusesToHistory();
+        } on CancelledError {
+          rethrow;
+        } on Object catch (exc) {
+          emit('excuse_sync_failed', {'err': _firstLine(exc)});
+        }
+        if (app.lastOutboxSyncOk) {
+          stampPart('outbox');
+          final outboxFrom = app.sentExcusesFrom;
+          if (outboxFrom != null) {
+            fresh[sentExcusesFromKey] = _isoDate(outboxFrom);
+          }
+          if (app is Strakalari) {
+            final detailsCache = app.outboxDetailsCache;
+            if (detailsCache != null) {
+              fresh[outboxDetailsKey] = detailsCache;
+            }
+            final formCache = app.outboxFormCache;
+            if (formCache != null) {
+              fresh[outboxFormKey] = formCache;
+            }
+          }
+        }
+      }
+    }
+    // Step 2: conditional Strava check on quick ticks.
+    if (app.stravaEnable &&
+        hasStrava &&
+        stravaQuickFetchDue(previousCache, cfg, started)) {
+      checkCancel();
+      try {
+        await app.fetchStravaData();
+      } on CancelledError {
+        rethrow;
+      } on Object catch (exc) {
+        result.errors.add(('strava', exc));
+        emit('strava_fetch_failed', {'err': _firstLine(exc)});
+        return;
+      }
+      final food = Map<String, Map<String, String>>.of(app.foodDict);
+      if (food.isNotEmpty) {
+        fresh['strava_meals'] = food;
+        fresh['strava_ordered'] = Map<String, String>.of(app.orderedDict);
+        result.stravaFetched = true;
+        result.menuDays = food.length;
+        fresh[stravaStatusKey] = 'ok';
+        stampPart('strava');
+      } else {
+        fresh[stravaStatusKey] = 'empty';
+      }
+    }
+    return;
+  }
+
+  // -- 1. Bakaláři (full: 'all' / 'bakalari') ---------------------------
   if (scope == 'all' || scope == 'bakalari') {
     if (!hasBak) {
       emit('bakalari_skipped_log');
     } else {
       checkCancel();
-      final now = clock.now();
-      final today = DateTime(now.year, now.month, now.day);
+      final today = DateTime(started.year, started.month, started.day);
       final yearStart = _schoolYearStart(today);
-      final (done, reconciledOn) = _historyState(yearStart, dataDir);
+      final (done, reconciledOn, pastWeeksFetchedOn) =
+          _historyState(yearStart, dataDir);
       final todayIso = _isoDate(today);
       final floorMonday = _semesterFloorMonday(today, yearStart);
       final effectiveDone = reconciledOn == todayIso
@@ -536,9 +756,80 @@ Future<void> _fetchPhases(
       if (missing.isNotEmpty) {
         emit('timetable_history_log', {'n': missing.length});
       }
+
+      // Daily skipping on scheduled full runs after the first run of the day
+      // (F6 §4.3, R8a S1, S3, S4, S5).
+      final lastFull = partUpdatedTime(previousCache, 'full') ??
+          lastUpdatedTime(previousCache);
+      final firstRunToday =
+          lastFull == null || !_sameCalendarDay(lastFull, started);
+      final canSkipDaily = scheduled && !firstRunToday;
+
+      final cachedStable = previousCache['stable_baseline'] is Map
+          ? _strMap(previousCache['stable_baseline'] as Map)
+          : null;
+      final stableStamp = partUpdatedTime(previousCache, 'stable_timetable');
+      final skipPerm = canSkipDaily &&
+          stableStamp != null &&
+          _sameCalendarDay(stableStamp, started) &&
+          previousCache['stable_baseline_source'] == 'scraped' &&
+          cachedStable != null &&
+          cachedStable.isNotEmpty;
+
+      final subjStamp = partUpdatedTime(previousCache, 'subject_directory');
+      final cachedSubj = previousCache['subject_directory'];
+      final skipSubjects = canSkipDaily &&
+          subjStamp != null &&
+          _sameCalendarDay(subjStamp, started) &&
+          cachedSubj is Map &&
+          cachedSubj.isNotEmpty;
+
+      final back = _goBackWeeks(app, cfg);
+      final forward = _goForwardWeeks(app, cfg);
+      final thisMonday = addDays(today, -(today.weekday - 1));
+      final regularPastMondays = [
+        for (var o = -1; o > -back; o--) addDays(thisMonday, o * 7),
+      ];
+      final allPastInHistory =
+          regularPastMondays.every(effectiveDone.contains);
+      final prevPastSnapshot = previousCache[absenceCountsAtPastFetchKey] is Map
+          ? _strMap(previousCache[absenceCountsAtPastFetchKey] as Map)
+          : null;
+      var skippedPastWeeks = false;
+
+      if (app is Strakalari) {
+        app.nextBakalariPlan = BakalariFetchPlan(
+          fetchStable: !skipPerm,
+          cachedStableBaseline: skipPerm ? cachedStable : null,
+          fetchSubjects: !skipSubjects,
+          fetchMarks: true,
+          fetchMarksWidget: true,
+          cachedAbsenceHasSubjects: previousCache['absence'] is Map &&
+              (previousCache['absence'] as Map).isNotEmpty,
+          resolveWeekOffsets: (freshAbsDetails, absenceOk) {
+            final canSkipPast = canSkipDaily &&
+                pastWeeksFetchedOn == todayIso &&
+                allPastInHistory &&
+                missing.isEmpty &&
+                absenceOk &&
+                prevPastSnapshot != null &&
+                !absenceCountsIncreased(prevPastSnapshot, freshAbsDetails);
+            if (canSkipPast) {
+              skippedPastWeeks = true;
+              return [for (var o = 0; o <= forward; o++) o];
+            }
+            return null;
+          },
+        );
+      }
+
       emit('fetching_bakalari');
       await app.fetchBakalariData();
-      final payload = _bakalariPayload(app);
+      final payload = _bakalariPayload(
+        app,
+        fetchedStable: !skipPerm,
+        fetchedSubjects: !skipSubjects,
+      );
       emit('baseline_log', {
         'slots': app.stableBaseline.length,
         'changes': app.weekChanges.length,
@@ -552,10 +843,94 @@ Future<void> _fetchPhases(
         result.bakalariFetched = true;
         result.subjects =
             (payload['absence'] as Map?)?.length ?? 0;
-        _recordHistoryWeeks(app, fresh, today, effectiveDone);
+
+        // Per-part freshness stamps (F6 §5.4).
+        if (hasTimetable) stampPart('timetable');
+        if (!skipPerm && payload['stable_baseline_source'] == 'scraped') {
+          stampPart('stable_timetable');
+        }
+        if (!skipSubjects &&
+            payload['subject_directory'] is Map &&
+            (payload['subject_directory'] as Map).isNotEmpty) {
+          stampPart('subject_directory');
+        }
+        if (app.absenceError == '') {
+          stampPart('absence');
+          if (app is Strakalari && app.bakalariClient != null) {
+            if (app.bakalariClient!.absenceDirectFailed) {
+              fresh[absenceDirectFailedKey] = _isoDateTime(started);
+            } else if (previousCache[absenceDirectFailedKey] != null) {
+              fresh[absenceDirectFailedKey] = null;
+            }
+          }
+        }
+        if (app.gradesError == '') {
+          stampPart('marks');
+          if (previousCache[gradesFailedKey] != null) {
+            fresh[gradesFailedKey] = null;
+          }
+          if (app is Strakalari && app.bakalariClient?.marksWidget != null) {
+            fresh[marksWidgetKey] = app.bakalariClient!.marksWidget;
+            if (previousCache[marksWidgetFailedKey] != null) {
+              fresh[marksWidgetFailedKey] = null;
+            }
+          }
+        }
+
+        // Store per-week substitution hashes from the feed read before the
+        // weeks so the first quick tick after a full run loads 0 weeks (R8a S4).
+        final feed = app.substitutionsOrNull;
+        if (feed != null) {
+          final watchMondays = [
+            for (var o = 0; o <= forward; o++) addDays(thisMonday, o * 7),
+          ];
+          final loadedSet = app.timetableLoadedWeeks;
+          final targetMondays = loadedSet.isEmpty
+              ? watchMondays
+              : [
+                  for (final m in watchMondays)
+                    if (loadedSet.contains(m)) m,
+                ];
+          if (targetMondays.isNotEmpty) {
+            final prevHashes = <String, String>{};
+            if (previousCache[substitutionsWeekHashesKey] is Map) {
+              for (final e
+                  in (previousCache[substitutionsWeekHashesKey] as Map).entries) {
+                prevHashes['${e.key}'] = '${e.value ?? ''}';
+              }
+            }
+            prevHashes.addAll(substitutionsByWeekHashes(feed, targetMondays));
+            fresh[substitutionsWeekHashesKey] = prevHashes;
+          }
+        }
+
+        // Record past-weeks snapshot when all regular past weeks were loaded (R8a S1).
+        final fetchedAllRegularPast = !skippedPastWeeks &&
+            (regularPastMondays.isEmpty ||
+                app.timetableLoadedWeeks.isEmpty ||
+                regularPastMondays.every(app.timetableLoadedWeeks.contains));
+        var nextPastFetched = pastWeeksFetchedOn;
+        if (fetchedAllRegularPast && app.absenceError == '') {
+          fresh[absenceCountsAtPastFetchKey] =
+              Map<String, Object?>.of(app.absenceDetails);
+          nextPastFetched = todayIso;
+        }
+        _recordHistoryWeeks(
+          app,
+          fresh,
+          today,
+          effectiveDone,
+          pastWeeksFetched: nextPastFetched,
+        );
         emit('bakalari_done_log', {'n': result.subjects});
       } else {
         emit('refresh_empty_warn');
+      }
+
+      if (app is Strakalari) {
+        // Manual full refresh (`scheduled: false`) always loads the Komens page
+        // (R8a S6); scheduled runs may reuse the 3 cached fields with M1 check.
+        app.nextUseCachedOutboxForm = scheduled;
       }
       try {
         await app.syncWebExcusesToHistory();
@@ -565,6 +940,7 @@ Future<void> _fetchPhases(
         emit('excuse_sync_failed', {'err': _firstLine(exc)});
       }
       if (app.lastOutboxSyncOk) {
+        stampPart('outbox');
         final outboxFrom = app.sentExcusesFrom;
         if (outboxFrom != null) {
           fresh[sentExcusesFromKey] = _isoDate(outboxFrom);
@@ -573,6 +949,10 @@ Future<void> _fetchPhases(
           final detailsCache = app.outboxDetailsCache;
           if (detailsCache != null) {
             fresh[outboxDetailsKey] = detailsCache;
+          }
+          final formCache = app.outboxFormCache;
+          if (formCache != null) {
+            fresh[outboxFormKey] = formCache;
           }
         }
       }
@@ -605,6 +985,7 @@ Future<void> _fetchPhases(
         result.stravaFetched = true;
         result.menuDays = food.length;
         fresh[stravaStatusKey] = 'ok';
+        stampPart('strava');
         emit('strava_done_log', {'n': food.length});
       } else {
         fresh[stravaStatusKey] = 'empty';
@@ -615,8 +996,10 @@ Future<void> _fetchPhases(
 }
 
 /// Mondays already in the timetable history of this school year, plus the
-/// `YYYY-MM-DD` date of the last daily current-semester reconciliation.
-(Set<DateTime>, String) _historyState(DateTime yearStart, String? dataDir) {
+/// `YYYY-MM-DD` date of the last daily current-semester reconciliation and
+/// `past_weeks_fetched` (F6 §4.3, R8a S1).
+(Set<DateTime>, String, String) _historyState(
+    DateTime yearStart, String? dataDir) {
   Map<String, Object?> stored = const {};
   try {
     final loaded = loadDataCache(dataDir: dataDir)[timetableHistoryKey];
@@ -625,7 +1008,7 @@ Future<void> _fetchPhases(
     stored = const {};
   }
   if (stored['school_year_start'] != _isoDate(yearStart)) {
-    return (<DateTime>{}, ''); // first run, or a new school year
+    return (<DateTime>{}, '', ''); // first run, or a new school year
   }
   final done = <DateTime>{};
   final weeks = stored['weeks'];
@@ -639,12 +1022,15 @@ Future<void> _fetchPhases(
   }
   final reconciled = stored['semester_reconciled'];
   final reconciledOn = reconciled is String ? reconciled : '';
-  return (done, reconciledOn);
+  final pastFetched = stored['past_weeks_fetched'];
+  final pastWeeksFetchedOn = pastFetched is String ? pastFetched : '';
+  return (done, reconciledOn, pastWeeksFetchedOn);
 }
 
 Future<void> _autoPhases(
     RefreshApp app,
     Map<String, Object?> cfg,
+    String effectiveScope,
     Map<String, Object?> fresh,
     RefreshResult result,
     RefreshEmit emit,
@@ -655,8 +1041,10 @@ Future<void> _autoPhases(
     String? dataDir) async {
   // -- 3. Auto modes ----------------------------------------------------
   final paused = automationPaused(cfg);
+  // Scope lock (F6 §5.3 step 3): quick ticks NEVER run auto-excuse and NEVER
+  // emit `auto_excuse_outbox_unknown`, even in `auto` mode and even with `quickOutbox`.
   var wantsExcuse =
-      result.bakalariFetched && app.excuseMode == 'auto';
+      effectiveScope != 'quick' && result.bakalariFetched && app.excuseMode == 'auto';
   var wantsLunchOrder =
       result.stravaFetched && app.stravaOrderMode == 'auto';
   var wantsLunchCancel =

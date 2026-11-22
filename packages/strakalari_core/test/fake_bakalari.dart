@@ -134,7 +134,7 @@ class FakeBakalari implements HttpTransport {
             statusCode: 302,
             url: url,
             headers: {
-              'location': ['$fakeRoot/dashboard']
+              'location': ['${url.origin}/dashboard']
             },
           ),
           setCookie,
@@ -154,7 +154,7 @@ class FakeBakalari implements HttpTransport {
           statusCode: 302,
           url: url,
           headers: {
-            'location': ['$fakeRoot/dashboard'],
+            'location': ['${url.origin}/dashboard'],
             'set-cookie': ['BakaAuth=$_token; Path=/'],
           },
         );
@@ -173,7 +173,7 @@ class FakeBakalari implements HttpTransport {
         statusCode: 302,
         url: url,
         headers: {
-          'location': ['$fakeRoot/login$ret']
+          'location': ['${url.origin}/login$ret']
         },
       );
     }

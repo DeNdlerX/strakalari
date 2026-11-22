@@ -24,8 +24,11 @@ import 'package:clock/clock.dart';
 import 'package:path/path.dart' as p;
 
 import '../bakalari/client.dart';
+import '../bakalari/extractors.dart'
+    show absenceCountsIncreased, substitutionsByWeekHashes;
 import '../lunches/lunch_cutoff.dart' show isLunchOrderOpen;
 import '../models.dart';
+import '../news.dart' show newAbsences;
 import '../planning/school_presets.dart'
     show effectiveCalendar, resolveLunchCutoff;
 import '../strava/client.dart';
@@ -35,7 +38,17 @@ import '../storage/accounts.dart'
         globalConfigFile,
         isAccountsMode,
         requirePerAccountDir;
-import '../storage/cache.dart' show loadDataCache, outboxDetailsKey;
+import '../storage/cache.dart'
+    show
+        absenceDirectFailedKey,
+        gradesFailedKey,
+        loadDataCache,
+        marksWidgetFailedKey,
+        marksWidgetKey,
+        outboxDetailsKey,
+        outboxFormKey,
+        partUpdatedTime,
+        substitutionsWeekHashesKey;
 import '../storage/config.dart';
 import '../storage/helpers.dart';
 import 'audit.dart' as audit;
@@ -235,6 +248,55 @@ bool selectionHolds(StravaClient client, Map<String, Object?> pick) {
   }
 }
 
+/// Options forwarded from [runRefresh] into [Strakalari.fetchBakalariData]
+/// without changing the zero-arg [RefreshApp.fetchBakalariData] signature.
+class BakalariFetchPlan {
+  final List<int>? weekOffsetsOverride;
+  final List<int>? Function(
+      Map<String, Object?> freshAbsenceDetails, bool absenceOk)?
+      resolveWeekOffsets;
+  final bool fetchStable;
+  final Map<String, Object?>? cachedStableBaseline;
+  final bool fetchSubjects;
+  final bool fetchMarks;
+  final bool fetchMarksWidget;
+  final bool cachedAbsenceHasSubjects;
+
+  const BakalariFetchPlan({
+    this.weekOffsetsOverride,
+    this.resolveWeekOffsets,
+    this.fetchStable = true,
+    this.cachedStableBaseline,
+    this.fetchSubjects = true,
+    this.fetchMarks = true,
+    this.fetchMarksWidget = false,
+    this.cachedAbsenceHasSubjects = false,
+  });
+}
+
+/// Result of one quick-tier Bakaláři check (`scope: 'quick'`, F6 §5.3).
+class QuickBakalariOutcome {
+  final Map<String, Object?> fresh;
+  final Set<String> updatedParts;
+  final bool marksOk;
+  final bool feedOk;
+  final bool absenceOk;
+  final bool gradesLoaded;
+  final bool weeksLoaded;
+
+  const QuickBakalariOutcome({
+    this.fresh = const {},
+    this.updatedParts = const {},
+    this.marksOk = false,
+    this.feedOk = false,
+    this.absenceOk = false,
+    this.gradesLoaded = false,
+    this.weeksLoaded = false,
+  });
+
+  bool get allSignalsOk => marksOk && feedOk && absenceOk;
+}
+
 /// What `runRefresh` (refresh.dart) needs from the app.
 ///
 /// Python duck-types this (`app: Any`); Dart needs the shape written
@@ -273,6 +335,11 @@ abstract class RefreshApp {
   set cancelCallback(bool Function()? cb);
 
   Future<void> fetchBakalariData();
+  Future<QuickBakalariOutcome> fetchBakalariQuick(
+    Map<String, Object?> previousCache,
+    DateTime started, {
+    required bool inDayWindow,
+  });
   Future<int> syncWebExcusesToHistory();
   Future<void> fetchStravaData();
   Future<bool> stravaOrderSelected(Map<String, String> orders,
@@ -367,6 +434,13 @@ class Strakalari implements RefreshApp {
   /// caller for the next [stravaOrderSelected] call so the audit log records
   /// why each automatic cancellation ran. Consumed and cleared on call.
   Map<String, String> nextCancelReasons = const {};
+
+  /// Optional fetch plan consumed by the next [fetchBakalariData] call.
+  BakalariFetchPlan? nextBakalariPlan;
+
+  /// When true, the next [syncWebExcusesToHistory] may use the 3 cached Komens
+  /// hidden fields (consumed and reset on call; false on manual refresh).
+  bool nextUseCachedOutboxForm = false;
   Map<String, List<Object?>> _orderReport = {
     'skipped': [],
     'succeeded': [],
@@ -548,6 +622,27 @@ class Strakalari implements RefreshApp {
     };
   }
 
+  /// Refreshed Komens outbox 3-field cache after a full-page sync, else null.
+  Map<String, Object?>? get outboxFormCache {
+    final client = bakalariClient;
+    if (client == null ||
+        !client.outboxFormUpdated ||
+        client.knownOutboxForm == null) {
+      return null;
+    }
+    return Map<String, Object?>.of(client.knownOutboxForm!);
+  }
+
+  Map<String, Object?>? _readCachedOutboxForm() {
+    try {
+      final raw = loadDataCache(dataDir: dataDir)[outboxFormKey];
+      if (raw is! Map) return null;
+      return raw.map((k, v) => MapEntry('$k', v as Object?));
+    } on Object {
+      return null;
+    }
+  }
+
   Map<String, List<Map<String, Object?>>> _readCachedOutboxDetails() {
     try {
       final raw = loadDataCache(dataDir: dataDir)[outboxDetailsKey];
@@ -702,11 +797,275 @@ class Strakalari implements RefreshApp {
 
   @override
   Future<void> fetchBakalariData() async {
+    final plan = nextBakalariPlan;
+    nextBakalariPlan = null;
     final client = bakalariClient;
     if (client == null) return;
     client.cancelRequested = cancelRequested;
     client.cancelCallback = cancelCallback;
-    await client.fetchData();
+    if (plan != null) {
+      await client.fetchData(
+        weekOffsetsOverride: plan.weekOffsetsOverride,
+        resolveWeekOffsets: plan.resolveWeekOffsets,
+        fetchStable: plan.fetchStable,
+        cachedStableBaseline: plan.cachedStableBaseline,
+        fetchSubjects: plan.fetchSubjects,
+        fetchMarks: plan.fetchMarks,
+        fetchMarksWidget: plan.fetchMarksWidget,
+        cachedAbsenceHasSubjects: plan.cachedAbsenceHasSubjects,
+      );
+    } else {
+      await client.fetchData();
+    }
+  }
+
+  @override
+  Future<QuickBakalariOutcome> fetchBakalariQuick(
+    Map<String, Object?> previousCache,
+    DateTime started, {
+    required bool inDayWindow,
+  }) async {
+    final client = bakalariClient;
+    if (client == null) return const QuickBakalariOutcome();
+    client.cancelRequested = cancelRequested;
+    client.cancelCallback = cancelCallback;
+    client.raiseIfCancelledNow();
+
+    final fresh = <String, Object?>{};
+    final updatedParts = <String>{};
+    String two(int n) => n.toString().padLeft(2, '0');
+    final startedIso =
+        '${started.year.toString().padLeft(4, '0')}-${two(started.month)}-${two(started.day)}T'
+        '${two(started.hour)}:${two(started.minute)}:${two(started.second)}';
+    final today = DateTime(started.year, started.month, started.day);
+    final thisMonday = addDays(today, -(today.weekday - 1));
+    String isoDay(DateTime d) =>
+        '${d.year.toString().padLeft(4, '0')}-${two(d.month)}-${two(d.day)}';
+
+    DateTime? parseStamp(Object? raw) =>
+        raw == null ? null : DateTime.tryParse('$raw'.trim());
+
+    await client.login();
+
+    // (a) Marks signal: GET /Marks/Widget (2 KB) -> prubzna.aspx only on change
+    //     or first/hourly broken-widget fallback (F6 §5.3 1a, R8a S3).
+    var marksOk = false;
+    var gradesLoaded = false;
+    final widget = await client.fetchMarksWidget();
+    if (widget != null) {
+      if (previousCache[marksWidgetFailedKey] != null) {
+        fresh[marksWidgetFailedKey] = null;
+      }
+      final prevWidget = previousCache[marksWidgetKey];
+      final changed = prevWidget == null || !jsonEquals(prevWidget, widget);
+      if (changed) {
+        final gradesFailedAt = parseStamp(previousCache[gradesFailedKey]);
+        final throttled = gradesFailedAt != null &&
+            started.difference(gradesFailedAt) < const Duration(minutes: 60);
+        if (!throttled) {
+          await client.getGrades();
+          if (client.gradesError == '') {
+            fresh['grades'] = {
+              for (final e in client.grades.entries) e.key: e.value,
+            };
+            fresh['quarterly_marks'] =
+                Map<String, Map<String, Object?>>.of(client.quarterlyMarks);
+            fresh[marksWidgetKey] = widget;
+            if (previousCache[gradesFailedKey] != null) {
+              fresh[gradesFailedKey] = null;
+            }
+            updatedParts.add('marks');
+            marksOk = true;
+            gradesLoaded = true;
+          } else {
+            if (gradesFailedAt == null) {
+              writeLog(
+                  'Warning: marks page failed during quick check (${client.gradesError}); retrying at most hourly.');
+            }
+            fresh[gradesFailedKey] = startedIso;
+          }
+        }
+      } else {
+        // Confirmed unchanged by widget.
+        updatedParts.add('marks');
+        marksOk = true;
+      }
+    } else {
+      final prevWidgetFailed = parseStamp(previousCache[marksWidgetFailedKey]);
+      final marksStamp = partUpdatedTime(previousCache, 'marks');
+      final shouldFallback = prevWidgetFailed == null ||
+          marksStamp == null ||
+          started.difference(marksStamp) >= const Duration(minutes: 60);
+      if (prevWidgetFailed == null) {
+        writeLog(
+            'Warning: /Marks/Widget failed during quick check; falling back to marks page.');
+      }
+      fresh[marksWidgetFailedKey] = startedIso;
+      if (shouldFallback) {
+        await client.getGrades();
+        if (client.gradesError == '') {
+          fresh['grades'] = {
+            for (final e in client.grades.entries) e.key: e.value,
+          };
+          fresh['quarterly_marks'] =
+              Map<String, Map<String, Object?>>.of(client.quarterlyMarks);
+          if (previousCache[gradesFailedKey] != null) {
+            fresh[gradesFailedKey] = null;
+          }
+          updatedParts.add('marks');
+          marksOk = true;
+          gradesLoaded = true;
+        } else {
+          fresh[gradesFailedKey] = startedIso;
+        }
+      }
+    }
+
+    // (b) Substitution feed -> queue only weeks whose hash changed + hourly
+    //     daytime safety net for this week (F6 §5.3 1b, R8a S4).
+    final feed = await client.fetchSubstitutions();
+    final feedOk = feed != null;
+    final forward = goForwardWeeks < 0 ? 0 : goForwardWeeks;
+    final watchOffsets = [for (var o = 0; o <= forward; o++) o];
+    final watchMondays = [
+      for (final o in watchOffsets) addDays(thisMonday, o * 7),
+    ];
+    final weeksToFetch = <int>{};
+    Map<String, String>? freshHashes;
+    final prevHashes = <String, String>{};
+    final rawPrevHashes = previousCache[substitutionsWeekHashesKey];
+    if (rawPrevHashes is Map) {
+      for (final e in rawPrevHashes.entries) {
+        prevHashes['${e.key}'] = '${e.value ?? ''}';
+      }
+    }
+    if (feed != null) {
+      freshHashes = substitutionsByWeekHashes(feed, watchMondays);
+      for (var i = 0; i < watchOffsets.length; i++) {
+        final key = isoDay(watchMondays[i]);
+        if (prevHashes[key] != freshHashes[key]) {
+          weeksToFetch.add(watchOffsets[i]);
+        }
+      }
+      if (inDayWindow) {
+        final ttStamp = partUpdatedTime(previousCache, 'timetable');
+        if (ttStamp == null ||
+            started.difference(ttStamp) >= const Duration(minutes: 60)) {
+          weeksToFetch.add(0);
+        }
+      }
+    }
+
+    // (c) Direct absence JSON (1.2-3 KB) -> immediate absence update + queue
+    //     this week if any subject's missed_hours grew (F6 §5.3 1c, R8a S7).
+    final prevDirectFailed = parseStamp(previousCache[absenceDirectFailedKey]);
+    final allowPageFallback = prevDirectFailed == null ||
+        started.difference(prevDirectFailed) >= const Duration(minutes: 60);
+    final cachedHasSubjects = previousCache['absence'] is Map &&
+        (previousCache['absence'] as Map).isNotEmpty;
+    await client.obtainAbsenceInfo(
+      allowPageFallback: allowPageFallback,
+      cachedHasSubjects: cachedHasSubjects,
+      quiet: true,
+    );
+    final absenceOk = client.absenceError == '';
+    if (client.absenceDirectFailed) {
+      fresh[absenceDirectFailedKey] = startedIso;
+    } else if (previousCache[absenceDirectFailedKey] != null) {
+      fresh[absenceDirectFailedKey] = null;
+    }
+    var absenceGrew = false;
+    if (absenceOk) {
+      fresh['absence'] = Map<String, double>.of(client.absencePercentages);
+      fresh['absence_details'] = Map<String, Object?>.of(client.absenceDetails);
+      updatedParts.add('absence');
+      final prevAbsDetails = previousCache['absence_details'] is Map
+          ? (previousCache['absence_details'] as Map)
+              .map((k, v) => MapEntry('$k', v as Object?))
+          : null;
+      absenceGrew =
+          absenceCountsIncreased(prevAbsDetails, client.absenceDetails);
+      if (absenceGrew) {
+        weeksToFetch.add(0);
+      }
+    }
+
+    // (d) Conditional week fetch using cached scraped stable_baseline (R8a S5).
+    var weeksLoaded = false;
+    if (weeksToFetch.isNotEmpty) {
+      final cachedBaseline =
+          previousCache['stable_baseline_source'] == 'scraped' &&
+                  previousCache['stable_baseline'] is Map
+              ? (previousCache['stable_baseline'] as Map)
+                  .map((k, v) => MapEntry('$k', v as Object?))
+              : null;
+      client.timetableSources = [];
+      client.timetableData = {};
+      client.stableTimetableData = {};
+      client.weekChanges = [];
+      final sortedOffsets = weeksToFetch.toList()..sort();
+      await client.fetchTimetableWeeks(weekOffsetsOverride: sortedOffsets);
+      for (final details in client.timetableSources) {
+        if (details is List) {
+          client.addTimetableDetails(details.cast<Object?>());
+        }
+      }
+      client.updateStableBaseline(cachedBaseline: cachedBaseline);
+
+      // Back-dated absence check: if Count grew, this week showed no new
+      // absence, and last week wasn't fetched yet -> fetch last week (-1) once.
+      if (absenceGrew &&
+          !weeksToFetch.contains(-1) &&
+          newAbsences(previousCache, {'timetable': client.timetableData})
+              .isEmpty) {
+        final prevLoaded = Set<DateTime>.of(client.timetableLoadedWeeks);
+        final prevSourcesCount = client.timetableSources.length;
+        await client.fetchTimetableWeeks(weekOffsetsOverride: const [-1]);
+        client.timetableLoadedWeeks.addAll(prevLoaded);
+        for (final details in client.timetableSources.skip(prevSourcesCount)) {
+          if (details is List) {
+            client.addTimetableDetails(details.cast<Object?>());
+          }
+        }
+        client.updateStableBaseline(cachedBaseline: cachedBaseline);
+      }
+
+      if (client.timetableData.isNotEmpty) {
+        fresh['timetable'] = Map<String, Object?>.of(client.timetableData);
+        updatedParts.add('timetable');
+        weeksLoaded = true;
+      }
+      if (feed != null && freshHashes != null) {
+        fresh['substitutions'] = [for (final e in feed) Map<String, Object?>.of(e)];
+        final mergedHashes = Map<String, String>.of(prevHashes);
+        for (var i = 0; i < watchOffsets.length; i++) {
+          final off = watchOffsets[i];
+          final mon = watchMondays[i];
+          final key = isoDay(mon);
+          // Only advance a week's hash when it was unchanged or loaded cleanly.
+          if (!weeksToFetch.contains(off) ||
+              client.timetableLoadedWeeks.contains(mon)) {
+            mergedHashes[key] = freshHashes[key]!;
+          }
+        }
+        fresh[substitutionsWeekHashesKey] = mergedHashes;
+      }
+    } else if (feed != null && freshHashes != null) {
+      fresh['substitutions'] = [for (final e in feed) Map<String, Object?>.of(e)];
+      final mergedHashes = Map<String, String>.of(prevHashes)
+        ..addAll(freshHashes);
+      fresh[substitutionsWeekHashesKey] = mergedHashes;
+    }
+
+    return QuickBakalariOutcome(
+      fresh: fresh,
+      updatedParts: updatedParts,
+      marksOk: marksOk,
+      feedOk: feedOk,
+      absenceOk: absenceOk,
+      gradesLoaded: gradesLoaded,
+      weeksLoaded: weeksLoaded,
+    );
   }
 
   @override
@@ -1133,6 +1492,8 @@ class Strakalari implements RefreshApp {
   /// A successful read also settles unconfirmed submits.
   @override
   Future<int> syncWebExcusesToHistory({int? limit}) async {
+    final useCachedForm = nextUseCachedOutboxForm;
+    nextUseCachedOutboxForm = false;
     lastOutboxSyncOk = false;
     if (_isCancelled()) return 0;
     final client = bakalariClient;
@@ -1158,11 +1519,18 @@ class Strakalari implements RefreshApp {
       final cached = _readCachedOutboxDetails();
       if (cached.isNotEmpty) client.knownOutboxDetails = cached;
     }
+    if (client.knownOutboxForm == null) {
+      final cachedForm = _readCachedOutboxForm();
+      if (cachedForm != null) client.knownOutboxForm = cachedForm;
+    }
     client.cancelRequested = cancelRequested;
     client.cancelCallback = cancelCallback;
     late final List<Map<String, Object?>>? discovered;
     try {
-      discovered = await client.fetchSentExcuses(limit: capped);
+      discovered = await client.fetchSentExcuses(
+        limit: capped,
+        useCachedForm: useCachedForm,
+      );
     } on CancelledError {
       rethrow;
     } on Object catch (e) {

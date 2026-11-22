@@ -181,7 +181,7 @@ String _stampNow() {
 /// when [replace] is true. A busy cache file is left untouched: merging
 /// against an unreadable file would drop every other key.
 Map<String, Object?> saveDataCache(Map<String, Object?>? data,
-    {bool replace = false, String? dataDir}) {
+    {bool replace = false, String? dataDir, bool preserveLastUpdated = false}) {
   final dir = requirePerAccountDir(dataDir);
   if (isAccountDirDeleted(dir)) {
     throw StateError("Account folder '$dir' was deleted; refusing cache write.");
@@ -197,8 +197,9 @@ Map<String, Object?> saveDataCache(Map<String, Object?>? data,
   }
   current.addAll(data ?? <String, Object?>{});
   current['_cache_version'] = cacheVersion;
-  if (!current.containsKey('last_updated') ||
-      ((data ?? <String, Object?>{}).containsKey('last_updated'))) {
+  if (!preserveLastUpdated &&
+      (!current.containsKey('last_updated') ||
+          ((data ?? <String, Object?>{}).containsKey('last_updated')))) {
     current['last_updated'] = (data ?? <String, Object?>{})['last_updated'] ??
         current['last_updated'] ??
         _stampNow();
@@ -288,7 +289,7 @@ DateTime? lastCheckedTime([Map<String, Object?>? cache]) {
   return newest;
 }
 
-/// Scheduler seed: when the cached data was last refreshed.
+/// Scheduler seed: when the cached data was last checked (full or quick).
 ///
 /// Returns null when the stamp is missing, unparsable, or in the future
 /// (clock skew / bogus stamp) — callers then refresh on start, exactly
@@ -296,7 +297,7 @@ DateTime? lastCheckedTime([Map<String, Object?>? cache]) {
 DateTime? startupSeed([Map<String, Object?>? cache, DateTime? now]) {
   late final DateTime? seed;
   try {
-    seed = lastUpdatedTime(cache);
+    seed = lastCheckedTime(cache);
   } on Object {
     return null;
   }
@@ -344,4 +345,41 @@ String describeCache([Map<String, Object?>? cache, num ttlHours = 24]) {
   }
   final stale = isCacheStale(data, ttlHours) ? " (${t('cache_stale')})" : '';
   return '$last · $ageS$stale';
+}
+
+/// Short human label for one subsystem's freshness (`part_updated[part]`),
+/// falling back to [describeCache] on pre-F6 caches without `part_updated`.
+String describeCacheForPart(
+  Map<String, Object?>? cache,
+  String part, [
+  num ttlHours = 24,
+]) {
+  final data = cache ?? loadDataCache();
+  if (data[partUpdatedKey] is! Map) {
+    return describeCache(data, ttlHours);
+  }
+  final ts = partUpdatedTime(data, part);
+  if (ts == null) return '—';
+  String two(int n) => n.toString().padLeft(2, '0');
+  final stamp = '${two(ts.day)}.${two(ts.month)}.${ts.year} '
+      '${two(ts.hour)}:${two(ts.minute)}:${two(ts.second)}';
+  final age = clock.now().difference(ts);
+  final hours = age.inMicroseconds / 3600000000;
+  late final String ageS;
+  if (hours < 1) {
+    final mins = age.inSeconds ~/ 60;
+    ageS = mins >= 1 ? t('cache_age_min', args: {'n': mins}) : t('cache_age_now');
+  } else if (hours < 48) {
+    ageS = t('cache_age_hours', args: {'n': hours.toStringAsFixed(1)});
+  } else {
+    ageS = t('cache_age_days', args: {'n': hours ~/ 24});
+  }
+  bool stale;
+  try {
+    stale = age > Duration(microseconds: (ttlHours * 3600 * 1000000).round());
+  } on UnsupportedError {
+    stale = age > const Duration(hours: 24);
+  }
+  final staleLabel = stale ? " (${t('cache_stale')})" : '';
+  return '$stamp · $ageS$staleLabel';
 }

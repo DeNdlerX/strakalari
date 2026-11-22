@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:clock/clock.dart';
 import 'package:test/test.dart';
 
 import 'package:strakalari_core/src/i18n.dart';
@@ -279,6 +280,34 @@ void main() {
                   _stamp(now.add(const Duration(hours: 1)))},
               now),
           isNull);
+    });
+
+    test('f6PerPartFreshnessAndLastCheckedTime', () {
+      final now = DateTime(2026, 11, 22, 10, 30, 0);
+      // Pre-F6 cache without part_updated falls back to last_updated.
+      final preF6 = {'last_updated': '22.11.2026 09:00:00'};
+      expect(partUpdatedTime(preF6, 'marks'), DateTime(2026, 11, 22, 9, 0));
+      expect(partUpdatedTime(preF6, 'outbox'), DateTime(2026, 11, 22, 9, 0));
+      expect(lastCheckedTime(preF6), DateTime(2026, 11, 22, 9, 0));
+
+      // F6 cache with part_updated: missing part returns null (never inherits full).
+      final f6 = {
+        'last_updated': '22.11.2026 07:00:00',
+        partUpdatedKey: {
+          'full': '2026-11-22T07:00:00',
+          'quick': '2026-11-22T10:25:00',
+          'marks': '2026-11-22T10:25:00',
+        },
+      };
+      expect(partUpdatedTime(f6, 'marks'), DateTime(2026, 11, 22, 10, 25));
+      expect(partUpdatedTime(f6, 'strava'), isNull);
+      expect(lastCheckedTime(f6), DateTime(2026, 11, 22, 10, 25));
+      expect(startupSeed(f6, now), DateTime(2026, 11, 22, 10, 25));
+
+      withClock(Clock.fixed(now), () {
+        expect(describeCacheForPart(f6, 'marks'), contains('22.11.2026 10:25:00'));
+        expect(describeCacheForPart(f6, 'strava'), '—');
+      });
     });
   });
 }

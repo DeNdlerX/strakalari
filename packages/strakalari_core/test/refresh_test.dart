@@ -212,6 +212,16 @@ class FakeApp implements RefreshApp {
   }
 
   @override
+  Future<QuickBakalariOutcome> fetchBakalariQuick(
+    Map<String, Object?> previousCache,
+    DateTime started, {
+    required bool inDayWindow,
+  }) async {
+    calls.add('bakalari_quick');
+    return const QuickBakalariOutcome(marksOk: true, feedOk: true, absenceOk: true);
+  }
+
+  @override
   Future<int> syncWebExcusesToHistory() async {
     calls.add('sync');
     return 0;
@@ -324,6 +334,16 @@ class GateApp implements RefreshApp {
   }
 
   @override
+  Future<QuickBakalariOutcome> fetchBakalariQuick(
+    Map<String, Object?> previousCache,
+    DateTime started, {
+    required bool inDayWindow,
+  }) async {
+    calls.add('bakalari_quick');
+    return const QuickBakalariOutcome(marksOk: true, feedOk: true, absenceOk: true);
+  }
+
+  @override
   Future<int> syncWebExcusesToHistory() async => 0;
 
   @override
@@ -415,6 +435,14 @@ class LowBalanceApp implements RefreshApp {
 
   @override
   Future<void> fetchBakalariData() async {}
+
+  @override
+  Future<QuickBakalariOutcome> fetchBakalariQuick(
+    Map<String, Object?> previousCache,
+    DateTime started, {
+    required bool inDayWindow,
+  }) async =>
+      const QuickBakalariOutcome();
 
   @override
   Future<int> syncWebExcusesToHistory() async => 0;
