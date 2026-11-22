@@ -365,7 +365,9 @@ String describeCacheForPart(
   if (data[partUpdatedKey] is! Map) {
     return describeCache(data, ttlHours);
   }
-  final ts = partUpdatedTime(data, part);
+  final ts = part == 'quick'
+      ? lastCheckedTime(data)
+      : partUpdatedTime(data, part);
   if (ts == null) return '—';
   String two(int n) => n.toString().padLeft(2, '0');
   final stamp = '${two(ts.day)}.${two(ts.month)}.${ts.year} '

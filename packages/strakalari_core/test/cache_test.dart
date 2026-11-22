@@ -306,7 +306,25 @@ void main() {
 
       withClock(Clock.fixed(now), () {
         expect(describeCacheForPart(f6, 'marks'), contains('22.11.2026 10:25:00'));
+        expect(describeCacheForPart(f6, 'quick'), contains('22.11.2026 10:25:00'));
         expect(describeCacheForPart(f6, 'strava'), '—');
+        // After a full sync before any quick tick (or newer than quick),
+        // 'quick' (Today header) uses lastCheckedTime rather than showing '—'.
+        final afterFullOnly = {
+          'last_updated': '22.11.2026 10:28:00',
+          partUpdatedKey: {
+            'full': '2026-11-22T10:28:00',
+            'quick': '2026-11-22T10:20:00',
+          },
+        };
+        expect(describeCacheForPart(afterFullOnly, 'quick'),
+            contains('22.11.2026 10:28:00'));
+        final firstFullOnly = {
+          'last_updated': '22.11.2026 10:28:00',
+          partUpdatedKey: {'full': '2026-11-22T10:28:00'},
+        };
+        expect(describeCacheForPart(firstFullOnly, 'quick'),
+            contains('22.11.2026 10:28:00'));
       });
     });
   });
