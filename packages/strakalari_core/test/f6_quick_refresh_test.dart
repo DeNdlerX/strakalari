@@ -1050,5 +1050,114 @@ void main() {
       final hist = saved[timetableHistoryKey] as Map?;
       expect(hist?['past_weeks_fetched'], isNull);
     });
+
+    test(
+        'manualFullRefreshAlwaysLoadsFullKomensPageWhileScheduledReusesCachedForm (R8 S4)',
+        () async {
+      final t1 = DateTime(2026, 9, 21, 9, 0);
+      final t2 = DateTime(2026, 9, 21, 15, 0);
+      final cfg = baseCfg();
+
+      void seedCachedForm() {
+        saveDataCache({
+          'last_updated': '21.09.2026 08:00:00',
+          outboxFormKey: {
+            'path': '/next/komens.aspx?s=rok&l=o',
+            'viewstate': 'vs-year',
+            'viewstate_generator': 'VSG12345',
+            'event_validation': 'ev-year',
+            'period_start': '2026-08-20',
+            'period_end': '2027-08-31',
+            'fetched_at': '2026-09-21T08:00:00',
+          },
+          partUpdatedKey: {
+            'full': '2026-09-21T08:00:00',
+            'outbox': '2026-09-21T08:00:00',
+          },
+        }, dataDir: tmp.path);
+      }
+
+      FakeBakalari makeServer() => FakeBakalari({
+            'GET /Marks/Widget': marksWidgetHtml([]),
+            'GET /next/prubzna.aspx': gradesPage([]),
+            'POST /Timetable/substitutions/dates': {
+              'success': true,
+              'data': <Object?>[],
+            },
+            'GET /Absence/Continuous/GetAbsenceBySubjects': {
+              'data': [
+                {
+                  'Name': 'Matematika',
+                  'LessonCount': 10,
+                  'Count': 1,
+                  'Percent': 0.1
+                }
+              ],
+            },
+            'POST /Timetable/GetContentData': (FakeRequest req) {
+              final body = jsonDecode(utf8.decode(req.body)) as Map;
+              if (body['term'] == 'perm') return weekContent([permLesson()]);
+              final d = DateTime.parse('${body['date']}');
+              return weekContent([lessonOn(d)]);
+            },
+            'POST /Teaching/Subjects': {
+              'data': [
+                {'SubjectName': 'Matematika', 'TeacherName': 'Mgr. Novák'}
+              ],
+            },
+            'GET /next/komens.aspx': outboxPageHtml(),
+            'POST /next/komens.aspx': (_) =>
+                dxReply('<div class="komens-messages-wrapper"></div>'),
+          });
+
+      // 1. Manual full refresh (scheduled: false) with valid cached form ->
+      //    exactly one GET /next/komens.aspx?s=rok&l=o.
+      seedCachedForm();
+      final manualServer = makeServer();
+      await withClock(Clock.fixed(t1), () async {
+        final app = Strakalari(configData: cfg, dataDir: tmp.path)
+          ..bakalariClient =
+              BakalariClient(cfg, transport: manualServer, dataDir: tmp.path);
+        final res = await runRefresh(
+          app,
+          cfg,
+          scope: 'all',
+          scheduled: false,
+          now: t1,
+          dataDir: tmp.path,
+        );
+        expect(res.ok, isTrue);
+      });
+      final manualGetKomens = manualServer.calls('GET', '/next/komens.aspx');
+      expect(manualGetKomens, hasLength(1));
+      expect(manualGetKomens.single.url.query, 's=rok&l=o');
+
+      // 2. Scheduled full refresh (scheduled: true) with valid cached form ->
+      //    zero GET /next/komens.aspx calls.
+      seedCachedForm();
+      final scheduledServer = makeServer();
+      await withClock(Clock.fixed(t2), () async {
+        final app = Strakalari(configData: cfg, dataDir: tmp.path)
+          ..bakalariClient = BakalariClient(
+            cfg,
+            transport: scheduledServer,
+            dataDir: tmp.path,
+          );
+        final res = await runRefresh(
+          app,
+          cfg,
+          scope: 'all',
+          scheduled: true,
+          now: t2,
+          dataDir: tmp.path,
+        );
+        expect(res.ok, isTrue);
+      });
+      expect(scheduledServer.calls('GET', '/next/komens.aspx'), isEmpty);
+      expect(
+        scheduledServer.calls('POST', '/next/komens.aspx'),
+        hasLength(1),
+      );
+    });
   });
 }
