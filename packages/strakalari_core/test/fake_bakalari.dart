@@ -5,6 +5,7 @@
 // All names and data are made up.
 import 'dart:convert';
 
+import 'package:clock/clock.dart';
 import 'package:strakalari_core/src/bakalari/http_session.dart';
 
 const String fakeRoot = 'https://bakalari.example.test';
@@ -53,10 +54,17 @@ HttpResponseData fakeReply(Object? value,
 class FakeBakalari implements HttpTransport {
   final Map<String, Object? Function(FakeRequest)> routes;
   final List<FakeRequest> requests = [];
-  int logins = 0;
-  String? _token;
 
-  FakeBakalari([Map<String, Object?>? routes])
+  /// Optional sliding session lifetime in minutes (null = never expires,
+  /// default for existing tests; set e.g. `15` for F6 §6.3 tests).
+  final int? sessionMinutes;
+
+  int logins = 0;
+  int renewals = 0;
+  String? _token;
+  DateTime? _renewedAt;
+
+  FakeBakalari([Map<String, Object?>? routes, this.sessionMinutes])
       : routes = {
           for (final e in (routes ?? {}).entries)
             e.key: _wrap(e.value)
@@ -65,6 +73,44 @@ class FakeBakalari implements HttpTransport {
   static Object? Function(FakeRequest) _wrap(Object? value) {
     if (value is Object? Function(FakeRequest)) return value;
     return (_) => value;
+  }
+
+  /// Checks cookie validity + optional sliding expiry; returns `(valid, setCookieHeader)`.
+  (bool, String?) _validateSession(FakeRequest request) {
+    if (_token == null || request.headers['cookie'] != 'BakaAuth=$_token') {
+      return (false, null);
+    }
+    final mins = sessionMinutes;
+    if (mins == null || _renewedAt == null) return (true, null);
+    final elapsed = clock.now().difference(_renewedAt!);
+    final full = Duration(minutes: mins);
+    if (elapsed >= full) {
+      _token = null;
+      _renewedAt = null;
+      return (false, null);
+    }
+    final half = Duration(microseconds: full.inMicroseconds ~/ 2);
+    if (elapsed >= half) {
+      renewals += 1;
+      _token = 't${logins}_r$renewals';
+      _renewedAt = clock.now();
+      return (true, 'BakaAuth=$_token; Path=/');
+    }
+    return (true, null);
+  }
+
+  HttpResponseData _withSetCookie(HttpResponseData resp, String? setCookie) {
+    if (setCookie == null) return resp;
+    final headers = <String, List<String>>{
+      for (final e in resp.headers.entries) e.key: List<String>.of(e.value),
+    };
+    headers.putIfAbsent('set-cookie', () => []).add(setCookie);
+    return HttpResponseData(
+      statusCode: resp.statusCode,
+      url: resp.url,
+      headers: headers,
+      bodyBytes: resp.bodyBytes,
+    );
   }
 
   @override
@@ -80,15 +126,18 @@ class FakeBakalari implements HttpTransport {
     requests.add(request);
     final path = url.path;
     if (method == 'GET' && path == '/login') {
-      if (_token != null &&
-          request.headers['cookie'] == 'BakaAuth=$_token') {
+      final (valid, setCookie) = _validateSession(request);
+      if (valid) {
         // A still-valid session goes straight into the app.
-        return HttpResponseData(
-          statusCode: 302,
-          url: url,
-          headers: {
-            'location': ['$fakeRoot/dashboard']
-          },
+        return _withSetCookie(
+          HttpResponseData(
+            statusCode: 302,
+            url: url,
+            headers: {
+              'location': ['$fakeRoot/dashboard']
+            },
+          ),
+          setCookie,
         );
       }
       return fakeReply(fakeLoginPage(), url: url);
@@ -100,6 +149,7 @@ class FakeBakalari implements HttpTransport {
           form['password'] == fakePassword) {
         logins += 1;
         _token = 't$logins';
+        _renewedAt = clock.now();
         return HttpResponseData(
           statusCode: 302,
           url: url,
@@ -114,24 +164,30 @@ class FakeBakalari implements HttpTransport {
               '<div class="login-error">Nesprávné jméno nebo heslo</div>'),
           url: url);
     }
-    if (_token == null ||
-        request.headers['cookie'] != 'BakaAuth=$_token') {
+    final (valid, setCookie) = _validateSession(request);
+    if (!valid) {
+      final ret = sessionMinutes != null
+          ? '?ReturnUrl=${Uri.encodeQueryComponent(path)}'
+          : '';
       return HttpResponseData(
         statusCode: 302,
         url: url,
         headers: {
-          'location': ['$fakeRoot/login']
+          'location': ['$fakeRoot/login$ret']
         },
       );
     }
     if (path == '/dashboard') {
-      return fakeReply('<html><body>dashboard</body></html>', url: url);
+      return _withSetCookie(
+          fakeReply('<html><body>dashboard</body></html>', url: url),
+          setCookie);
     }
     final handler = routes['$method $path'];
     if (handler == null) {
-      return HttpResponseData(statusCode: 404, url: url);
+      return _withSetCookie(
+          HttpResponseData(statusCode: 404, url: url), setCookie);
     }
-    return fakeReply(handler(request), url: url);
+    return _withSetCookie(fakeReply(handler(request), url: url), setCookie);
   }
 
   /// Requests matching [method] and [path], in order.

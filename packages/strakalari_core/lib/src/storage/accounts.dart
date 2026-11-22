@@ -14,6 +14,8 @@ import 'package:crypto/crypto.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 
+import '../bakalari/session_store.dart'
+    show BakalariSessionPool, deleteStoredSession;
 import '../platform/android_bridge.dart';
 import '../platform/keystore.dart';
 import '../platform/packaging.dart';
@@ -1683,7 +1685,8 @@ class AccountManager {
       }
 
       final targetDir = accountDirFor(rootDir, targetId);
-      // Step 4: Forget encryption key.
+      // Step 4: Evict cached session cookies & forget encryption key.
+      BakalariSessionPool.instance.evict(targetDir);
       forgetKey(targetDir);
       // Step 5: Refuse any late saves / cache writes to this deleted folder.
       liveConfigManager?.markDeleted();
@@ -1701,14 +1704,18 @@ class AccountManager {
   }
 
   /// Forgets the root key AND the key of every folder on disk under
-  /// `<rootDir>/accounts/` (registry or not, §5.3).
+  /// `<rootDir>/accounts/` (registry or not, §5.3), and deletes every
+  /// `bakalari_session.enc` (F6 §6.2).
   static bool forgetAllKeys(String rootDir) {
+    BakalariSessionPool.instance.closeAll();
+    deleteStoredSession(rootDir);
     var ok = forgetKey(rootDir);
     final accRoot = Directory(accountsRootDir(rootDir));
     if (accRoot.existsSync()) {
       try {
         for (final entity in accRoot.listSync(recursive: false)) {
           if (entity is Directory) {
+            deleteStoredSession(entity.path);
             final subOk = forgetKey(entity.path);
             ok = ok && subOk;
           }

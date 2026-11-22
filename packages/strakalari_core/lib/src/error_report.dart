@@ -20,6 +20,8 @@ import 'dart:io';
 import 'package:clock/clock.dart';
 import 'package:path/path.dart' as p;
 
+import 'bakalari/session_store.dart'
+    show BakalariSessionPool, readStoredSessionCookieValues;
 import 'i18n.dart';
 import 'storage/accounts.dart'
     show
@@ -247,10 +249,14 @@ Set<String> allAccountSensitiveValues({
   }
 
   collectFile(p.join(root, globalConfigFile), keyDir: root, fallback: root);
+  values.addAll(BakalariSessionPool.instance.activeCookieValues());
+  values.addAll(readStoredSessionCookieValues(root));
   for (final id in discoverAccountFolderIds(root)) {
     try {
       final accDir = accountDirFor(root, id);
       collectFile(p.join(accDir, 'config.json'), keyDir: accDir, fallback: root);
+      values.addAll(
+          readStoredSessionCookieValues(accDir, fallbackKeyDir: root));
     } catch (_) {
       // Skip invalid folder.
     }
@@ -258,6 +264,11 @@ Set<String> allAccountSensitiveValues({
   values.remove('');
   return values;
 }
+
+final RegExp _cookieHeaderLineRe = RegExp(
+  r'(^|[\r\n])([ \t]*(?:set-)?cookie\s*:\s*)([^\r\n]+)',
+  caseSensitive: false,
+);
 
 /// Replaces every value of [values] in [text] with the redaction marker.
 ///
@@ -292,10 +303,21 @@ String redactText(
   String? rootDir,
 ]) {
   final values = _sensitiveValues(config, dataDir: dataDir, rootDir: rootDir);
+  values.addAll(BakalariSessionPool.instance.activeCookieValues());
+  if (dataDir != null && dataDir.isNotEmpty) {
+    values.addAll(readStoredSessionCookieValues(
+      dataDir,
+      fallbackKeyDir: rootDir ?? (isAccountsMode ? accountsModeRootDir : null),
+    ));
+  }
   if (isAccountsMode || rootDir != null) {
     values.addAll(allAccountSensitiveValues(rootDir: rootDir));
   }
-  return redactValues(text, values);
+  final scrubbed = redactValues(text, values);
+  return scrubbed.replaceAllMapped(
+    _cookieHeaderLineRe,
+    (m) => '${m.group(1)}${m.group(2)}$redacted',
+  );
 }
 
 /// [redactText] against the config on disk, for code with no config at hand.

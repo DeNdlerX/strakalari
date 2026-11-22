@@ -1793,7 +1793,28 @@ class Strakalari implements RefreshApp {
       return (false, t('test_bak_missing'));
     }
     try {
-      await bakalariClient?.login();
+      final client = bakalariClient;
+      if (client != null && client.runtimeType != BakalariClient) {
+        // Test double subclass (e.g. FakeBak).
+        await client.login();
+      } else {
+        // Connection tests and wizard login checks NEVER use the session pool
+        // or `bakalari_session.enc`: always build a fresh session and post the
+        // login form with the typed values (F6 §6.1, R8a S9).
+        final fresh = BakalariClient(
+          configData,
+          logger: writeLog,
+          dataDir: dataDir,
+          fallbackKeyDir: rootDir,
+          useSessionPool: false,
+          transport: client?.transportOverride,
+        );
+        try {
+          await fresh.login();
+        } finally {
+          fresh.close();
+        }
+      }
       return (true, t('test_bak_ok'));
     } on Object catch (e) {
       return (false, t('test_bak_failed', args: {'err': e}));

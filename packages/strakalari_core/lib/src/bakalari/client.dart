@@ -15,6 +15,7 @@ import '../error_report.dart';
 import '../storage/helpers.dart';
 import '../i18n.dart';
 import 'http_session.dart';
+import 'session_store.dart';
 import 'timetable.dart';
 import 'data.dart';
 import 'excuse.dart';
@@ -37,6 +38,14 @@ abstract class BakalariClientBase {
   /// hook (a transport replacing the network).
   BakalariSession? session;
   final HttpTransport? _transportOverride;
+  HttpTransport? get transportOverride => _transportOverride;
+
+  /// When true (default for production runs without an explicit transport),
+  /// checks out an exclusive session from [BakalariSessionPool] and persists
+  /// encrypted cookies to `<dataDir>/bakalari_session.enc`. Connection tests
+  /// and wizard login checks pass `false` (F6 §6.1, R8a S9).
+  final bool useSessionPool;
+  bool _sessionFromPool = false;
 
   final Map<String, Object?> config;
 
@@ -152,7 +161,8 @@ abstract class BakalariClientBase {
       {this.logger,
       HttpTransport? transport,
       this.dataDir,
-      this.fallbackKeyDir})
+      this.fallbackKeyDir,
+      this.useSessionPool = true})
       : config = Map<String, Object?>.of(configData ?? {}),
         _transportOverride = transport {
     bakalariUrl = '${config['bakalari_url'] ?? ''}';
@@ -248,17 +258,35 @@ abstract class BakalariClientBase {
       }
       // Eager like Python (whose constructor argument evaluates now),
       // while the provider still re-reads the password on every login.
-      _plainPassword();
-      current = BakalariSession(
-        url,
-        username,
-        _plainPassword,
-        timeoutS: _seconds('page_load_timeout_s', 60.0),
-        userAgent: userAgent,
-        isCancelled: _isCancelled,
-        logger: log,
-        transport: _transportOverride,
-      );
+      final plain = _plainPassword();
+      if (_transportOverride == null && useSessionPool) {
+        final checkedOut = BakalariSessionPool.instance.checkout(
+          dataDir: dataDir,
+          fallbackKeyDir: fallbackKeyDir,
+          url: url,
+          username: username,
+          passwordProvider: _plainPassword,
+          passwordDigest: passwordSha256(plain),
+          timeoutS: _seconds('page_load_timeout_s', 60.0),
+          userAgent: userAgent,
+          isCancelled: _isCancelled,
+          logger: log,
+        );
+        current = checkedOut.session;
+        _sessionFromPool = checkedOut.pooled;
+      } else {
+        current = BakalariSession(
+          url,
+          username,
+          _plainPassword,
+          timeoutS: _seconds('page_load_timeout_s', 60.0),
+          userAgent: userAgent,
+          isCancelled: _isCancelled,
+          logger: log,
+          transport: _transportOverride,
+        );
+        _sessionFromPool = false;
+      }
       session = current;
     }
     return current;
@@ -283,16 +311,22 @@ abstract class BakalariClientBase {
     loggedIn = true;
   }
 
-  /// Closes the HTTP session.
+  /// Closes the HTTP session (or returns it to [BakalariSessionPool] when
+  /// checked out from the pool so keep-alive sockets stay warm between ticks).
   void close() {
     final current = session;
     if (current != null) {
       try {
-        current.close();
+        if (_sessionFromPool) {
+          BakalariSessionPool.instance.checkin(current);
+        } else {
+          current.close();
+        }
       } on Object catch (e) {
         debug('closing the Bakaláři HTTP session', e);
       }
       session = null;
+      _sessionFromPool = false;
     }
   }
 }
@@ -302,7 +336,11 @@ abstract class BakalariClientBase {
 class BakalariClient extends BakalariClientBase
     with TimetableMixin, DataMixin, ExcuseFormMixin {
   BakalariClient(super.configData,
-      {super.logger, super.transport, super.dataDir, super.fallbackKeyDir});
+      {super.logger,
+      super.transport,
+      super.dataDir,
+      super.fallbackKeyDir,
+      super.useSessionPool});
 }
 
 int _clampInt(Object? value, int fallback, int min, int max) {

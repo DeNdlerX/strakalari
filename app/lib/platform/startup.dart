@@ -266,6 +266,7 @@ Future<void> startPlatformServices(
     onQuit: () async {
       stopping = true;
       loop.stop();
+      BakalariSessionPool.instance.closeAll();
       await ctx.guard?.close();
     },
   );

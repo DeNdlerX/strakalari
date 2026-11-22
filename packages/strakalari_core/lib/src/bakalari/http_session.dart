@@ -17,6 +17,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:clock/clock.dart';
 import 'package:html_unescape/html_unescape.dart';
 
 import '../error_report.dart';
@@ -599,14 +600,34 @@ class BakalariSession {
 
   final String username;
   final String Function() passwordProvider;
-  final bool Function()? isCancelled;
-  final void Function(String)? logger;
+  bool Function()? isCancelled;
+  void Function(String)? logger;
+
+  /// Called after a successful login and after any logged-in response that
+  /// carries `Set-Cookie`, so 3b can persist the renewed session cookies.
+  void Function(Map<String, String> cookies, DateTime renewedAt)?
+      onCookiesChanged;
+
+  /// Called when Bakaláři rejects the credentials (`bak_login_rejected`), so
+  /// 3b deletes any stored `bakalari_session.enc` immediately.
+  void Function()? onLoginRejected;
 
   double timeoutS;
   bool loggedIn = false;
 
   final HttpTransport _transport;
   final Map<String, String> _cookies = {};
+
+  /// Read-only snapshot of the session's current cookies.
+  Map<String, String> get cookies => Map.unmodifiable(_cookies);
+
+  /// Seeds cookies loaded from the encrypted session store (3b).
+  void seedCookies(Map<String, String> initial, {bool markLoggedIn = true}) {
+    _cookies
+      ..clear()
+      ..addEntries(initial.entries.where((e) => e.key.isNotEmpty));
+    loggedIn = markLoggedIn && _cookies.isNotEmpty;
+  }
 
   BakalariSession(
     String baseUrl,
@@ -642,16 +663,36 @@ class BakalariSession {
       Duration(microseconds: (timeoutS * 1e6).round());
 
   void _storeCookies(HttpResponseData resp) {
+    var renewedExistingOrSet = false;
+    final hadCookies = _cookies.isNotEmpty;
     for (final value in resp.headers['set-cookie'] ?? <String>[]) {
       try {
         final cookie = Cookie.fromSetCookieValue(value);
         if (cookie.name.isNotEmpty) {
+          if (!hadCookies || _cookies.containsKey(cookie.name)) {
+            renewedExistingOrSet = true;
+          }
           _cookies[cookie.name] = cookie.value;
         }
       } on Object {
         continue;
       }
     }
+    if (renewedExistingOrSet && loggedIn && _cookies.isNotEmpty) {
+      onCookiesChanged?.call(Map.unmodifiable(_cookies), clock.now());
+    }
+  }
+
+  void _notifyCookiesAfterLogin() {
+    if (_cookies.isNotEmpty) {
+      onCookiesChanged?.call(Map.unmodifiable(_cookies), clock.now());
+    }
+  }
+
+  void _handleLoginRejected() {
+    loggedIn = false;
+    _cookies.clear();
+    onLoginRejected?.call();
   }
   /// One request; a read is retried once when the connection broke
   /// before any reply (the server dropped an idle kept-alive connection).
@@ -845,13 +886,14 @@ class BakalariSession {
             (targetPath == dashboardPath ||
                 (returnTarget != null && target == returnTarget))) {
           loggedIn = true;
+          _notifyCookiesAfterLogin();
           log('Logged in to Bakaláři.');
           return;
         }
         if (sameHost(target) && targetPath == loginPath) {
           final errPage = await _send('GET', target.toString(),
               followRedirects: false);
-          loggedIn = false;
+          _handleLoginRejected();
           final detail = loginErrorText(errPage).isNotEmpty
               ? loginErrorText(errPage)
               : 'HTTP ${resp.statusCode}, redirected to login page';
@@ -863,7 +905,7 @@ class BakalariSession {
         final followed =
             _checkStatus(await _send('GET', target.toString()), 'GET');
         if (isLoginPage(followed)) {
-          loggedIn = false;
+          _handleLoginRejected();
           final detail = loginErrorText(followed).isNotEmpty
               ? loginErrorText(followed)
               : 'HTTP ${followed.statusCode}, still on the login page';
@@ -871,12 +913,13 @@ class BakalariSession {
               args: {'detail': truncateRunes(detail, 200)}));
         }
         loggedIn = true;
+        _notifyCookiesAfterLogin();
         log('Logged in to Bakaláři.');
         return;
       }
     }
     if (isLoginPage(resp)) {
-      loggedIn = false;
+      _handleLoginRejected();
       final detail = loginErrorText(resp).isNotEmpty
           ? loginErrorText(resp)
           : 'HTTP ${resp.statusCode}, still on the login page';
@@ -884,6 +927,7 @@ class BakalariSession {
           args: {'detail': truncateRunes(detail, 200)}));
     }
     loggedIn = true;
+    _notifyCookiesAfterLogin();
     log('Logged in to Bakaláři.');
   }
 
@@ -899,12 +943,13 @@ class BakalariSession {
         headers: headers, body: body);
     if (isLoginPage(resp)) {
       loggedIn = false;
+      _cookies.clear();
       log('Bakaláři session expired, logging in again…');
       await login();
       resp = await _send(method, path,
           headers: headers, body: body);
       if (isLoginPage(resp)) {
-        loggedIn = false;
+        _handleLoginRejected();
         throw UserError(t('bak_login_rejected', args: {
           'detail': 'the session ended right after logging in'
         }));

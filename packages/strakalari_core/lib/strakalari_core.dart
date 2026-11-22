@@ -21,6 +21,7 @@ export 'src/automation/cancel.dart';
 export 'src/bakalari/common.dart';
 export 'src/bakalari/extractors.dart';
 export 'src/bakalari/http_session.dart';
+export 'src/bakalari/session_store.dart';
 export 'src/bakalari/client.dart';
 export 'src/bakalari/timetable.dart';
 export 'src/bakalari/data.dart';

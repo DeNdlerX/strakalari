@@ -1176,6 +1176,11 @@ class AppState {
       final added = freeLunchDays(config.data).difference(freeBefore);
       if (added.isNotEmpty) clearCancelHandledDays(added);
     }
+    if (updates.containsKey('bakalari_url') ||
+        updates.containsKey('bakalari_username') ||
+        updates.containsKey('bakalari_password')) {
+      core.BakalariSessionPool.instance.evict(activeAccountDir ?? rootDir);
+    }
     refreshTokens();
     for (final cb in List.of(configListeners)) {
       try {
