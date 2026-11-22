@@ -1,7 +1,7 @@
 # QA & roadmap status
 
-Branch: qa-roadmap · Base: main @ 617eb92 · Current phase: 8 (F6 design note done, waiting for ⛔ R8a review)
-Next step: Wait for reviewer sign-off on `docs/qa-roadmap/design-F6.md` (⛔ R8a) before writing any F6 code (Q1–Q3 answered 2026-11-22).
+Branch: qa-roadmap · Base: main @ 617eb92 · Current phase: 8 (F6 design note, ⛔ R8a review: FAIL)
+Next step: Fix every finding in `reviews/phase-8-design.md` (blockers first), one commit per finding, then stop for re-review.
 
 ## Items
 | ID | Status (todo / doing / done / can't reproduce / blocked) | Commit | Test | Evidence | Notes |
@@ -162,6 +162,7 @@ Next step: Wait for reviewer sign-off on `docs/qa-roadmap/design-F6.md` (⛔ R8a
 
 ## Phase notes (written at every ⛔: what was done, what's unsure, how to verify)
 ### Phase 8 design note (`F6`, checkpoint ⛔ R8a — no F6 code written yet)
+- **2026-11-22 R8a review: FAIL**: the note keeps one pipeline (`runRefresh` with a `quick` scope), never lets a quick check send an excuse, leaves every send and order path, the audit and `automation_paused` as they are, uses only the Bakaláři web, answers every D6 and Q1–Q3 point, and its data figures match the step 0 measurements (~5.4 MB a school day at 5 minutes on mobile data, ~4.4 MB at 10). Three must-fix: the sent-excuse list read with three remembered form fields was only ever tested on the one-month folder, so it may quietly cover one month instead of the school year, and a once-unconfirmed excuse could then be sent again (M1); manual excuses would rely on a sent-excuse list up to ~6 hours old instead of ~1, so an excuse sent on the web or from another device could be sent twice from the app (M2); the new timing rules aren't wired into the code that starts the checks, so "pause at night" would check every minute and every 5-minute check would be a full ~1 MB run (M3). Thirteen should-fix (S1–S13), thirteen notes. No owner decision needed. Baseline unchanged: core 881 passed / 2 skipped, app 829 passed / 1 skipped. See [`reviews/phase-8-design.md`](reviews/phase-8-design.md).
 - **What was done (2026-11-22):** Recorded the owner's go and D6 answers word for word in `STATUS.md`, verified `qa-roadmap` matches `main` @ `617eb92` (no new commits on `main` to merge), and wrote `docs/qa-roadmap/design-F6.md` covering:
   - Bandwidth & request-count math from `research-F6-bakalari-web.md` answering D6 A2/A6 (~4.4 MB/school day at 10-min mobile daytime + 60-min off-hours, ~5.4 MB/school day at 5-min mobile daytime + 60-min off-hours, ~8.1 MB/day headless / ~6.1 MB kept-alive at 5-min 24/7 Wi-Fi with 0 mobile data).
   - 3 new canonical global config keys (`check_interval_mobile_minutes: 5`, `check_interval_off_hours_minutes: 60`, `refresh_wifi_always_fast: true`) + default `check_interval_minutes: 5` (owner Q1–Q2, 2026-11-22), plus one-time `applyF6ScheduleDefaultsOnce` startup upgrade for pre-F6 configs (when none of the 3 new keys exist yet; later user edits are preserved forever).
