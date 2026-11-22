@@ -44,6 +44,30 @@ const String partUpdatedKey = 'part_updated';
 /// bump this version so previously cached entries are re-read.
 const String outboxDetailsKey = 'komens_outbox_details_v1';
 
+/// Data-cache key: cached Komens outbox hidden fields (`__VIEWSTATE`,
+/// `__VIEWSTATEGENERATOR`, `__EVENTVALIDATION`) + period bounds (F6 §4.4).
+const String outboxFormKey = 'komens_outbox_form_v1';
+
+/// Data-cache key: last parsed `/Marks/Widget` entries (F6 §5.1).
+const String marksWidgetKey = 'marks_widget_v1';
+
+/// Data-cache key: ISO timestamp recorded while `/Marks/Widget` is broken.
+const String marksWidgetFailedKey = 'marks_widget_failed_at';
+
+/// Data-cache key: ISO timestamp recorded while `prubzna.aspx` is failing.
+const String gradesFailedKey = 'grades_failed_at';
+
+/// Data-cache key: per-Monday SHA-256 hashes of substitution feed entries.
+const String substitutionsWeekHashesKey = 'substitutions_week_hashes_v1';
+
+/// Data-cache key: ISO timestamp recorded while direct `GetAbsenceBySubjects`
+/// is failing so quick ticks throttle page fallback to hourly.
+const String absenceDirectFailedKey = 'absence_direct_failed_at';
+
+/// Data-cache key: per-subject missed-hour counts at the last run that loaded
+/// all regular past weeks (F6 §4.3, R8a S1).
+const String absenceCountsAtPastFetchKey = 'absence_counts_at_past_fetch';
+
 /// Parses a `last_updated` stamp; null when missing or unparsable.
 ///
 /// Accepts the same shapes Python does: `DD.MM.YYYY HH:MM:SS`,

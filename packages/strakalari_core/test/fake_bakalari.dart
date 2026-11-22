@@ -182,3 +182,35 @@ Map<String, Object?> weekContent(List<Object?> details) => {
 /// A DevExpress callback reply carrying [resultHtml].
 String dxReply(String resultHtml) =>
     '0|/*DX*/({\'id\':0,\'result\':${jsonEncode(resultHtml)}})';
+
+/// A `/Marks/Widget` HTML fragment carrying [marks].
+String marksWidgetHtml(List<Map<String, Object?>> marks) {
+  final buf = StringBuffer('<div class="bk-widget-marks">');
+  for (final m in marks) {
+    final isNew = m['is_new'] == true;
+    final cls = isNew ? 'mark-displayGrade isNew' : 'mark-displayGrade';
+    buf.write('<div class="mark-line">');
+    buf.write('<span class="$cls">${m['grade'] ?? ''}</span>');
+    buf.write('<span class="mark-subjectName">${m['subject'] ?? ''}</span>');
+    buf.write('<span class="mark-note">${m['note'] ?? ''}</span>');
+    buf.write('<span class="mark-date">${m['date'] ?? ''}</span>');
+    buf.write('</div>');
+  }
+  buf.write('</div>');
+  return buf.toString();
+}
+
+/// A Komens outbox page HTML carrying the 3 WebForms hidden fields and period label.
+String outboxPageHtml({
+  String periodLabel = '20.8.2026 - 31.8.2027',
+  String viewstate = 'vs-year',
+  String viewstateGenerator = 'VSG12345',
+  String eventValidation = 'ev-year',
+}) =>
+    '<form id="formbaka">'
+    '<input type="hidden" name="__VIEWSTATE" value="$viewstate">'
+    '<input type="hidden" name="__VIEWSTATEGENERATOR" value="$viewstateGenerator">'
+    '<input type="hidden" name="__EVENTVALIDATION" value="$eventValidation">'
+    '<input type="hidden" name="ctl00\$cphmain\$hfListType" id="hfListType" value="odeslane">'
+    '<span id="cphmain_obdobiLabel">$periodLabel</span>'
+    '</form>';

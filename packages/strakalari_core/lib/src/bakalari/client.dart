@@ -102,6 +102,16 @@ abstract class BakalariClientBase {
   // True after [DataMixin.fetchSentExcuses] completed cleanly and refreshed
   // [knownOutboxDetails] (stubbed test clients leave this false).
   bool outboxDetailsUpdated = false;
+  // Cached Komens outbox hidden fields (`komens_outbox_form_v1`), seeded from
+  // `data_cache.json` before sync so scheduled runs can skip the 207 KB page.
+  Map<String, Object?>? knownOutboxForm;
+  // True when [DataMixin.fetchSentExcuses] loaded the full outbox page and
+  // refreshed [knownOutboxForm] cleanly.
+  bool outboxFormUpdated = false;
+  // Last parsed `/Marks/Widget` entries from this run (null = not fetched or failed).
+  List<Map<String, Object?>>? marksWidget;
+  // True when direct `GetAbsenceBySubjects` failed in the last `obtainAbsenceInfo` call.
+  bool absenceDirectFailed = false;
   // True after a send the site never confirmed (see
   // ExcuseFormMixin.execute_excuse): it may have gone out.
   bool lastSubmitUncertain = false;

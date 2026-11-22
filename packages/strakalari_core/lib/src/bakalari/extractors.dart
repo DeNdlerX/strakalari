@@ -5,8 +5,10 @@
 // else comes from the pages' own JSON endpoints.
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:html_unescape/html_unescape.dart';
 
+import '../models.dart' show parseCzDate;
 import '../storage/helpers.dart';
 
 /// Normalizes `D.M.YYYY` to zero-padded `DD.MM.YYYY`.
@@ -609,4 +611,176 @@ List<Map<String, Object?>> sentExcuseEntries(Object? detail) {
   } on ArgumentError {
     return [];
   }
+}
+
+final _widgetMarksContainerRe = RegExp(
+  'class\\s*=\\s*["\'][^"\']*\\bbk-widget-marks\\b',
+  caseSensitive: false,
+);
+final _markLineOpenRe = RegExp(
+  '<div\\b[^>]*\\bclass\\s*=\\s*["\'][^"\']*\\bmark-line\\b[^>]*>',
+  caseSensitive: false,
+);
+final _spanTagRe = RegExp(
+  '<span\\b([^>]*)>(.*?)</span>',
+  caseSensitive: false,
+  dotAll: true,
+);
+final _classAttrRe = RegExp(
+  '\\bclass\\s*=\\s*["\']([^"\']*)["\']',
+  caseSensitive: false,
+);
+final _anyTagRe = RegExp(r'<[^>]+>');
+
+String _cleanWidgetText(String raw) =>
+    htmlUnescape(raw.replaceAll(_anyTagRe, ' '))
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+/// Extracts the recent marks from `GET /Marks/Widget` (F6 §5.1).
+///
+/// Tri-state return:
+/// - `null`: HTML lacks a `bk-widget-marks` container (wrong page, error, or
+///   changed Bakaláři markup) — callers treat this as a parse failure.
+/// - `[]`: valid container with zero `.mark-line` items (student has no marks).
+/// - non-empty list: ordered entries `{grade, subject, note, date, is_new}`.
+List<Map<String, Object?>>? extractMarksWidget(Object? htmlString) {
+  if (htmlString == null) return null;
+  final html = '$htmlString';
+  if (!_widgetMarksContainerRe.hasMatch(html)) return null;
+
+  final out = <Map<String, Object?>>[];
+  final divOpenRe = RegExp(r'<div\b', caseSensitive: false);
+  final divCloseRe = RegExp(r'</div\s*>', caseSensitive: false);
+
+  for (final open in _markLineOpenRe.allMatches(html)) {
+    // Scan balanced <div>...</div> so nested divs cannot cut a line short.
+    var depth = 1;
+    var pos = open.end;
+    var blockEnd = html.length;
+    while (pos < html.length && depth > 0) {
+      final nextOpen = divOpenRe.firstMatch(html.substring(pos));
+      final nextClose = divCloseRe.firstMatch(html.substring(pos));
+      if (nextClose == null) break;
+      if (nextOpen != null && nextOpen.start < nextClose.start) {
+        depth += 1;
+        pos += nextOpen.end;
+      } else {
+        depth -= 1;
+        if (depth == 0) {
+          blockEnd = pos + nextClose.start;
+          break;
+        }
+        pos += nextClose.end;
+      }
+    }
+    final block = html.substring(open.end, blockEnd);
+    var grade = '';
+    var subject = '';
+    var note = '';
+    var date = '';
+    var isNew = false;
+
+    for (final span in _spanTagRe.allMatches(block)) {
+      final attrs = span.group(1) ?? '';
+      final classMatch = _classAttrRe.firstMatch(attrs);
+      if (classMatch == null) continue;
+      final classes = classMatch
+          .group(1)!
+          .split(RegExp(r'\s+'))
+          .where((c) => c.isNotEmpty)
+          .map((c) => c.toLowerCase())
+          .toSet();
+      final text = _cleanWidgetText(span.group(2) ?? '');
+      if (classes.contains('mark-displaygrade')) {
+        grade = text;
+        if (classes.contains('isnew')) isNew = true;
+      } else if (classes.contains('mark-subjectname')) {
+        subject = text;
+      } else if (classes.contains('mark-note')) {
+        note = text;
+      } else if (classes.contains('mark-date')) {
+        date = text;
+      }
+    }
+
+    out.add({
+      'grade': grade,
+      'subject': subject,
+      'note': note,
+      'date': date,
+      'is_new': isNew,
+    });
+  }
+  return out;
+}
+
+Object? _canonicalizeForHash(Object? value) {
+  if (value is Map) {
+    final keys = value.keys.map((k) => '$k').toList()..sort();
+    return {for (final k in keys) k: _canonicalizeForHash(value[k])};
+  }
+  if (value is List) {
+    return [for (final item in value) _canonicalizeForHash(item)];
+  }
+  return value;
+}
+
+String _isoYmd(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-'
+    '${d.month.toString().padLeft(2, '0')}-'
+    '${d.day.toString().padLeft(2, '0')}';
+
+/// Per-week SHA-256 hashes of substitution feed entries bucketed by Monday
+/// (`YYYY-MM-DD`). An empty week hashes `'[]'` (F6 §5.2).
+Map<String, String> substitutionsByWeekHashes(
+  List<Map<String, Object?>> feed,
+  List<DateTime> weekMondays,
+) {
+  final buckets = <String, List<String>>{};
+  for (final entry in feed) {
+    final day = parseCzDate('${entry['day'] ?? ''}');
+    if (day == null) continue;
+    final dayOnly = DateTime(day.year, day.month, day.day);
+    final monday = addDays(dayOnly, -(dayOnly.weekday - 1));
+    final key = _isoYmd(monday);
+    buckets
+        .putIfAbsent(key, () => [])
+        .add(jsonEncode(_canonicalizeForHash(entry)));
+  }
+
+  final out = <String, String>{};
+  for (final monday in weekMondays) {
+    final m = DateTime(monday.year, monday.month, monday.day);
+    final normMonday = addDays(m, -(m.weekday - 1));
+    final key = _isoYmd(normMonday);
+    final encodedEntries = List<String>.of(buckets[key] ?? const [])..sort();
+    final payload = '[${encodedEntries.join(',')}]';
+    out[key] = sha256.convert(utf8.encode(payload)).toString();
+  }
+  return out;
+}
+
+int _missedHoursFromDetail(Object? detail) {
+  if (detail is! Map) return 0;
+  final raw = detail['missed_hours'];
+  if (raw is int) return raw;
+  if (raw is num) return raw.truncate();
+  if (raw is String) return int.tryParse(raw.trim()) ?? 0;
+  return 0;
+}
+
+/// True iff any subject in [freshDetails] has a strictly higher `missed_hours`
+/// (`Count`) than in [previousDetails] (default 0). Ignores `total_hours`
+/// (`LessonCount`), which grows with every held lesson (F6 §5.2).
+bool absenceCountsIncreased(
+  Map<String, Object?>? previousDetails,
+  Map<String, Object?> freshDetails,
+) {
+  for (final entry in freshDetails.entries) {
+    final fresh = _missedHoursFromDetail(entry.value);
+    final prev = _missedHoursFromDetail(previousDetails?[entry.key]);
+    if (fresh > prev) return true;
+  }
+  return false;
 }

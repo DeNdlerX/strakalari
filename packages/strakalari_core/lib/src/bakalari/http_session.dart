@@ -528,6 +528,10 @@ class DartIoHttpTransport implements HttpTransport {
   final HttpClient _client = HttpClient();
   bool _closed = false;
 
+  DartIoHttpTransport({Duration idleTimeout = const Duration(seconds: 15)}) {
+    _client.idleTimeout = idleTimeout;
+  }
+
   @override
   Future<HttpResponseData> send(String method, Uri url,
       {Map<String, String>? headers,
@@ -756,26 +760,60 @@ class BakalariSession {
     return resp;
   }
 
+  static String _normPath(Uri uri) =>
+      uri.path.toLowerCase().replaceAll(RegExp(r'/+$'), '');
+
   /// Logs in with the login form; [UserError] when Bakaláři rejects it.
+  ///
+  /// Does not download `/dashboard` (49 KB) when `GET /login` or `POST /Login`
+  /// redirects there on the same host (F6 §4.1).
   Future<void> login() async {
     if (root.startsWith('http://')) {
       log('Warning: Bakaláři URL uses plain http:// — '
           'credentials will travel unencrypted.');
     }
-    final page = await _send('GET', '/login');
+    final rootUri = Uri.parse(root);
+    final loginPath = _normPath(Uri.parse('$root/login'));
+    final dashboardPath = _normPath(Uri.parse('$root/dashboard'));
+    bool sameHost(Uri u) => u.host.toLowerCase() == rootUri.host.toLowerCase();
+
+    var getTarget = '$root/login';
+    late HttpResponseData page;
+    for (var hop = 0; hop < 5; hop++) {
+      page = await _send('GET', getTarget, followRedirects: false);
+      if (const {301, 302, 303, 307, 308}.contains(page.statusCode)) {
+        final location = page.firstHeader('location');
+        if (location != null && location.isNotEmpty) {
+          final target = page.url.resolve(location);
+          final targetPath = _normPath(target);
+          if (sameHost(target) && targetPath == dashboardPath) {
+            // The session cookie is still valid: /login went straight to /dashboard.
+            loggedIn = true;
+            return;
+          }
+          final httpToHttps = page.url.scheme == 'http' &&
+              target.scheme == 'https' &&
+              sameHost(target);
+          if (sameHost(target) && (targetPath == loginPath || httpToHttps)) {
+            getTarget = target.toString();
+            continue;
+          }
+          log('Bakaláři login page not found: GET /login redirected to $target');
+          throw UserError(t('bak_no_login_page', args: {'host': host}));
+        }
+      }
+      break;
+    }
+    if (const {301, 302, 303, 307, 308}.contains(page.statusCode)) {
+      log('Bakaláři login page not found: GET /login exceeded redirect hops');
+      throw UserError(t('bak_no_login_page', args: {'host': host}));
+    }
     if (page.statusCode == 404) {
       throw UserError(t('bak_no_login_page', args: {'host': host}));
     }
     _checkStatus(page, 'GET');
     if (!page.text.contains('id="loginButton"')) {
-      final dashboard = page.url.path.toLowerCase().replaceAll(
-          RegExp(r'/+$'), '');
-      if (dashboard.endsWith('/dashboard')) {
-        // The session cookie is still valid: /login went straight to the app.
-        loggedIn = true;
-        return;
-      }
-      // Neither the login form nor the app: not a Bakaláři address.
+      // Neither the login form nor /dashboard: not a Bakaláři address.
       log('Bakaláři login page not found: GET /login ended at ${page.url}');
       throw UserError(t('bak_no_login_page', args: {'host': host}));
     }
@@ -793,8 +831,50 @@ class BakalariSession {
         .toList());
     final resp = _checkStatus(
         await _send('POST', loginPostUrl(page).toString(),
-            headers: post.headers, body: post.body),
+            followRedirects: false, headers: post.headers, body: post.body),
         'POST');
+    if (const {301, 302, 303, 307, 308}.contains(resp.statusCode)) {
+      final location = resp.firstHeader('location');
+      if (location != null && location.isNotEmpty) {
+        final target = resp.url.resolve(location);
+        final targetPath = _normPath(target);
+        final rawReturn = (fields['returnUrl'] ?? '').trim();
+        final returnTarget =
+            rawReturn.isNotEmpty ? resp.url.resolve(rawReturn) : null;
+        if (sameHost(target) &&
+            (targetPath == dashboardPath ||
+                (returnTarget != null && target == returnTarget))) {
+          loggedIn = true;
+          log('Logged in to Bakaláři.');
+          return;
+        }
+        if (sameHost(target) && targetPath == loginPath) {
+          final errPage = await _send('GET', target.toString(),
+              followRedirects: false);
+          loggedIn = false;
+          final detail = loginErrorText(errPage).isNotEmpty
+              ? loginErrorText(errPage)
+              : 'HTTP ${resp.statusCode}, redirected to login page';
+          throw UserError(t('bak_login_rejected',
+              args: {'detail': truncateRunes(detail, 200)}));
+        }
+        // Any other redirect (another host, `/`, error page): follow as today
+        // and apply the login-page check.
+        final followed =
+            _checkStatus(await _send('GET', target.toString()), 'GET');
+        if (isLoginPage(followed)) {
+          loggedIn = false;
+          final detail = loginErrorText(followed).isNotEmpty
+              ? loginErrorText(followed)
+              : 'HTTP ${followed.statusCode}, still on the login page';
+          throw UserError(t('bak_login_rejected',
+              args: {'detail': truncateRunes(detail, 200)}));
+        }
+        loggedIn = true;
+        log('Logged in to Bakaláři.');
+        return;
+      }
+    }
     if (isLoginPage(resp)) {
       loggedIn = false;
       final detail = loginErrorText(resp).isNotEmpty
@@ -906,14 +986,15 @@ class BakalariSession {
     return payload;
   }
 
-  /// Runs a DevExpress callback of a page and returns its result HTML.
-  Future<String> dxCallback(
+  /// Runs a DevExpress callback using explicit [baseFields] (for cached
+  /// hidden-field callbacks without reloading the full page).
+  Future<String> dxCallbackFields(
     String path,
-    String pageHtml,
+    List<(String, String)> baseFields,
     String callbackId,
     String param,
   ) async {
-    final fields = formFields(pageHtml);
+    final fields = List<(String, String)>.of(baseFields);
     fields.add(('__CALLBACKID', callbackId));
     fields.add(('__CALLBACKPARAM', 'c0:$param'));
     final post = formBody(fields);
@@ -921,6 +1002,15 @@ class BakalariSession {
         headers: post.headers, body: post.body);
     return dxCallbackResult(resp.text);
   }
+
+  /// Runs a DevExpress callback of a page and returns its result HTML.
+  Future<String> dxCallback(
+    String path,
+    String pageHtml,
+    String callbackId,
+    String param,
+  ) =>
+      dxCallbackFields(path, formFields(pageHtml), callbackId, param);
 }
 
 /// Only a [ConnectFailure] means the excuse post certainly never left:

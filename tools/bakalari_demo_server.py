@@ -262,6 +262,28 @@ def grades_page(today: date) -> str:
     return shell("Klasifikace - průběžná (prubzna.aspx)", cells)
 
 
+def marks_widget_html(today: date) -> str:
+    """Dashboard `/Marks/Widget` fragment listing the 5 newest marks."""
+    items = []
+    for key, rows in GRADES.items():
+        for days_ago, mark, _weight, caption in rows:
+            given = today - timedelta(days=days_ago)
+            items.append((given, mark, SUBJECTS[key][0], caption, days_ago <= 7))
+    items.sort(key=lambda r: r[0], reverse=True)
+    lines = []
+    for given, mark, subject, caption, is_new in items[:5]:
+        cls = "mark-displayGrade isNew" if is_new else "mark-displayGrade"
+        lines.append(
+            '<div class="mark-line">'
+            f'<span class="{cls}">{html.escape(mark)}</span>'
+            f'<span class="mark-subjectName">{html.escape(subject)}</span>'
+            f'<span class="mark-note">{html.escape(caption)}</span>'
+            f'<span class="mark-date">{given.day}.{given.month}.</span>'
+            '</div>'
+        )
+    return '<div class="bk-widget-marks">' + "".join(lines) + "</div>"
+
+
 def absence_page(today: date) -> str:
     info = {"DefaultDateFrom": {"DefaultValue": f"{school_year_start(today).isoformat()}T00:00:00+02:00"},
             "DefaultDateTo": {"DefaultValue": f"{today.isoformat()}T00:00:00+02:00"}}
@@ -431,6 +453,8 @@ def outbox_page(period_start: date | None = None, period_end: date | None = None
     action = f"komens.aspx?{query_string}" if query_string else "komens.aspx?l=o"
     return shell("Komens - odeslané", f"""<form id="formbaka" method="post" action="{html.escape(action, quote=True)}">
 <input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="demo:{period_start.isoformat()}:{period_end.isoformat()}">
+<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="DEMO1234">
+<input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="demo-ev">
 <input type="hidden" name="ctl00$cphmain$hfListType" id="hfListType" value="odeslane">
 <span id="cphmain_obdobiLabel">{cz_date(period_start)} - {cz_date(period_end)}</span>
 </form>""")
@@ -473,9 +497,17 @@ MAX_BODY = 1_000_000
 class Server(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, user: str, password: str):
+    def __init__(
+        self,
+        address,
+        user: str,
+        password: str,
+        *,
+        short_cached_outbox: bool = False,
+    ):
         super().__init__(address, Handler)
         self.user, self.password = user, password
+        self.short_cached_outbox = short_cached_outbox
         self.sessions: set = set()
         self.outbox = Outbox(date.today())
 
@@ -553,6 +585,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.html(shell("Přehled", "<p>Demo student, " + CLASS_NAME + "</p>"))
         if lower == "/next/prubzna.aspx":
             return self.html(grades_page(today))
+        if lower == "/marks/widget":
+            return self.html(marks_widget_html(today))
         if lower == "/absence/continuous":
             return self.html(absence_page(today))
         if lower == "/absence/continuous/getabsencebysubjects":
@@ -592,7 +626,20 @@ class Handler(BaseHTTPRequestHandler):
         if lower == "/next/komens.aspx":
             fields = self.form()
             viewstate = (fields.get("__VIEWSTATE") or [""])[0]
-            period = _viewstate_period(viewstate) or outbox_period(parse_qs(url.query), today)
+            if not viewstate or not (fields.get("__VIEWSTATEGENERATOR") or [""])[0] or not (fields.get("__EVENTVALIDATION") or [""])[0]:
+                return self._send(
+                    200,
+                    "0|/*DX*/({'redirect':'/dashboard?e='})",
+                    "text/plain; charset=utf-8",
+                )
+            is_short_cached = (
+                self.server.short_cached_outbox
+                and "ctl00$cphmain$hfListType" not in fields
+            )
+            if is_short_cached:
+                period = (today - timedelta(days=30), today)
+            else:
+                period = _viewstate_period(viewstate) or outbox_period(parse_qs(url.query), today)
             raw_param = (fields.get("__CALLBACKPARAM") or [""])[0]
             if raw_param.startswith("c0:"):
                 raw_param = raw_param[3:]
@@ -711,8 +758,18 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--user", default="demo")
     parser.add_argument("--password", default="demo")
+    parser.add_argument(
+        "--short-cached-outbox",
+        action="store_true",
+        help="simulate 3-field Komens callback returning only the last 30 days (F6 §4.4)",
+    )
     args = parser.parse_args()
-    server = Server((args.host, args.port), args.user, args.password)
+    server = Server(
+        (args.host, args.port),
+        args.user,
+        args.password,
+        short_cached_outbox=args.short_cached_outbox,
+    )
     print(f"Bakaláři demo on http://{args.host}:{args.port}  login: {args.user} / {args.password}", flush=True)
     try:
         server.serve_forever()

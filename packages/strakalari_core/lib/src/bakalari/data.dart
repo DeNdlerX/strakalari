@@ -13,6 +13,7 @@ import '../planning/schedule.dart' show
     LessonDiff,
     applySubstitutionFeed,
     backfillStableFacts,
+    baselineFromDict,
     baselineFromStableTimetable,
     baselineToDict,
     iterChanges;
@@ -87,32 +88,107 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
     }
   }
 
-  /// Fetches the absence overview (Absence → Continuous).
-  Future<void> obtainAbsenceInfo() async {
+  /// Fetches the lightweight recent-marks dashboard widget (`GET /Marks/Widget`,
+  /// ~2 KB) used as the 5-minute marks change signal (F6 §5.1).
+  ///
+  /// Tri-state: non-null list (possibly empty) on valid parse, `null` on HTTP
+  /// error or changed markup (logged loudly). Only raises on user cancel.
+  Future<List<Map<String, Object?>>?> fetchMarksWidget() async {
     raiseIfCancelledNow();
     try {
+      final html = await bakalariSession().getHtml('/Marks/Widget');
+      final parsed = extractMarksWidget(html);
+      if (parsed == null) {
+        log('Warning: /Marks/Widget reply missing bk-widget-marks '
+            '(format changed?).');
+      }
+      marksWidget = parsed;
+      return parsed;
+    } on CancelledError {
+      rethrow;
+    } on Object catch (e) {
+      log('Warning: /Marks/Widget failed ($e).');
+      marksWidget = null;
+      return null;
+    }
+  }
+
+  /// Fetches the absence overview (Absence → Continuous).
+  ///
+  /// Computes the school-year date range locally (`1 September -> today`,
+  /// F6 §4.2) and calls `GetAbsenceBySubjects` directly without loading the
+  /// 58 KB HTML page, falling back loudly to `/Absence/Continuous` once if
+  /// the direct call fails, returns invalid rows, or returns zero subjects
+  /// while [cachedHasSubjects] is true.
+  Future<void> obtainAbsenceInfo({
+    bool allowPageFallback = true,
+    bool cachedHasSubjects = false,
+    bool quiet = false,
+  }) async {
+    raiseIfCancelledNow();
+    absenceDirectFailed = false;
+    try {
       final session = bakalariSession();
-      final page = await session.getHtml('/Absence/Continuous');
-      final dates = absenceDateRange(page);
-      if (dates == null) {
-        throw StateError(
-            'absence page without its date range (format changed?)');
+      final now = clock.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final startYear = today.month >= 9 ? today.year : today.year - 1;
+      String two(int n) => n.toString().padLeft(2, '0');
+      final dateFrom = '$startYear-09-01';
+      final dateTo = '${today.year}-${two(today.month)}-${two(today.day)}';
+
+      Object? rows;
+      try {
+        rows = await session.json(
+          'GET',
+          '/Absence/Continuous/GetAbsenceBySubjects',
+          queryParams: {
+            'dateFrom': dateFrom,
+            'dateTo': dateTo,
+            'lateChecked': 'false',
+            'schoolChecked': 'false',
+            'soonChecked': 'false',
+          },
+        );
+        if (storeRows(rows) == null) {
+          throw StateError('absence reply without rows (format changed?)');
+        }
+        if (cachedHasSubjects) {
+          final (pcts, _) = absenceFromSubjects(rows);
+          if (pcts.isEmpty) {
+            throw StateError(
+                'direct absence reply had no subjects while cache had some');
+          }
+        }
+      } on CancelledError {
+        rethrow;
+      } on Object catch (e) {
+        absenceDirectFailed = true;
+        if (!allowPageFallback) rethrow;
+        log('Warning: direct GetAbsenceBySubjects failed ($e); '
+            'falling back to /Absence/Continuous');
+        final page = await session.getHtml('/Absence/Continuous');
+        final dates = absenceDateRange(page);
+        if (dates == null) {
+          throw StateError(
+              'absence page without its date range (format changed?)');
+        }
+        rows = await session.json(
+          'GET',
+          '/Absence/Continuous/GetAbsenceBySubjects',
+          queryParams: {
+            'dateFrom': dates.$1,
+            'dateTo': dates.$2,
+            'lateChecked': 'false',
+            'schoolChecked': 'false',
+            'soonChecked': 'false',
+          },
+        );
+        if (storeRows(rows) == null) {
+          // A failed load, not "no absence": the refresh keeps the cache.
+          throw StateError('absence reply without rows (format changed?)');
+        }
       }
-      final rows = await session.json(
-        'GET',
-        '/Absence/Continuous/GetAbsenceBySubjects',
-        queryParams: {
-          'dateFrom': dates.$1,
-          'dateTo': dates.$2,
-          'lateChecked': 'false',
-          'schoolChecked': 'false',
-          'soonChecked': 'false',
-        },
-      );
-      if (storeRows(rows) == null) {
-        // A failed load, not "no absence": the refresh keeps the cache.
-        throw StateError('absence reply without rows (format changed?)');
-      }
+
       final (percentages, details) = absenceFromSubjects(rows);
       absencePercentages = percentages;
       absenceDetails =
@@ -123,25 +199,27 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
             'either no absence recorded or the format changed.');
       }
 
-      var warnPct = _toDouble(config['absence_warn_pct'] ?? 15.0) ?? 15.0;
-      var critPct = _toDouble(config['absence_critical_pct'] ?? 25.0) ?? 25.0;
-      if (!(warnPct > 0 && warnPct < critPct && critPct <= 100)) {
-        warnPct = 15.0;
-        critPct = 25.0;
-      }
+      if (!quiet) {
+        var warnPct = _toDouble(config['absence_warn_pct'] ?? 15.0) ?? 15.0;
+        var critPct = _toDouble(config['absence_critical_pct'] ?? 25.0) ?? 25.0;
+        if (!(warnPct > 0 && warnPct < critPct && critPct <= 100)) {
+          warnPct = 15.0;
+          critPct = 25.0;
+        }
 
-      for (final entry in percentages.entries) {
-        final key = entry.key;
-        final value = entry.value;
-        if (value >= 0.0 && value <= warnPct) {
-          log('Recommendation: Skip the $key lessons! '
-              'Your absence is only $value%!');
-        } else if (value < critPct) {
-          log('Recommendation: Watch the $key lessons, your absence '
-              '($value%) is approaching the $critPct% limit!');
-        } else if (value >= critPct) {
-          log('Recommendation: You should probably attend the $key lessons '
-              'more, your absence is $value%!');
+        for (final entry in percentages.entries) {
+          final key = entry.key;
+          final value = entry.value;
+          if (value >= 0.0 && value <= warnPct) {
+            log('Recommendation: Skip the $key lessons! '
+                'Your absence is only $value%!');
+          } else if (value < critPct) {
+            log('Recommendation: Watch the $key lessons, your absence '
+                '($value%) is approaching the $critPct% limit!');
+          } else if (value >= critPct) {
+            log('Recommendation: You should probably attend the $key lessons '
+                'more, your absence is $value%!');
+          }
         }
       }
     } on CancelledError {
@@ -177,21 +255,33 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
   /// was skipped, i.e. unknown — callers must treat it as "nothing
   /// learned", never as "nothing sent". Never raises except on user
   /// cancel. [sentExcusesError] carries the last failure.
-  Future<List<Map<String, Object?>>?> fetchSentExcuses(
-      {int limit = 0}) async {
+  Future<List<Map<String, Object?>>?> fetchSentExcuses({
+    int limit = 0,
+    bool useCachedForm = false,
+  }) async {
     raiseIfCancelledNow();
     outboxDetailsUpdated = false;
+    outboxFormUpdated = false;
     sentExcusesFrom = null;
     final capped = limit < 0 ? 0 : limit;
     try {
       final session = bakalariSession();
-      final (page, ids, cacheKeys) = await fetchAllOutboxIds(session);
-      final periodStart = _outboxPeriodStart(page);
+      final listing = await _fetchAllOutboxIdsInternal(
+        session,
+        useCachedForm: useCachedForm,
+      );
+      final ids = listing.ids;
+      final cacheKeys = listing.cacheKeys;
+      final periodStart = listing.periodStart;
       if (ids.isEmpty) {
         log('No sent excuses (OMLUVENKA) found in Komens → Odeslané.');
         sentExcusesFrom = periodStart;
         knownOutboxDetails = {};
         outboxDetailsUpdated = true;
+        if (listing.freshForm != null) {
+          knownOutboxForm = listing.freshForm;
+          outboxFormUpdated = true;
+        }
         sentExcuses = [];
         sentExcusesError = '';
         return [];
@@ -279,6 +369,10 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
       sentExcusesFrom = effectiveFrom;
       knownOutboxDetails = nextCache;
       outboxDetailsUpdated = true;
+      if (listing.freshForm != null) {
+        knownOutboxForm = listing.freshForm;
+        outboxFormUpdated = true;
+      }
       sentExcuses = parsed;
       sentExcusesError = '';
       final cacheNote = reused > 0 ? ', $reused cached' : '';
@@ -341,15 +435,159 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
 
   /// `(pageHtml, excuseIds, cacheKeys)`: Komens → Odeslané and every
   /// excuse message id across all cumulative callback pages of [path].
+  ///
+  /// When [useCachedForm] is true and [knownOutboxForm] holds a valid,
+  /// in-period, < 7-day-old 3-field snapshot, skips the 207 KB page load
+  /// and runs the completeness check against [knownOutboxDetails] (F6 §4.4,
+  /// R8a M1). Any page-1 error or missing known excuse reloads the full page.
   Future<(String, List<String>, Map<String, String>)> fetchAllOutboxIds(
     BakalariSession session, {
     String path = _outboxYearPath,
     int? pageSize,
     int maxPages = maxOutboxPages,
+    bool useCachedForm = false,
+  }) async {
+    final res = await _fetchAllOutboxIdsInternal(
+      session,
+      path: path,
+      pageSize: pageSize,
+      maxPages: maxPages,
+      useCachedForm: useCachedForm,
+    );
+    return (res.pageHtml ?? '', res.ids, res.cacheKeys);
+  }
+
+  Future<
+      ({
+        String? pageHtml,
+        List<String> ids,
+        Map<String, String> cacheKeys,
+        DateTime? periodStart,
+        Map<String, Object?>? freshForm,
+      })> _fetchAllOutboxIdsInternal(
+    BakalariSession session, {
+    String path = _outboxYearPath,
+    int? pageSize,
+    int maxPages = maxOutboxPages,
+    bool useCachedForm = false,
   }) async {
     final requestedSize = pageSize ?? outboxPageSize;
-    final size =
-        requestedSize < 1 ? defaultOutboxPageSize : requestedSize;
+    final size = requestedSize < 1 ? defaultOutboxPageSize : requestedSize;
+
+    Future<(List<String>, Map<String, String>)> pageWith(
+      Future<String> Function(String param, int pageNumber) runCallback, {
+      required void Function(int pageNumber) onPageStart,
+    }) async {
+      final seenAllIds = <String>{};
+      final excuseIds = <String>[];
+      final cacheKeys = <String, String>{};
+
+      for (var pageNumber = 1;; pageNumber++) {
+        raiseIfCancelledNow();
+        onPageStart(pageNumber);
+        final param = jsonEncode({
+          'showRepressed': false,
+          'pageNumber': pageNumber,
+          'pageSize': size,
+          'reloadMessages': pageNumber == 1,
+          'sortOrder': 0,
+          'onlyRating': true,
+          'onlyExcuses': true,
+          'onlySystemMessages': true,
+          'onlyGeneralMessages': true,
+          'onlyUnread': false,
+        });
+        final listing = await runCallback(param, pageNumber);
+        if (!listing.contains('komens-messages-wrapper')) {
+          throw StateError('outbox list did not load (format changed?)');
+        }
+        final allIds = outboxMessageIds(listing);
+        if (pageNumber > 1) {
+          final pageIdSet = allIds.toSet();
+          if (!pageIdSet.containsAll(seenAllIds)) {
+            throw StateError(
+                'outbox page $pageNumber is not cumulative (missing previous ids)');
+          }
+        }
+        var newCount = 0;
+        for (final id in allIds) {
+          if (seenAllIds.add(id)) newCount += 1;
+        }
+        if (pageNumber > 1 && newCount == 0) {
+          if (_outboxReplyMarksEnd(listing)) break;
+          throw StateError(
+              'outbox paging made no progress at page $pageNumber');
+        }
+        for (final id in outboxExcuseIds(listing)) {
+          if (!excuseIds.contains(id)) excuseIds.add(id);
+        }
+        for (final entry in outboxExcuseCacheKeys(listing).entries) {
+          cacheKeys.putIfAbsent(entry.key, () => entry.value);
+        }
+        if (allIds.length < pageNumber * size) {
+          break;
+        }
+        if (pageNumber >= maxPages) {
+          throw StateError(
+              'outbox exceeded $maxPages pages without reaching the end');
+        }
+      }
+      return (excuseIds, cacheKeys);
+    }
+
+    // Attempt cached 3-field callback when allowed and valid (F6 §4.4, R8a M1/S6).
+    final cached = useCachedForm ? _usableCachedOutboxForm(path) : null;
+    if (cached != null) {
+      var currentPage = 0;
+      String? rejectReason;
+      List<String>? cachedIds;
+      Map<String, String>? cachedKeys;
+      try {
+        final (ids, keys) = await pageWith(
+          (param, _) => session.dxCallbackFields(
+            path,
+            cached.fields,
+            _outboxCallbackId,
+            param,
+          ),
+          onPageStart: (p) => currentPage = p,
+        );
+        final missing = _checkCachedOutboxCompleteness(
+          ids,
+          cached.periodStart,
+          cached.periodEnd,
+        );
+        if (missing != null) {
+          rejectReason = missing;
+        } else {
+          cachedIds = ids;
+          cachedKeys = keys;
+        }
+      } on CancelledError {
+        rethrow;
+      } on Object catch (e) {
+        if (currentPage <= 1) {
+          rejectReason = '$e';
+        } else {
+          // Page 2+ failure aborts the entire read (no partial success).
+          rethrow;
+        }
+      }
+      if (cachedIds != null && cachedKeys != null) {
+        return (
+          pageHtml: null,
+          ids: cachedIds,
+          cacheKeys: cachedKeys,
+          periodStart: cached.periodStart,
+          freshForm: null,
+        );
+      }
+      log('Komens cached form fields rejected ($rejectReason); '
+          'reloading outbox page');
+      knownOutboxForm = null;
+    }
+
+    // Full-page path (F2).
     final page = await session.getHtml(path);
     final listType = RegExp('id="hfListType"[^>]*?value="([^"]*)"')
         .firstMatch(page);
@@ -358,61 +596,119 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
       throw StateError(
           'Komens page is not the sent folder (format changed?)');
     }
-    final seenAllIds = <String>{};
-    final excuseIds = <String>[];
-    final cacheKeys = <String, String>{};
+    final (ids, cacheKeys) = await pageWith(
+      (param, _) => session.dxCallback(path, page, _outboxCallbackId, param),
+      onPageStart: (_) {},
+    );
+    final bounds = _outboxPeriodBounds(page);
+    final freshForm = _extractOutboxFormFields(
+      page,
+      path,
+      bounds?.$1,
+      bounds?.$2,
+    );
+    return (
+      pageHtml: page,
+      ids: ids,
+      cacheKeys: cacheKeys,
+      periodStart: bounds?.$1,
+      freshForm: freshForm,
+    );
+  }
 
-    for (var pageNumber = 1;; pageNumber++) {
-      raiseIfCancelledNow();
-      final param = jsonEncode({
-        'showRepressed': false,
-        'pageNumber': pageNumber,
-        'pageSize': size,
-        'reloadMessages': pageNumber == 1,
-        'sortOrder': 0,
-        'onlyRating': true,
-        'onlyExcuses': true,
-        'onlySystemMessages': true,
-        'onlyGeneralMessages': true,
-        'onlyUnread': false,
-      });
-      final listing = await session.dxCallback(
-          path, page, _outboxCallbackId, param);
-      if (!listing.contains('komens-messages-wrapper')) {
-        throw StateError('outbox list did not load (format changed?)');
-      }
-      final allIds = outboxMessageIds(listing);
-      if (pageNumber > 1) {
-        final pageIdSet = allIds.toSet();
-        if (!pageIdSet.containsAll(seenAllIds)) {
-          throw StateError(
-              'outbox page $pageNumber is not cumulative (missing previous ids)');
+  /// Validates [knownOutboxForm] against F6 §4.4 & R8a S6 rules.
+  ({
+    List<(String, String)> fields,
+    DateTime periodStart,
+    DateTime periodEnd,
+  })? _usableCachedOutboxForm(String path) {
+    final form = knownOutboxForm;
+    if (form == null) return null;
+    if ('${form['path'] ?? ''}' != path) return null;
+    final vs = '${form['viewstate'] ?? ''}'.trim();
+    final vsg = '${form['viewstate_generator'] ?? ''}'.trim();
+    final ev = '${form['event_validation'] ?? ''}'.trim();
+    if (vs.isEmpty || vsg.isEmpty || ev.isEmpty) return null;
+
+    final start = _parseStrictIsoDay('${form['period_start'] ?? ''}');
+    final end = _parseStrictIsoDay('${form['period_end'] ?? ''}');
+    if (start == null || end == null || end.isBefore(start)) return null;
+
+    final now = clock.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (today.isBefore(start) || today.isAfter(end)) return null;
+
+    final fetchedAt = DateTime.tryParse('${form['fetched_at'] ?? ''}'.trim());
+    if (fetchedAt == null) return null;
+    final age = now.difference(fetchedAt);
+    if (age.isNegative || age >= const Duration(days: 7)) return null;
+
+    return (
+      fields: [
+        ('__VIEWSTATE', vs),
+        ('__VIEWSTATEGENERATOR', vsg),
+        ('__EVENTVALIDATION', ev),
+      ],
+      periodStart: start,
+      periodEnd: end,
+    );
+  }
+
+  /// R8a M1 completeness check: every excuse already known in
+  /// [knownOutboxDetails] whose `data-sortdate` falls inside
+  /// `[periodStart, periodEnd]` must be present in [returnedExcuseIds].
+  String? _checkCachedOutboxCompleteness(
+    List<String> returnedExcuseIds,
+    DateTime periodStart,
+    DateTime periodEnd,
+  ) {
+    if (knownOutboxDetails.isEmpty) return null;
+    final returned = returnedExcuseIds.toSet();
+    for (final key in knownOutboxDetails.keys) {
+      final sep = key.indexOf('|');
+      if (sep <= 0) continue;
+      final id = key.substring(0, sep);
+      final sortStr = key.substring(sep + 1);
+      final sortDay = parseOutboxSortDate(sortStr);
+      if (sortDay == null) continue;
+      if (!sortDay.isBefore(periodStart) && !sortDay.isAfter(periodEnd)) {
+        if (!returned.contains(id)) {
+          return 'known excuse $id ($sortStr) missing from cached reply';
         }
       }
-      var newCount = 0;
-      for (final id in allIds) {
-        if (seenAllIds.add(id)) newCount += 1;
-      }
-      if (pageNumber > 1 && newCount == 0) {
-        if (_outboxReplyMarksEnd(listing)) break;
-        throw StateError(
-            'outbox paging made no progress at page $pageNumber');
-      }
-      for (final id in outboxExcuseIds(listing)) {
-        if (!excuseIds.contains(id)) excuseIds.add(id);
-      }
-      for (final entry in outboxExcuseCacheKeys(listing).entries) {
-        cacheKeys.putIfAbsent(entry.key, () => entry.value);
-      }
-      if (allIds.length < pageNumber * size) {
-        break;
-      }
-      if (pageNumber >= maxPages) {
-        throw StateError(
-            'outbox exceeded $maxPages pages without reaching the end');
-      }
     }
-    return (page, excuseIds, cacheKeys);
+    return null;
+  }
+
+  Map<String, Object?>? _extractOutboxFormFields(
+    String pageHtml,
+    String path,
+    DateTime? periodStart,
+    DateTime? periodEnd,
+  ) {
+    if (periodStart == null || periodEnd == null) return null;
+    var vs = '';
+    var vsg = '';
+    var ev = '';
+    for (final (name, value) in formFields(pageHtml)) {
+      if (name == '__VIEWSTATE') vs = value;
+      if (name == '__VIEWSTATEGENERATOR') vsg = value;
+      if (name == '__EVENTVALIDATION') ev = value;
+    }
+    if (vs.isEmpty || vsg.isEmpty || ev.isEmpty) return null;
+    String iso(DateTime d) =>
+        '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+    return {
+      'path': path,
+      'viewstate': vs,
+      'viewstate_generator': vsg,
+      'event_validation': ev,
+      'period_start': iso(periodStart),
+      'period_end': iso(periodEnd),
+      'fetched_at': clock.now().toIso8601String(),
+    };
   }
 
   /// The detail of one sent message (`/Komens/GetMessageDataAsync`).
@@ -425,8 +721,8 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
     );
   }
 
-  /// First day of the period Odeslané lists ("26.8.2026 - 25.9.2026"), or null.
-  DateTime? _outboxPeriodStart(String pageHtml) {
+  /// Period bounds `(start, end?)` of Odeslané's label ("20.8.2026 - 31.8.2027").
+  (DateTime, DateTime?)? _outboxPeriodBounds(String pageHtml) {
     final label = RegExp('id="cphmain_obdobiLabel"[^>]*>([^<]*)<')
         .firstMatch(pageHtml);
     if (label == null) return null;
@@ -436,12 +732,13 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
         .toList();
     if (found.isEmpty) return null;
     try {
-      final start =
-          parseCzDate(found.first.replaceAll(RegExp(r'\s+'), ''));
-      if (start != null) {
-        log('Komens → Odeslané lists ${label.group(1)!.trim()}.');
-      }
-      return start;
+      final start = parseCzDate(found.first.replaceAll(RegExp(r'\s+'), ''));
+      if (start == null) return null;
+      final end = found.length >= 2
+          ? parseCzDate(found.last.replaceAll(RegExp(r'\s+'), ''))
+          : null;
+      log('Komens → Odeslané lists ${label.group(1)!.trim()}.');
+      return (start, end);
     } on Object {
       return null;
     }
@@ -521,12 +818,23 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
   }
 
   /// Full Bakaláři read: resets the per-run state, logs in, then loads
-  /// weeks → details → stable view → substitution feed → baseline →
-  /// absence → grades → subject directory (Python `fetch_data`).
+  /// absence → substitution feed → weeks → details → stable view → baseline →
+  /// (optional marks widget) → grades → subject directory (F6 §4.3 fetch order).
   ///
-  /// Returns the same dict Python does; the stable baseline is converted
-  /// with [baselineToDict] so it is always JSON-serializable.
-  Future<Map<String, Object?>> fetchData() async {
+  /// Optional flags allow scheduled full runs to skip already-fresh daily parts
+  /// (permanent timetable, subject directory, past weeks) while keeping direct
+  /// callers and existing tests identical by default.
+  Future<Map<String, Object?>> fetchData({
+    List<int>? weekOffsetsOverride,
+    List<int>? Function(Map<String, Object?> freshAbsenceDetails, bool absenceOk)?
+        resolveWeekOffsets,
+    bool fetchStable = true,
+    Map<String, Object?>? cachedStableBaseline,
+    bool fetchSubjects = true,
+    bool fetchMarks = true,
+    bool fetchMarksWidget = false,
+    bool cachedAbsenceHasSubjects = false,
+  }) async {
     timetableSources = [];
     timetableData = {};
     absencePercentages = {};
@@ -538,6 +846,7 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
     grades = {};
     quarterlyMarks = {};
     gradesError = '';
+    marksWidget = null;
     // sentExcuses is deliberately NOT reset: the outbox sync never runs
     // inside fetchData(), so clearing would report "nothing sent" for
     // state that is simply unknown.
@@ -552,23 +861,11 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
 
     raiseIfCancelledNow();
     await login();
-    await fetchTimetableWeeks();
-    for (final details in timetableSources) {
-      if (details is List) {
-        addTimetableDetails(details.cast<Object?>());
-      }
-    }
-    try {
-      await extractStableTimetable();
-    } on CancelledError {
-      rethrow;
-    } on Object catch (e) {
-      log('Warning: stable timetable failed to load ($e), '
-          'no stable timetable this run.');
-    }
-    // Personal substitution feed rides along the same loop so the
-    // authoritative change list is available when the baseline is built.
-    // Best effort only: it must never fail the run.
+    // 1. Absence first (R8a S1): lets scheduled full runs decide whether a
+    //    grown Count requires pulling past regular weeks in the same run.
+    await obtainAbsenceInfo(cachedHasSubjects: cachedAbsenceHasSubjects);
+    // 2. Substitution feed before weeks (R8a S4): ensures stored per-week
+    //    hashes never describe a change the loaded week does not yet hold.
     try {
       await fetchSubstitutions();
     } on CancelledError {
@@ -581,62 +878,105 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
           ? 'failed'
           : (first.length > 200 ? first.substring(0, 200) : first);
     }
-    updateStableBaseline();
-    await obtainAbsenceInfo();
-    // Průběžná klasifikace rides along; a changed grades page must never
-    // fail the run.
-    try {
-      await getGrades();
-    } on CancelledError {
-      rethrow;
-    } on Object catch (e) {
-      log('Warning: grades failed to load ($e), '
-          'continuing without fresh grades.');
+    // 3. Timetable weeks.
+    final resolvedOffsets = resolveWeekOffsets != null
+        ? resolveWeekOffsets(absenceDetails, absenceError.isEmpty)
+        : weekOffsetsOverride;
+    await fetchTimetableWeeks(weekOffsetsOverride: resolvedOffsets);
+    for (final details in timetableSources) {
+      if (details is List) {
+        addTimetableDetails(details.cast<Object?>());
+      }
     }
-    // Subject directory: an empty one just disables the tracked-subject
-    // filter downstream.
-    try {
-      await fetchSubjectDirectory();
-    } on CancelledError {
-      rethrow;
-    } on Object catch (e) {
-      log('Warning: subject directory failed ($e), continuing without it.');
+    // 4. Permanent timetable (`perm`, optional when already fetched today).
+    if (fetchStable) {
+      try {
+        await extractStableTimetable();
+      } on CancelledError {
+        rethrow;
+      } on Object catch (e) {
+        log('Warning: stable timetable failed to load ($e), '
+            'no stable timetable this run.');
+      }
     }
-    Map<String, Object?> serializableBaseline;
-    try {
-      serializableBaseline = baselineToDict(stableBaseline);
-    } on Object {
-      serializableBaseline = {};
+    updateStableBaseline(
+      cachedBaseline: !fetchStable ? cachedStableBaseline : null,
+    );
+    // 5. Marks widget BEFORE prubzna.aspx (R8a S3) so a mark given between the
+    //    two requests can never be hidden until the next full run.
+    if (fetchMarksWidget) {
+      await this.fetchMarksWidget();
     }
-    return {
+    // 6. Průběžná klasifikace rides along; a changed grades page must never
+    //    fail the run.
+    if (fetchMarks) {
+      try {
+        await getGrades();
+      } on CancelledError {
+        rethrow;
+      } on Object catch (e) {
+        log('Warning: grades failed to load ($e), '
+            'continuing without fresh grades.');
+      }
+    }
+    // 7. Subject directory: an empty one just disables the tracked-subject
+    //    filter downstream.
+    if (fetchSubjects) {
+      try {
+        await fetchSubjectDirectory();
+      } on CancelledError {
+        rethrow;
+      } on Object catch (e) {
+        log('Warning: subject directory failed ($e), continuing without it.');
+      }
+    }
+    final out = <String, Object?>{
       'timetable': timetableData,
       'absence': absencePercentages,
-      'grades': grades,
-      'quarterly_marks': quarterlyMarks,
-      'stable_baseline': serializableBaseline,
-      'stable_baseline_source':
-          serializableBaseline.isNotEmpty ? 'scraped' : '',
+      if (fetchMarks) 'grades': grades,
+      if (fetchMarks) 'quarterly_marks': quarterlyMarks,
       'changes': weekChanges,
       'substitutions': substitutions,
       'absence_details': absenceDetails,
-      'subject_directory': subjectDirectory,
+      if (fetchSubjects) 'subject_directory': subjectDirectory,
     };
+    if (fetchStable) {
+      Map<String, Object?> serializableBaseline;
+      try {
+        serializableBaseline = baselineToDict(stableBaseline);
+      } on Object {
+        serializableBaseline = {};
+      }
+      out['stable_baseline'] = serializableBaseline;
+      out['stable_baseline_source'] =
+          serializableBaseline.isNotEmpty ? 'scraped' : '';
+    }
+    return out;
   }
 
   /// Builds the stable baseline and diffs the loaded weeks against it.
   ///
-  /// Port of `bakalari_data.update_stable_baseline`. The baseline comes
-  /// only from the scraped "Stálý rozvrh" view ([stableTimetableData]):
-  /// when that scrape failed there is no baseline at all. Stores the
-  /// baseline on [stableBaseline] and the diffs on [weekChanges], logs a
-  /// short summary, and returns the baseline. Never raises.
-  Map<Object, Object?> updateStableBaseline() {
+  /// Uses the freshly scraped "Stálý rozvrh" view ([stableTimetableData]) when
+  /// present; when `perm` was skipped on purpose (F6 §4.3, R8a S5), uses
+  /// [cachedBaseline] (previously scraped) with `stableComplete = true` so
+  /// saved days match a full run identically. When `perm` was attempted and
+  /// failed, [cachedBaseline] is null and there is no baseline this run.
+  Map<Object, Object?> updateStableBaseline({
+    Map<String, Object?>? cachedBaseline,
+  }) {
     Map<Object, Object?> baseline = {};
     if (stableTimetableData.isNotEmpty) {
       try {
         baseline = baselineFromStableTimetable(stableTimetableData);
       } on Object catch (e) {
         log('Warning: could not use the stable timetable: $e');
+        baseline = {};
+      }
+    } else if (cachedBaseline != null && cachedBaseline.isNotEmpty) {
+      try {
+        baseline = baselineFromDict(cachedBaseline);
+      } on Object catch (e) {
+        log('Warning: could not restore cached stable baseline: $e');
         baseline = {};
       }
     }
@@ -712,6 +1052,17 @@ double? _toDouble(Object? value) {
   if (value is bool) return value ? 1 : 0;
   if (value == null) return null;
   return double.tryParse('$value'.trim());
+}
+
+DateTime? _parseStrictIsoDay(String value) {
+  final m = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(value.trim());
+  if (m == null) return null;
+  final y = int.parse(m.group(1)!);
+  final mo = int.parse(m.group(2)!);
+  final d = int.parse(m.group(3)!);
+  final dt = DateTime(y, mo, d);
+  if (dt.year != y || dt.month != mo || dt.day != d) return null;
+  return dt;
 }
 
 String? _hiddenInputValue(String html, String id) {
