@@ -276,7 +276,10 @@ jobs:
   build-flutter-linux:
     name: Build Flutter Linux (AppImage)
     needs: meta
-    runs-on: ubuntu-latest
+    # Pinned: the AppImage needs the build host's glibc, so a 26.04 build
+    # won't start on 24.04; and 26.04's libayatana-appindicator 0.5.94
+    # deprecates app_indicator_new, which fails tray_manager under -Werror.
+    runs-on: ubuntu-24.04
     env:
       STRAKALARI_VERSION: ${{ needs.meta.outputs.version }}
       VERSION: ${{ needs.meta.outputs.version }}
