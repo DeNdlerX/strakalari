@@ -117,6 +117,7 @@ Next step: Fix every finding in `reviews/phase-8-design.md` (blockers first), on
   - Encrypted session cookie on Android background runs: "(Recommended) Yes, store it encrypted like passwords (saves ~0.7 MB/day and ~96 logins/day to the school server)"
   - Wi-Fi vs mobile data & configurability: "we can do the 5 to 10 minutes during the day if on mobile data, 5 minutes the whole day and night if on wifi. Thats even better. And it can be configurable in the settings where it predicts the data usage as well or something. All of this basically in some form."
 - **F6 / R8a Q1–Q3 (2026-11-22):** "It should get overwritten to the new default settings. And wifi should be 5 minutes 24/7. And we should make the 5 minutes default anyway. We can do real account measurement afterwards as well, sure."
+- **Reviewer fixes the F6 note (2026-11-22, after the R8a review):** "Can you fix the plan yourself?" → the reviewer fixed M1–M3 and S1–S13 (and the notes that asked for a change) in `design-F6.md` itself; see [`reviews/phase-8-design.md`](reviews/phase-8-design.md#re-review-2026-11-22).
 
 ## Questions for the owner / reviewer
 - **F6 / R8a design choices (2026-11-22, answered — see *Owner decisions* & `design-F6.md` §3.3, §12):** Q1 answered (overwrite pre-F6 installs once to the new defaults via `applyF6ScheduleDefaultsOnce`, and default both Wi-Fi and mobile daytime to 5 min); Q2 answered (`refresh_wifi_always_fast: true`, 5 min 24/7 on Wi-Fi); Q3 answered (real-account data measurement check afterwards).
