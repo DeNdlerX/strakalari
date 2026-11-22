@@ -1159,5 +1159,112 @@ void main() {
         hasLength(1),
       );
     });
+
+    test(
+        'quickTickAdvancesWeekHashOnlyForLoadedWeekAndRetriesFailedWeekNextQuickTick (R8 S6)',
+        () async {
+      final monThis = DateTime(2026, 9, 21);
+      final monNext = DateTime(2026, 9, 28);
+      final wrongMon = DateTime(2025, 1, 6);
+      final t1 = DateTime(2026, 9, 21, 9, 0);
+      final t2 = DateTime(2026, 9, 21, 9, 5);
+      final cfg = baseCfg();
+
+      final initialHashes =
+          substitutionsByWeekHashes(const [], [monThis, monNext]);
+      saveDataCache({
+        'last_updated': '21.09.2026 08:00:00',
+        marksWidgetKey: <Object?>[],
+        substitutionsWeekHashesKey: initialHashes,
+        'absence': {'Matematika': 10.0},
+        'absence_details': {
+          'Matematika': {'missed_hours': 1, 'total_hours': 10}
+        },
+        partUpdatedKey: {
+          'full': '2026-09-21T08:00:00',
+          'timetable': '2026-09-21T08:50:00',
+          'marks': '2026-09-21T08:50:00',
+        },
+      }, dataDir: tmp.path);
+
+      final changedFeed = [
+        {
+          'Changes': [
+            {
+              'Day': 'pondělí 28.9.2026',
+              'HourLabel': '1. hod',
+              'TimeLabel': '8:00 - 8:45',
+              'ChangeType': 'Canceled',
+              'Description': 'Odpadá',
+              'ChangeLessonInfo': {'SubjectAbbrev': 'M'},
+            }
+          ],
+        }
+      ];
+
+      // 1. Quick tick 1: feed changes next week, but GetContentData returns
+      //    another week -> next week's saved hash stays the old one!
+      var returnWrongWeek = true;
+      final server = FakeBakalari({
+        'GET /Marks/Widget': marksWidgetHtml([]),
+        'POST /Timetable/substitutions/dates': {
+          'success': true,
+          'data': changedFeed,
+        },
+        'GET /Absence/Continuous/GetAbsenceBySubjects': {
+          'data': [
+            {'Name': 'Matematika', 'LessonCount': 10, 'Count': 1, 'Percent': 0.1}
+          ],
+        },
+        'POST /Timetable/GetContentData': (FakeRequest req) {
+          final d = DateTime.parse(
+            '${(jsonDecode(utf8.decode(req.body)) as Map)['date']}',
+          );
+          return weekContent([lessonOn(returnWrongWeek ? wrongMon : d)]);
+        },
+      });
+
+      await withClock(Clock.fixed(t1), () async {
+        final app = Strakalari(configData: cfg, dataDir: tmp.path)
+          ..bakalariClient =
+              BakalariClient(cfg, transport: server, dataDir: tmp.path);
+        await runRefresh(
+          app,
+          cfg,
+          scope: 'quick',
+          now: t1,
+          dataDir: tmp.path,
+        );
+      });
+      expect(server.calls('POST', '/Timetable/GetContentData'), hasLength(1));
+      final saved1 = loadDataCache(dataDir: tmp.path);
+      final hashes1 = saved1[substitutionsWeekHashesKey] as Map?;
+      expect(hashes1?['2026-09-28'], initialHashes['2026-09-28']);
+
+      // 2. Quick tick 2: following quick check loads next week again and
+      //    advances its hash once it loads cleanly.
+      returnWrongWeek = false;
+      await withClock(Clock.fixed(t2), () async {
+        final app = Strakalari(configData: cfg, dataDir: tmp.path)
+          ..bakalariClient =
+              BakalariClient(cfg, transport: server, dataDir: tmp.path);
+        await runRefresh(
+          app,
+          cfg,
+          scope: 'quick',
+          now: t2,
+          dataDir: tmp.path,
+        );
+      });
+      final calCalls = server.calls('POST', '/Timetable/GetContentData');
+      expect(calCalls, hasLength(2));
+      expect(
+        (jsonDecode(utf8.decode(calCalls.last.body)) as Map)['date'],
+        '2026-09-28',
+      );
+      final saved2 = loadDataCache(dataDir: tmp.path);
+      final hashes2 = saved2[substitutionsWeekHashesKey] as Map?;
+      expect(hashes2?['2026-09-28'], isNot(initialHashes['2026-09-28']));
+    });
   });
 }
