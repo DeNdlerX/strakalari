@@ -10,8 +10,8 @@ import '../settings/settings_view.dart' show TemplateGroupsList;
 import '../settings/wakeup_card.dart' show WakeupCard;
 import 'wizard_controller.dart';
 
-/// Placeholder welcome logo (app icon in an accent badge) so a dedicated logo
-/// asset can later replace it in one place.
+/// Welcome logo: the round app logo (a 256 px raster, so it stays sharp on
+/// high-density phones).
 class WelcomeLogo extends StatelessWidget {
   final AppTokens tokens;
   final double size;
@@ -24,25 +24,17 @@ class WelcomeLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = tokens;
-    return Container(
+    return SizedBox(
       width: size,
       height: size,
-      padding: EdgeInsets.all(size * 0.16),
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: tintColor(t.accent, 0.16),
-        border: Border.all(color: tintColor(t.accent, 0.45), width: 1.5),
-      ),
-      child: ClipOval(
-        child: Image.asset(
-          'assets/tray-icon.png',
-          fit: BoxFit.contain,
-          errorBuilder: (_, _, _) => Icon(
-            Icons.school_outlined,
-            size: size * 0.5,
-            color: t.accent,
-          ),
+      child: Image.asset(
+        'assets/logo-256.png',
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.medium,
+        errorBuilder: (_, _, _) => Icon(
+          Icons.school_outlined,
+          size: size * 0.5,
+          color: tokens.accent,
         ),
       ),
     );

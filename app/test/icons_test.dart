@@ -73,12 +73,12 @@ void main() {
     test('logoSvgNamespacesAndLayers', () {
       final text = File('$_assets/logo.svg').readAsStringSync();
       expect(text, contains('xmlns="http://www.w3.org/2000/svg"'));
-      for (final layer in ['id="hexagon"', 'id="symbols"', 'id="ink-effect"']) {
+      for (final layer in ['id="background"', 'id="magpie"']) {
         expect(text, contains(layer));
       }
     });
 
-    test('traySvgIsFlatMonochrome', () {
+    test('traySvgIsFlat', () {
       final text = File('$_assets/tray-icon.svg').readAsStringSync();
       expect(text, isNot(contains('feDropShadow')));
       expect(text, isNot(contains('linearGradient')));
@@ -132,7 +132,7 @@ void main() {
       expect(File('windows/runner/resources/app_icon.ico').readAsBytesSync(), _bytes('icon.ico'));
     });
 
-    test('trayIconIsMonoVariant', () {
+    test('trayIconIsBundledVariant', () {
       // `tray_icon_path`: the app bundles the repo's tray glyphs unchanged.
       for (final name in ['tray-icon.ico', 'tray-icon.png']) {
         expect(File('assets/$name').readAsBytesSync(), _bytes(name), reason: name);
