@@ -799,7 +799,7 @@ void main() {
         expect(
           core.record(
             'excuse',
-            'dry_run',
+            'skipped',
             'auto',
             '04.11.2026 Fyzika (Tonda)',
             dataDir: dir2,

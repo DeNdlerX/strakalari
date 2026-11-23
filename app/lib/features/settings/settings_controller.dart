@@ -53,8 +53,8 @@ class SettingsController {
   final bool Function(String channel)? onSetUpdateChannel;
   final List<String> Function()? validateConfig;
 
-  /// Confirm switching a mode to auto. Return 'confirm' | 'dry_run' |
-  /// 'cancel' (mirrors safety.confirm_auto_mode callbacks).
+  /// Confirm switching a mode to auto. Return 'confirm' | 'cancel'
+  /// (mirrors safety.confirm_auto_mode callbacks).
   final FutureOr<String> Function(String key)? confirmAutoMode;
 
   /// OS autostart hooks: (isEnabled, setAutostart). Null = unavailable.
@@ -369,10 +369,6 @@ class SettingsController {
     final answer = await (confirmAutoMode?.call(key) ?? 'cancel');
     if (answer == 'confirm') {
       saveQuiet({key: 'auto'});
-      return 'saved';
-    }
-    if (answer == 'dry_run') {
-      saveQuiet({key: 'dry_run'});
       return 'saved';
     }
     return 'cancelled';

@@ -221,7 +221,6 @@ extension LunchLogic on AppState {
     final tokenAccountId = activeAccountId;
     final tokenDir = activeAccountDir;
     var ok = false;
-    var dry = false;
     var placed = <String, String>{};
     var busy = false;
     var migratedElsewhere = false;
@@ -245,18 +244,15 @@ extension LunchLogic on AppState {
         final app = buildAppForAccount(onLog: coreLog, dataDir: tokenDir);
         try {
           app.cancelRequested = false;
-          dry = app.stravaOrderMode == 'dry_run';
           ok = await app.stravaOrderSelected(Map<String, String>.of(payload));
-          if (!dry) {
-            // Days that really went through, even when another day failed.
-            final done = Set<String>.of(app.lastOrderedDays);
-            placed = {
-              for (final e in payload.entries)
-                if (done.contains(e.key)) e.key: e.value,
-            };
-            if (app.lastOrderLowBalance) {
-              unfunded = List<String>.of(app.lastUnfundedDays);
-            }
+          // Days that really went through, even when another day failed.
+          final done = Set<String>.of(app.lastOrderedDays);
+          placed = {
+            for (final e in payload.entries)
+              if (done.contains(e.key)) e.key: e.value,
+          };
+          if (app.lastOrderLowBalance) {
+            unfunded = List<String>.of(app.lastUnfundedDays);
           }
         } finally {
           try {
@@ -294,7 +290,7 @@ extension LunchLogic on AppState {
           core.t('strava_low_balance_manual', args: {'n': unfunded.length});
       recordLowBalance(unfunded, tokenDir);
       if (activeAccountId == tokenAccountId) setLowBalanceMemory(unfunded);
-    } else if (ok && !dry) {
+    } else if (ok) {
       recordLowBalance(null, tokenDir);
       if (activeAccountId == tokenAccountId) setLowBalanceMemory(null);
     }
@@ -305,10 +301,7 @@ extension LunchLogic on AppState {
       _maybeApplyPendingLaunchRoute();
       return;
     }
-    if (ok && dry) {
-      // Dry run simulates success without ordering — web truth untouched.
-      workerLog(Strings.get('orders_dry_run'));
-    } else if (ok) {
+    if (ok) {
       workerLog(Strings.get('orders_sent'));
     } else if (lowBalanceMsg.isNotEmpty) {
       // The user's to fix (top up), not a bug: the snackbar says what
@@ -322,8 +315,7 @@ extension LunchLogic on AppState {
     if (busy) {
       lastSnackMessage = Strings.get('session_busy');
     } else if (ok) {
-      lastSnackMessage =
-          dry ? Strings.get('orders_dry_run') : Strings.get('orders_sent');
+      lastSnackMessage = Strings.get('orders_sent');
     } else if (lowBalanceMsg.isNotEmpty) {
       lastSnackMessage = lowBalanceMsg;
     } else {
@@ -433,7 +425,8 @@ extension LunchLogic on AppState {
           '${get('gemini_api_key_encrypted')}' == 'true') {
         rawKey = decryptStrict(rawKey, dataDir: rootDir) ?? '';
       }
-      final menu = food();
+      // Meals with an avoided allergen are never recommended.
+      final menu = withoutAvoidedAllergens(food(), avoidedAllergens(config.data));
       final model =
           '${get('gemini_model', 'gemini-3.8-flash') ?? 'gemini-3.8-flash'}';
       final (_, recOrders) = await recommendLunchesFn(
@@ -536,6 +529,7 @@ extension LunchLogic on AppState {
         combined.add(word);
       }
     }
+    final avoided = avoidedAllergens(config.data);
     final menu = food();
     final hidden = <String>{};
     final reasons = <String, String>{};
@@ -543,9 +537,11 @@ extension LunchLogic on AppState {
       for (final e in meals.entries) {
         if (e.key.contains('&-1&')) continue;
         final (banned, keyword) = isFoodBanned(e.value, combined);
-        if (banned) {
+        final allergen = avoidedAllergenIn(e.value, avoided);
+        if (banned || allergen != null) {
           hidden.add(e.key);
-          reasons[e.key] = '${Strings.get('skipped_reason')}: $keyword';
+          reasons[e.key] = '${Strings.get('skipped_reason')}: '
+              '${banned ? keyword : '${Strings.get('allergens')} $allergen'}';
         }
       }
     }
@@ -555,7 +551,7 @@ extension LunchLogic on AppState {
     Map<String, String> picks = {};
     try {
       picks = filterPicks(
-        menu.map((k, v) => MapEntry(k, v)),
+        withoutAvoidedAllergens(menu, avoided),
         blacklist: combined,
         cancelledDays:
             cancelledLunches.union(autoCancelFreeLunchDays(config.data)),
@@ -669,6 +665,14 @@ extension LunchLogic on AppState {
     } catch (_) {
       return false;
     }
+    applyFoodFilter(lunchPrefs);
+    return true;
+  }
+
+  /// Saves the allergens the diner avoids and re-runs the filter (like a
+  /// blacklist edit). False when the config could not be written.
+  bool setAvoidedAllergens(Set<int> allergens) {
+    if (!save({'strava_allergens': allergens.toList()..sort()})) return false;
     applyFoodFilter(lunchPrefs);
     return true;
   }

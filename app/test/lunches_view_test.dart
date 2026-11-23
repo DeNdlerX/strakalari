@@ -207,6 +207,56 @@ void main() {
       expect(find.text(Strings.get('strava_not_configured')), findsOneWidget);
     });
 
+    testWidgets('soup row, avoided allergens flagged, allergen chips toggle',
+        (t) async {
+      t.view.physicalSize = const Size(1400, 2400);
+      t.view.devicePixelRatio = 1.0;
+      addTearDown(t.view.reset);
+      final c = _controller();
+      final future = _day(7);
+      c.food = {
+        future: {'t&1&0': 'oběd 1 - Roláda(01, 07 )', 't&-1&0': 'x'},
+      };
+      c.soups = {future: 'Frankfurtská(01, 03 )'};
+      c.avoidedAllergens = {7};
+      final saved = <Set<int>>[];
+      c.setAvoidedAllergensHook = (s) {
+        saved.add(s);
+        return true;
+      };
+      await t.pumpWidget(_app(LunchesView(controller: c)));
+
+      expect(find.textContaining('Frankfurtská', findRichText: true),
+          findsOneWidget);
+      expect(find.byIcon(Icons.soup_kitchen_outlined), findsOneWidget);
+      // Only the meal lists 07; the soup's 01, 03 are fine.
+      expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
+      bool tip(Widget w, List<String> parts) =>
+          w is Tooltip && parts.every((p) => (w.message ?? '').contains(p));
+      expect(
+          find.byWidgetPredicate((w) => tip(w, [
+                '07 – ${Strings.get('allergen_7')}',
+                Strings.get('allergen_avoided'),
+              ])),
+          findsOneWidget);
+      expect(
+          find.byWidgetPredicate(
+              (w) => tip(w, ['03 – ${Strings.get('allergen_3')}'])),
+          findsOneWidget);
+
+      expect(find.byType(FilterChip), findsNWidgets(14));
+      expect(
+          t.widget<FilterChip>(find.byKey(const Key('allergen:7'))).selected,
+          isTrue);
+      await t.tap(find.byKey(const Key('allergen:3')));
+      await t.tap(find.byKey(const Key('allergen:7')));
+      expect(saved, [
+        {3, 7},
+        {3},
+      ]);
+      expect(c.avoidedAllergens, {3});
+    });
+
     test(
         'applyFoodFilter skips free days while auto-cancel is on and picks them when off (R5 S4)',
         () {

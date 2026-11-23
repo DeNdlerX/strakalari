@@ -108,9 +108,6 @@ class WizardController extends ChangeNotifier {
   /// flow (Android only).
   bool isAndroid = false;
 
-  /// Active account data dir for `hasDryRun` checks in accounts mode.
-  String? accountDataDir;
-
   /// True ONLY when adding a new account (`activeAccount?.adding == true`, §10.3).
   bool addingAccount = false;
 
@@ -235,9 +232,7 @@ class WizardController extends ChangeNotifier {
   String get stravaOrderMode {
     final raw = drafts['wiz:strava_order_mode'] ??
         '${config['strava_order_mode'] ?? 'confirm'}';
-    return (raw == 'auto' || raw == 'dry_run' || raw == 'confirm')
-        ? raw
-        : 'confirm';
+    return raw == 'auto' ? raw : 'confirm';
   }
 
   bool get stravaAutoOrder => stravaOrderMode == 'auto';
@@ -259,7 +254,7 @@ class WizardController extends ChangeNotifier {
       setDraft('wiz:strava_enabled', on ? '1' : '');
 
   void setStravaOrderMode(String mode) {
-    final normalized = (mode == 'auto' || mode == 'dry_run') ? mode : 'confirm';
+    final normalized = mode == 'auto' ? mode : 'confirm';
     setDraft('wiz:strava_order_mode', normalized);
   }
 
@@ -350,7 +345,7 @@ class WizardController extends ChangeNotifier {
       'strava_canteen_id': cid,
     };
     final rawMode = drafts['wiz:strava_order_mode'];
-    if (rawMode == 'auto' || rawMode == 'confirm' || rawMode == 'dry_run') {
+    if (rawMode == 'auto' || rawMode == 'confirm') {
       updates['strava_order_mode'] = rawMode!;
     }
     if (pw.isNotEmpty) updates['strava_password'] = pw;

@@ -1227,6 +1227,7 @@ String teacherSurname(Object? fullName) {
   const suffixes = {
     'ph.d.', 'phd', 'csc.', 'csc', 'drsc.', 'drsc', 'dis.', 'dis', 'mba',
     'th.d.', 'thd', 'dr.', 'mgr.', 'ing.', 'bc.', 'mudr.', 'judr.', 'paeddr.',
+    'p.g.c.e.', 'p.g.c.e', 'pgce.', 'pgce',
   };
   while (tokens.isNotEmpty && suffixes.contains(tokens.first.toLowerCase())) {
     tokens.removeAt(0);

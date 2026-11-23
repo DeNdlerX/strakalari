@@ -33,6 +33,10 @@ String displayMealName(String name) {
   return (text.substring(0, idx).trim(), text.substring(idx + 1).trim(), allergens);
 }
 
+/// The number of one allergen code (`'07'` → 7, `'1a'` → 1), or null.
+int? allergenNumber(String code) =>
+    int.tryParse(RegExp(r'\d+').stringMatch(code) ?? '');
+
 /// Returns the shared soup every meal of the day has in common ('' when they differ).
 String sharedSoup(Map<String, String> meals) {
   final soups = {

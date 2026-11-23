@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import 'package:app/features/settings/settings_controller.dart';
+import 'package:app/features/settings/morning_brief_card.dart';
 import 'package:app/features/settings/wakeup_card.dart';
 import 'package:app/features/common/app_tokens.dart';
 import 'package:app/features/common/open_url.dart';
@@ -588,6 +589,16 @@ class TemplateGroupsList extends StatelessWidget {
   }
 }
 
+/// The icon of each row of the background notification (and the morning
+/// brief), as the notification draws them (StatusViews.java).
+const Map<String, IconData> statusRowIcons = {
+  'next_lesson': Icons.schedule,
+  'lunch': Icons.restaurant,
+  'lunch_orders': Icons.shopping_cart_outlined,
+  'excuses': Icons.mail_outline,
+  'wakeup': Icons.alarm,
+};
+
 /// A muted hint line under a field (Python `hint_text`).
 /// Port of `_background_overview` (settings/automation.py): a switch per
 /// line of the phone's background notification and a preview that follows
@@ -602,14 +613,6 @@ class BackgroundOverview extends StatefulWidget {
 }
 
 class _BackgroundOverviewState extends State<BackgroundOverview> {
-  static const Map<String, IconData> _icons = {
-    'next_lesson': Icons.schedule,
-    'lunch': Icons.restaurant,
-    'lunch_orders': Icons.shopping_cart_outlined,
-    'excuses': Icons.mail_outline,
-    'wakeup': Icons.alarm,
-  };
-
   SettingsController get c => widget.controller;
 
   core.StatusContent? _content() {
@@ -655,7 +658,7 @@ class _BackgroundOverviewState extends State<BackgroundOverview> {
           crossAxisAlignment: CrossAxisAlignment.start,
           spacing: 8,
           children: [
-            Icon(_icons[row.kind], size: 16, color: tok.muted),
+            Icon(statusRowIcons[row.kind], size: 16, color: tok.muted),
             Expanded(child: Text(row.line, style: TextStyle(fontSize: tok.fsSmall))),
           ],
         ));
@@ -1707,8 +1710,13 @@ class SettingsView extends StatelessWidget {
   // -- automation rules ------------------------------------------------------------------
   List<Widget> _rules(BuildContext context) {
     final c = controller;
-    const modes = ['auto', 'confirm', 'dry_run'];
-    String modeLabel(String m) => Strings.get({'auto': 'mode_auto', 'confirm': 'mode_confirm', 'dry_run': 'mode_dry_run'}[m]!);
+    const modes = ['auto', 'confirm'];
+    String modeLabel(String m) => Strings.get({'auto': 'mode_auto', 'confirm': 'mode_confirm'}[m]!);
+    // A saved value from an older version (e.g. `dry_run`) shows as confirm.
+    String mode(String key) {
+      final v = '${c.get(key, 'confirm')}';
+      return modes.contains(v) ? v : 'confirm';
+    }
     final scope = _accountScopeCaption();
     return [
       ?scope,
@@ -1745,12 +1753,12 @@ class SettingsView extends StatelessWidget {
               ),
               _Hint(Strings.get('automation_pause_hint')),
               KeyedSubtree(
-                key: ValueKey('tree:rule:excuse_mode:${c.get('excuse_mode', 'confirm')}:${c.modeRevision}'),
+                key: ValueKey('tree:rule:excuse_mode:${mode('excuse_mode')}:${c.modeRevision}'),
                 child: DropdownButtonFormField<String>(
                   key: const Key('rule:excuse_mode'),
                   decoration: InputDecoration(
                       labelText: Strings.get('excuse_mode_label')),
-                  initialValue: '${c.get('excuse_mode', 'confirm')}',
+                  initialValue: mode('excuse_mode'),
                   items: [
                     for (final m in modes)
                       DropdownMenuItem(value: m, child: Text(modeLabel(m))),
@@ -1762,12 +1770,12 @@ class SettingsView extends StatelessWidget {
                 ),
               ),
               KeyedSubtree(
-                key: ValueKey('tree:rule:order_mode:${c.get('strava_order_mode', 'confirm')}:${c.modeRevision}'),
+                key: ValueKey('tree:rule:order_mode:${mode('strava_order_mode')}:${c.modeRevision}'),
                 child: DropdownButtonFormField<String>(
                   key: const Key('rule:order_mode'),
                   decoration: InputDecoration(
                       labelText: Strings.get('order_mode_label')),
-                  initialValue: '${c.get('strava_order_mode', 'confirm')}',
+                  initialValue: mode('strava_order_mode'),
                   items: [
                     for (final m in modes)
                       DropdownMenuItem(value: m, child: Text(modeLabel(m))),
@@ -2261,6 +2269,8 @@ class SettingsView extends StatelessWidget {
     final scope = _sharedScopeCaption();
     return [
       ?scope,
+      // The phone's morning brief (posted by Android, like the alarm).
+      if (platform == 'android') MorningBriefCard(controller: c),
       Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -2344,6 +2354,11 @@ class SettingsView extends StatelessWidget {
               const Divider(),
               Text(
                   '${Strings.get('app_version')} ${c.get('app_version', '')}'),
+              OutlinedButton.icon(
+                  key: const Key('diag:source_code'),
+                  onPressed: () => openUrl(repoUrl),
+                  icon: const Icon(Icons.open_in_new),
+                  label: Text(Strings.get('source_code'))),
               DropdownButtonFormField<String>(
                 decoration: InputDecoration(
                     labelText: Strings.get('update_channel')),

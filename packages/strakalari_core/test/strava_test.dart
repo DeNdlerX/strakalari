@@ -522,6 +522,36 @@ void main() {
       expect(food[czDay(d1)]!.containsKey('table0&1&0'), isTrue);
     });
 
+    test('soupsKeptPerDayWithTheirAllergens', () async {
+      final d1 = day1;
+      final d2 = day2;
+      final named = soup(d1)
+        ..['nazev'] = 'Frankfurtská'
+        ..['alergeny'] = [
+          ['01', 'Obiloviny obsahující lepek    '],
+          ['07', 'Mléko   '],
+        ];
+      final noDateSoup = soup(d2)
+        ..remove('datum')
+        ..['nazev'] = 'Boršč';
+      final reply = {
+        'table0': [named, meal(d1, 1, '1', 'Řízek')],
+        'table1': [noDateSoup, meal(d2, 1, '1', 'Guláš')],
+      };
+      expect(soupsFromReply(reply), {
+        czDay(d1): 'Frankfurtská(01, 07 )',
+        czDay(d2): 'Boršč',
+      });
+      // The soup stays out of the orderable meals.
+      final (food, _) = menuFromReply(reply);
+      expect(food[czDay(d1)]!.keys, ['table0&-1&0', 'table0&1&0']);
+      expect(soupsFromReply('garbage'), isEmpty);
+
+      final (client, _, _) = stravaClient(FakeStravaTransport.standard());
+      await client.fetchData();
+      expect(client.soupDict, {czDay(d1): 'polévka', czDay(d2): 'polévka'});
+    });
+
     test('newerBackendOrdersNothing', () async {
       final (client, server, _) = stravaClient(
           FakeStravaTransport.standard(

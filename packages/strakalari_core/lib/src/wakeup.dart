@@ -45,6 +45,10 @@ const Set<String> phoneConfigKeys = {
   'holidays',
   'forced_school_days',
   'language',
+  // The morning brief's queue goes along (morning_brief.dart).
+  'morning_brief_enabled',
+  'morning_brief_time',
+  'morning_brief_items',
 };
 
 /// A lesson known only by its start (the stable timetable has no end times).

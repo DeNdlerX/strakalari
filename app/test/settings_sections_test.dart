@@ -212,7 +212,7 @@ void main() {
         expect(c2.get('excuse_mode'), 'auto');
       });
 
-      for (final answer in ['cancel', 'dry_run']) {
+      for (final answer in ['cancel', 'confirm']) {
         testWidgets('mode picker shows the saved mode after "$answer"',
             (t) async {
           final c = SettingsController(
@@ -235,14 +235,15 @@ void main() {
           await t.pumpAndSettle();
           await t.tap(find.text(Strings.get('mode_auto')).last);
           await t.pumpAndSettle();
-          final shown = answer == 'cancel' ? 'mode_confirm' : 'mode_dry_run';
+          final shown = answer == 'cancel' ? 'mode_confirm' : 'mode_auto';
+          final hidden = answer == 'cancel' ? 'mode_auto' : 'mode_confirm';
           expect(
               find.descendant(
                   of: dd, matching: find.text(Strings.get(shown))),
               findsOneWidget);
           expect(
               find.descendant(
-                  of: dd, matching: find.text(Strings.get('mode_auto'))),
+                  of: dd, matching: find.text(Strings.get(hidden))),
               findsNothing);
         });
       }
@@ -250,17 +251,17 @@ void main() {
       test('other modes save without asking', () async {
         var asked = false;
         final c = SettingsController(
-          {'strava_order_mode': 'confirm'},
+          {'strava_order_mode': 'auto'},
           confirmAutoMode: (_) {
             asked = true;
             return 'cancel';
           },
         );
         expect(
-            await c.commitMode('strava_order_mode', 'dry_run', 'confirm'),
+            await c.commitMode('strava_order_mode', 'confirm', 'confirm'),
             'saved');
         expect(asked, isFalse);
-        expect(c.get('strava_order_mode'), 'dry_run');
+        expect(c.get('strava_order_mode'), 'confirm');
       });
 
       testWidgets('pause switch pauses automation', (t) async {

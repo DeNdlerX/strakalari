@@ -14,7 +14,6 @@ import 'dart:io';
 import 'package:clock/clock.dart';
 import 'package:test/test.dart';
 
-import '../bin/refresh_dryrun.dart' as refresh_dryrun;
 import 'package:strakalari_core/src/automation/audit.dart' as audit;
 import 'package:strakalari_core/src/automation/automation.dart';
 import 'package:strakalari_core/src/automation/cancel.dart';
@@ -204,6 +203,8 @@ class FakeApp implements RefreshApp {
   @override
   Map<String, String> orderedDict = {};
   @override
+  Map<String, String> soupDict = {};
+  @override
   set cancelCallback(bool Function()? cb) {}
 
   @override
@@ -326,6 +327,8 @@ class GateApp implements RefreshApp {
   @override
   Map<String, String> get orderedDict => {};
   @override
+  Map<String, String> get soupDict => {};
+  @override
   set cancelCallback(bool Function()? cb) {}
 
   @override
@@ -430,6 +433,8 @@ class LowBalanceApp implements RefreshApp {
   Map<String, Map<String, String>> foodDict = {};
   @override
   Map<String, String> orderedDict = {};
+  @override
+  Map<String, String> soupDict = {};
   @override
   set cancelCallback(bool Function()? cb) {}
 
@@ -684,6 +689,13 @@ void main() {
       });
     });
 
+    test('menuRefreshCachesTheSoups', () async {
+      final app = FakeApp([])..soupDict = {futureDay: 'Boršč(01 )'};
+      final result = await runRefresh(app, refreshConfig());
+      expect(result.ok, isTrue);
+      expect(loadDataCache()['strava_soups'], {futureDay: 'Boršč(01 )'});
+    });
+
     test('emptyMenuKeepsCachedMenu', () async {
       saveDataCache({
         'strava_meals': {
@@ -911,22 +923,6 @@ void main() {
       expect(onDisk.contains('"theme": "dark"'), isTrue);
     });
 
-    test('refreshDryrunSendDayRequiresLocalhost', () async {
-      expect(refresh_dryrun.isLoopbackSendUrl('http://127.0.0.1:8080'), isTrue);
-      expect(refresh_dryrun.isLoopbackSendUrl('http://localhost:18080/b'), isTrue);
-      expect(refresh_dryrun.isLoopbackSendUrl('http://[::1]:8080'), isTrue);
-      expect(refresh_dryrun.isLoopbackSendUrl('https://bakalari.school.cz'), isFalse);
-      expect(refresh_dryrun.isLoopbackSendUrl('http://192.168.1.10:8080'), isFalse);
-      await expectLater(
-        refresh_dryrun.main([
-          '--url',
-          'https://bakalari.school.cz',
-          '--send-day',
-          '15.09.2026',
-        ]),
-        throwsArgumentError,
-      );
-    });
   });
 
   group('f2SemesterReconciliationAndOutboxCache', () {
@@ -1378,27 +1374,6 @@ void main() {
       expect(app.orderedDict[freeDay], 't2&1&0');
     });
 
-    test('dryRunSimulatesAutoCancelWithoutRecordingCacheHandled', () async {
-      final logs = <String>[];
-      final calls = <Object?>[];
-      final app = FakeApp(calls, orderMode: 'dry_run', menu: fourDayMenu())
-        ..orderedDict = {freeDay: 't2&1&0'};
-      final result = await withClock(
-        Clock.fixed(DateTime(2099, 10, 1, 9, 0)),
-        () => runRefresh(
-          app,
-          baseF3Config(orderMode: 'dry_run'),
-          scope: 'strava',
-          emit: (key, [fmt = const {}]) => logs.add('$key:$fmt'),
-        ),
-      );
-      expect(result.lunchesCancelled, 0);
-      expect(result.autoCancelledDays, isEmpty);
-      expect(logs.any((l) => l.startsWith('auto_lunch_cancel_dry_run:')), isTrue);
-      final cache = loadDataCache();
-      expect(cache.containsKey(cancelHandledKey), isFalse);
-    });
-
     test('cancelHandledAndKeptLunchDaysPreventRecancel', () async {
       saveDataCache({
         cancelHandledKey: [freeDay],
@@ -1448,8 +1423,7 @@ void main() {
       expect(logs, contains('auto_lunch_failed'));
     });
 
-    test('endToEndStrakalariFakeStravaCancelsInConfirmAndSkipsSendInDryRun',
-        () async {
+    test('endToEndStrakalariFakeStravaCancelsInConfirm', () async {
       setEnvironmentOverride({
         'STRAKALARI_DATA_DIR': tmp.path,
         'STRAKALARI_NO_KEYRING': '1',
@@ -1464,32 +1438,7 @@ void main() {
           ],
         },
       );
-      final dryCfg = {
-        ...st.testConfig,
-        'strava_order_mode': 'dry_run',
-        'strava_auto_cancel_lunches': true,
-        'user_free_days': ['2099-10-06'],
-      };
-      final dryApp = Strakalari(
-        configFile: '${tmp.path}/cfg_dry.json',
-        configData: dryCfg,
-      )..stravaClient = StravaClient(dryCfg, transport: transport);
-
-      final dryRes = await withClock(
-        Clock.fixed(DateTime(2099, 10, 1, 9, 0)),
-        () => runRefresh(dryApp, dryApp.configData, scope: 'strava'),
-      );
-      expect(dryRes.ok, isTrue);
-      expect(transport.saves, isEmpty);
-      var entries =
-          audit.recent().where((e) => e['kind'] == 'lunch').toList();
-      expect(entries, hasLength(1));
-      expect(entries.single['outcome'], 'dry_run');
-      expect(entries.single['source'], 'auto');
-      expect((entries.single['detail'] as Map)['reason'], 'free_day');
-      expect((entries.single['detail'] as Map)['meal'], contains('&-1&'));
-
-      // Live confirm-mode refresh sends the XML cancel through the one path.
+      // A confirm-mode refresh sends the XML cancel through the one path.
       final liveCfg = {
         ...st.testConfig,
         'strava_order_mode': 'confirm',
@@ -1510,7 +1459,7 @@ void main() {
       expect(liveRes.autoCancelledDays, {'06.10.2099'});
       expect(transport.saves, hasLength(1));
       expect(loadDataCache()[cancelHandledKey], ['06.10.2099']);
-      entries =
+      final entries =
           audit.recent().where((e) => e['kind'] == 'lunch').toList();
       expect(entries.first['outcome'], 'sent');
       expect(entries.first['source'], 'auto');

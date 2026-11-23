@@ -72,6 +72,10 @@ const Set<String> _titleTokens = {
   'judr.',
   'paeddr.',
   'rndr.',
+  'p.g.c.e.',
+  'p.g.c.e',
+  'pgce.',
+  'pgce',
 };
 
 /// Mirrors Python's `str(value or "")`: null, false, zero, empty string,

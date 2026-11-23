@@ -99,12 +99,12 @@ void main() {
   });
 
   // Checkpoint B BR-M2: the real screen builds a new SettingsController on
-  // every rebuild, so the cancel/dry-run answer must reach the dropdown there.
+  // every rebuild, so the cancel/confirm answer must reach the dropdown there.
   for (final entry in {
     'excuse_mode': 'rule:excuse_mode',
     'strava_order_mode': 'rule:order_mode',
   }.entries) {
-    for (final answer in ['cancel', 'dry_run']) {
+    for (final answer in ['cancel', 'confirm']) {
       testWidgets(
           'live screen: ${entry.key} picker shows the saved mode after $answer',
           (tester) async {
@@ -133,9 +133,10 @@ void main() {
         await tester.tap(find.text(Strings.get('mode_auto')).last);
         await tester.pumpAndSettle();
         await tester.tap(find.text(Strings.get(
-            answer == 'cancel' ? 'cancel' : 'auto_confirm_dry')));
+            answer == 'cancel' ? 'cancel' : 'auto_confirm_ok')));
         await tester.pumpAndSettle();
-        final saved = answer == 'cancel' ? 'confirm' : 'dry_run';
+        final saved = answer == 'cancel' ? 'confirm' : 'auto';
+        final other = answer == 'cancel' ? 'auto' : 'confirm';
         expect(s.get(entry.key), saved);
         expect(
             find.descendant(
@@ -143,7 +144,7 @@ void main() {
             findsOneWidget);
         expect(
             find.descendant(
-                of: dd, matching: find.text(Strings.get('mode_auto'))),
+                of: dd, matching: find.text(Strings.get('mode_$other'))),
             findsNothing);
       });
     }

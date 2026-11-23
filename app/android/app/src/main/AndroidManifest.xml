@@ -92,6 +92,12 @@
             android:name="io.github.dendlerx.strakalari.android.AlarmReceiver"
             android:exported="false" />
 
+        <!-- The morning brief: posts the queued daily overview at its time
+             (the app hands the queue over; BootReceiver re-arms it). -->
+        <receiver
+            android:name="io.github.dendlerx.strakalari.android.BriefReceiver"
+            android:exported="false" />
+
         <service
             android:name="io.github.dendlerx.strakalari.android.AlarmRingService"
             android:exported="false"

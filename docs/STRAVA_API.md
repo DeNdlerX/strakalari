@@ -167,7 +167,7 @@ today (11 days were returned). Each is a list of rows:
 | `datum` | `DD.MM.YYYY` |
 | `druh` | meal kind: `P` soup, `1`, `2`, `3` … (the order sheet uses it) |
 | `druh_popis` | the kind's name (`oběd 1`, `salát`) |
-| `nazev` | the dish (soup and main course, comma-separated) |
+| `nazev` | the dish (soup and main course, comma-separated); on the soup row the soup's name (e.g. `Frankfurtská`) |
 | `pocet` | portions ordered (`0` / `1`) |
 | `cena` | price (string) |
 | `omezeni` | restriction letters, see [section 4](#4-ordering) |
@@ -190,6 +190,9 @@ history and the UI):
   `zkratkaProduktu`), text `"<druh_popis> - <nazev>(<codes> )"`, e.g.
   `oběd 1 - Polévka,Hlavní jídlo, příloha(01, 07 )` (no parentheses
   without allergens);
+- the soup row (`polevka: "A"`) is kept apart, per day, for display
+  only (`soupsFromReply`, cache key `strava_soups`): `"<nazev>(<codes> )"`,
+  e.g. `Frankfurtská(01, 07 )`;
 - a day control `<day key>&-1&0` ("cancel this day"), text
   `"Tuesday 06/10/2026"`;
 - the ordered meal of a day = the row with `pocet > 0`.

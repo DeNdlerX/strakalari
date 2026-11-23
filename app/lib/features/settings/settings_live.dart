@@ -242,9 +242,7 @@ class _LiveSettingsViewState extends ConsumerState<LiveSettingsView> {
           context,
           key,
           unsigned: unsigned,
-          dataDir: s.activeAccountDir,
           onConfirm: () => completer.complete('confirm'),
-          onDryRun: () => completer.complete('dry_run'),
           onCancel: () => completer.complete('cancel'),
         );
         return completer.future;

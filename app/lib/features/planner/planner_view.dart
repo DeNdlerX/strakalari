@@ -47,6 +47,12 @@ class BudgetRowData {
   final double limitPct;
   final String status; // ok | tight | reserve | over
 
+  /// Lessons still ahead until the term closes (null = unknown).
+  final double? future;
+
+  /// 2 = the subject is taught only in double lessons.
+  final int block;
+
   const BudgetRowData({
     required this.name,
     required this.missed,
@@ -58,6 +64,8 @@ class BudgetRowData {
     required this.projectedPct,
     required this.limitPct,
     required this.status,
+    this.future,
+    this.block = 1,
   });
 }
 

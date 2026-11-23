@@ -1,9 +1,8 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
-import 'package:strakalari_core/strakalari_core.dart' as core;
 
+import '../features/common/app_tokens.dart';
 import '../l10n/strings.dart';
+import 'app_widgets.dart' show dialogWidth;
 
 const Map<String, String> modeKeys = {
   'excuse_mode': 'excuse',
@@ -15,74 +14,77 @@ const Map<String, String> modeKeys = {
 class AutoConfirmDialog extends StatelessWidget {
   final String modeKey;
   final VoidCallback? onConfirm;
-  final VoidCallback? onDryRun;
   final VoidCallback? onCancel;
   final bool unsigned;
-  final bool? hasDryRunOverride;
-  final String? dataDir;
 
   const AutoConfirmDialog({
     super.key,
     required this.modeKey,
     this.onConfirm,
-    this.onDryRun,
     this.onCancel,
     this.unsigned = false,
-    this.hasDryRunOverride,
-    this.dataDir,
   });
 
   @override
   Widget build(BuildContext context) {
-    final kind = modeKeys[modeKey] ?? 'excuse';
-    bool tried;
-    if (hasDryRunOverride != null) {
-      tried = hasDryRunOverride!;
-    } else {
-      try {
-        tried = core.hasDryRun(kind, dataDir: dataDir);
-      } catch (exc) {
-        // ignore: avoid_print
-        print('Warning: could not read the automation history: $exc');
-        tried = false;
-      }
+    final excuse = (modeKeys[modeKey] ?? 'excuse') == 'excuse';
+    final tok = tokensOf(context);
+
+    Widget point(IconData icon, String text, {Color? color, bool bold = false}) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: 10,
+        children: [
+          Icon(icon, size: 18, color: color ?? tok.muted),
+          Expanded(
+            child: Text(text,
+                style: TextStyle(
+                    color: tok.text,
+                    fontSize: tok.fsBody,
+                    fontWeight: bold ? FontWeight.w600 : null)),
+          ),
+        ],
+      );
     }
 
-    final width = MediaQuery.sizeOf(context).width;
-    final contentWidth =
-        max(240.0, min(440.0, width > 0 ? width - 64.0 : 440.0));
-
     return AlertDialog(
-      title: Text(Strings.get('auto_confirm_title')),
+      title: Text(Strings.get(excuse
+          ? 'auto_confirm_title_excuse'
+          : 'auto_confirm_title_lunch')),
       content: SizedBox(
-        width: contentWidth,
+        width: dialogWidth(context, 440),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            spacing: 12,
             children: [
-              Text(Strings.get(kind == 'excuse'
-                  ? 'auto_confirm_excuse'
-                  : 'auto_confirm_lunch')),
-              if (!tried) ...[
-                const SizedBox(height: 10),
-                Text(
-                  Strings.get('auto_confirm_no_dry_run'),
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ],
-              if (unsigned && kind == 'excuse') ...[
-                const SizedBox(height: 10),
-                Text(
-                  Strings.get('auto_confirm_unsigned'),
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ],
-              const SizedBox(height: 10),
               Text(
-                Strings.get('auto_confirm_pause_hint'),
-                style: const TextStyle(fontSize: 12),
-              ),
+                  Strings.get(
+                      excuse ? 'auto_confirm_excuse' : 'auto_confirm_lunch'),
+                  style: TextStyle(color: tok.text, fontSize: tok.fsBody)),
+              point(
+                  Icons.warning_amber_rounded,
+                  Strings.get(excuse
+                      ? 'auto_confirm_excuse_risk'
+                      : 'auto_confirm_lunch_risk'),
+                  color: tok.orange,
+                  bold: true),
+              point(Icons.pause_circle_outline,
+                  Strings.get('auto_confirm_pause_hint')),
+              point(Icons.history, Strings.get('auto_confirm_history')),
+              if (unsigned && excuse)
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: tintColor(tok.yellow, 0.12),
+                    border: Border.all(color: tintColor(tok.yellow, 0.5)),
+                    borderRadius: BorderRadius.circular(tok.radiusSm),
+                  ),
+                  child: point(Icons.draw_outlined,
+                      Strings.get('auto_confirm_unsigned'),
+                      color: tok.yellow),
+                ),
             ],
           ),
         ),
@@ -94,13 +96,6 @@ class AutoConfirmDialog extends StatelessWidget {
             onCancel?.call();
           },
           child: Text(Strings.get('cancel')),
-        ),
-        TextButton(
-          onPressed: () {
-            Navigator.of(context, rootNavigator: true).pop('dry_run');
-            onDryRun?.call();
-          },
-          child: Text(Strings.get('auto_confirm_dry')),
         ),
         FilledButton(
           onPressed: () {
@@ -116,19 +111,15 @@ class AutoConfirmDialog extends StatelessWidget {
 
 /// Shows the "turn on automatic mode?" dialog for [modeKey].
 ///
-/// Exactly one of the callbacks runs: [onConfirm] (keep `auto`),
-/// [onDryRun] (switch to `dry_run` instead) or [onCancel]
-/// (dialog dismissed — revert the picker). [unsigned] (no signature
-/// configured) adds a warning to the excuse dialog.
+/// Exactly one of the callbacks runs: [onConfirm] (keep `auto`) or
+/// [onCancel] (dialog dismissed — revert the picker). [unsigned] (no
+/// signature configured) adds a warning to the excuse dialog.
 Future<void> confirmAutoMode(
   BuildContext context,
   String modeKey, {
   required VoidCallback onConfirm,
-  required VoidCallback onDryRun,
   required VoidCallback onCancel,
   bool unsigned = false,
-  bool? hasDryRunOverride,
-  String? dataDir,
 }) async {
   final result = await showDialog<String>(
     context: context,
@@ -136,21 +127,12 @@ Future<void> confirmAutoMode(
     builder: (dialogCtx) => AutoConfirmDialog(
       modeKey: modeKey,
       unsigned: unsigned,
-      hasDryRunOverride: hasDryRunOverride,
-      dataDir: dataDir,
     ),
   );
 
-  switch (result) {
-    case 'confirm':
-      onConfirm();
-      break;
-    case 'dry_run':
-      onDryRun();
-      break;
-    case 'cancel':
-    default:
-      onCancel();
-      break;
+  if (result == 'confirm') {
+    onConfirm();
+  } else {
+    onCancel();
   }
 }

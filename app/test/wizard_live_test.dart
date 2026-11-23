@@ -2051,7 +2051,7 @@ void main() {
     }
 
     testWidgets(
-        'defaults OFF, Cancel keeps confirm, Dry-run shows note & saves dry_run, Confirm saves auto, OFF resets confirm, use_strava OFF hides toggle',
+        'defaults OFF, Cancel keeps confirm, Confirm saves auto, OFF resets confirm, use_strava OFF hides toggle',
         (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1.0;
@@ -2080,7 +2080,7 @@ void main() {
       await tester.tap(autoSwitchFinder);
       await tester.pumpAndSettle();
       expect(find.byType(AlertDialog), findsOneWidget);
-      expect(find.text(Strings.get('auto_confirm_title')), findsOneWidget);
+      expect(find.text(Strings.get('auto_confirm_title_lunch')), findsOneWidget);
 
       await tester.tap(find.text(Strings.get('cancel')));
       await tester.pumpAndSettle();
@@ -2088,34 +2088,7 @@ void main() {
       expect(sCancel.get('strava_order_mode'), 'confirm');
       expect(sCancel.drafts['wiz:strava_order_mode'], isNull);
 
-      // 2. Dry run sets draft 'dry_run', keeps switch OFF, shows note, and saves 'dry_run'.
-      final sDry = AppState(configData: {
-        'language': 'en',
-        'use_strava': true,
-        'school_preset_id': 'gekom_2026_2027',
-        'strava_username': 'novak',
-      })
-        ..wizardStep = WizardController.stepStrava
-        ..drafts['wiz:strava_password'] = 'secret';
-      sDry.wizardVerified['strava'] =
-          wizardControllerFor(sDry).fingerprintFor('strava');
-      await tester.pumpWidget(pumpStravaStep(sDry, lang: 'en'));
-      await tester.pumpAndSettle();
-
-      await tester.ensureVisible(autoSwitchFinder);
-      await tester.tap(autoSwitchFinder);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(Strings.get('auto_confirm_dry')));
-      await tester.pumpAndSettle();
-
-      expect(tester.widget<SwitchListTile>(autoSwitchFinder).value, isFalse);
-      expect(find.text(Strings.get('wiz_strava_dry_run_note')), findsOneWidget);
-
-      await tester.tap(find.byKey(const Key('wiz:next_btn')));
-      await tester.pumpAndSettle();
-      expect(sDry.get('strava_order_mode'), 'dry_run');
-
-      // 3. Confirm turns switch ON, keeps across rebuild, saves 'auto', and toggling OFF resets to 'confirm'.
+      // 2. Confirm turns switch ON, keeps across rebuild, saves 'auto', and toggling OFF resets to 'confirm'.
       final sAuto = AppState(configData: {
         'language': 'cs',
         'use_strava': true,
@@ -2163,10 +2136,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(sAuto.get('strava_order_mode'), 'confirm');
 
-      // 4. Turning use_strava OFF hides wiz:strava_auto_order and preserves strava_order_mode config.
+      // 3. Turning use_strava OFF hides wiz:strava_auto_order and preserves strava_order_mode config.
       await tester.tap(find.byKey(const Key('wiz:back_btn')));
       await tester.pumpAndSettle();
-      sAuto.save({'strava_order_mode': 'dry_run'});
+      sAuto.save({'strava_order_mode': 'auto'});
       await tester.tap(
           find.widgetWithText(SwitchListTile, Strings.get('use_strava')));
       await tester.pumpAndSettle();
@@ -2174,7 +2147,7 @@ void main() {
       await tester.tap(find.byKey(const Key('wiz:next_btn')));
       await tester.pumpAndSettle();
       expect(sAuto.get('use_strava'), isFalse);
-      expect(sAuto.get('strava_order_mode'), 'dry_run');
+      expect(sAuto.get('strava_order_mode'), 'auto');
     });
   });
 }

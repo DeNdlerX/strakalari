@@ -255,16 +255,20 @@ Future<T> androidKeepAwake<T>(Future<T> Function() body,
 /// [channel]. Both the UI isolate and a headless run call this.
 void installAndroidBridges(AndroidChannel channel, {String Function()? languageOf}) {
   notifierBackend = AndroidNotifications(channel, languageOf);
-  wakeupPhoneBridge = _ChannelWakeupBridge(channel);
+  final bridge = _ChannelWakeupBridge(channel);
+  wakeupPhoneBridge = bridge;
+  morningBriefPhoneBridge = bridge;
 }
 
-/// `WakeupPhoneBridge` over the background isolate's channel.
+/// `WakeupPhoneBridge` (and the morning brief's) over the background
+/// isolate's channel.
 ///
 /// Core's bridge is synchronous while the channel is async, so the calls
 /// are fire-and-forget and report "accepted" (like the toast backends core
 /// falls back from). Each headless run is a fresh isolate, so core's
 /// change-dedup in `syncAndroid` starts empty and every run pushes once.
-class _ChannelWakeupBridge implements WakeupPhoneBridge {
+class _ChannelWakeupBridge
+    implements WakeupPhoneBridge, MorningBriefPhoneBridge {
   final AndroidChannel channel;
 
   const _ChannelWakeupBridge(this.channel);
@@ -279,6 +283,12 @@ class _ChannelWakeupBridge implements WakeupPhoneBridge {
   bool setWakeupAlarms(String queueJson, String channelName, String dismiss) {
     channel.setWakeupAlarms(
         queueJson: queueJson, channelName: channelName, dismissLabel: dismiss);
+    return true;
+  }
+
+  @override
+  bool setMorningBriefs(String queueJson, String channelName) {
+    channel.setMorningBriefs(queueJson: queueJson, channelName: channelName);
     return true;
   }
 }

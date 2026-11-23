@@ -347,6 +347,7 @@ class AbsencesView extends StatelessWidget {
   Widget _subjectRow(SubjectAbsence subject, BudgetRowData? budget) {
     if (budget == null) return _meterRow(subject);
     final t = tokens;
+    final doubles = budget.block == 2;
     final absTier = switch (subject.status) {
       'critical' => 3,
       'warning' => 2,
@@ -421,11 +422,25 @@ class AbsencesView extends StatelessWidget {
             style: TextStyle(color: t.faint, fontSize: t.fsSmall),
           ),
           Text(
-            Strings.format('budget_line', {
-              'free': hoursText(budget.free),
-              'planned': budget.planned.toInt(),
-              'buffer': hoursText(budget.buffer),
-            }),
+            [
+              doubles
+                  ? Strings.format('budget_line_double', {
+                      'free': hoursText(budget.free / 2),
+                      // A partly skipped double still costs the double.
+                      'planned': (budget.planned / 2).ceil(),
+                      'buffer': hoursText(budget.buffer / 2),
+                    })
+                  : Strings.format('budget_line', {
+                      'free': hoursText(budget.free),
+                      'planned': budget.planned.toInt(),
+                      'buffer': hoursText(budget.buffer),
+                    }),
+              if (budget.future case final future?)
+                Strings.format(
+                  doubles ? 'lessons_left_double' : 'lessons_left',
+                  {'n': (doubles ? future / 2 : future).round()},
+                ),
+            ].join(' · '),
             style: TextStyle(color: t.muted, fontSize: t.fsSmall),
           ),
         ],

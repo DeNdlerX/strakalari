@@ -260,6 +260,26 @@ class AndroidChannel {
     }
   }
 
+  /// Hands the morning brief queue to `BriefReceiver` (core
+  /// `morning_brief.dart`), which posts each brief at its time.
+  Future<bool> setMorningBriefs({
+    required String queueJson,
+    required String channelName,
+  }) async {
+    try {
+      return await _channel.invokeMethod<bool>('setMorningBriefs', {
+            'queueJson': queueJson,
+            'channelName': channelName,
+          }) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException catch (e) {
+      _warn('could not hand over the morning brief', e, typed: true);
+      return false;
+    }
+  }
+
   /// False when Android 12+ withholds exact alarms ("Alarms & reminders"
   /// off): the wake-up alarm then rings a few minutes late at worst.
   Future<bool> exactAlarmsAllowed() async {

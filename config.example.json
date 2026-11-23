@@ -48,6 +48,7 @@
   "default_excuse_selection": "first",
   "strava_order_mode": "confirm",
   "strava_auto_cancel_lunches": true,
+  "strava_allergens": [],
   "background_refresh": true,
   "automation_paused": false,
   "disclaimer_accepted": false,
@@ -90,5 +91,8 @@
   "update_channel": "stable",
   "wakeup_enabled": false,
   "wakeup_minutes_before": 60,
-  "wakeup_skip_dates": []
+  "wakeup_skip_dates": [],
+  "morning_brief_enabled": false,
+  "morning_brief_time": "06:30",
+  "morning_brief_items": ["next_lesson", "lunch", "lunch_orders", "excuses"]
 }

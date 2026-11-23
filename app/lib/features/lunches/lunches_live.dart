@@ -31,6 +31,8 @@ LunchController lunchControllerFor(AppState s) {
   c.food = {
     for (final e in s.food().entries) e.key: Map<String, String>.of(e.value),
   };
+  c.soups = s.soups();
+  c.avoidedAllergens = core.avoidedAllergens(s.config.data);
   c.webOrders = Map<String, String>.of(s.webOrders);
   c.orders = Map<String, String>.of(s.orders);
   c.pendingOrders = Set<String>.of(s.pendingOrders);
@@ -69,6 +71,7 @@ LunchController lunchControllerFor(AppState s) {
     c.blacklistEditError = s.blacklistEditError;
     return ok;
   };
+  c.setAvoidedAllergensHook = s.setAvoidedAllergens;
   c.setShowPastLunchesHook = s.setShowPastLunches;
   c.setLunchToolsHook = s.setLunchTools;
   c.setSidebarHook = s.setLunchesSidebar;

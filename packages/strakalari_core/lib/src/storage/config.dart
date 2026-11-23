@@ -15,6 +15,7 @@ import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 
 import '../lunches/lunch_cutoff.dart' as lunch_cutoff;
+import '../morning_brief.dart' as morning_brief;
 import '../planning/grades.dart' as grades;
 import '../status_notification.dart' as status_notification;
 import '../update.dart' as update;
@@ -22,7 +23,7 @@ import 'accounts.dart';
 import 'helpers.dart';
 
 /// Allowed values for `excuse_mode` / `strava_order_mode`.
-const List<String> excuseModes = ['auto', 'confirm', 'dry_run'];
+const List<String> excuseModes = ['auto', 'confirm'];
 
 /// Items the background notification may show (canonical:
 /// status_notification.items).
@@ -126,6 +127,9 @@ const Map<String, Object> canonicalDefaults = {
   'default_excuse_selection': 'first',
   'strava_order_mode': 'confirm',
   'strava_auto_cancel_lunches': true,
+  // Allergen numbers (1–14) the diner avoids: meals listing one are
+  // hidden and never picked automatically (lunches/allergens.dart).
+  'strava_allergens': [],
   // Multiple accounts: this account takes part in the scheduled
   // background refresh (per account; the device switch is
   // `run_in_background`).
@@ -178,6 +182,12 @@ const Map<String, Object> canonicalDefaults = {
   'wakeup_enabled': false,
   'wakeup_minutes_before': 60,
   'wakeup_skip_dates': [],
+  // Phone morning brief (core/morning_brief.dart): a notification at this
+  // time ("HH:MM") on every school day with the rows picked here (the
+  // always-on notification's items).
+  'morning_brief_enabled': false,
+  'morning_brief_time': '06:30',
+  'morning_brief_items': ['next_lesson', 'lunch', 'lunch_orders', 'excuses'],
 };
 
 Object? _deepCopyJson(Object? value) {
@@ -348,7 +358,7 @@ List<String> validateConfig(Map<String, Object?> data) {
     final mode = '${data[modeKey] ?? 'confirm'}'.toLowerCase();
     if (!excuseModes.contains(mode)) {
       problems.add(
-          "'$modeKey' must be one of ['auto', 'confirm', 'dry_run'], "
+          "'$modeKey' must be one of ['auto', 'confirm'], "
           'got ${_repr(data[modeKey])}.');
     }
   }
@@ -529,6 +539,21 @@ List<String> validateConfig(Map<String, Object?> data) {
     problems.add(
         "'background_notification_items' must be a list of "
         '$statusNotificationItems.');
+  }
+  final briefOn = data['morning_brief_enabled'];
+  if (briefOn != null && briefOn is! bool) {
+    problems.add("'morning_brief_enabled' must be a boolean.");
+  }
+  final briefTime = data['morning_brief_time'];
+  if (briefTime != null && morning_brief.parseBriefTime(briefTime) == null) {
+    problems.add("'morning_brief_time' must be a time of day (HH:MM).");
+  }
+  final briefItems = data['morning_brief_items'];
+  if (briefItems != null &&
+      (briefItems is! List ||
+          briefItems.any((item) => !statusNotificationItems.contains(item)))) {
+    problems.add(
+        "'morning_brief_items' must be a list of $statusNotificationItems.");
   }
   final limits = data['subject_limits'];
   if (limits is! Map) {

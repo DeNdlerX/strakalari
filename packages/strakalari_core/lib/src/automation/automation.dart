@@ -321,6 +321,7 @@ abstract class RefreshApp {
   Map<String, String> get subjectDirectory;
   Map<String, Map<String, String>> get foodDict;
   Map<String, String> get orderedDict;
+  Map<String, String> get soupDict;
   Map<Object, Object?> get stableBaseline;
   bool get stableComplete;
   List<Object?> get weekChanges;
@@ -562,7 +563,7 @@ class Strakalari implements RefreshApp {
 
   static String _mode(String mode) {
     final m = mode.toLowerCase();
-    return (m == 'auto' || m == 'dry_run') ? m : 'confirm';
+    return m == 'auto' ? m : 'confirm';
   }
 
   bool _isCancelled() {
@@ -720,6 +721,10 @@ class Strakalari implements RefreshApp {
   @override
   Map<String, String> get orderedDict =>
       stravaClient?.orderedDict ?? <String, String>{};
+
+  @override
+  Map<String, String> get soupDict =>
+      stravaClient?.soupDict ?? <String, String>{};
 
   void close() {
     bakalariClient?.close();
@@ -1081,8 +1086,7 @@ class Strakalari implements RefreshApp {
 
   /// Applies `{day: meal_id}` on Strava and records every day's outcome.
   ///
-  /// True only when every day went through (or, in `dry_run`, every
-  /// pick is on the menu). [lastOrderedDays] lists the days that
+  /// True only when every day went through. [lastOrderedDays] lists the days that
   /// really changed on the web, even when another day failed.
   @override
   Future<bool> stravaOrderSelected(Map<String, String> orders,
@@ -1111,7 +1115,6 @@ class Strakalari implements RefreshApp {
       {Map<String, String> cancelReasons = const {}}) {
     if (orders.isEmpty) return;
     try {
-      final dry = stravaOrderMode == 'dry_run';
       final placed = Set<String>.of(lastOrderedDays);
       final skipped =
           _orderReport['skipped']!.map((d) => '$d').toSet();
@@ -1125,9 +1128,7 @@ class Strakalari implements RefreshApp {
           'mode': stravaOrderMode,
         };
         late final String outcome;
-        if (dry) {
-          outcome = ok ? 'dry_run' : 'failed';
-        } else if (placed.contains(entry.key)) {
+        if (placed.contains(entry.key)) {
           outcome = 'sent';
         } else if (unfunded.contains(entry.key)) {
           outcome = 'skipped';
@@ -1161,51 +1162,9 @@ class Strakalari implements RefreshApp {
       writeLog('Strava ordering cancelled by user.');
       return false;
     }
-    final isDry = stravaOrderMode == 'dry_run';
     final client = stravaClient!;
     await client.login();
     await client.fetchData();
-    if (isDry) {
-      writeLog('[Dry-Run] Proposed orders (nothing is sent): ${pyRepr(orders)}');
-      var ok = true;
-      for (final entry in orders.entries) {
-        if (_isCancelled()) {
-          writeLog('Strava ordering cancelled by user.');
-          ok = false;
-          break;
-        }
-        try {
-          final sel = menuSelection(client.foodDict, entry.key);
-          if (!sel.containsKey(entry.value)) {
-            String? real;
-            for (final mid in sel.keys) {
-              if (mid.contains('&-1&')) {
-                real = mid;
-                break;
-              }
-            }
-            if (real != null && entry.value.contains('&-1&')) {
-              writeLog('[Dry-Run] ${entry.key}: would use \'$real\'.');
-            } else {
-              writeLog(
-                  '[Dry-Run] ${entry.key}: \'${entry.value}\' is not on the menu, skipping.');
-              ok = false;
-              continue;
-            }
-          } else {
-            writeLog('[Dry-Run] ${entry.key}: \'${entry.value}\' is on the menu.');
-          }
-        } on Object catch (e) {
-          writeLog(
-              '[Dry-Run] ${entry.key}: selection check failed: ${e.runtimeType}: $e');
-          ok = false;
-        }
-      }
-      if (ok) {
-        writeLog('[Dry-Run] Proposal ready, nothing was saved or sent.');
-      }
-      return ok;
-    }
     client.clicksMade = 0;
     client.insufficientBalance = false;
     final originalOrdered =
@@ -1620,19 +1579,15 @@ class Strakalari implements RefreshApp {
 
   /// Excuses one absence (the Today one-click flow).
   ///
-  /// True when the absence is excused afterwards — freshly sent, already
-  /// covered by the history, or (`dry_run`) the form was filled
-  /// without sending; callers must check `excuse_mode == "dry_run"`
-  /// and never treat that as sent.
+  /// True when the absence is excused afterwards — freshly sent or already
+  /// covered by the history.
   Future<bool> excuseSingle(Map<String, Object?> excuse,
       [String? customText]) async {
     final outcome = await sendExcuseOutcome(excuse, customText);
-    return outcome == 'sent' ||
-        outcome == 'covered' ||
-        outcome == 'dry_run';
+    return outcome == 'sent' || outcome == 'covered';
   }
 
-  /// Manual send of one excuse: `sent` / `covered` / `dry_run` /
+  /// Manual send of one excuse: `sent` / `covered` /
   /// `unconfirmed` (submitted, the site never confirmed) / `skipped`
   /// (an earlier unconfirmed submit blocks it) / `failed`.
   Future<String> sendExcuseOutcome(Map<String, Object?> excuse,
@@ -1640,40 +1595,27 @@ class Strakalari implements RefreshApp {
     return sendExcuse(excuse, customText, source: 'manual');
   }
 
-  /// Fills (and unless [fillOnly] submits) the Bakaláři excuse form.
-  Future<bool> _submit(Map<String, Object?> excuse, String? customText,
-      {required bool fillOnly}) async {
+  /// Fills and submits the Bakaláři excuse form.
+  Future<bool> _submit(
+      Map<String, Object?> excuse, String? customText) async {
     final client = bakalariClient!;
     final type = '${excuse['type']}';
     if (type == 'pure days') {
-      return fillOnly
-          ? client.fillExcuseForm(
-              '${excuse['starting_day']}', '${excuse['ending_day']}',
-              null, null, customText, true, type)
-          : client.executeExcuse(
-              '${excuse['starting_day']}', '${excuse['ending_day']}',
-              null, null, customText, true, type);
+      return client.executeExcuse(
+          '${excuse['starting_day']}', '${excuse['ending_day']}',
+          null, null, customText, true, type);
     }
     if (type == 'income' || type == 'soon') {
       final lesson = excuse['starting_lesson'];
-      return fillOnly
-          ? client.fillExcuseForm(
-              '${excuse['starting_day']}', '${excuse['starting_day']}',
-              lesson, lesson, customText, false, type)
-          : client.executeExcuse(
-              '${excuse['starting_day']}', '${excuse['starting_day']}',
-              lesson, lesson, customText, false, type);
+      return client.executeExcuse(
+          '${excuse['starting_day']}', '${excuse['starting_day']}',
+          lesson, lesson, customText, false, type);
     }
     if (type == 'days and hours') {
-      return fillOnly
-          ? client.fillExcuseForm(
-              '${excuse['starting_day']}', '${excuse['ending_day']}',
-              excuse['starting_lesson'], excuse['ending_lesson'],
-              customText, false, type)
-          : client.executeExcuse(
-              '${excuse['starting_day']}', '${excuse['ending_day']}',
-              excuse['starting_lesson'], excuse['ending_lesson'],
-              customText, false, type);
+      return client.executeExcuse(
+          '${excuse['starting_day']}', '${excuse['ending_day']}',
+          excuse['starting_lesson'], excuse['ending_lesson'],
+          customText, false, type);
     }
     writeLog(
         'Warning: unknown excuse type $type, skipping (no submit).');
@@ -1682,7 +1624,7 @@ class Strakalari implements RefreshApp {
 
   /// Sends one excuse unless the history already covers it.
   ///
-  /// Returns `"sent"`, `"covered"`, `"dry_run"`, `"unconfirmed"`,
+  /// Returns `"sent"`, `"covered"`, `"unconfirmed"`,
   /// `"skipped"` or `"failed"`; every outcome is also appended to the
   /// automation history. The history check, the submit and the history
   /// write run under one lock, so concurrent senders (UI clicks, auto
@@ -1712,23 +1654,6 @@ class Strakalari implements RefreshApp {
       writeLog(
           'Warning: Bakaláři client not available, excuse not sent.');
       return 'failed';
-    }
-    if (excuseMode == 'dry_run') {
-      writeLog('[Dry-Run] Preparing the excuse (not sending): ${pyRepr(excuse)}');
-      late final bool filled;
-      try {
-        filled = await _submit(excuse, customText, fillOnly: true);
-      } on CancelledError {
-        rethrow;
-      } on Object catch (e) {
-        writeLog(
-            '[Dry-Run] Preparing the excuse failed: ${e.runtimeType}: $e');
-        return 'failed';
-      }
-      if (filled) {
-        writeLog('[Dry-Run] Excuse prepared, nothing was sent.');
-      }
-      return filled ? 'dry_run' : 'failed';
     }
     final guard = HistoryLock(alreadyExcusedFile);
     if (!await guard.acquire()) {
@@ -1771,7 +1696,7 @@ class Strakalari implements RefreshApp {
         late final bool success;
         try {
           await client.login();
-          success = await _submit(excuse, customText, fillOnly: false);
+          success = await _submit(excuse, customText);
         } on CancelledError {
           if (client.lastSubmitUncertain) {
             _recordUnconfirmed(historyFilepath, unconfirmed, excuse);
@@ -1860,7 +1785,7 @@ class Strakalari implements RefreshApp {
   /// Sends every pending excuse (`auto` mode). Returns the number sent.
   ///
   /// `confirm` mode never sends from here — excuses are confirmed one
-  /// by one in the UI. `dry_run` fills each form without sending.
+  /// by one in the UI.
   @override
   Future<int> excusePending() async {
     lastExcuseFailures = 0;

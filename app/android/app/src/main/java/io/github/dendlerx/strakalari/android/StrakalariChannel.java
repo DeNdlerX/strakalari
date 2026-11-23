@@ -50,6 +50,7 @@ import javax.crypto.spec.GCMParameterSpec;
  *   <li>CPU awake during a refresh: {@code keepAwake}, {@code releaseAwake}
  *   <li>wake-up alarm: {@code setWakeupAlarms}, {@code exactAlarmsAllowed},
  *       {@code openExactAlarmSettings}, {@code openSystemAlarm}
+ *   <li>morning brief: {@code setMorningBriefs}
  *   <li>widget: {@code updateTimetableWidget}
  *   <li>Keystore: {@code keystoreWrap}, {@code keystoreUnwrap}
  *   <li>misc: {@code available}, {@code sdkInt}
@@ -249,6 +250,11 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
                             stringArg(call, "queueJson"),
                             stringArg(call, "channelName"),
                             stringArg(call, "dismissLabel")));
+                    return;
+                case "setMorningBriefs":
+                    result.success(setMorningBriefs(
+                            stringArg(call, "queueJson"),
+                            stringArg(call, "channelName")));
                     return;
                 case "exactAlarmsAllowed":
                     result.success(exactAlarmsAllowed());
@@ -529,6 +535,22 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
                 .commit();
         Intent intent = new Intent(AlarmReceiver.ACTION_RESCHEDULE);
         intent.setClassName(ctx.getPackageName(), AlarmReceiver.class.getName());
+        ctx.sendBroadcast(intent);
+        return true;
+    }
+
+    // -- morning brief ------------------------------------------------------------
+
+    private boolean setMorningBriefs(String queueJson, String channelName) {
+        Context ctx = requireContext();
+        SharedPreferences prefs = ctx.getSharedPreferences(
+                BriefReceiver.PREFS, Context.MODE_PRIVATE);
+        prefs.edit()
+                .putString("queue", queueJson)
+                .putString("channel", channelName)
+                .commit();
+        Intent intent = new Intent(BriefReceiver.ACTION_RESCHEDULE);
+        intent.setClassName(ctx.getPackageName(), BriefReceiver.class.getName());
         ctx.sendBroadcast(intent);
         return true;
     }

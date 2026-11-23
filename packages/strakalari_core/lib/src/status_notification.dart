@@ -655,16 +655,19 @@ StatusRow? _wakeupRowBuilder(StatusInputs inputs, DateTime now, String lang) =>
 
 /// The notification for [now]: a row per picked item with something
 /// to say; without any, [fallback] (title, text). Never raises for a
-/// broken item: that row is left out.
+/// broken item: that row is left out. [picked]: the items to show
+/// (default: ``background_notification_items``; the morning brief passes
+/// its own).
 StatusContent buildStatus(
   StatusInputs inputs, {
   DateTime? now,
   (String, String) fallback = ('Strakaláři', ''),
   String? lang,
+  List<String>? picked,
 }) {
   now = now ?? clock.now();
   lang = _lang(lang);
-  final picked = selectedItems(inputs.config);
+  picked ??= selectedItems(inputs.config);
   final strava = _truthy(inputs.config['use_strava'] ?? true);
   final builders = <String, StatusRowBuilder>{
     'next_lesson': nextLessonRowBuilder,

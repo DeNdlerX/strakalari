@@ -380,21 +380,6 @@ void main() {
       expect(bak.lastSubmitUncertain, isFalse);
     });
 
-    test('dryRunPreparesTheExcuseWithoutPosting', () async {
-      final school = ExcuseSchool();
-      final (bak, _, logs) = excuseClient(school);
-      expect(
-          await bak.fillExcuseForm('01.10.2026', '01.10.2026', 3, 4,
-              null, false, 'days and hours'),
-          isTrue);
-      expect(school.posts, isEmpty);
-      expect(
-          logs.any((line) =>
-              line.contains('Excuse prepared, not sent') &&
-              line.contains('lessons 3–4')),
-          isTrue);
-    });
-
     test('defaultTextComesFromTheTemplates', () async {
       final school =
           ExcuseSchool(sentDetail: lessons('1.10.2026', 3, 3));

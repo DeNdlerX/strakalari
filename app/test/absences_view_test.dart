@@ -372,6 +372,89 @@ void main() {
     }
   });
 
+  testWidgets('double-lesson subjects count budgets and lessons left in doubles',
+      (t) async {
+    t.view.physicalSize = const Size(1280, 1800);
+    t.view.devicePixelRatio = 1.0;
+    addTearDown(t.view.reset);
+    Strings.lang = 'cs';
+    final tok = AppTokens.dark();
+    SubjectAbsence subject(String name) => SubjectAbsence(
+          name: name,
+          currentPct: 10.0,
+          status: 'ok',
+          limitPct: 25.0,
+          effectivePlanLimit: 22.5,
+          effectivePlanSafe: 4,
+        );
+    final abs = AbsencesController()
+      ..subjects = [subject('Seminář z matematiky'), subject('Fyzika')];
+    final term = TermPlanData(
+      key: 'sem1',
+      start: DateTime(2026, 9, 1),
+      close: DateTime(2027, 1, 25),
+      capacity: 4,
+      hasData: true,
+      active: true,
+      remainingDays: [DateTime(2026, 10, 5)],
+      budgets: const [
+        BudgetRowData(
+          name: 'Seminář z matematiky',
+          missed: 2,
+          planned: 2,
+          free: 5,
+          buffer: 3.2,
+          schoolCap: 10,
+          schoolLeft: 6,
+          projectedPct: 10.0,
+          limitPct: 25.0,
+          status: 'ok',
+          future: 32,
+          block: 2,
+        ),
+        BudgetRowData(
+          name: 'Fyzika',
+          missed: 2,
+          planned: 1,
+          free: 5,
+          buffer: 3.2,
+          schoolCap: 10,
+          schoolLeft: 6,
+          projectedPct: 10.0,
+          limitPct: 25.0,
+          status: 'ok',
+          future: 21,
+        ),
+      ],
+    );
+    await t.pumpWidget(MaterialApp(
+      theme: tok.toThemeData(),
+      home: Scaffold(
+        body: AbsencesView(
+          controller: abs,
+          tokens: tok,
+          plan: YearPlanData(
+            today: DateTime(2026, 9, 26),
+            firstDay: DateTime(2026, 9, 28),
+            terms: [term],
+            lessonsOn: (_) => 5,
+          ),
+          hasTimetable: true,
+        ),
+      ),
+    ));
+    await t.pump();
+    // Doubles: 5 h free -> 2, 2 h planned -> 1, 3.2 h reserve -> 1,
+    // 32 h left -> 16.
+    expect(
+        find.text(
+            'v dvouhodinovkách: volno 2 · naplánováno 1 · rezerva 1 · zbývá 16'),
+        findsOneWidget);
+    // Ordinary subjects keep hours.
+    expect(find.text('volno 5 h · naplánováno 1 h · rezerva 3 h · zbývá 21 h'),
+        findsOneWidget);
+  });
+
   testWidgets(
       'O3 short Absence screen opens Planner from header and next-day shortcut, omits calendar/recommended/planned, and lays narrow actions on one row',
       (t) async {

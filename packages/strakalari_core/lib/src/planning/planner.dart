@@ -13,7 +13,8 @@
 //   subjects taught that day.
 // * `free = limit% * total - missed - planned - buffer` — hours the planner
 //   may still hand out. `planned` are lessons on already planned future
-//   days off, `buffer = reserve% * future` is kept aside for illness and
+//   days off, `buffer = reserve% * future` (at least one lesson, or one
+//   double for double-lesson subjects) is kept aside for illness and
 //   other unplanned absences. The buffer only covers lessons that are still
 //   ahead (the past is known), so it shrinks as the term goes on and budget
 //   is released gradually instead of being locked away until the closure.
@@ -187,6 +188,48 @@ class LessonSource {
   bool get known => concrete.isNotEmpty || template.isNotEmpty;
 }
 
+/// Subjects taught only in back-to-back pairs (double lessons) in the
+/// regular week, as `canon -> 2`.
+///
+/// Reads the stable week (or the representative loaded week without
+/// one). A subject qualifies when every run of consecutive periods it
+/// has on a weekday is of even length; any single lesson or a lesson
+/// without a period number leaves it out.
+Map<String, int> lessonBlocks(LessonSource source) {
+  final week = source.hasTemplate ? source.template : source.union;
+  final runs = <String, List<int>>{};
+  final unknown = <String>{};
+  for (final lessons in week.values) {
+    final periods = <String, Set<int>>{};
+    for (final l in lessons) {
+      final canon = canonSubject(l.subject);
+      if (canon.isEmpty) continue;
+      if (l.period == null) {
+        unknown.add(canon);
+      } else {
+        periods.putIfAbsent(canon, () => {}).add(l.period!);
+      }
+    }
+    for (final e in periods.entries) {
+      final sorted = e.value.toList()..sort();
+      var run = 1;
+      for (var i = 1; i <= sorted.length; i++) {
+        if (i < sorted.length && sorted[i] == sorted[i - 1] + 1) {
+          run += 1;
+        } else {
+          runs.putIfAbsent(e.key, () => []).add(run);
+          run = 1;
+        }
+      }
+    }
+  }
+  return {
+    for (final e in runs.entries)
+      if (!unknown.contains(e.key) && e.value.every((r) => r.isEven))
+        e.key: 2
+  };
+}
+
 (int, int)? _slotKey(Object? key) {
   if (key is (int, int)) return (key.$1, key.$2);
   if (key is List && key.length == 2) {
@@ -261,6 +304,7 @@ class Budget {
   final bool blocked; // school flagged the subject unclassifiable
   double weekly; // normal lessons per week (for "tight" checks)
   int peak; // most lessons of this subject on one day (double periods)
+  final int block; // 2 = taught only in double lessons (see lessonBlocks)
 
   Budget({
     required this.name,
@@ -275,6 +319,7 @@ class Budget {
     this.blocked = false,
     this.weekly = 0.0,
     this.peak = 1,
+    this.block = 1,
   });
 
   /// Roughly how many days holding this subject still fit the budget.
@@ -285,8 +330,14 @@ class Budget {
   /// Hours missable over the whole term before hitting the limit.
   double get schoolCap => limitPct / 100.0 * total;
 
-  /// Illness reserve: `reserve%` of the lessons still ahead.
-  double get buffer => reservePct / 100.0 * future;
+  /// Illness reserve: `reserve%` of the lessons still ahead, but never
+  /// under one lesson (one double for double-lesson subjects) while
+  /// lessons remain. A 0 % reserve setting switches it off entirely.
+  double get buffer {
+    final share = reservePct / 100.0 * future;
+    if (reservePct <= 0) return share;
+    return math.max(share, math.min(block.toDouble(), future));
+  }
 
   /// Hours the planner may still hand out (can go negative).
   double get free {
@@ -892,6 +943,7 @@ YearPlan buildYearPlan(
       _weekday(day) >= 5 ||
       holidaySet.contains(day) ||
       plannedDatesAll.contains(day);
+  final blocks = lessonBlocks(source);
 
   for (final (key, start, close)
       in schoolYearTerms(now,
@@ -963,7 +1015,8 @@ YearPlan buildYearPlan(
           missed: missed,
           future: fut,
           blocked: blocked,
-          weekly: weekly));
+          weekly: weekly,
+          block: blocks[canon] ?? 1));
     }
     final budgets = term.budgetByCanon;
 

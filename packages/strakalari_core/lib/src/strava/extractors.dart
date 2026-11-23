@@ -57,16 +57,51 @@ bool isOrderableMeal(Map<String, Object?> meal) =>
     '${meal['zkratkaProduktu'] ?? ''}'.isNotEmpty;
 
 /// The meal as the menu label reads: `oběd 1 - <name>(01, 03 )`.
-String mealText(Map<String, Object?> meal) {
+String mealText(Map<String, Object?> meal) => _withAllergens(
+    '${cleanText(meal['druh_popis'])} - ${cleanText(meal['nazev'])}', meal);
+
+/// [text] followed by the row's allergen codes: `<text>(01, 03 )`.
+String _withAllergens(String text, Map<Object?, Object?> meal) {
   final codes = <String>[];
   for (final a in (meal['alergeny'] as List?) ?? const []) {
     if (a is List && a.isNotEmpty && '${a[0]}'.trim().isNotEmpty) {
       codes.add('${a[0]}'.trim());
     }
   }
-  final text =
-      '${cleanText(meal['druh_popis'])} - ${cleanText(meal['nazev'])}';
   return codes.isNotEmpty ? '$text(${codes.join(', ')} )' : text;
+}
+
+/// The day key of one table: the `datum` of its first row carrying a
+/// valid date (the soup row comes first and may have none).
+(String, DateTime?) _tableDay(List<Object?> meals) {
+  var day = '';
+  DateTime? when;
+  for (final meal in meals) {
+    if (meal is! Map) continue;
+    day = '${meal['datum'] ?? ''}'.trim();
+    when = _parseCzDay(day);
+    if (when != null) break;
+  }
+  return (day, when);
+}
+
+/// The soup of each day (the rows with `polevka: "A"`), keyed like
+/// [menuFromReply]'s days: `{"23.11.2026": "Frankfurtská(01, 07 )"}`.
+/// Two soups on one day are joined with `, `. Never raises.
+Map<String, String> soupsFromReply(Object? reply) {
+  final soups = <String, String>{};
+  for (final (_, meals) in menuTables(reply)) {
+    final (day, date) = _tableDay(meals);
+    if (date == null) continue;
+    final texts = <String>[];
+    for (final meal in meals) {
+      if (meal is! Map || meal['polevka'] != 'A') continue;
+      final name = cleanText(meal['nazev']);
+      if (name.isNotEmpty) texts.add(_withAllergens(name, meal));
+    }
+    if (texts.isNotEmpty) soups[day] = texts.join(', ');
+  }
+  return soups;
 }
 
 /// `(foodDict, orderedDict)` from an `/api/objednavky` reply.
@@ -80,18 +115,9 @@ String mealText(Map<String, Object?> meal) {
   final food = <String, Map<String, String>>{};
   final ordered = <String, String>{};
   for (final (key, meals) in menuTables(reply)) {
-    // The day's date from the first row carrying one: the soup row
-    // comes first and may have none.
-    var day = '';
-    DateTime? when;
-    for (final meal in meals) {
-      if (meal is! Map) continue;
-      day = '${meal['datum'] ?? ''}'.trim();
-      when = _parseCzDay(day);
-      if (when != null) break;
-    }
-    if (when == null) continue;
-    final w = when;
+    final (day, date) = _tableDay(meals);
+    if (date == null) continue;
+    final w = date;
     final selection = <String, String>{
       '$key&-1&0': '${weekdays[w.weekday - 1]} '
           '${_two(w.day)}/${_two(w.month)}/${w.year}'

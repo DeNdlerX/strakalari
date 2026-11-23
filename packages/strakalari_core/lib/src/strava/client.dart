@@ -116,6 +116,9 @@ class StravaClientBase {
   Map<String, Map<String, String>> foodDict = {};
   Map<String, String> orderedDict = {};
 
+  /// The soup of each menu day (not orderable, shown with the meals).
+  Map<String, String> soupDict = {};
+
   /// Order changes made by [OrderingMixin.order] since the last reset.
   /// Lets callers save only when something actually changed.
   int clicksMade = 0;
@@ -435,6 +438,7 @@ class StravaClientBase {
     final (food, ordered) = menuFromReply(reply);
     foodDict = food;
     orderedDict = ordered;
+    soupDict = soupsFromReply(reply);
     if (foodDict.isEmpty) {
       // Never serve the previous menu as fresh: downstream refresh
       // paths treat an empty menu as a failed fetch and keep the

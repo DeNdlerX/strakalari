@@ -5,9 +5,9 @@ import android.content.Context;
 import android.content.Intent;
 
 /**
- * After a reboot or an app update: the wake-up alarms and the widget are
- * armed again right here. So is the alarm when the user allows exact
- * alarms ("Alarms & reminders").
+ * After a reboot or an app update: the wake-up alarms, the morning brief
+ * and the widget are armed again right here. So are the alarms when the
+ * user allows exact alarms ("Alarms & reminders").
  *
  * <p>The Flet build also posted an "open the app once" notification here,
  * because nothing could start Python without the screen. The Flutter app
@@ -24,6 +24,7 @@ public class BootReceiver extends BroadcastReceiver {
         String action = intent != null ? intent.getAction() : null;
         if (ACTION_EXACT_ALARMS_CHANGED.equals(action)) {
             AlarmReceiver.scheduleNext(context);
+            BriefReceiver.scheduleNext(context);
             return;
         }
         if (!Intent.ACTION_BOOT_COMPLETED.equals(action)
@@ -31,6 +32,7 @@ public class BootReceiver extends BroadcastReceiver {
             return;
         }
         AlarmReceiver.scheduleNext(context);
+        BriefReceiver.scheduleNext(context);
         TimetableWidgetProvider.refreshAll(context);
     }
 }

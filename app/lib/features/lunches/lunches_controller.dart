@@ -20,6 +20,12 @@ class LunchController {
   }
 
   Map<String, Map<String, String>> food = {};
+
+  /// The soup of each menu day (`D.M.YYYY` like [food]).
+  Map<String, String> soups = {};
+
+  /// Allergen numbers the diner avoids (`strava_allergens`).
+  Set<int> avoidedAllergens = {};
   Map<String, String> webOrders = {};
   Map<String, String> orders = {};
   Set<String> pendingOrders = {};
@@ -61,6 +67,7 @@ class LunchController {
   void Function(String prefs)? applyFoodFilterHook;
   bool Function(String word)? addBlacklistWordHook;
   bool Function(String word)? removeBlacklistWordHook;
+  bool Function(Set<int> allergens)? setAvoidedAllergensHook;
   void Function(bool show)? setShowPastLunchesHook;
   void Function(bool open)? setLunchToolsHook;
   void Function(bool open)? setSidebarHook;
@@ -235,6 +242,17 @@ class LunchController {
     ];
     if (!_write(next)) return false;
     applyFoodFilter(lunchPrefs);
+    return true;
+  }
+
+  /// Ticks or unticks an allergen the diner avoids. False = not saved.
+  bool toggleAllergen(int number) {
+    final next = Set<int>.of(avoidedAllergens);
+    if (!next.remove(number)) next.add(number);
+    final hook = setAvoidedAllergensHook;
+    if (hook != null && !hook(next)) return false;
+    avoidedAllergens = next;
+    _emit();
     return true;
   }
 

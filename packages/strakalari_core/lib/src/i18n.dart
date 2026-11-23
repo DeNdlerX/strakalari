@@ -279,6 +279,8 @@ const Map<String, Map<String, String>> messages = {
   'status_wakeup_value': {'cs': '{when} v {time}', 'en': '{when} at {time}'},
   'status_updated': {'cs': 'Aktualizováno {time}', 'en': 'Updated {time}'},
   'status_checked': {'cs': 'Zkontrolováno {time}', 'en': 'Checked {time}'},
+  // The phone's morning brief (core/morning_brief.dart): its header and channel.
+  'brief_title': {'cs': 'Ranní přehled', 'en': 'Morning brief'},
 };
 
 /// Sets the active language; unknown codes are ignored.

@@ -3,12 +3,11 @@
 // Covers test_excuse_generation.py, test_strava_ordering.py (order-selected
 // path), test_strava_low_balance.py (ordering half), test_unconfirmed_excuses.py
 // (TestSendPath, TestOutboxSettles), test_excuse_history.py (phase-4 cases:
-// concurrent sends, covered-not-resent, example fallback, dry-run fill),
+// concurrent sends, covered-not-resent, example fallback),
 // test_sent_excuses.py (sync half), test_excuse_ignore_list.py
 // (TestIgnoredExcuses), test_models.py (2 engine cases), test_config.py
 // (phase-4 cases), test_data_safety.py (history/write-log/blacklist/quarantine
-// cases), test_automation_safety.py (send/audit/count cases) and the dry-run
-// excuse cases of test_timetable_cache_merge.py.
+// cases) and test_automation_safety.py (send/audit/count cases).
 //
 // Phase-3 hooks (resolveLunchCutoffHook etc.) are assigned fakes here —
 // the Dart mirror of monkeypatching the module functions. Cases whose SUT
@@ -44,10 +43,8 @@ class FakeBak extends BakalariClient {
 
   int loginCalls = 0;
   int executeCalls = 0;
-  int fillCalls = 0;
   bool executeResult = true;
   bool executeUncertain = false;
-  bool fillResult = true;
   Duration executeDelay = Duration.zero;
   Completer<void>? executeGate;
   List<List<Object?>> executeArgs = [];
@@ -75,17 +72,6 @@ class FakeBak extends BakalariClient {
     }
     lastSubmitUncertain = executeUncertain;
     return executeResult;
-  }
-
-  @override
-  Future<bool> fillExcuseForm(String dayStart, String dayEnd,
-      [Object? startLesson,
-      Object? endLesson,
-      String? customText,
-      bool isDays = false,
-      String? excuseType]) async {
-    fillCalls++;
-    return fillResult;
   }
 
   @override
@@ -1670,29 +1656,7 @@ void main() {
     });
   });
 
-  group('orderDryRunAndCutoff', () {
-    test('menuMissReturnsFalse', () async {
-      final c = FakeStrava();
-      c.foodDict.addAll({
-        '20.09.2030': {'m1': 'A'}
-      });
-      final a = realApp(tmp, {'strava_order_mode': 'dry_run'});
-      a.stravaClient = c;
-      expect(await a.stravaOrderSelected({'20.09.2030': 'nope&9&x'}),
-          isFalse);
-    });
-
-    test('menuHitReturnsTrue', () async {
-      final c = FakeStrava();
-      c.foodDict.addAll({
-        '20.09.2030': {'m1': 'A'}
-      });
-      final a = realApp(tmp, {'strava_order_mode': 'dry_run'});
-      a.stravaClient = c;
-      expect(
-          await a.stravaOrderSelected({'20.09.2030': 'm1'}), isTrue);
-    });
-
+  group('orderCutoffAndSubmit', () {
     test('orderingSkippedWithoutCutoff', () async {
       resolveLunchCutoffHook = (_) =>
           throw StateError('boom');
@@ -1717,20 +1681,6 @@ void main() {
       a.stravaClient = c;
       expect(
           await a.stravaOrderSelected({'d1': 'm1', 'd2': 'm2'}), isFalse);
-    });
-
-    test('dryRunSelectsWithoutSubmitting', () async {
-      final c = FakeStrava()..clickOnOrder = false;
-      c.foodDict.addAll({
-        '20.09.2030': {'m1': 'A'}
-      });
-      final a = realApp(tmp, {'strava_order_mode': 'dry_run'});
-      a.stravaClient = c;
-      expect(
-          await a.stravaOrderSelected({'20.09.2030': 'm1'}), isTrue);
-      expect(c.clicksMade, 0);
-      expect(c.orderedDict, isEmpty);
-      expect(c.orderCalls, 0);
     });
 
     test('successSubmits', () async {
@@ -1857,63 +1807,6 @@ void main() {
           if (i.isEven) 'm$i&1&0',
       ];
       expect(c.saved, expected);
-    });
-  });
-
-  group('dryRunExcuse', () {
-    Map<String, Object?> excuse() => {
-          'type': 'days and hours',
-          'starting_day': '18.09.2026',
-          'ending_day': '18.09.2026',
-          'starting_lesson': 6,
-          'ending_lesson': 6,
-        };
-
-    test('excuseSingleDryRunFillsOnly', () async {
-      final fake = FakeBak();
-      final app = realApp(tmp, {'excuse_mode': 'dry_run'});
-      app.bakalariClient = fake;
-      expect(
-          await app.excuseSingle(
-              Map<String, Object?>.of(excuse()), 'text'),
-          isTrue);
-      expect(fake.fillCalls, 1);
-      expect(fake.executeCalls, 0);
-      expect(File('${tmp.path}/already_excused_lessons.json').existsSync(),
-          isFalse);
-    });
-
-    test('excuseAbsenceDryRunSendsNothing', () async {
-      final fake = FakeBak();
-      final app = _PendingLessonApp(
-          [excuse()],
-          configFile: '${tmp.path}/config.json',
-          configData: {
-            'excuse_mode': 'dry_run',
-            'excuse_delay_days': 2,
-          });
-      app.bakalariClient = fake;
-      expect(await app.excusePending(), 0);
-      expect(fake.executeCalls, 0);
-      expect(File('${tmp.path}/already_excused_lessons.json').existsSync(),
-          isFalse);
-    });
-
-    test('excuseDryRunFillsWithoutSubmitting', () async {
-      final fake = FakeBak();
-      final app = realApp(tmp, {'excuse_mode': 'dry_run'});
-      app.bakalariClient = fake;
-      expect(
-          await app.excuseSingle(
-              {
-                'type': 'pure days',
-                'starting_day': '01.09.2026',
-                'ending_day': '01.09.2026',
-              },
-              'text'),
-          isTrue);
-      expect(fake.fillCalls, 1);
-      expect(fake.executeCalls, 0);
     });
   });
 
@@ -2177,7 +2070,6 @@ void main() {
       final client = FakeBak();
       final app = realApp(tmp, {
         'log_file': logPath,
-        'dry_run': true,
       })
         ..bakalariClient = client;
       await app.sendExcuse({

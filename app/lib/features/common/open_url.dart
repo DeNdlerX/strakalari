@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 const aiStudioUrl = 'https://aistudio.google.com/apikey';
 const releasesUrl = 'https://github.com/DeNdlerX/strakalari/releases';
+const repoUrl = 'https://github.com/DeNdlerX/strakalari';
 
 /// Opens ``url`` with the platform's default handler, the counterpart of
 /// Python's `webbrowser.open`. Only desktop has one to call; elsewhere it

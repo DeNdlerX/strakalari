@@ -5,6 +5,7 @@ import 'package:strakalari_core/strakalari_core.dart' as core;
 import '../../widgets/app_widgets.dart' as w;
 import '../../widgets/safety_dialog.dart';
 import '../common/app_tokens.dart';
+import '../common/open_url.dart' show openUrl, repoUrl;
 import '../settings/settings_controller.dart' show SettingsController;
 import '../settings/settings_view.dart' show TemplateGroupsList;
 import '../settings/wakeup_card.dart' show WakeupCard;
@@ -604,7 +605,18 @@ class _WizardViewState extends State<WizardView>
           children: [
             Text(Strings.get('wiz_disclaimer_p'),
                 style: TextStyle(color: t.muted, fontSize: t.fsSmall)),
-            const SizedBox(height: 8),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton.icon(
+                key: const Key('wiz:source_code'),
+                style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero, foregroundColor: t.accent),
+                onPressed: () => openUrl(repoUrl),
+                icon: const Icon(Icons.open_in_new, size: 16),
+                label: Text(Strings.get('source_code'),
+                    style: TextStyle(fontSize: t.fsSmall)),
+              ),
+            ),
             CheckboxListTile(
               value: c.disclaimerOk,
               activeColor: t.accent,
@@ -706,9 +718,7 @@ class _WizardViewState extends State<WizardView>
               value: c.stravaAutoOrder,
               title: Text(Strings.get('wiz_strava_auto_order')),
               subtitle: Text(
-                Strings.get(c.stravaOrderMode == 'dry_run'
-                    ? 'wiz_strava_dry_run_note'
-                    : 'wiz_strava_auto_order_hint'),
+                Strings.get('wiz_strava_auto_order_hint'),
                 style: TextStyle(color: tokens.muted, fontSize: tokens.fsSmall),
               ),
               onChanged: (v) {
@@ -716,9 +726,7 @@ class _WizardViewState extends State<WizardView>
                   confirmAutoMode(
                     context,
                     'strava_order_mode',
-                    dataDir: c.accountDataDir,
                     onConfirm: () => c.setStravaOrderMode('auto'),
-                    onDryRun: () => c.setStravaOrderMode('dry_run'),
                     onCancel: () {},
                   );
                 } else {

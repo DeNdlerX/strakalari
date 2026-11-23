@@ -250,6 +250,75 @@ void main() {
       expect(late.free / late.total, greaterThan(early.free / early.total));
     });
 
+    test('subjectsTaughtOnlyInPairsAreDoubleLessons', () {
+      final week = <Object?, Object?>{
+        // S: Friday 5.+6. only -> double.
+        (4, 5): {'subject': 'S'},
+        (4, 6): {'subject': 'S'},
+        // L: one 4-period block (two doubles) -> double.
+        (2, 3): {'subject': 'L'},
+        (2, 4): {'subject': 'L'},
+        (2, 5): {'subject': 'L'},
+        (2, 6): {'subject': 'L'},
+        // M: a pair on Monday but a single on Tuesday -> hours.
+        (0, 1): {'subject': 'M'},
+        (0, 2): {'subject': 'M'},
+        (1, 1): {'subject': 'M'},
+        // G: two lessons on one day with a gap -> hours.
+        (3, 1): {'subject': 'G'},
+        (3, 3): {'subject': 'G'},
+      };
+      expect(lessonBlocks(LessonSource(null, week)), {'s': 2, 'l': 2});
+
+      // Without a stable week the loaded week is read instead.
+      final loaded = LessonSource({
+        '09.10.2026': [
+          {'subject': 'S', 'time': '5 (12:35 - 13:20)'},
+          {'subject': 'S', 'time': '6 (13:30 - 14:15)'},
+          {'subject': 'M', 'time': '7 (14:25 - 15:10)'},
+        ],
+      });
+      expect(lessonBlocks(loaded), {'s': 2});
+
+      final term = buildYearPlan(
+        [
+          ...states(),
+          SubjectState(
+              name: 'S', currentPct: 0, limitPct: 25, weeklyHours: 2),
+        ],
+        timetable: timetable,
+        stableBaseline: {...template, ...week},
+        today: DateTime(2026, 9, 21),
+        sem1Close: '25.01.2027',
+        sem2Close: '30.06.2027',
+      ).term('sem1')!;
+      expect(term.budgetByCanon['s']!.block, 2);
+      expect(term.budgetByCanon['s']!.future.toInt().isEven, isTrue);
+      expect(term.budgetByCanon['m']!.block, 1);
+    });
+
+    test('reserveIsAtLeastOneLessonOrDouble', () {
+      Budget budget({double future = 8, int block = 1, double pct = 10}) =>
+          Budget(
+              name: 'S',
+              canon: 's',
+              limitPct: 25,
+              reservePct: pct,
+              future: future,
+              block: block);
+      // 10 % of 8 lessons is 0.8: kept at one lesson.
+      expect(budget().buffer, 1.0);
+      // 10 % of 18 lessons is 1.8: kept at one double (2 lessons).
+      expect(budget(future: 18, block: 2).buffer, 2.0);
+      // Above the floor the percentage wins.
+      expect(budget(future: 40, block: 2).buffer, closeTo(4.0, 1e-9));
+      // Never more than what is still ahead; nothing ahead, no reserve.
+      expect(budget(future: 1, block: 2).buffer, 1.0);
+      expect(budget(future: 0).buffer, 0.0);
+      // A 0 % reserve setting turns it off.
+      expect(budget(pct: 0).buffer, 0.0);
+    });
+
     test('blockedDaysAreNeverRecommended', () {
       // Late in the term with M at 30 % of taught lessons: no day holding
       // M fits any more (the few remaining lessons only dilute a little).

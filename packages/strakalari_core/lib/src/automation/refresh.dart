@@ -8,7 +8,7 @@
 //    history (before any auto-excuse, so nothing is sent twice).
 // 2. Strava: fetch the menu. A failure here is recorded but never discards
 //    the Bakaláři data fetched in step 1.
-// 3. Auto modes (`auto` only — `confirm`/`dry_run` stay manual):
+// 3. Auto modes (`auto` only — `confirm` stays manual):
 //    excuses, then lunches (planned-skip days never get a lunch).
 // 4. Persist: only good fresh values are merged into the cache. A failed or
 //    empty phase keeps the previous cached values; timetables merge
@@ -724,6 +724,7 @@ Future<void> _fetchPhases(
       if (food.isNotEmpty) {
         fresh['strava_meals'] = food;
         fresh['strava_ordered'] = Map<String, String>.of(app.orderedDict);
+        fresh['strava_soups'] = Map<String, String>.of(app.soupDict);
         result.stravaFetched = true;
         result.menuDays = food.length;
         fresh[stravaStatusKey] = 'ok';
@@ -978,6 +979,7 @@ Future<void> _fetchPhases(
         fresh['strava_meals'] = food;
         fresh['strava_ordered'] =
             Map<String, String>.of(app.orderedDict);
+        fresh['strava_soups'] = Map<String, String>.of(app.soupDict);
         result.stravaFetched = true;
         result.menuDays = food.length;
         fresh[stravaStatusKey] = 'ok';
@@ -1216,45 +1218,36 @@ Future<void> _autoLunch(
     if (app is Strakalari) {
       app.nextCancelReasons = appliedReasons;
     }
-    final isDry = app.stravaOrderMode == 'dry_run';
     if (await app.stravaOrderSelected(orders, source: 'auto')) {
-      if (isDry) {
-        final cancelCount =
-            orders.values.where((v) => v.contains('&-1&')).length;
-        if (cancelCount > 0) {
-          emit('auto_lunch_cancel_dry_run', {'n': cancelCount});
-        }
-      } else {
-        placed = orders.keys.toSet();
-        final orderedPlaced = <String>{
-          for (final d in placed)
-            if (!(orders[d] ?? '').contains('&-1&')) d,
-        };
-        final cancelledPlaced = <String>{
-          for (final d in placed)
-            if ((orders[d] ?? '').contains('&-1&')) d,
-        };
-        fresh['strava_ordered'] = Map<String, String>.of(app.orderedDict);
-        if (autoOrder) fresh[lowBalanceKey] = null; // orders go through again
-        result.autoOrderedDays = Set<String>.of(orderedPlaced);
-        result.lunchesOrdered = orderedPlaced.length;
-        result.autoCancelledDays = Set<String>.of(cancelledPlaced);
-        result.lunchesCancelled = cancelledPlaced.length;
-        result.autoCancelledReasons = {
-          for (final d in cancelledPlaced)
-            if (appliedReasons.containsKey(d)) d: appliedReasons[d]!,
-        };
-        if (orderedPlaced.isNotEmpty) {
-          emit('auto_lunch_sent', {'n': orderedPlaced.length});
-        }
-        if (cancelledPlaced.isNotEmpty) {
-          emit('auto_lunch_cancelled', {'n': cancelledPlaced.length});
-          fresh[cancelHandledKey] =
-              updateCancelHandledDaysHook(cancelHandled, cancelledPlaced);
-        }
+      placed = orders.keys.toSet();
+      final orderedPlaced = <String>{
+        for (final d in placed)
+          if (!(orders[d] ?? '').contains('&-1&')) d,
+      };
+      final cancelledPlaced = <String>{
+        for (final d in placed)
+          if ((orders[d] ?? '').contains('&-1&')) d,
+      };
+      fresh['strava_ordered'] = Map<String, String>.of(app.orderedDict);
+      if (autoOrder) fresh[lowBalanceKey] = null; // orders go through again
+      result.autoOrderedDays = Set<String>.of(orderedPlaced);
+      result.lunchesOrdered = orderedPlaced.length;
+      result.autoCancelledDays = Set<String>.of(cancelledPlaced);
+      result.lunchesCancelled = cancelledPlaced.length;
+      result.autoCancelledReasons = {
+        for (final d in cancelledPlaced)
+          if (appliedReasons.containsKey(d)) d: appliedReasons[d]!,
+      };
+      if (orderedPlaced.isNotEmpty) {
+        emit('auto_lunch_sent', {'n': orderedPlaced.length});
+      }
+      if (cancelledPlaced.isNotEmpty) {
+        emit('auto_lunch_cancelled', {'n': cancelledPlaced.length});
+        fresh[cancelHandledKey] =
+            updateCancelHandledDaysHook(cancelHandled, cancelledPlaced);
       }
     } else {
-      placed = isDry ? <String>{} : Set<String>.of(app.lastOrderedDays);
+      placed = Set<String>.of(app.lastOrderedDays);
       final orderedPlaced = <String>{
         for (final d in placed)
           if (!(orders[d] ?? '').contains('&-1&')) d,

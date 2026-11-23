@@ -1578,6 +1578,15 @@ class AppState {
     return {};
   }
 
+  /// The soup of each menu day (`strava_soups`), keyed like [food].
+  Map<String, String> soups() {
+    final raw = demoMode ? null : data['strava_soups'];
+    if (raw is! Map) return {};
+    return {
+      for (final e in raw.entries) canonicalDayKey(e.key): '${e.value}',
+    };
+  }
+
   // -- in-memory UI helpers (no config writes) ------------------------------------------
   String draft(String key, [String fallback = '']) => drafts[key] ?? fallback;
 
@@ -1701,9 +1710,11 @@ class AppState {
     }
   }
 
-  /// Hands the widget data and the alarm queue to the phone (a no-op
-  /// elsewhere). Always reads from `primary_id` in multi-account mode (§8).
+  /// Hands the widget data, the alarm queue and the morning brief queue to
+  /// the phone (a no-op elsewhere). Always reads from `primary_id` in
+  /// multi-account mode (§8).
   void syncAndroidState() {
+    _syncMorningBrief();
     if (accountsEnabled &&
         rootDir != null &&
         primaryAccountId != activeAccountId) {
@@ -1719,6 +1730,22 @@ class AppState {
       return;
     }
     syncAndroidFrom(config, data);
+  }
+
+  /// The morning brief shows the rows of the background notification, so
+  /// it is worked out from the same data ([backgroundStatusInputs]; its
+  /// settings are global, the same for every account).
+  void _syncMorningBrief() {
+    if (morningBriefPhoneBridge == null) return;
+    try {
+      syncMorningBrief(briefEnabled(Map<String, Object?>.of(config.data))
+          ? backgroundStatusInputs()
+          : null);
+    } catch (exc) {
+      // Never break a save or a reload.
+      // ignore: avoid_print
+      print('Warning: morning brief sync failed (${exc.runtimeType}: $exc)');
+    }
   }
 
   /// What the phone's background notification shows its overview from.

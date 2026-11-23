@@ -232,7 +232,7 @@ const int _auditGroups = 12;
 
 const _auditBadge = {
   'sent': 'sent',
-  'dry_run': 'pending',
+  'dry_run': 'pending', // records from before dry run was removed
   'covered': 'ok',
   'skipped': 'warning',
   'unconfirmed': 'warning',
@@ -912,12 +912,9 @@ class ActivityView extends StatelessWidget {
     if (mode.isEmpty) mode = 'confirm';
     final color = switch (mode) {
       'auto' => tok.green,
-      'dry_run' => tok.yellow,
       _ => tok.text,
     };
-    final text = Strings.get(
-        {'auto': 'mode_auto', 'dry_run': 'mode_dry_run'}[mode] ??
-            'mode_confirm');
+    final text = Strings.get(mode == 'auto' ? 'mode_auto' : 'mode_confirm');
     return Row(
       spacing: 8,
       children: [

@@ -273,7 +273,7 @@ class TodayView extends StatelessWidget {
         return;
       }
       final ok = await c.send(request);
-      // The worker reports the outcome (sent / dry run / failed) itself;
+      // The worker reports the outcome (sent / failed) itself;
       // a started send says nothing here, like today.py `_send`.
       if (!ok && context.mounted) {
         _snack(context, c.lastMessageOr(Strings.get('excuse_failed')));
@@ -400,7 +400,7 @@ class TodayView extends StatelessWidget {
         return;
       }
       final ok = await c.send(request);
-      // The worker reports the outcome (sent / dry run / failed) itself;
+      // The worker reports the outcome (sent / failed) itself;
       // a started send says nothing here, like today.py `_send`.
       if (!ok && context.mounted) {
         _snack(context, c.lastMessageOr(Strings.get('excuse_failed')));

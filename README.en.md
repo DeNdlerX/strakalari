@@ -69,7 +69,6 @@ Also:
 ### Nothing is sent behind your back
 
 - The default mode is **Ask me first**: the app asks before every excuse and every order.
-- **Dry run** only shows what would happen. Try it before you switch to **Automatic**.
 - The **Pause automation** switch (Activity, Settings, tray icon) stops everything at once.
 - The **Activity** screen lists every excuse and order, failed ones included. Errors never go silent.
 

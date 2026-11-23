@@ -471,8 +471,8 @@ extension ExcuseTasksLogic on AppState {
   /// Background part of a manual excuse send (one lesson or one day).
   ///
   /// [jobs] are `(excuse, customText)` pairs sent in one Bakaláři
-  /// session. Every outcome is visible: sent / already excused / dry run
-  /// / failed go to the log and [lastSnackMessage], a failure also to a
+  /// session. Every outcome is visible: sent / already excused / failed
+  /// go to the log and [lastSnackMessage], a failure also to a
   /// notification, a crash to [reportError]. Port of `_excuse_worker()`.
   Future<void> _excuseWorker(
     List<(Map<String, Object?>, String?)> jobs,
@@ -485,7 +485,6 @@ extension ExcuseTasksLogic on AppState {
     final tokenAccountId = activeAccountId;
     final tokenDir = activeAccountDir;
     final outcomes = <String>[];
-    var dry = false;
     var crashed = false;
     var busy = false;
     var migratedElsewhere = false;
@@ -506,7 +505,6 @@ extension ExcuseTasksLogic on AppState {
         }
         final app = buildAppForAccount(onLog: coreLog, dataDir: tokenDir);
         try {
-          dry = app.excuseMode == 'dry_run';
           for (final (excuse, customText) in jobs) {
             final copy = Map<String, Object?>.of(excuse);
             final outcome = await app.sendExcuseOutcome(copy, customText);
@@ -553,11 +551,6 @@ extension ExcuseTasksLogic on AppState {
     if (busy) {
       // Nothing was sent; the user retries once the other run is done.
       msg = Strings.get('session_busy');
-    } else if (dry &&
-        outcomes.isNotEmpty &&
-        outcomes.every((o) => o == 'dry_run')) {
-      // Dry run simulates success without sending — never mark sent.
-      msg = Strings.get('excuse_dry_run');
     } else if (ok) {
       onSent();
       msg = outcomes.every((o) => o == 'covered')

@@ -134,6 +134,8 @@ YearPlanData? yearPlanDataFor(AppState s, [DateTime? now]) {
               projectedPct: b.projectedPct,
               limitPct: b.limitPct,
               status: b.status,
+              future: b.future,
+              block: b.block,
             ),
         ],
         recommended: [for (final o in t.recommended) _dayOption(o)],

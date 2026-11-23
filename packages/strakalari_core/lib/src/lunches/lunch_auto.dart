@@ -25,6 +25,7 @@ import '../planning/school_presets.dart'
     show effectiveCalendar, resolveLunchCutoff;
 import '../storage/accounts.dart' show accountsModeRootDir, isAccountsMode;
 import '../storage/helpers.dart';
+import 'allergens.dart';
 import 'gemini.dart';
 import 'lunch_cutoff.dart';
 
@@ -503,6 +504,9 @@ Map<String, String> planAutoCancels(
 ///   and when a meal is still ordered there (unless in [cancelHandled] or
 ///   auto-cancel is disabled), its cancellation instead.
 ///
+/// Meals listing an allergen the diner avoids (`strava_allergens`) are
+/// never picked.
+///
 /// Never raises.
 Future<(Map<String, String>, bool)> planAutoOrders(
   Map<String, Map<String, String>>? foodData,
@@ -526,7 +530,7 @@ Future<(Map<String, String>, bool)> planAutoOrders(
     } catch (_) {}
   }
 
-  final food = Map<String, Map<String, String>>.from(foodData ?? {});
+  var food = Map<String, Map<String, String>>.from(foodData ?? {});
   if (food.isEmpty) return (<String, String>{}, false);
   final cfg = configData ?? <String, Object?>{};
   final cancelled = <String>{
@@ -561,6 +565,8 @@ Future<(Map<String, String>, bool)> planAutoOrders(
   };
   food.removeWhere((day, _) => skip.contains(_canonDay(day)));
   if (food.isEmpty) return (deorders, false);
+  // Meals with an avoided allergen never reach Gemini or the filter.
+  food = withoutAvoidedAllergens(food, avoidedAllergens(cfg));
   final words = [for (final w in blacklist ?? <String>[]) if (w.isNotEmpty) w];
   final enabled = _isTruthy(cfg['gemini_auto_enabled']);
   if (shouldRunGeminiAuto(enabled, cfg['gemini_last_run'] ?? '',

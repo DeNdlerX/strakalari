@@ -69,7 +69,6 @@ A navíc:
 ### Nic se neodešle bez vašeho vědomí
 
 - Výchozí režim je **S potvrzením**: aplikace se před každou omluvenkou i objednávkou zeptá.
-- Režim **Jen nanečisto** jen předvede, co by se stalo. Vyzkoušejte ho, než zapnete **Automaticky**.
 - Tlačítko **Pozastavit automatizaci** (Aktivita, Nastavení, ikona v liště) zastaví všechno naráz.
 - Obrazovka **Aktivita** ukazuje každou omluvenku a objednávku, včetně těch neúspěšných. Chyby se nikdy neztratí potichu.
 

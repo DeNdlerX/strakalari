@@ -39,6 +39,7 @@ export 'src/planning/planner.dart';
 export 'src/planning/school_presets.dart';
 export 'src/lunches/lunch_cutoff.dart';
 export 'src/lunches/lunch_auto.dart';
+export 'src/lunches/allergens.dart';
 export 'src/lunches/gemini.dart';
 export 'src/news.dart';
 export 'src/update.dart';
@@ -52,6 +53,7 @@ export 'src/status_notification.dart' hide mealText;
 // both exist in Python. status_notification.dart uses wakeup's via its
 // src import; the barrel exposes schedule's.
 export 'src/wakeup.dart' hide periodOf;
+export 'src/morning_brief.dart';
 export 'src/platform/desktop_notify.dart';
 export 'src/platform/notifier.dart';
 export 'src/automation/scheduler.dart';

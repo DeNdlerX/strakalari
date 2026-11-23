@@ -526,25 +526,6 @@ mixin ExcuseFormMixin on BakalariClientBase, DataMixin {
     );
   }
 
-  /// Prepares the excuse exactly as it would be sent, without sending it
-  /// (`dry_run`). True when it could be prepared.
-  Future<bool> fillExcuseForm(
-    String dayStart,
-    String dayEnd, [
-    Object? startLesson,
-    Object? endLesson,
-    String? customText,
-    bool isDays = false,
-    String? excuseType,
-  ]) async {
-    raiseIfCancelledNow();
-    final prepared = await prepareExcuse(dayStart, dayEnd, startLesson,
-        endLesson, customText, isDays, excuseType);
-    if (prepared == null) return false;
-    log('Excuse prepared, not sent: ${prepared.$2}');
-    return true;
-  }
-
   /// True when a new excuse for exactly these days (and lessons) is in
   /// Komens → Odeslané.
   Future<bool> confirmedInOutbox(

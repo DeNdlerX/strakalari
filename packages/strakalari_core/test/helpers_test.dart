@@ -105,6 +105,15 @@ void main() {
     });
   });
 
+  group('teacherSurname', () {
+    test('pgceSuffixStripped', () {
+      expect(teacherSurname('Mgr. Jan Novák, P.G.C.E.'), 'Novák');
+      expect(teacherSurname('B.A. Jan Novák P.G.C.E.'), 'Novák');
+      expect(teacherSurname('Jan Novák P.G.C.E'), 'Novák');
+      expect(teacherSurname('Jan Novák, PGCE'), 'Novák');
+    });
+  });
+
   group('formatExcuseTemplate', () {
     test('fillsVariables', () {
       const tpl =

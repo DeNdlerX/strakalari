@@ -142,7 +142,6 @@ WizardController wizardControllerFor(AppState s) {
   c.step = s.wizardStep;
   c.dismissed = s.wizardDismissed;
   c.isAndroid = core.mobilePlatform() == 'android';
-  c.accountDataDir = s.activeAccountDir;
   // Add-account mode reads ONLY the active account's `adding` flag (§10.3).
   c.addingAccount = s.addingAccount;
   c.useExternalWakeupCard = true;

@@ -23,13 +23,11 @@ void main() {
     test('roundtripNewestFirst', () {
       expect(recent(), isEmpty);
       expect(record('excuse', 'sent', 'auto', '01.09.2026'), isTrue);
-      expect(record('lunch', 'dry_run', 'manual', '02.09.2026: order'),
+      expect(record('lunch', 'skipped', 'manual', '02.09.2026: order'),
           isTrue);
       final items = recent();
       expect(items.map((i) => i['kind']).toList(), ['lunch', 'excuse']);
       expect(items[1]['source'], 'auto');
-      expect(hasDryRun('lunch'), isTrue);
-      expect(hasDryRun('excuse'), isFalse);
     });
 
     test('linesUsePythonSeparatorsAndPlatformNewlines', () {

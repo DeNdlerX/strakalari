@@ -26,7 +26,7 @@ const int maxBytes = 1024 * 1024;
 /// Record kinds.
 const List<String> kinds = ['excuse', 'lunch'];
 
-/// `sent` = submitted to the site, `dry_run` = simulated only,
+/// `sent` = submitted to the site,
 /// `covered` = not sent because the history already covers it,
 /// `skipped` = not attempted (closed day, not on the menu, …),
 /// `unconfirmed` = submitted, but the site never confirmed it (it may
@@ -34,7 +34,6 @@ const List<String> kinds = ['excuse', 'lunch'];
 /// `failed` = attempted and not confirmed by the site.
 const List<String> outcomes = [
   'sent',
-  'dry_run',
   'covered',
   'skipped',
   'unconfirmed',
@@ -140,11 +139,6 @@ List<Map<String, Object?>> recent({int limit = 50, String? dataDir}) {
   }
   return out;
 }
-
-/// True when at least one dry run of [kind] completed successfully.
-bool hasDryRun(String kind, {String? dataDir}) =>
-    recent(limit: 2000, dataDir: dataDir)
-        .any((item) => item['kind'] == kind && item['outcome'] == 'dry_run');
 
 /// Short, text-free label of an excuse range (no excuse wording).
 String describeExcuse(Map<String, Object?> excuse) {

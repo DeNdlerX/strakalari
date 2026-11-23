@@ -74,7 +74,7 @@ void main() {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     final s = container.read(appStateProvider);
-    s.save({'excuse_mode': 'dry_run', 'strava_order_mode': 'auto'});
+    s.save({'excuse_mode': 'confirm', 'strava_order_mode': 'auto'});
     await tester.pumpWidget(UncontrolledProviderScope(
       container: container,
       child: const MaterialApp(
@@ -83,7 +83,7 @@ void main() {
     await tester.pump();
 
     expect(find.text(Strings.get('automation_running')), findsOneWidget);
-    expect(find.text(Strings.get('mode_dry_run')), findsOneWidget);
+    expect(find.text(Strings.get('mode_confirm')), findsOneWidget);
     expect(find.text(Strings.get('mode_auto')), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('activity:pause')));

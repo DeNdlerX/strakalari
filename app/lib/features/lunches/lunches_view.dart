@@ -1,6 +1,7 @@
 import 'package:clock/clock.dart';
 import 'package:app/l10n/strings.dart';
 import 'package:flutter/material.dart';
+import 'package:strakalari_core/strakalari_core.dart' as core;
 
 import 'package:app/features/lunches/lunches_format.dart';
 import 'package:app/features/lunches/lunches_controller.dart';
@@ -407,7 +408,10 @@ class LunchesView extends StatelessWidget {
         ),
       );
     }
-    if (soup.isNotEmpty) {
+    final daySoup = c.soups[day] ?? '';
+    if (daySoup.isNotEmpty) {
+      rows.add(_soupRow(tok, daySoup));
+    } else if (soup.isNotEmpty) {
       rows.add(
         Text(
           '${Strings.get('lunch_soup')}: $soup',
@@ -598,9 +602,7 @@ class LunchesView extends StatelessWidget {
       tok,
       selected: selected,
       disabled: disabled,
-      tooltip: allergens.isEmpty
-          ? null
-          : '${Strings.get('allergens')}: $allergens',
+      tooltip: _allergenTooltip(allergens),
       onTap: () {
         if (!controller.orderLunch(day, mid)) {
           appSnack(context, Strings.get('lunch_order_closed'));
@@ -614,13 +616,96 @@ class LunchesView extends StatelessWidget {
           fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
         ),
       ),
-      trailing: allergens.isEmpty
-          ? null
-          : Text(
-              allergens,
-              style: TextStyle(color: tok.faint, fontSize: tok.fsTiny),
-            ),
+      trailing: _allergenCodes(tok, allergens),
     );
+  }
+
+  /// The day's soup: not orderable, so a plain line where the meals have
+  /// their radio dot.
+  Widget _soupRow(Tokens tok, String text) {
+    final (_, name, allergens) = splitMeal(text);
+    final tooltip = _allergenTooltip(allergens);
+    final row = Padding(
+      padding: const EdgeInsets.fromLTRB(10, 2, 12, 2),
+      child: Row(
+        spacing: 10,
+        children: [
+          Icon(Icons.soup_kitchen_outlined, size: 20, color: tok.muted),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '${Strings.get('lunch_soup')}: ',
+                    style: TextStyle(
+                      color: tok.muted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  TextSpan(
+                    text: name,
+                    style: TextStyle(color: tok.text),
+                  ),
+                ],
+              ),
+              style: TextStyle(fontSize: tok.fsBody),
+            ),
+          ),
+          ?_allergenCodes(tok, allergens),
+        ],
+      ),
+    );
+    return tooltip == null ? row : Tooltip(message: tooltip, child: row);
+  }
+
+  /// Allergen codes (`01, 07`); the ones the diner avoids in red, with a
+  /// warning sign. Null without codes.
+  Widget? _allergenCodes(Tokens tok, String codes) {
+    if (codes.isEmpty) return null;
+    final avoided = controller.avoidedAllergens;
+    final parts = codes.split(', ');
+    var hit = false;
+    final spans = <InlineSpan>[];
+    for (var i = 0; i < parts.length; i++) {
+      final bad = avoided.contains(allergenNumber(parts[i]));
+      hit = hit || bad;
+      if (i > 0) spans.add(const TextSpan(text: ', '));
+      spans.add(
+        TextSpan(
+          text: parts[i],
+          style: bad
+              ? TextStyle(color: tok.red, fontWeight: FontWeight.w700)
+              : null,
+        ),
+      );
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      spacing: 4,
+      children: [
+        if (hit) Icon(Icons.warning_amber_rounded, size: 16, color: tok.red),
+        Text.rich(
+          TextSpan(children: spans),
+          style: TextStyle(color: tok.faint, fontSize: tok.fsTiny),
+        ),
+      ],
+    );
+  }
+
+  /// "Allergens:" plus one line per code with its name; a warning line
+  /// when one is avoided. Null without codes.
+  String? _allergenTooltip(String codes) {
+    if (codes.isEmpty) return null;
+    final lines = ['${Strings.get('allergens')}:'];
+    var hit = false;
+    for (final code in codes.split(', ')) {
+      final n = allergenNumber(code);
+      final known = n != null && n >= 1 && n <= 14;
+      lines.add(known ? '$code – ${Strings.get('allergen_$n')}' : code);
+      hit = hit || controller.avoidedAllergens.contains(n);
+    }
+    if (hit) lines.add('⚠ ${Strings.get('allergen_avoided')}');
+    return lines.join('\n');
   }
 
   Widget _sidebar(BuildContext context, Tokens tok) => ListView(
@@ -651,8 +736,83 @@ class LunchesView extends StatelessWidget {
       _aiCard(context, tok),
       SizedBox(height: tok.gap),
       _blacklistCard(context, tok),
+      SizedBox(height: tok.gap),
+      _allergenCard(context, tok),
     ],
   );
+
+  /// Tick the allergens to avoid; the chips double as the legend of
+  /// what each number means.
+  Widget _allergenCard(BuildContext context, Tokens tok) {
+    final c = controller;
+    return w.AppCard(
+      tok: tok,
+      children: [
+        Row(
+          spacing: 8,
+          children: [
+            Icon(Icons.health_and_safety_outlined, size: 18, color: tok.muted),
+            Expanded(
+              child: Text(
+                Strings.get('allergens'),
+                style: TextStyle(
+                  color: tok.text,
+                  fontSize: tok.fsBody,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            w.Badge(text: '${c.avoidedAllergens.length}', tok: tok),
+          ],
+        ),
+        Text(
+          Strings.get('allergens_hint'),
+          style: TextStyle(color: tok.muted, fontSize: tok.fsSmall),
+        ),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final n in core.allergenNumbers)
+              _allergenChip(context, tok, n, c.avoidedAllergens.contains(n)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _allergenChip(BuildContext context, Tokens tok, int n, bool on) =>
+      FilterChip(
+        key: Key('allergen:$n'),
+        selected: on,
+        visualDensity: VisualDensity.compact,
+        checkmarkColor: tok.red,
+        selectedColor: tintColor(tok.red, 0.16),
+        side: BorderSide(color: on ? tok.red : tok.border),
+        label: Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: n.toString().padLeft(2, '0'),
+                style: TextStyle(
+                  color: on ? tok.red : tok.muted,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              TextSpan(
+                text: '  ${Strings.get('allergen_$n')}',
+                style: TextStyle(color: tok.text),
+              ),
+            ],
+          ),
+          style: TextStyle(fontSize: tok.fsSmall),
+        ),
+        onSelected: (_) {
+          if (!controller.toggleAllergen(n)) {
+            appSnack(context, Strings.get('save_failed'));
+          }
+        },
+      );
 
   /// Runs the AI recommendation flow (or snacks why it cannot run).
   /// Port of `LunchView.recommend`.

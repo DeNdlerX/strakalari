@@ -148,8 +148,8 @@ void main() {
   });
 
   test('configKeyClassificationMatchesDesignSpec', () {
-    expect(globalConfigKeys.length, 22);
-    expect(canonicalDefaults.length, 77);
+    expect(globalConfigKeys.length, 25);
+    expect(canonicalDefaults.length, 81);
     for (final k in globalConfigKeys) {
       expect(canonicalDefaults.containsKey(k), isTrue, reason: 'Missing $k');
     }
@@ -158,7 +158,7 @@ void main() {
     expect(globalConfigKeys, contains('refresh_wifi_always_fast'));
     final perAccount =
         canonicalDefaults.keys.where((k) => !globalConfigKeys.contains(k));
-    expect(perAccount.length, 55);
+    expect(perAccount.length, 56);
     expect(perAccount, contains('background_refresh'));
   });
 
@@ -709,8 +709,8 @@ void main() {
     legacy.set('bakalari_username', 'child_a');
     legacy.set('bakalari_password', 'PassA');
     legacy.set('theme', 'dark');
-    legacy.set('excuse_mode', 'dry_run');
-    legacy.set('strava_order_mode', 'dry_run');
+    legacy.set('excuse_mode', 'auto');
+    legacy.set('strava_order_mode', 'auto');
     legacy.save();
     _writeText(p.join(tmp.path, 'data_cache.json'),
         jsonEncode({'_cache_version': 2, 'last_updated': '01.01.2026 08:00:00'}));
@@ -734,9 +734,8 @@ void main() {
     expect(() => loadDataCache(), throwsStateError);
     expect(() => saveDataCache({'x': 1}), throwsStateError);
     expect(() => historyPath(), throwsStateError);
-    expect(() => record('excuse', 'dry_run', 'manual', 's'), throwsStateError);
+    expect(() => record('excuse', 'skipped', 'manual', 's'), throwsStateError);
     expect(() => recent(), throwsStateError);
-    expect(() => hasDryRun('excuse'), throwsStateError);
     expect(() => ConfigManager(), throwsStateError);
     expect(() => ConfigManager(p.join(tmp.path, 'config.json')), throwsStateError);
     expect(() => encrypt('secret'), throwsStateError);
@@ -802,8 +801,8 @@ void main() {
     acc2Cfg.set('bakalari_url', 'https://b.school.cz');
     acc2Cfg.set('bakalari_username', 'child_b');
     acc2Cfg.set('bakalari_password', 'PassB');
-    acc2Cfg.set('excuse_mode', 'dry_run');
-    acc2Cfg.set('strava_order_mode', 'dry_run');
+    acc2Cfg.set('excuse_mode', 'auto');
+    acc2Cfg.set('strava_order_mode', 'auto');
     acc2Cfg.save();
     AccountManager.finishAddingAccount(
       tmp.path,
@@ -820,8 +819,8 @@ void main() {
       );
       cfg.addBlacklistItem('houby');
       saveDataCache({'timetable': {'01.09.2026': <Object?>[]}}, dataDir: dir);
-      record('excuse', 'dry_run', 'manual', 'dry excuse', dataDir: dir);
-      record('lunch', 'dry_run', 'auto', 'dry cancel', dataDir: dir);
+      record('excuse', 'skipped', 'manual', 'test excuse', dataDir: dir);
+      record('lunch', 'skipped', 'auto', 'test cancel', dataDir: dir);
       final app = Strakalari(dataDir: dir, rootDir: tmp.path);
       app.writeLog('cycle log line');
       buildReport('cycle', 'oops PassA PassB',
