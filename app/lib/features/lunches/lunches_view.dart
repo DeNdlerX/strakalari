@@ -19,7 +19,8 @@ class LunchesView extends StatelessWidget {
   final String updatedLabel;
   final VoidCallback? onOpenSettings;
   final Future<void> Function()? onRecommend;
-  final Future<bool> Function(Map<String, String> payload)? onSubmit;
+  /// Sends the picks: true = sent, false = failed, null = nothing to send.
+  final Future<bool?> Function(Map<String, String> payload)? onSubmit;
   final DateTime Function()? nowFor;
 
   const LunchesView({
@@ -316,9 +317,11 @@ class LunchesView extends StatelessWidget {
                 if (!context.mounted) return;
                 appSnack(
                   context,
-                  ok
-                      ? Strings.get('orders_sent')
-                      : Strings.get('orders_failed'),
+                  switch (ok) {
+                    true => Strings.get('orders_sent'),
+                    false => Strings.get('orders_failed'),
+                    null => Strings.get('no_changes'),
+                  },
                 );
               } else if (payload.isEmpty) {
                 appSnack(context, Strings.get('no_changes'));

@@ -99,7 +99,11 @@ class LiveLunchesView extends ConsumerWidget {
           s.lastSnackMessage = Strings.get('ai_already_running');
         }
       },
-      onSubmit: (_) async => s.submitOrders(),
+      onSubmit: (_) async {
+        if (s.submitOrders()) return true;
+        // Nothing pending is not a failure.
+        return s.lunchSubmitPayload().isEmpty ? null : false;
+      },
     );
   }
 }
