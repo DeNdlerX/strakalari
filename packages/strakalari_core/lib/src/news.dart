@@ -37,31 +37,63 @@ List<MapEntry<String, String>> findNews(
 ]) {
   previous = previous ?? {};
   fresh = fresh ?? {};
+  String? message(String one, String many, List<String> items) =>
+      items.isEmpty ? null : _message(one, many, items);
   final found = [
-    ('new_mark', 'news_mark', 'news_marks', newMarks(previous, fresh)),
+    (
+      'new_mark',
+      message('news_mark', 'news_marks', newMarks(previous, fresh)),
+    ),
     (
       'new_quarterly_mark',
-      'news_quarterly',
-      'news_quarterlies',
-      newQuarterlyMarks(previous, fresh),
+      message(
+        'news_quarterly',
+        'news_quarterlies',
+        newQuarterlyMarks(previous, fresh),
+      ),
     ),
-    (
-      'new_absence',
-      'news_absence',
-      'news_absences',
-      newAbsences(previous, fresh),
-    ),
+    ('new_absence', _absencesMessage(previous, fresh)),
     (
       'timetable_change',
-      'news_change',
-      'news_changes',
-      newChanges(previous, fresh, today ?? clock.now()),
+      message(
+        'news_change',
+        'news_changes',
+        newChanges(previous, fresh, today ?? clock.now()),
+      ),
     ),
   ];
   return [
-    for (final (event, one, many, items) in found)
-      if (items.isNotEmpty) MapEntry(event, _message(one, many, items)),
+    for (final (event, text) in found)
+      if (text != null) MapEntry(event, text),
   ];
+}
+
+/// Message headings (one, many) per absence kind; the rest are absences.
+const Map<String, (String, String)> _absenceHeadings = {
+  'late': ('news_late', 'news_lates'),
+  'soon': ('news_early', 'news_earlies'),
+  'early': ('news_early', 'news_earlies'),
+};
+
+/// New absences headed by their kind ("Pozdní příchod: …"), a line each.
+String? _absencesMessage(
+  Map<String, Object?> previous,
+  Map<String, Object?> fresh,
+) {
+  final groups = <(String, String), List<String>>{};
+  for (final (kind, label) in _newAbsenceLessons(previous, fresh)) {
+    groups
+        .putIfAbsent(
+          _absenceHeadings[kind] ?? ('news_absence', 'news_absences'),
+          () => [],
+        )
+        .add(label);
+  }
+  if (groups.isEmpty) return null;
+  return [
+    for (final group in groups.entries)
+      _message(group.key.$1, group.key.$2, group.value),
+  ].join('\n');
 }
 
 String _message(String one, String many, List<String> items) {
@@ -185,9 +217,15 @@ Object _slot(Lesson lesson) =>
 List<String> newAbsences(
   Map<String, Object?>? previous,
   Map<String, Object?>? fresh,
+) => [for (final (_, label) in _newAbsenceLessons(previous, fresh)) label];
+
+/// (status, label) of each lesson [newAbsences] reports.
+List<(String, String)> _newAbsenceLessons(
+  Map<String, Object?>? previous,
+  Map<String, Object?>? fresh,
 ) {
   final oldDays = _days(previous?['timetable']);
-  final items = <String>[];
+  final items = <(String, String)>[];
   final freshDays = _days(fresh?['timetable']).entries.toList()
     ..sort((a, b) => _byDate(a).compareTo(_byDate(b)));
   for (final entry in freshDays) {
@@ -204,7 +242,10 @@ List<String> newAbsences(
       if (absenceStates.contains(lesson.status) &&
           !known.contains(_slot(lesson))) {
         known.add(_slot(lesson));
-        items.add(_label(lesson.subject, lesson.day, lesson.period));
+        items.add((
+          lesson.status,
+          _label(lesson.subject, lesson.day, lesson.period),
+        ));
       }
     }
   }

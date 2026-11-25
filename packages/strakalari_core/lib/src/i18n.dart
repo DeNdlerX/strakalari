@@ -184,6 +184,16 @@ const Map<String, Map<String, String>> messages = {
     'cs': 'Změny v rozvrhu: {items}',
     'en': 'Timetable changes: {items}'
   },
+  'news_late': {'cs': 'Pozdní příchod: {items}', 'en': 'Late arrival: {items}'},
+  'news_lates': {
+    'cs': 'Pozdní příchody: {items}',
+    'en': 'Late arrivals: {items}'
+  },
+  'news_early': {'cs': 'Předčasný odchod: {items}', 'en': 'Left early: {items}'},
+  'news_earlies': {
+    'cs': 'Předčasné odchody: {items}',
+    'en': 'Left early: {items}'
+  },
   'news_more': {'cs': 'a další ({n})', 'en': 'and {n} more'},
   'news_cancelled': {'cs': 'odpadá', 'en': 'cancelled'},
   'news_added': {'cs': 'hodina navíc', 'en': 'extra lesson'},

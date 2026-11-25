@@ -129,6 +129,37 @@ void main() {
       expect(newAbsences(old, fresh), ['M 29. 9., 1. hodina']);
       expect(newAbsences(fresh, fresh), isEmpty);
     });
+
+    test('lateArrivalAndEarlyLeaveAreHeadedByTheirKind', () {
+      final old = {
+        'timetable': {
+          past: [lesson(1), lesson(2), lesson(3), lesson(4)],
+        },
+      };
+      Map<String, String> news(List<Map<String, Object?>> lessons) =>
+          Map.fromEntries(
+            findNews(old, {
+              'timetable': {past: lessons},
+            }, today),
+          );
+      expect(news([lesson(1, 'M', {'absenceType': 'AbsentLate'})]), {
+        'new_absence': 'Pozdní příchod: M 29. 9., 1. hodina',
+      });
+      expect(
+        news([
+          lesson(1, 'M', {'absenceType': 'AbsentLate'}),
+          lesson(2, 'M', {'absenceType': 'AbsentSoon'}),
+          lesson(3, 'M', {'absenceType': 'Absent'}),
+          lesson(4, 'M', {'absenceType': 'AbsentLate'}),
+        ]),
+        {
+          'new_absence': 'Pozdní příchody: M 29. 9., 1. hodina; '
+              'M 29. 9., 4. hodina\n'
+              'Předčasný odchod: M 29. 9., 2. hodina\n'
+              'Nová absence: M 29. 9., 3. hodina',
+        },
+      );
+    });
   });
 
   group('newChanges', () {
