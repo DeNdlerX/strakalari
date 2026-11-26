@@ -446,12 +446,14 @@ class TodayController extends ChangeNotifier {
     final sig = signature;
     if (sig.isNotEmpty) {
       // Never duplicate a signature the template already ends with
-      // (case-insensitive, mirroring format_excuse_template).
+      // (case-insensitive, mirroring format_excuse_template), nor one its
+      // {signature} placeholder brings when it is sent.
       found = [
         for (final o in found)
           TemplateOption(
               o.name,
-              o.text.toLowerCase().contains(sig.toLowerCase())
+              o.text.toLowerCase().contains(sig.toLowerCase()) ||
+                      o.text.contains('{signature}')
                   ? o.text
                   : '${o.text.trimRight()}\n$sig')
       ];

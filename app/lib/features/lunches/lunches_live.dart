@@ -100,9 +100,18 @@ class LiveLunchesView extends ConsumerWidget {
         }
       },
       onSubmit: (_) async {
-        if (s.submitOrders()) return true;
-        // Nothing pending is not a failure.
-        return s.lunchSubmitPayload().isEmpty ? null : false;
+        // Started: the worker reports sent / failed when it is done.
+        if (s.submitOrders()) return null;
+        // The reason submitOrders gave (closed days, no login).
+        if (s.lastSnackMessage.isNotEmpty) {
+          final msg = s.lastSnackMessage;
+          s.lastSnackMessage = '';
+          return msg;
+        }
+        if (s.orderRunning || s.refreshRunning) {
+          return Strings.get('already_running');
+        }
+        return Strings.get('no_changes');
       },
     );
   }

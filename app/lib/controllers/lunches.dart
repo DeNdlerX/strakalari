@@ -511,9 +511,13 @@ extension LunchLogic on AppState {
     _maybeApplyPendingLaunchRoute();
   }
 
-  /// Hides banned meals and stages first-allowed picks. Port of
-  /// `apply_food_filter()`.
-  void applyFoodFilter(String prefs) {
+  /// Works out which meals of the current menu the blacklist, the
+  /// preference words and the avoided allergens hide ([lunchHidden],
+  /// [lunchReasons]); stages nothing. Meal ids are positional (`table0` is
+  /// the menu's first day), so this runs again whenever the menu is
+  /// loaded. Returns the combined ban words.
+  List<String> refreshHiddenMeals([String? prefs]) {
+    prefs ??= lunchPrefs;
     final blacklist = blacklistWords();
     List<String> prefWords = [];
     try {
@@ -530,10 +534,9 @@ extension LunchLogic on AppState {
       }
     }
     final avoided = avoidedAllergens(config.data);
-    final menu = food();
     final hidden = <String>{};
     final reasons = <String, String>{};
-    for (final meals in menu.values) {
+    for (final meals in food().values) {
       for (final e in meals.entries) {
         if (e.key.contains('&-1&')) continue;
         final (banned, keyword) = isFoodBanned(e.value, combined);
@@ -547,6 +550,16 @@ extension LunchLogic on AppState {
     }
     lunchHidden = hidden;
     lunchReasons = reasons;
+    return combined;
+  }
+
+  /// Hides banned meals and stages first-allowed picks. Port of
+  /// `apply_food_filter()`.
+  void applyFoodFilter(String prefs) {
+    final combined = refreshHiddenMeals(prefs);
+    final hidden = lunchHidden;
+    final avoided = avoidedAllergens(config.data);
+    final menu = food();
     lunchPrefs = prefs;
     Map<String, String> picks = {};
     try {

@@ -227,10 +227,8 @@ DateTime nextScheduledWake(
       if (todayWindow != null && todayWindow.start.isAfter(now)) {
         nextStart = todayWindow.start;
       } else if (candidate.isAfter(now)) {
-        final daysAhead =
-            DateTime(candidate.year, candidate.month, candidate.day)
-                .difference(today)
-                .inDays;
+        // Calendar days: the day the clocks go forward is only 23 h long.
+        final daysAhead = daysBetween(today, candidate);
         for (var d = 1; d <= math.min(daysAhead, 14); d++) {
           final w = windowFor(addDays(today, d));
           if (w != null && w.start.isAfter(now)) {

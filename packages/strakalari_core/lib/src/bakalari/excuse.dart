@@ -165,6 +165,41 @@ Map<String, Object?> calendarState(DateTime day) {
   return (files, match.group(2)!);
 }
 
+/// A text the user picked for one excuse with its placeholders (`{date}`,
+/// `{lessons}`, `{subject}`, `{signature}`) filled in the way an automatic
+/// send fills the templates (`Strakalari.defaultExcuseText`); the rest is
+/// sent as written.
+String fillExcusePlaceholders(
+  String text, {
+  required String dayStart,
+  required String dayEnd,
+  required bool wholeDay,
+  Object? startLesson,
+  Object? endLesson,
+  String? excuseType,
+  String signature = '',
+}) {
+  final String date;
+  final String lessons;
+  if (wholeDay) {
+    date = dayStart == dayEnd ? dayStart : '$dayStart – $dayEnd';
+    lessons = '';
+  } else if (excuseType == 'income' || excuseType == 'soon') {
+    date = dayStart;
+    lessons = '$startLesson';
+  } else {
+    date = dayStart;
+    lessons = '$startLesson' == '$endLesson'
+        ? '$startLesson.'
+        : '$startLesson. – $endLesson.';
+  }
+  return text
+      .replaceAll('{date}', date)
+      .replaceAll('{lessons}', lessons)
+      .replaceAll('{subject}', '')
+      .replaceAll('{signature}', signature);
+}
+
 /// `dd.MM.yyyy` for form fields.
 String _czDay(DateTime day) =>
     '${day.day.toString().padLeft(2, '0')}.'
@@ -504,7 +539,14 @@ mixin ExcuseFormMixin on BakalariClientBase, DataMixin {
               '–${minutesText(hourTo!['End'] as int)})';
     }
     final text = (customText != null && customText.isNotEmpty)
-        ? customText
+        ? fillExcusePlaceholders(customText,
+            dayStart: dayStart,
+            dayEnd: dayEnd,
+            wholeDay: wholeDay,
+            startLesson: startLesson,
+            endLesson: endLesson,
+            excuseType: excuseType,
+            signature: signature)
         : excuseText(dayStart, dayEnd, startLesson, endLesson,
             wholeDay, excuseType);
     if (text.trim().isEmpty) {

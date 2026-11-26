@@ -19,8 +19,10 @@ class LunchesView extends StatelessWidget {
   final String updatedLabel;
   final VoidCallback? onOpenSettings;
   final Future<void> Function()? onRecommend;
-  /// Sends the picks: true = sent, false = failed, null = nothing to send.
-  final Future<bool?> Function(Map<String, String> payload)? onSubmit;
+  /// Sends the picks. Returns what to tell the user right away (e.g.
+  /// "already running"), null for nothing: a started send reports its
+  /// outcome itself when it is done.
+  final Future<String?> Function(Map<String, String> payload)? onSubmit;
   final DateTime Function()? nowFor;
 
   const LunchesView({
@@ -290,6 +292,7 @@ class LunchesView extends StatelessWidget {
     final c = controller;
     final tok = tokensOf(context);
     var pending = 0;
+    final counted = <String>{};
     for (final e in c.orders.entries) {
       if (e.value.isEmpty ||
           !c.pendingOrders.contains(e.key) ||
@@ -297,7 +300,18 @@ class LunchesView extends StatelessWidget {
         continue;
       }
       if (!_isOpen(e.key)) continue;
+      counted.add(e.key);
       pending++;
+    }
+    // A planned day off still holding a web order goes out as its
+    // cancellation (like the send payload).
+    for (final day in c.cancelledLunches) {
+      if (counted.contains(day)) continue;
+      final web = c.webOrders[day] ?? '';
+      if (web.isEmpty || web.contains('&-1&') || !_isOpen(day)) continue;
+      if ((c.food[day] ?? const {}).keys.any((mid) => mid.contains('&-1&'))) {
+        pending++;
+      }
     }
     final notConfigured =
         !c.stravaConfigured || '${c.get('strava_status', '')}' == 'no_login';
@@ -313,16 +327,8 @@ class LunchesView extends StatelessWidget {
                     e.key: e.value,
               };
               if (onSubmit != null) {
-                final ok = await onSubmit!(payload);
-                if (!context.mounted) return;
-                appSnack(
-                  context,
-                  switch (ok) {
-                    true => Strings.get('orders_sent'),
-                    false => Strings.get('orders_failed'),
-                    null => Strings.get('no_changes'),
-                  },
-                );
+                final msg = await onSubmit!(payload);
+                if (msg != null && context.mounted) appSnack(context, msg);
               } else if (payload.isEmpty) {
                 appSnack(context, Strings.get('no_changes'));
               }

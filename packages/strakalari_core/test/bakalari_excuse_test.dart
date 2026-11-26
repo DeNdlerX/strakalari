@@ -398,6 +398,34 @@ void main() {
           isTrue);
     });
 
+    test('pickedTextFillsItsPlaceholdersLikeTheTemplates', () async {
+      final school =
+          ExcuseSchool(sentDetail: lessons('1.10.2026', 3, 4));
+      final (bak, _, _) = excuseClient(school,
+          config: (conf) => conf..['your_signature'] = 'Jan');
+      expect(
+          await bak.executeExcuse('01.10.2026', '01.10.2026', 3, 4,
+              'Omluvte prosím {lessons} hodinu {date}{subject}.\n{signature}'),
+          isTrue);
+      expect(editorHtml(school.posts.single),
+          '<p>Omluvte prosím 3. – 4. hodinu 01.10.2026.</p><p>Jan</p>');
+      // Whole days: the date range, no lessons.
+      expect(
+          fillExcusePlaceholders('{date}|{lessons}',
+              dayStart: '01.10.2026', dayEnd: '02.10.2026', wholeDay: true),
+          '01.10.2026 – 02.10.2026|');
+      // Late arrivals and early leaves: the bare lesson number.
+      expect(
+          fillExcusePlaceholders('{lessons}',
+              dayStart: '01.10.2026',
+              dayEnd: '01.10.2026',
+              wholeDay: false,
+              startLesson: 3,
+              endLesson: 3,
+              excuseType: 'income'),
+          '3');
+    });
+
     test('postbackWithoutNowReadsTheClock', () {
       // Python `datetime.now()`: the form's timestamps follow the clock.
       List<(String, String)> build({DateTime? now}) => excusePostback(

@@ -256,6 +256,70 @@ void main() {
     });
   });
 
+  group('hidden meals follow the menu', () {
+    const day = '08.12.2027';
+    const next = '09.12.2027';
+
+    test('avoidedAllergensAreHiddenFromTheStart', () {
+      saveDataCache({
+        'absence': {'M': 1.0},
+        'strava_ordered': <String, Object?>{},
+        'strava_meals': {
+          day: {
+            'table1&1&0': 'oběd 1 - Řízek(01, 07 )',
+            'table1&2&0': 'oběd 2 - Rizoto',
+            'table1&-1&0': 'x',
+          },
+        },
+      });
+      final st = AppState(configData: {
+        'strava_allergens': [7],
+      });
+      expect(st.demoMode, isFalse);
+      expect(st.lunchHidden, {'table1&1&0'});
+    });
+
+    test('aNewDayMovesHiddenMealsAndStagedPicksToTheNewIds', () {
+      saveDataCache({
+        'absence': {'M': 1.0},
+        'strava_ordered': <String, Object?>{},
+        'strava_meals': {
+          day: {
+            'table1&1&0': 'oběd 1 - Řízek(01, 07 )',
+            'table1&2&0': 'oběd 2 - Rizoto',
+            'table1&-1&0': 'x',
+          },
+        },
+      });
+      final st = AppState(configData: {
+        'use_strava': true,
+        'strava_allergens': [7],
+      });
+      st.isLunchOrderOpenOverride = (d, [now]) => true;
+      expect(st.orderLunch(day, 'table1&2&0'), isTrue);
+      // A day later the same day is the menu's first table.
+      saveDataCache({
+        'strava_meals': {
+          day: {
+            'table0&1&0': 'oběd 1 - Řízek(01, 07 )',
+            'table0&2&0': 'oběd 2 - Rizoto',
+            'table0&-1&0': 'x',
+          },
+          next: {
+            'table1&1&0': 'oběd 1 - Guláš',
+            'table1&2&0': 'oběd 2 - Kuře(07 )',
+            'table1&-1&0': 'x',
+          },
+        },
+      });
+      st.reloadCache();
+      expect(st.lunchHidden, {'table0&1&0', 'table1&2&0'});
+      expect(st.orders[day], 'table0&2&0');
+      expect(st.pendingOrders, contains(day));
+      expect(st.lunchSubmitPayload(), {day: 'table0&2&0'});
+    });
+  });
+
   group('test_lunch_cutoff (AppState)', () {
     test('stateRejectsClosedDayAndFiltersSubmit', () {
       final state = AppState(data: {});

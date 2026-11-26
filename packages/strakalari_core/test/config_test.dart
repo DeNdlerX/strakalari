@@ -203,6 +203,26 @@ void main() {
       expect(cfg.get('late_income_excuses'), isList);
     });
 
+    test('storedDryRunModeReadsAsConfirmAndIsSavedSo', () {
+      final configPath = '${tmp.path}/dry_config.json';
+      File(configPath).writeAsStringSync(jsonEncode({
+        'excuse_mode': 'dry_run',
+        'strava_order_mode': 'DRY_RUN',
+        'your_signature': 'Jan',
+      }));
+      final cfg = ConfigManager(configPath);
+      expect(cfg.get('excuse_mode'), 'confirm');
+      expect(cfg.get('strava_order_mode'), 'confirm');
+      expect(cfg.validate().where((p) => p.contains('_mode')), isEmpty);
+      // Any later save writes it out; the other keys stay as they were.
+      cfg.set('use_strava', false);
+      cfg.save();
+      final disk = jsonDecode(File(configPath).readAsStringSync()) as Map;
+      expect([disk['excuse_mode'], disk['strava_order_mode']],
+          ['confirm', 'confirm']);
+      expect(disk['your_signature'], 'Jan');
+    });
+
     test('blacklistManagement', () {
       final cfg = ConfigManager('${tmp.path}/config.json');
       cfg.setAndSave('strava_blacklist', '${tmp.path}/bl.json');

@@ -10,6 +10,8 @@ import 'package:test/test.dart';
 
 import 'package:strakalari_core/src/automation/automation.dart';
 import 'package:strakalari_core/src/automation/excuse_history.dart';
+import 'package:strakalari_core/src/automation/refresh_schedule.dart';
+import 'package:strakalari_core/src/storage/config.dart';
 import 'package:strakalari_core/src/lunches/lunch_cutoff.dart';
 import 'package:strakalari_core/src/storage/helpers.dart';
 
@@ -98,6 +100,27 @@ void main() {
       expect(previousBusinessDay(day(2026, 3, 31)), day(2026, 3, 30));
       expect(previousBusinessDay(day(2026, 10, 26)), day(2026, 10, 23));
       expect(previousBusinessDay(day(2026, 3, 30)), day(2026, 3, 27));
+    });
+  });
+
+  group('nextScheduledWake', () {
+    test('springForwardStillClampsToMondaysWindow', () {
+      // Sunday 29.3.2026 is 23 h long: Monday is still one day ahead.
+      ActiveDayWindow? window(DateTime d) => d.weekday <= 5
+          ? (
+              start: DateTime(d.year, d.month, d.day, 6, 45),
+              end: DateTime(d.year, d.month, d.day, 17, 0),
+            )
+          : null;
+      final cfg = defaultConfig()
+        ..['check_interval_mobile_minutes'] = 5
+        ..['check_interval_off_hours_minutes'] = 600;
+      // 22:00 + 10 h = Monday 08:00, after Monday's window opens at 06:45.
+      expect(
+        nextScheduledWake(DateTime(2026, 3, 29, 22), cfg, window,
+            NetworkKind.metered, DateTime(2026, 3, 29, 22, 30)),
+        DateTime(2026, 3, 30, 6, 45),
+      );
     });
   });
 }

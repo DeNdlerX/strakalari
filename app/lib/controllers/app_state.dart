@@ -767,6 +767,7 @@ class AppState {
           : 0;
     }
     if (savedStep >= 0) _seedSchoolPresetDraft(savedStep);
+    _refreshHiddenMealsSafe();
     refreshTokens();
   }
 
@@ -1823,10 +1824,59 @@ class AppState {
         for (final e in canon.entries)
           if ('${e.value ?? ''}'.isNotEmpty) e.key: '${e.value}',
       };
+      _movePicksToCurrentMenu();
       pendingOrders.removeWhere(
           (d) => !cancelledLunches.contains(d) && !_lunchIsChange(d));
     }
+    _refreshHiddenMealsSafe();
     _emit();
+  }
+
+  /// Meal ids are positional (`table0&2&0`: the menu's first day, row 2),
+  /// so once the menu moves on a day a staged, unsent pick names a row of
+  /// another day's table. It moves to the same row of its own day's menu,
+  /// or is dropped when that row is gone (Strava would skip it anyway).
+  void _movePicksToCurrentMenu() {
+    final menu = food();
+    for (final day in pendingOrders.toList()) {
+      final staged = orders[day];
+      final meals = menu[day];
+      if (staged == null ||
+          meals == null ||
+          meals.isEmpty ||
+          meals.containsKey(staged)) {
+        continue;
+      }
+      final row = staged.split('&');
+      String? moved;
+      if (row.length == 3) {
+        for (final mid in meals.keys) {
+          final parts = mid.split('&');
+          if (parts.length == 3 && parts[1] == row[1] && parts[2] == row[2]) {
+            moved = mid;
+            break;
+          }
+        }
+      }
+      if (moved != null) {
+        orders[day] = moved;
+      } else {
+        orders.remove(day);
+        pendingOrders.remove(day);
+      }
+    }
+  }
+
+  /// The menu's meal ids move by a day when the menu does: hidden meals
+  /// are worked out again from the menu just loaded.
+  void _refreshHiddenMealsSafe() {
+    try {
+      refreshHiddenMeals();
+    } catch (exc) {
+      // Never break a load: the meals just show unfiltered.
+      // ignore: avoid_print
+      print('Warning: could not filter the menu (${exc.runtimeType}: $exc)');
+    }
   }
 
   /// Local pick differs from web truth (the Obědy badge counts these).

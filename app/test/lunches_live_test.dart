@@ -180,6 +180,85 @@ void main() {
     }
   });
 
+  group('Send', () {
+    const day = '08.12.2027';
+
+    AppState sendState({Map<String, Object?> ordered = const {}}) {
+      final s = AppState(
+        configData: {
+          'use_strava': true,
+          'strava_username': 'jan',
+          'strava_canteen_id': '4321',
+        },
+        data: {
+          'absence': {'M': 1.0},
+          'strava_meals': {
+            day: {'T1&1&0': 'Guláš', 'T1&-1&0': 'Bez jídla'},
+          },
+          'strava_ordered': ordered,
+        },
+      )..demoMode = false;
+      s.isLunchOrderOpenOverride = (d, [now]) => true;
+      return s;
+    }
+
+    Future<void> pumpLunches(WidgetTester tester, AppState s) async {
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(ProviderScope(
+        overrides: [appStateProvider.overrideWith(() => _FixedAppState(s))],
+        child: const MaterialApp(
+          home: Scaffold(body: LiveLunchesView(narrow: false)),
+        ),
+      ));
+      await tester.pump();
+    }
+
+    Future<void> tapSend(WidgetTester tester) async {
+      final button = find.ancestor(
+        of: find.textContaining(Strings.get('send_orders')),
+        matching: find.byType(ElevatedButton),
+      );
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    testWidgets('a started send says nothing until it is done, a busy one '
+        'says so', (tester) async {
+      final s = sendState();
+      var spawned = 0;
+      s.spawn = (job, name) => spawned++;
+      expect(s.orderLunch(day, 'T1&1&0'), isTrue);
+      await pumpLunches(tester, s);
+
+      s.refreshRunning = true;
+      await tapSend(tester);
+      expect(spawned, 0);
+      expect(find.text(Strings.get('already_running')), findsOneWidget);
+      expect(find.text(Strings.get('orders_failed')), findsNothing);
+
+      ScaffoldMessenger.of(tester.element(find.byType(Scaffold)))
+          .removeCurrentSnackBar();
+      s.refreshRunning = false;
+      await tapSend(tester);
+      expect(spawned, 1);
+      // Not "sent" before Strava answered (the worker says that).
+      expect(find.text(Strings.get('orders_sent')), findsNothing);
+      expect(find.text(Strings.get('orders_failed')), findsNothing);
+    });
+
+    testWidgets('the count includes a planned day off it cancels',
+        (tester) async {
+      final s = sendState(ordered: {day: 'T1&1&0'});
+      s.cancelledLunches = {day};
+      await pumpLunches(tester, s);
+      expect(find.text('${Strings.get('send_orders')} (1)'), findsOneWidget);
+    });
+  });
+
   test('F3 lunchControllerFor populates unclipped freeDayLabels', () {
     final s = AppState(
       configData: {

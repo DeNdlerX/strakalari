@@ -678,7 +678,20 @@ class ConfigManager {
   Map<String, Object?> load() {
     _loadInner();
     _rememberBaseline();
+    _retireDryRunMode();
     return data;
+  }
+
+  /// The dry-run mode is gone: a mode still stored as `dry_run` reads as
+  /// `confirm` (what it already behaved as) and is written so with the
+  /// next save.
+  void _retireDryRunMode() {
+    for (final key in const ['excuse_mode', 'strava_order_mode']) {
+      if ('${data[key]}'.trim().toLowerCase() == 'dry_run') {
+        data[key] = 'confirm';
+        _touched.add(key);
+      }
+    }
   }
 
   void _rememberBaseline() {

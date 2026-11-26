@@ -14,16 +14,19 @@
 // the data of the last refresh before it.
 //
 // A school day is one the school calendar doesn't free, with a lesson that
-// isn't cancelled (the cached weeks; past them the stable timetable).
+// isn't cancelled or covered by a planned absence (the cached weeks; past
+// them the stable timetable), like the wake-up alarm's days.
 import 'dart:convert';
 
 import 'package:clock/clock.dart';
 
 import 'i18n.dart';
+import 'planning/planned_skips.dart';
 import 'planning/school_presets.dart';
 import 'status_notification.dart';
 import 'storage/helpers.dart';
-import 'wakeup.dart' show indexDays, isCancelledLesson, lessonsFor;
+import 'wakeup.dart'
+    show indexDays, isCancelledLesson, lessonsFor, periodOf, plannedOff;
 
 /// Default ``morning_brief_time``.
 const String defaultBriefTime = '06:30';
@@ -140,6 +143,7 @@ List<MorningBrief> upcomingMorningBriefs(
   since = since ?? clock.now();
   final (hour, minute) = briefTimeOf(inputs.config);
   final freeDays = _freeDays(inputs);
+  final planned = loadPlannedSkips(inputs.config);
   final days = indexDays(inputs.timetable);
   final today = DateTime(since.year, since.month, since.day);
   final out = <MorningBrief>[];
@@ -148,7 +152,12 @@ List<MorningBrief> upcomingMorningBriefs(
     final at = DateTime(day.year, day.month, day.day, hour, minute);
     if (!at.isAfter(since) || freeDays.contains(day)) continue;
     final lessons = lessonsFor(days, day, inputs.stableBaseline);
-    if (!lessons.any((raw) => !isCancelledLesson(raw, day))) continue;
+    // A day the student planned to miss gets no brief (and no alarm).
+    if (!lessons.any((raw) =>
+        !isCancelledLesson(raw, day) &&
+        !plannedOff(day, periodOf(raw, day), planned))) {
+      continue;
+    }
     try {
       final content = buildBrief(inputs, at, lang: lang);
       if (content != null) out.add(MorningBrief(at, content));

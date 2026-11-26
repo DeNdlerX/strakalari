@@ -172,6 +172,32 @@ void main() {
       );
     });
 
+    test('aDayPlannedOffGetsNoBrief', () {
+      List<DateTime> briefDays(Map<String, Object?> skip) => [
+        for (final b in upcomingMorningBriefs(
+          inputs(config: cfg({'planned_skips': [skip]})),
+          since: DateTime(2026, 11, 8, 20),
+          horizonDays: 5,
+        ))
+          DateTime(b.at.year, b.at.month, b.at.day),
+      ];
+      // Monday's both lessons planned off: like the alarm, no brief.
+      expect(
+        briefDays({'start_date': '2026-11-09', 'end_date': '2026-11-09'}),
+        [DateTime(2026, 11, 11)],
+      );
+      // Only the first one: Monday still has school.
+      expect(
+        briefDays({
+          'start_date': '2026-11-09',
+          'end_date': '2026-11-09',
+          'start_period': 1,
+          'end_period': 1,
+        }),
+        [DateTime(2026, 11, 9), DateTime(2026, 11, 11)],
+      );
+    });
+
     test('freeDaysAndPassedTimesAreSkipped', () {
       final briefs = upcomingMorningBriefs(
         inputs(freeDays: {DateTime(2026, 11, 11)}),
