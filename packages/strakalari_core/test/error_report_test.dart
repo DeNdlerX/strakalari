@@ -141,6 +141,29 @@ void main() {
         expect(out, isNot(contains(leaked)));
       }
     });
+
+    test('scrubsBakalariHostAndStravaCanteenId', () {
+      final config = <String, Object?>{
+        'bakalari_url': 'https://bakaweb.gymnazium.cz/login',
+        'strava_canteen_id': '1950',
+      };
+      const text =
+          'GET https://bakaweb.gymnazium.cz/next/komens.aspx failed; '
+          'Strava canteen 1950 returned 503';
+      final out = redactText(text, config);
+      expect(out, isNot(contains('bakaweb.gymnazium.cz')));
+      expect(out, isNot(contains('1950')));
+      expect(out, contains('https://$redacted/next/komens.aspx'));
+      expect(out, contains('canteen $redacted returned'));
+
+      // Short canteen number (< 4 chars) only scrubs as a whole token.
+      final shortCfg = <String, Object?>{'strava_canteen_id': '123'};
+      expect(redactText('canteen 123 code 12345', shortCfg),
+          'canteen $redacted code 12345');
+
+      // Local secretValues must not scrub school URL / canteen ID.
+      expect(secretValues(config), isEmpty);
+    });
   });
 
   group('secretValues', () {

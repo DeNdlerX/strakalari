@@ -47,6 +47,7 @@ class FakeBak extends BakalariClient {
   bool executeUncertain = false;
   Duration executeDelay = Duration.zero;
   Completer<void>? executeGate;
+  void Function()? onExecute;
   List<List<Object?>> executeArgs = [];
   List<Map<String, Object?>>? sentExcusesResult = [];
 
@@ -70,6 +71,7 @@ class FakeBak extends BakalariClient {
     if (executeDelay > Duration.zero) {
       await Future<void>.delayed(executeDelay);
     }
+    onExecute?.call();
     lastSubmitUncertain = executeUncertain;
     return executeResult;
   }
@@ -1329,6 +1331,93 @@ void main() {
       expect(server.calls('POST', '/next/komens_zprava.aspx'), isEmpty);
     });
 
+    test('markupChangeDroppingAllExcusesKeepsUnconfirmedAndBlocksAutoSend',
+        () async {
+      final histFile = '${tmp.path}/history.json';
+      File(histFile).writeAsStringSync('[]');
+      final sidecarEntry = unconfirmedEntry({
+        'type': 'pure days',
+        'starting_day': '15.11.2026',
+        'ending_day': '15.11.2026',
+      }, DateTime(2026, 11, 16, 10, 0));
+      saveUnconfirmed(histFile, [sidecarEntry], utf8);
+      final cachedOutbox = {
+        '501|0:2026-10-05T08:00:00': [
+          {
+            'type': 'pure days',
+            'starting_day': '04.10.2026',
+            'ending_day': '04.10.2026',
+          }
+        ],
+      };
+      saveDataCache({outboxDetailsKey: cachedOutbox});
+
+      final server = FakeBakalari({
+        'GET /next/komens.aspx': '<html><body><form id="formbaka">'
+            '<input type="hidden" name="ctl00\$cphmain\$hfListType" id="hfListType" value="odeslane">'
+            '<span id="cphmain_obdobiLabel">20.8.2026 - 31.8.2027</span>'
+            '</form></body></html>',
+        // Message rows exist, but data-msgtype changed so 0 excuses are parsed.
+        'POST /next/komens.aspx': dxReply(
+            '<div class="komens-messages-wrapper">'
+            '<table data-idmsg="501" data-msgtype="EXCUSE_RENAMED"></table>'
+            '<table data-idmsg="502" data-msgtype="OBECNA"></table>'
+            '</div>'),
+        'POST /Timetable/GetContentData': (FakeRequest req) {
+          final payload = jsonDecode(utf8.decode(req.body)) as Map;
+          final d = DateTime.tryParse('${payload['date'] ?? ''}') ??
+              DateTime(2026, 11, 16);
+          return weekContent([
+            {
+              'day': dmy(d),
+              'teacher': 'T',
+              'subjecttext': 'M',
+              'time': '1 (8:00 - 8:45)',
+              'absenceType': 'Absent',
+              'absencetext': 'Absence',
+            }
+          ]);
+        },
+        'GET /Absence/Continuous':
+            '<script>DatesInformations = ko.mapping.fromJS({"DefaultDateFrom":{"DefaultValue":"2026-09-01T00:00:00+02:00"},"DefaultDateTo":{"DefaultValue":"2026-09-15T00:00:00+02:00"}});</script>',
+        'GET /Absence/Continuous/GetAbsenceBySubjects': [
+          {'Name': 'Matematika', 'LessonCount': 10, 'Count': 1, 'Percent': 0.1},
+        ],
+        'POST /Teaching/Subjects': {'data': <Object?>[]},
+        'POST /Timetable/substitutions/dates': {
+          'success': true,
+          'data': <Object?>[],
+        },
+      });
+
+      final app = Strakalari(
+        configFile: '${tmp.path}/config.json',
+        configData: {
+          ...fakeConfig,
+          'bakalari_url': 'https://bakalari.test/login',
+          'already_excused_file': histFile,
+          'excuse_mode': 'auto',
+          'use_strava': false,
+          'go_back_weeks': 1,
+          'go_forward_weeks': 0,
+        },
+      );
+      app.bakalariClient = BakalariClient(app.configManager.data,
+          logger: app.writeLog, transport: server);
+
+      final result = await withClock(
+          Clock.fixed(DateTime(2026, 11, 20, 10, 0)),
+          () => runRefresh(app, app.configData, scope: 'bakalari'));
+
+      expect(result.bakalariFetched, isTrue);
+      expect(app.lastOutboxSyncOk, isFalse);
+      expect(result.errors.any((e) => e.$1 == 'auto_excuse'), isTrue);
+      expect(result.excusesSent, 0);
+      expect(loadUnconfirmed(histFile, utf8), hasLength(1));
+      expect(loadDataCache()[outboxDetailsKey], equals(cachedOutbox));
+      expect(server.calls('POST', '/next/komens_zprava.aspx'), isEmpty);
+    });
+
     test('outboxDetailCacheIgnoresOtherVersionsAndReadsAgain (R4 S4)', () async {
       final stale = {
         '501': [
@@ -1887,6 +1976,38 @@ void main() {
           }),
           isTrue);
       expect(client.executeCalls, 0);
+    });
+
+    test('historyWriteFailureAfterConfirmedSubmitBlocksResendViaSidecar',
+        () async {
+      final histFile = '${tmp.path}/history.json';
+      final client = FakeBak();
+      final a = realApp(tmp, {
+        'already_excused_file': histFile,
+      })
+        ..bakalariClient = client;
+      // Block atomicWriteJson(histFile, ...) after executeExcuse succeeds by
+      // placing a directory at the target file path.
+      client.onExecute = () {
+        Directory(histFile).createSync();
+      };
+      final excuse = day('21.09.2026', 3, 3);
+      expect(
+        await a.sendExcuse(Map<String, Object?>.of(excuse), 'x'),
+        'sent',
+      );
+      expect(client.executeCalls, 1);
+      expect(loadUnconfirmed(histFile, utf8), hasLength(1));
+
+      // Remove the blocking directory so the next send can read history again.
+      Directory(histFile).deleteSync();
+      client.onExecute = null;
+
+      expect(
+        await a.sendExcuse(Map<String, Object?>.of(excuse), 'x'),
+        'skipped',
+      );
+      expect(client.executeCalls, 1);
     });
   });
 

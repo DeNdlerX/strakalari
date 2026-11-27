@@ -420,6 +420,16 @@ void main() {
       expect(outboxExcuseIds(null), isEmpty);
     });
 
+    test('readsOmluvenkaRowsRegardlessOfAttributeOrder', () {
+      final html =
+          '<table class="message" data-msgtype="OMLUVENKA" data-idmsg="601">'
+          '<table data-msgtype="OBECNA" data-idmsg="602">'
+          '<table data-idmsg="603" data-sortdate="0:2026-10-01T08:00:00" data-msgtype="OMLUVENKA">'
+          '<table data-msgtype="OMLUVENKA" data-idmsg="601">'
+          '<table data-sortdate="0:2026-09-30T08:00:00" data-msgtype="OMLUVENKA" data-idmsg="604">';
+      expect(outboxExcuseIds(html), ['601', '603', '604']);
+    });
+
     test('outboxMessageIdsIncludesAllMessageTypesDeduped', () {
       final html = '<table data-idmsg="501" data-msgtype="OMLUVENKA">'
           '<table data-idmsg="502" data-msgtype="OBECNA">'

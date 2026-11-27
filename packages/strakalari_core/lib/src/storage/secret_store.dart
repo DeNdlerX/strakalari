@@ -130,14 +130,19 @@ Uint8List _androidLoadOrCreate(
   if (wrapped != null) {
     Uint8List? key;
     try {
-      key = android.unwrap(base64.decode(ascii.decode(wrapped)));
-    } catch (e) {
+      final unwrapped = android.unwrap(base64.decode(ascii.decode(wrapped)));
+      if (!Fernet.isValidKeyBytes(unwrapped)) {
+        throw const FormatException(
+            'unwrapped bytes are not a valid Fernet key');
+      }
+      key = unwrapped;
+    } on FormatException catch (e) {
       print('Warning: could not unlock $wrappedFile '
           '(${e.runtimeType}: $e); stored passwords must be entered again.');
       quarantineCorruptFile(wrappedPath);
       key = null;
     }
-    if (key != null && Fernet.isValidKeyBytes(key)) {
+    if (key != null) {
       if (fileKey != null && !_bytesEqual(fileKey, key)) {
         // As with the keyring: the file encrypted what is in
         // config.json now. Never guess, keep using it.

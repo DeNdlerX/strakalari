@@ -88,8 +88,10 @@ const List<String> timeoutMessageHints = [
 /// personal data that has no business in a pasted bug report).
 const List<String> personalKeys = [
   'bakalari_username',
+  'bakalari_url',
   'strava_username',
   'strava_user',
+  'strava_canteen_id',
   'your_signature',
 ];
 
@@ -190,12 +192,28 @@ Set<String> _sensitiveValues(
     } else if (personalKeys.contains(key)) {
       final trimmed = text.trim();
       if (trimmed.isEmpty) continue;
-      values.add(trimmed);
-      if (key == 'your_signature') {
-        values.addAll(trimmed
-            .replaceAll(',', ' ')
-            .split(' ')
-            .where((w) => w.length >= 3));
+      if (key == 'bakalari_url') {
+        final uri = Uri.tryParse(
+            trimmed.contains('://') ? trimmed : 'https://$trimmed');
+        final host = (uri?.host ?? '').trim();
+        if (host.isNotEmpty) {
+          values.add(host);
+          final rawHost =
+              RegExp(r'^(?:[a-zA-Z][a-zA-Z0-9+.-]*://)?([^/?#:]+)')
+                  .firstMatch(trimmed)
+                  ?.group(1);
+          if (rawHost != null && rawHost.isNotEmpty) values.add(rawHost);
+        } else {
+          values.add(trimmed);
+        }
+      } else {
+        values.add(trimmed);
+        if (key == 'your_signature') {
+          values.addAll(trimmed
+              .replaceAll(',', ' ')
+              .split(' ')
+              .where((w) => w.length >= 3));
+        }
       }
     }
   }

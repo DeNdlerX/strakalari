@@ -103,14 +103,42 @@ void main() {
     expect(_names(data), ['secret.key.lock', 'secret.key.wrapped']);
   });
 
-  test('lostKeystoreKeyQuarantinesAndStartsOver', () async {
+  test('transientUnwrapFailureLeavesWrappedKeyUntouchedAndPropagates',
+      () async {
     final first = await start();
+    final wrappedFile = File('${data.path}/secret.key.wrapped');
+    final wrappedBefore = wrappedFile.readAsBytesSync();
+
     fake.brokenUnwrap = true;
+    clearKeyCache();
+    androidKeystoreBridge = null;
+    await expectLater(
+      warmAndroidKeystore(data.path, onAndroid: true),
+      throwsA(isA<KeyStoreUnavailable>()),
+    );
+    expect(wrappedFile.existsSync(), isTrue);
+    expect(wrappedFile.readAsBytesSync(), wrappedBefore);
+    expect(File('${data.path}/secret.key').existsSync(), isFalse);
+    expect(
+      data.listSync().where((e) => e.path.contains('secret.key.wrapped.corrupt-')),
+      isEmpty,
+    );
+
+    // Once the Keystore responds again, the original key unwraps cleanly.
+    fake.brokenUnwrap = false;
+    expect(await start(), first);
+  });
+
+  test('badBlobQuarantinesAndStartsOver', () async {
+    final first = await start();
+    // Write a short blob that triggers PlatformException(code: 'BAD_BLOB').
+    File('${data.path}/secret.key.wrapped').writeAsStringSync('AAAA');
     fake.brokenWrap = true; // and the Keystore refuses new keys too
     final second = await start();
     expect(second, isNot(first));
     expect(
-        data.listSync().where((e) => e.path.contains('secret.key.wrapped.corrupt-')), isNotEmpty);
+        data.listSync().where((e) => e.path.contains('secret.key.wrapped.corrupt-')),
+        isNotEmpty);
     expect(File('${data.path}/secret.key').existsSync(), isTrue); // the plain fallback
     expect(File('${data.path}/secret.key').readAsBytesSync(), second);
     expect(File('${data.path}/secret.key.wrapped').existsSync(), isFalse);

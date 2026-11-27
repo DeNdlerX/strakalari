@@ -949,7 +949,8 @@ void atomicWriteJson(String path, Object? data,
   try {
     File(tmpPath).writeAsStringSync(
         toPlatformNewlines(jsonIndent2(data)),
-        encoding: encoding);
+        encoding: encoding,
+        flush: true);
     _replaceFile(tmpPath, path);
   } catch (_) {
     try {

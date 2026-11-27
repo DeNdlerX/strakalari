@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:clock/clock.dart';
 import 'package:test/test.dart';
 
+import 'package:strakalari_core/src/automation/automation.dart';
 import 'package:strakalari_core/src/automation/cancel.dart';
 import 'package:strakalari_core/src/bakalari/client.dart';
 import 'package:strakalari_core/src/bakalari/excuse.dart';
@@ -396,6 +397,62 @@ void main() {
           editorHtml(school.posts.single)
               .startsWith('<p>Pozdní příchod 01.10.2026, hodina 3.</p>'),
           isTrue);
+    });
+
+    test('singleLessonExcuseTextMatchesDefaultExcuseText (F8)', () {
+      final conf = <String, Object?>{
+        'short_absence_excuses': ['Omluvte prosím {lessons} hodinu {date}.'],
+        'late_income_excuses': ['Pozdní příchod {date}, hodina {lessons}.'],
+        'left_soon_excuses': ['Předčasný odchod {date}, hodina {lessons}.'],
+        'your_signature': 'Jan',
+      };
+      final bak = BakalariClient({...fakeConfig, ...conf});
+      final app = Strakalari(configData: conf);
+
+      final singleLesson = {
+        'type': 'days and hours',
+        'starting_day': '01.10.2026',
+        'ending_day': '01.10.2026',
+        'starting_lesson': 3,
+        'ending_lesson': 3,
+      };
+      expect(
+        bak.excuseText('01.10.2026', '01.10.2026', 3, 3, false, 'days and hours'),
+        app.defaultExcuseText(singleLesson),
+      );
+      expect(
+        bak.excuseText('01.10.2026', '01.10.2026', 3, 3, false, 'days and hours'),
+        contains('3. hodinu'),
+      );
+
+      // income and soon keep no trailing dot on the single lesson number.
+      final income = {...singleLesson, 'type': 'income'};
+      final soon = {...singleLesson, 'type': 'soon'};
+      expect(
+        bak.excuseText('01.10.2026', '01.10.2026', 3, 3, false, 'income'),
+        app.defaultExcuseText(income),
+      );
+      expect(
+        bak.excuseText('01.10.2026', '01.10.2026', 3, 3, false, 'soon'),
+        app.defaultExcuseText(soon),
+      );
+    });
+
+    test('allBlankLateOrEarlyTemplatesUseKindSpecificFallback (F9)', () {
+      final bak = BakalariClient({
+        ...fakeConfig,
+        'late_income_excuses': ['  ', '\t'],
+        'left_soon_excuses': ['   '],
+        'your_signature': '',
+      });
+      expect(
+        bak.excuseText('01.10.2026', '01.10.2026', 1, 1, false, 'income'),
+        'Omluvte prosím pozdní příchod.',
+      );
+      expect(
+        bak.excuseText('01.10.2026', '01.10.2026', 6, 6, false, 'soon'),
+        'Omluvte prosím předčasný odchod.',
+      );
     });
 
     test('pickedTextFillsItsPlaceholdersLikeTheTemplates', () async {

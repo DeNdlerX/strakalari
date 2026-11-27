@@ -231,6 +231,8 @@ begin
       DeleteFile(AppDir + '\*.lock');
       { Per-account data folders owned by the app. }
       DelTree(AppDir + '\accounts', True, True, True);
+      { User-added school calendars owned by the app. }
+      DelTree(AppDir + '\school_presets', True, True, True);
       { Chromium (~320 MB) that older versions downloaded next to the exe. }
       DelTree(AppDir + '\browsers', True, True, True);
       { Fallback data dir used when the install dir is read-only.

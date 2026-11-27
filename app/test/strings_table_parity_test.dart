@@ -203,6 +203,11 @@ void main() {
             as Map<String, dynamic>;
         final keys = arb.keys.where((k) => !k.startsWith('@')).toList();
         expect(keys, isNotEmpty);
+        expect(
+          keys.toSet(),
+          containsAll(Strings.allKeys),
+          reason: '$lang ARB missing keys: ${Strings.allKeys.difference(keys.toSet())}',
+        );
         for (final key in keys) {
           expect(arb[key], Strings.get(key), reason: '$lang/$key');
         }

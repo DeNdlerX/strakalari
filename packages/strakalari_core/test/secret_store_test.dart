@@ -1,7 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:test/test.dart';
 
+import 'package:strakalari_core/src/platform/android_bridge.dart';
 import 'package:strakalari_core/src/platform/keystore.dart';
 import 'package:strakalari_core/src/platform/packaging.dart';
 import 'package:strakalari_core/src/storage/fernet.dart';
@@ -234,4 +237,91 @@ void main() {
     expect(entryName(rootB), iosRootA);
     expect(entryName(defB), iosDefA);
   });
+
+  group('androidLoadOrCreate error handling (F2)', () {
+    tearDown(() {
+      androidKeystoreBridge = null;
+    });
+
+    test('unavailableKeystoreLeavesWrappedKeyUntouchedAndPropagates', () {
+      final bridge = _FakeAndroidBridge();
+      androidKeystoreBridge = bridge;
+      final original = getKey(tmp.path);
+      final wrapped = File('${tmp.path}${Platform.pathSeparator}$wrappedFile');
+      expect(wrapped.existsSync(), isTrue);
+      final wrappedBytes = wrapped.readAsBytesSync();
+
+      clearKeyCache();
+      bridge.unwrapError = const KeyStoreUnavailable('keystore busy');
+      expect(() => getKey(tmp.path), throwsA(isA<KeyStoreUnavailable>()));
+      expect(wrapped.existsSync(), isTrue);
+      expect(wrapped.readAsBytesSync(), wrappedBytes);
+      expect(File(keyPath()).existsSync(), isFalse);
+      expect(
+        tmp.listSync().where((e) => e.path.contains('.corrupt-')),
+        isEmpty,
+      );
+
+      // Once Keystore recovers, the original key unwraps intact.
+      bridge.unwrapError = null;
+      expect(getKey(tmp.path), original);
+    });
+
+    test('corruptBlobStillQuarantines', () {
+      final bridge = _FakeAndroidBridge();
+      androidKeystoreBridge = bridge;
+      final first = getKey(tmp.path);
+
+      clearKeyCache();
+      bridge.unwrapError = const FormatException('bad blob');
+      final second = getKey(tmp.path);
+      expect(second, isNot(first));
+      expect(
+        tmp.listSync().where((e) => e.path.contains('$wrappedFile.corrupt-')),
+        hasLength(1),
+      );
+    });
+
+    test('nonFernetUnwrappedBytesStillQuarantine', () {
+      final bridge = _FakeAndroidBridge();
+      androidKeystoreBridge = bridge;
+      final first = getKey(tmp.path);
+
+      clearKeyCache();
+      bridge.returnBadKeyOnce = true;
+      final second = getKey(tmp.path);
+      expect(second, isNot(first));
+      expect(
+        tmp.listSync().where((e) => e.path.contains('$wrappedFile.corrupt-')),
+        hasLength(1),
+      );
+    });
+  });
+}
+
+class _FakeAndroidBridge implements AndroidKeystoreBridge {
+  Object? unwrapError;
+  bool returnBadKeyOnce = false;
+
+  @override
+  bool get available => true;
+
+  @override
+  Uint8List wrap(Uint8List key) =>
+      Uint8List.fromList([1, 2, 3, 4, ...key]);
+
+  @override
+  Uint8List unwrap(Uint8List blob) {
+    if (unwrapError != null) {
+      final err = unwrapError!;
+      unwrapError = null; // allow subsequent wrap/unwrap round-trip to succeed
+      throw err;
+    }
+    if (returnBadKeyOnce) {
+      returnBadKeyOnce = false;
+      return Uint8List.fromList(utf8.encode('not-a-fernet-key'));
+    }
+    if (blob.length <= 4) throw const FormatException('too short');
+    return Uint8List.fromList(blob.sublist(4));
+  }
 }

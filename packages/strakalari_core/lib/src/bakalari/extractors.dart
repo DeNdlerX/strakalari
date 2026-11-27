@@ -494,18 +494,8 @@ List<Map<String, Object?>> substitutionsFromWeeks(Object? weeks) {
 }
 
 /// Message ids of the excuse (OMLUVENKA) rows of the Komens list, in order.
-List<String> outboxExcuseIds(Object? listHtml) {
-  final ids = <String>[];
-  final re = RegExp(
-      '<table\\b[^>]*?data-idmsg="(\\d+)"[^>]*?data-msgtype="([^"]*)"');
-  for (final match in re.allMatches('${listHtml ?? ''}')) {
-    if (match.group(2) == 'OMLUVENKA' &&
-        !ids.contains(match.group(1))) {
-      ids.add(match.group(1)!);
-    }
-  }
-  return ids;
-}
+List<String> outboxExcuseIds(Object? listHtml) =>
+    outboxExcuseCacheKeys(listHtml).keys.toList();
 
 /// Message ids of all rows (every message type) of the Komens list, in order.
 ///

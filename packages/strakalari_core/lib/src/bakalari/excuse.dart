@@ -435,26 +435,27 @@ mixin ExcuseFormMixin on BakalariClientBase, DataMixin {
           dateStr: dateRange,
           signatureStr: signature);
     }
-    final lessonsRange = '$startLesson' == '$endLesson'
-        ? '$startLesson'
-        : '$startLesson. – $endLesson.';
     final kind = (excuseType ?? '').toLowerCase();
+    final String lessonsRange;
     final List<String> templates;
+    final String fallback;
     if (kind == 'income') {
-      templates = lateIncomeExcuses.isNotEmpty
-          ? lateIncomeExcuses
-          : ['Omluvte prosím pozdní příchod.'];
+      lessonsRange = '$startLesson';
+      templates = lateIncomeExcuses;
+      fallback = 'Omluvte prosím pozdní příchod.';
     } else if (kind == 'soon') {
-      templates = leftSoonExcuses.isNotEmpty
-          ? leftSoonExcuses
-          : ['Omluvte prosím předčasný odchod.'];
+      lessonsRange = '$startLesson';
+      templates = leftSoonExcuses;
+      fallback = 'Omluvte prosím předčasný odchod.';
     } else {
-      templates = shortAbsenceExcuses.isNotEmpty
-          ? shortAbsenceExcuses
-          : ['Omluvte prosím absenci.'];
+      lessonsRange = '$startLesson' == '$endLesson'
+          ? '$startLesson.'
+          : '$startLesson. – $endLesson.';
+      templates = shortAbsenceExcuses;
+      fallback = 'Omluvte prosím absenci.';
     }
     return formatExcuseTemplate(
-        firstText(templates, 'Omluvte prosím absenci.'),
+        firstText(templates, fallback),
         dateStr: dayStart,
         lessonsStr: lessonsRange,
         signatureStr: signature);

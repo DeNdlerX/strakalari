@@ -430,7 +430,16 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
     if (!listing.contains('komens-messages-wrapper')) {
       throw StateError('outbox list did not load (format changed?)');
     }
-    return (page, outboxExcuseIds(listing));
+    final ids = outboxExcuseIds(listing);
+    final bounds = _outboxPeriodBounds(page);
+    if (outboxMessageIds(listing).isNotEmpty &&
+        ids.isEmpty &&
+        _hasKnownInPeriodExcuse(bounds?.$1, bounds?.$2)) {
+      throw StateError(
+          'outbox returned message rows but 0 excuses while cached '
+          'in-period excuses exist (format changed?)');
+    }
+    return (page, ids);
   }
 
   /// `(pageHtml, excuseIds, cacheKeys)`: Komens → Odeslané and every
@@ -474,7 +483,7 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
     final requestedSize = pageSize ?? outboxPageSize;
     final size = requestedSize < 1 ? defaultOutboxPageSize : requestedSize;
 
-    Future<(List<String>, Map<String, String>)> pageWith(
+    Future<(List<String>, Map<String, String>, int)> pageWith(
       Future<String> Function(String param, int pageNumber) runCallback, {
       required void Function(int pageNumber) onPageStart,
     }) async {
@@ -532,7 +541,7 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
               'outbox exceeded $maxPages pages without reaching the end');
         }
       }
-      return (excuseIds, cacheKeys);
+      return (excuseIds, cacheKeys, seenAllIds.length);
     }
 
     // Attempt cached 3-field callback when allowed and valid (F6 §4.4, R8a M1/S6).
@@ -543,7 +552,7 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
       List<String>? cachedIds;
       Map<String, String>? cachedKeys;
       try {
-        final (ids, keys) = await pageWith(
+        final (ids, keys, totalRows) = await pageWith(
           (param, _) => session.dxCallbackFields(
             path,
             cached.fields,
@@ -559,6 +568,11 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
         );
         if (missing != null) {
           rejectReason = missing;
+        } else if (totalRows > 0 &&
+            ids.isEmpty &&
+            _hasKnownInPeriodExcuse(cached.periodStart, cached.periodEnd)) {
+          rejectReason =
+              'cached reply listed $totalRows message(s) but 0 excuses';
         } else {
           cachedIds = ids;
           cachedKeys = keys;
@@ -596,11 +610,18 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
       throw StateError(
           'Komens page is not the sent folder (format changed?)');
     }
-    final (ids, cacheKeys) = await pageWith(
+    final (ids, cacheKeys, totalRows) = await pageWith(
       (param, _) => session.dxCallback(path, page, _outboxCallbackId, param),
       onPageStart: (_) {},
     );
     final bounds = _outboxPeriodBounds(page);
+    if (totalRows > 0 &&
+        ids.isEmpty &&
+        _hasKnownInPeriodExcuse(bounds?.$1, bounds?.$2)) {
+      throw StateError(
+          'outbox listed $totalRows message(s) but 0 excuses while cached '
+          'in-period excuses exist (format changed?)');
+    }
     final freshForm = _extractOutboxFormFields(
       page,
       path,
@@ -678,6 +699,31 @@ mixin DataMixin on BakalariClientBase, TimetableMixin {
       }
     }
     return null;
+  }
+
+  /// True when [knownOutboxDetails] holds at least one cached excuse whose
+  /// sent date (or absence start date when no sort date was cached) falls
+  /// inside `[periodStart, periodEnd]`.
+  bool _hasKnownInPeriodExcuse(DateTime? periodStart, DateTime? periodEnd) {
+    if (knownOutboxDetails.isEmpty || periodStart == null) return false;
+    bool inPeriod(DateTime day) =>
+        !day.isBefore(periodStart) &&
+        (periodEnd == null || !day.isAfter(periodEnd));
+    for (final entry in knownOutboxDetails.entries) {
+      final sep = entry.key.indexOf('|');
+      if (sep > 0) {
+        final sortDay = parseOutboxSortDate(entry.key.substring(sep + 1));
+        if (sortDay != null) {
+          if (inPeriod(sortDay)) return true;
+          continue;
+        }
+      }
+      for (final item in entry.value) {
+        final day = parseCzDate('${item['starting_day'] ?? ''}');
+        if (day != null && inPeriod(day)) return true;
+      }
+    }
+    return false;
   }
 
   Map<String, Object?>? _extractOutboxFormFields(

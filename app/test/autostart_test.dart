@@ -130,5 +130,43 @@ void main() {
       expect(setAutostart(false), isTrue);
       expect(entry.existsSync(), isFalse);
     });
+
+    test('usesAppImageEnvOverMountExecutableWhenFileExists', () {
+      autostartPlatformOverride = 'linux';
+      autostartExecutableOverride = '/tmp/.mount_StrakX123/usr/bin/strakalari';
+
+      final appImage = File('${home.path}/Apps/Strakalari.AppImage')
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync('');
+      autostartEnvOverride = {
+        ...autostartEnvOverride!,
+        'APPIMAGE': appImage.path,
+      };
+      expect(setAutostart(true, minimized: true), isTrue);
+      final entry = File('${home.path}/.config/autostart/strakalari.desktop');
+      expect(entry.readAsStringSync(),
+          contains('Exec=${appImage.path} --minimized'));
+
+      // AppImage path containing spaces is double-quoted.
+      final spacedImage = File('${home.path}/My Apps/Strakalari.AppImage')
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync('');
+      autostartEnvOverride = {
+        ...autostartEnvOverride!,
+        'APPIMAGE': spacedImage.path,
+      };
+      expect(setAutostart(true, minimized: true), isTrue);
+      expect(entry.readAsStringSync(),
+          contains('Exec="${spacedImage.path}" --minimized'));
+
+      // Missing APPIMAGE target falls back to resolvedExecutable.
+      autostartEnvOverride = {
+        ...autostartEnvOverride!,
+        'APPIMAGE': '${home.path}/Apps/missing.AppImage',
+      };
+      expect(setAutostart(true, minimized: true), isTrue);
+      expect(entry.readAsStringSync(),
+          contains('Exec=/tmp/.mount_StrakX123/usr/bin/strakalari --minimized'));
+    });
   });
 }

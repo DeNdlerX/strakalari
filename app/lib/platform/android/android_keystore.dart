@@ -124,7 +124,7 @@ class WarmedAndroidKeystore implements AndroidKeystoreBridge {
         return Uint8List.fromList(entry.key);
       }
     }
-    throw const FormatException('the wrapped key does not read back');
+    throw const KeyStoreUnavailable('Wrapped key was not warmed.');
   }
 }
 
@@ -245,9 +245,14 @@ Future<Uint8List> warmAndroidKeystore(
     Uint8List? blob;
     try {
       blob = Uint8List.fromList(base64.decode(ascii.decode(wrapped)));
-      key = await _channelUnwrap(channel, blob);
-    } on Object {
-      // Lost Keystore key or tampered blob: quarantine and start over,
+      final unwrapped = await _channelUnwrap(channel, blob);
+      if (!Fernet.isValidKeyBytes(unwrapped)) {
+        throw const FormatException(
+            'unwrapped bytes are not a valid Fernet key');
+      }
+      key = unwrapped;
+    } on FormatException {
+      // Corrupt blob or non-Fernet key bytes: quarantine and start over,
       // like core (stored passwords must be entered again).
       // ignore: avoid_print
       print('Warning: could not unlock $wrappedFile; '
@@ -255,7 +260,7 @@ Future<Uint8List> warmAndroidKeystore(
       quarantineCorruptFile(wrappedPath);
       key = null;
     }
-    if (key != null && Fernet.isValidKeyBytes(key)) {
+    if (key != null) {
       if (fileKey != null && !_bytesEqual(fileKey, key)) {
         // The file encrypted what is in config.json now (e.g. restored
         // from a backup). Never guess, keep using it.

@@ -1723,11 +1723,18 @@ class Strakalari implements RefreshApp {
           atomicWriteJson(historyFilepath, history, encoding: utf8);
           writeLog('Successfully excused and saved to disk.');
         } on Object catch (e) {
-          // Sent, but the duplicate guard does not know it yet: the
-          // next web sync re-imports it from the Komens outbox.
+          // Sent, but the history file could not be written: block re-sends
+          // in the unconfirmed sidecar until the next outbox sync settles it.
           writeLog('Warning: excuse was SENT but the history file could not be '
-              'written (${e.runtimeType}: $e); it will be re-synced '
-              'from the web on the next refresh.');
+              'written (${e.runtimeType}: $e); recording in the unconfirmed '
+              'sidecar until the next outbox sync.');
+          try {
+            saveUnconfirmed(historyFilepath,
+                [...unconfirmed, unconfirmedEntry(excuse)], utf8);
+          } on Object catch (e2) {
+            writeLog('Warning: unconfirmed sidecar write failed too '
+                '(${e2.runtimeType}: $e2).');
+          }
         }
         return 'sent';
       });

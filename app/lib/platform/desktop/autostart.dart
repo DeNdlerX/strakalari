@@ -73,7 +73,17 @@ String get _platform =>
     autostartPlatformOverride ??
     (Platform.isWindows ? 'win32' : (Platform.isMacOS ? 'darwin' : 'linux'));
 Map<String, String> get _env => autostartEnvOverride ?? Platform.environment;
-String get _executable => autostartExecutableOverride ?? Platform.resolvedExecutable;
+String get _executable {
+  if (_platform == 'linux') {
+    final appImage = _env['APPIMAGE']?.trim();
+    if (appImage != null &&
+        appImage.isNotEmpty &&
+        File(appImage).existsSync()) {
+      return appImage;
+    }
+  }
+  return autostartExecutableOverride ?? Platform.resolvedExecutable;
+}
 RunKeyRegistry get _registry => autostartRegistryOverride ?? const _Win32RunKey();
 
 /// Value / file / plist name (matches Python `APP_NAME`).

@@ -163,6 +163,61 @@ void main() {
       expect(bak.sentExcusesError, '');
     });
 
+    test('rowsWithZeroExcusesFailWhenCachedInPeriodExcusesExist', () async {
+      // Listing has message rows (data-idmsg) but 0 recognised OMLUVENKA rows,
+      // while knownOutboxDetails holds an excuse dated inside the listed period.
+      final cachedDetails = <String, List<Map<String, Object?>>>{
+        '501|0:2026-09-10T08:00:00': [
+          {
+            'type': 'pure days',
+            'starting_day': '09.09.2026',
+            'ending_day': '09.09.2026',
+          }
+        ],
+      };
+      final bak = client(outboxRoutes([], {}))
+        ..knownOutboxDetails = Map.of(cachedDetails);
+      expect(await bak.fetchSentExcuses(), isNull);
+      expect(bak.sentExcuses, isNull);
+      expect(bak.sentExcusesFrom, isNull);
+      expect(bak.sentExcusesError, isNotEmpty);
+      expect(bak.outboxDetailsUpdated, isFalse);
+      // Cache must not be wiped on a suspected markup change.
+      expect(bak.knownOutboxDetails, equals(cachedDetails));
+
+      // Out-of-period cached excuses do not trigger the sanity check.
+      final bakOld = client(outboxRoutes([], {}))
+        ..knownOutboxDetails = {
+          '401|0:2025-10-01T08:00:00': [
+            {
+              'type': 'pure days',
+              'starting_day': '30.09.2025',
+              'ending_day': '30.09.2025',
+            }
+          ],
+        };
+      expect(await bakOld.fetchSentExcuses(), isEmpty);
+
+      // One hidden/missing excuse when another excuse is still present still succeeds.
+      final bakPartial = client(outboxRoutes(
+        ['502'],
+        {'502': excuseDetail('12.9.2026')},
+      ))
+        ..knownOutboxDetails = {
+          ...cachedDetails,
+          '502|0:2026-09-12T08:00:00': [
+            {
+              'type': 'pure days',
+              'starting_day': '12.09.2026',
+              'ending_day': '12.09.2026',
+            }
+          ],
+        };
+      final partial = await bakPartial.fetchSentExcuses();
+      expect(partial, hasLength(1));
+      expect(partial!.single['starting_day'], '12.09.2026');
+    });
+
     test('anotherFolderIsUnknownNotEmpty', () async {
       final routes = outboxRoutes([], {});
       routes['GET /next/komens.aspx'] =
