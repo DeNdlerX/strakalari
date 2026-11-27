@@ -184,10 +184,26 @@ public class RefreshReceiver extends BroadcastReceiver {
     private static void armRetry(@NonNull Context ctx) {
         AlarmManager alarms = ctx.getSystemService(AlarmManager.class);
         if (alarms != null) {
-            long atMs = System.currentTimeMillis() + RETRY_MS;
-            alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMs,
-                    wakeIntent(ctx));
+            armWake(ctx, alarms, System.currentTimeMillis() + RETRY_MS);
         }
+    }
+
+    /**
+     * Arms the wake alarm at {@code atMs}. Exact while "Alarms & reminders"
+     * allows it: an inexact alarm may come minutes late, so the refresh
+     * drifts past its interval. Without it, inexact. Both fire in Doze.
+     */
+    static void armWake(@NonNull Context ctx, @NonNull AlarmManager alarms, long atMs) {
+        PendingIntent op = wakeIntent(ctx);
+        if (exactAllowed(ctx)) {
+            try {
+                alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMs, op);
+                return;
+            } catch (SecurityException ignored) {
+                // Permission withdrawn meanwhile: the inexact alarm below.
+            }
+        }
+        alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMs, op);
     }
 
     private static void releaseStatic() {
@@ -212,7 +228,7 @@ public class RefreshReceiver extends BroadcastReceiver {
         appContext = null;
     }
 
-    /** AlarmManager clock check shared with the widget's tick (unused here). */
+    /** Android 12+ lets the user withhold exact alarms ("Alarms & reminders"). */
     static boolean exactAllowed(@NonNull Context ctx) {
         AlarmManager alarms = ctx.getSystemService(AlarmManager.class);
         return Build.VERSION.SDK_INT < 31

@@ -35,5 +35,9 @@ void main() {
     // Probes stay silent, like Python.
     expect(await printed(() => ch.notificationsEnabled()), isEmpty);
     expect(await printed(() => ch.cancelWake()), isEmpty);
+    expect(await printed(() => ch.openBatterySettings()),
+        ['Warning: could not open the battery settings (denied)']);
+    // Can't tell: no battery warning to show.
+    expect(await ch.batteryUnrestricted(), isTrue);
   });
 }

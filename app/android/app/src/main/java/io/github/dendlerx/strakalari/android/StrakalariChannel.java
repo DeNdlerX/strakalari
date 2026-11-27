@@ -45,7 +45,8 @@ import javax.crypto.spec.GCMParameterSpec;
  *   <li>notifications: {@code notify}, {@code notificationsEnabled},
  *       {@code requestNotificationPermission}, {@code openNotificationSettings}
  *   <li>background service: {@code startBackground}, {@code stopBackground},
- *       {@code updateBackgroundNotification}
+ *       {@code updateBackgroundNotification}, {@code batteryUnrestricted},
+ *       {@code openBatterySettings}
  *   <li>refresh wake: {@code scheduleWake}, {@code cancelWake}
  *   <li>CPU awake during a refresh: {@code keepAwake}, {@code releaseAwake}
  *   <li>wake-up alarm: {@code setWakeupAlarms}, {@code exactAlarmsAllowed},
@@ -230,6 +231,13 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
                             stringArg(call, "text"),
                             stringArg(call, "sub"),
                             stringArg(call, "rows")));
+                    return;
+                case "batteryUnrestricted":
+                    result.success(batteryUnrestricted());
+                    return;
+                case "openBatterySettings":
+                    openBatterySettings();
+                    result.success(null);
                     return;
                 case "scheduleWake":
                     result.success(scheduleWake(doubleArg(call, "epochSeconds")));
@@ -461,6 +469,36 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
         return true;
     }
 
+    /**
+     * True when the user lets the app use the battery without restriction
+     * (on the battery-optimization allowlist): Doze and the standby buckets
+     * then no longer hold back the refresh wake or its network.
+     */
+    private boolean batteryUnrestricted() {
+        Context ctx = requireContext();
+        PowerManager power = ctx.getSystemService(PowerManager.class);
+        return power == null || power.isIgnoringBatteryOptimizations(ctx.getPackageName());
+    }
+
+    /**
+     * Opens the app's info page, where its battery use can be set to
+     * unrestricted (no direct request: Google Play limits that permission);
+     * the system's battery-optimization list where that page is missing.
+     */
+    private void openBatterySettings() {
+        Context ctx = requireContext();
+        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:" + ctx.getPackageName()));
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            ctx.startActivity(intent);
+        } catch (RuntimeException e) {
+            Intent list = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+            list.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(list);
+        }
+    }
+
     // -- refresh wake ----------------------------------------------------------
 
     private boolean scheduleWake(double epochSeconds) {
@@ -471,8 +509,7 @@ public class StrakalariChannel implements FlutterPlugin, ActivityAware,
         }
         long atMs = (long) (Math.max(epochSeconds,
                 System.currentTimeMillis() / 1000.0 + 5) * 1000);
-        alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMs,
-                RefreshReceiver.wakeIntent(ctx));
+        RefreshReceiver.armWake(ctx, alarms, atMs);
         return true;
     }
 

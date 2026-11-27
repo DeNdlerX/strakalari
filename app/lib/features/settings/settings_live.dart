@@ -191,16 +191,19 @@ class LiveSettingsView extends ConsumerStatefulWidget {
   ConsumerState<LiveSettingsView> createState() => _LiveSettingsViewState();
 }
 
-class _LiveSettingsViewState extends ConsumerState<LiveSettingsView> {
+class _LiveSettingsViewState extends ConsumerState<LiveSettingsView>
+    with WidgetsBindingObserver {
   /// Survives rebuilds (a new controller is built every time) so a cancelled
   /// switch to auto re-keys the mode pickers and they show the saved mode.
   int _modeRevision = 0;
   bool _notifOn = true;
   bool _exactOn = true;
+  bool _batteryOn = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       ref.read(appStateProvider).tutorialOffer('settings');
@@ -208,10 +211,27 @@ class _LiveSettingsViewState extends ConsumerState<LiveSettingsView> {
     _loadPermissions();
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Back from the system settings: show what was switched there.
+    if (state == AppLifecycleState.resumed) _loadPermissions();
+  }
+
   Future<void> _loadPermissions() async {
     if (core.mobilePlatform() == 'ios') return;
-    if (!ref.read(appStateProvider).wakeupAvailable) return;
     const channel = AndroidChannel();
+    if (core.mobilePlatform() == 'android') {
+      final battery = await channel.batteryUnrestricted();
+      if (!mounted) return;
+      if (battery != _batteryOn) setState(() => _batteryOn = battery);
+    }
+    if (!ref.read(appStateProvider).wakeupAvailable) return;
     final notif = await channel.notificationsEnabled();
     final exact = await channel.exactAlarmsAllowed();
     if (!mounted) return;
@@ -249,6 +269,9 @@ class _LiveSettingsViewState extends ConsumerState<LiveSettingsView> {
       },
     );
     controller.modeRevision = _modeRevision;
+    controller.batteryUnrestricted = _batteryOn;
+    controller.openBatterySettings =
+        () => unawaited(const AndroidChannel().openBatterySettings());
     final platform = core.mobilePlatform() ?? '';
     return SettingsView(
       key: ValueKey('settings:${s.activeAccountId ?? 'single'}'),

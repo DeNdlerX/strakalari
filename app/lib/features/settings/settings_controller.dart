@@ -78,6 +78,11 @@ class SettingsController {
   /// notification fallback text, F6 §7.4, R8 S3).
   int Function()? backgroundNotificationInterval;
 
+  /// Android: false when the app's battery use isn't unrestricted, so
+  /// Android may refresh less often than set; [openBatterySettings] fixes it.
+  bool batteryUnrestricted = true;
+  void Function()? openBatterySettings;
+
   String settingsSection = 'accounts';
   bool settingsOpen = false;
   String testing = '';

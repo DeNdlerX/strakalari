@@ -1903,6 +1903,23 @@ class SettingsView extends StatelessWidget {
                   },
                 ),
                 _Hint(Strings.get('run_in_background_hint')),
+                if (c.get('run_in_background', true) == true &&
+                    !c.batteryUnrestricted &&
+                    c.openBatterySettings != null) ...[
+                  Text(Strings.get('run_in_background_battery'),
+                      style: TextStyle(
+                          color: Colors.amber,
+                          fontSize: tokensOf(context).fsSmall)),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      key: const Key('bg:battery'),
+                      icon: const Icon(Icons.battery_charging_full),
+                      label: Text(Strings.get('run_in_background_battery_open')),
+                      onPressed: c.openBatterySettings,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

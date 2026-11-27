@@ -67,6 +67,26 @@ void main() {
     expect(t.widget<SwitchListTile>(tile).value, isFalse);
   });
 
+  testWidgets('restrictedBatteryUseIsFlaggedWithAWayToTheSettings', (t) async {
+    final (c, _, _) = phone();
+    var opened = 0;
+    c.openBatterySettings = () => opened++;
+    final warning = find.text(Strings.get('run_in_background_battery'));
+
+    await open(t, c); // unrestricted: nothing to say
+    expect(warning, findsNothing);
+
+    c.batteryUnrestricted = false;
+    await open(t, c);
+    expect(warning, findsOneWidget);
+    await t.tap(find.byKey(const Key('bg:battery')));
+    expect(opened, 1);
+
+    c.config['run_in_background'] = false; // not running: no matter
+    await open(t, c);
+    expect(warning, findsNothing);
+  });
+
   testWidgets('storeBuildOffersTheStartupSettingsAndKeepsTheTraySwitch', (t) async {
     final c = SettingsController({'minimize_to_tray': true}, storeManaged: true);
     t.view.physicalSize = const Size(800, 3000);

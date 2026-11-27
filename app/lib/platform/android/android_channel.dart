@@ -211,6 +211,30 @@ class AndroidChannel {
     }
   }
 
+  /// False when Android may hold back the background refresh to save
+  /// battery (Doze, standby limits): the user hasn't set the app's battery
+  /// use to unrestricted. True when it can't be told (nothing to fix).
+  Future<bool> batteryUnrestricted() async {
+    try {
+      return await _channel.invokeMethod<bool>('batteryUnrestricted') ?? true;
+    } on MissingPluginException {
+      return true;
+    } on PlatformException {
+      return true;
+    }
+  }
+
+  /// Opens the app's info page, where its battery use is set.
+  Future<void> openBatterySettings() async {
+    try {
+      await _channel.invokeMethod<void>('openBatterySettings');
+    } on MissingPluginException {
+      // Ignore.
+    } on PlatformException catch (e) {
+      _warn('could not open the battery settings', e, typed: false);
+    }
+  }
+
   /// Wakes the CPU at about [epochSeconds] (also in Doze; replaces the
   /// previous alarm).
   Future<bool> scheduleWake(DateTime at) async {
